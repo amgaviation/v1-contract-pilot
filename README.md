@@ -18,16 +18,25 @@ Supabase project. See `docs/PLAN.md` for the full build plan and
 implemented — the current build uses the locked "Approach Plate" direction
 as-is).
 
-**Blocked:** the Supabase MCP connection used to author this scaffold
-requires re-authorization before the new "master" Supabase project
-referenced throughout `docs/PLAN.md` can be created and the migration in
-`supabase/migrations/` can be applied.
+**Blocked:** three things need resolving outside this environment before the
+next step can happen —
+1. The Supabase MCP connection needs re-authorization before the new
+   "master" Supabase project (`docs/PLAN.md` §2) can be created and
+   `supabase/migrations/` can be applied.
+2. The GitHub integration used to build this scaffold can't create new
+   repositories (403 on both a personal-account and an org-scoped attempt).
+3. The Vercel integration can't create new projects either (403, same
+   shape, with and without an explicit team).
+
+This repo exists only as a local git history until (1) and (2) are
+resolved, or someone with the right access creates the repo/project by
+hand and this history is pushed to it.
 
 ## Stack
 
-Next.js 16 · React 19 · TypeScript (strict) · Tailwind v4 (CSS-first,
-`@theme` in `app/tokens.css`) · Supabase (`@supabase/ssr`) · Stripe
-(platform billing) + Stripe Connect Standard (pilot's own client billing).
+Next.js 16 · React 19 · TypeScript (strict) · Tailwind v4 (CSS-first) ·
+Supabase (`@supabase/ssr`) · Stripe (platform billing) + Stripe Connect
+Standard (pilot's own client billing).
 
 ## Design system
 
@@ -65,7 +74,7 @@ components/ui/         Button, Panel, StatusTag, KpiTile — all token-driven
 lib/brand.ts           the only source of brand strings
 lib/fonts.ts            self-hosted Roboto / Roboto Condensed / Roboto Mono
 lib/mock-data.ts       synthetic demo data for the Overview screen (deleted in Phase 3)
-lib/supabase/          browser / server / service-role clients + middleware helper
+lib/supabase/          browser / server clients, service-role.ts (own file, server-only), proxy session-refresh helper
 supabase/migrations/   Phase 1 tenancy schema (pilot.accounts, pilot.account_members, RLS)
 scripts/verify-tokens.mjs   the token-discipline scanner
 ```

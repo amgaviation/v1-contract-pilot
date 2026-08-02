@@ -31,10 +31,13 @@ export function RailNav({
       </div>
       <nav className="v1-rail-nav">
         {NAV_ITEMS.map((item) => {
+          // Path-prefix match, not string-prefix: pathname.startsWith("/trips")
+          // would also light up for a future "/tripsheets" route and report
+          // aria-current="page" on the wrong nav item.
           const isActive =
             item.href === "/"
               ? pathname === "/"
-              : pathname.startsWith(item.href);
+              : pathname === item.href || pathname.startsWith(item.href + "/");
           return (
             <Link
               key={item.href}

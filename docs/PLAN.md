@@ -23,6 +23,19 @@ a position in the pilot's relationship with the pilot's clients. Nothing in this
 surface a pilot's clients, rates, or revenue into AMG's CRM, outreach, or crew sourcing. That
 has to hold technically, not by policy.
 
+**CORRECTION (post-security-review, still accurate to the intent above, more precise about the
+mechanism):** "holds technically" is true of the application layer — no RLS policy and no
+application code path grants tenant A anything about tenant B, and that was adversarially
+tested (see `supabase/migrations/20260802120000_pilot_schema_tenancy.sql`'s header). It is a
+narrower claim than "AMG cannot see your client list" as a flat statement, because the
+service-role key (the Phase 2 webhook's own credential), the Postgres role that owns these
+tables, and anyone with Supabase dashboard access can all read every tenant's data — Postgres
+RLS does not apply to any of them, by design, in any Supabase project. That part of the promise
+is operational (who gets the service-role key and dashboard access, and how tightly that's
+held), not something a migration can enforce. Do not let marketing or sales copy collapse this
+into "we cannot technically see your data" — say "no application code path" and be accurate
+about what's a database-engineering guarantee versus an operational commitment.
+
 ### What this is not
 - Not an AMG operational system. The pilot's clients are not AMG clients.
 - Not the crew-facing surface of AMG Connect (`app/portal/crew/*` in `amgaviation/amg1`),
@@ -125,9 +138,12 @@ $$;
 ```
 
 Every policy is then `account_id in (select pilot.current_account_ids())`, with writes further
-restricted by member role where it matters. **There is no admin bypass policy and no AMG-facing
-read path into tenant data.** That absence is the product's trust story — do not add one.
-Support tooling, if ever needed, gets its own explicit, audited, per-request mechanism.
+restricted by member role where it matters. **There is no admin-bypass RLS policy and no
+AMG-facing read path in application code.** That absence is the product's trust story — do not
+add one. See the correction above §0: this does not mean no one can technically read tenant
+data (the service-role key and Supabase dashboard access both can, as they can in any Supabase
+project) — it means no *policy* and no *application code path* does. Support tooling, if ever
+needed, gets its own explicit, audited, per-request mechanism — never a broadened RLS policy.
 
 ### Two separate Stripe integrations — do not entangle them
 1. **Platform billing** (we bill the pilot). Subscription with a trial, card required at signup.

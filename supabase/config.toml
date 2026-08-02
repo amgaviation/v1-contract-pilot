@@ -1,12 +1,29 @@
 # Minimal Supabase project config. Most sections are left at their CLI
 # defaults (this project doesn't run `supabase start` locally yet — no
-# live project exists, see docs/PLAN.md "BLOCKER"). The one setting that
-# genuinely cannot be skipped: `pilot` must be an exposed API schema, or
-# every grant and RLS policy in supabase/migrations/ is inert — PostgREST
-# only serves schemas listed here (mirrored in the hosted project's Data
-# API settings once it exists).
+# live project exists, see docs/PLAN.md "BLOCKER").
+#
+# project_id is set once `supabase link` runs against the real project —
+# leaving it unset here (rather than a placeholder value) so the CLI's own
+# "not linked" error is the signal, instead of a silently-wrong id.
+# project_id = "<new-project-ref>"
 
 [api]
 enabled = true
-schemas = ["public", "pilot"]
-extra_search_path = ["public"]
+# `pilot` must be an exposed API schema, or every grant and RLS policy in
+# supabase/migrations/ is inert — PostgREST only serves schemas listed
+# here (mirrored in the hosted project's Data API settings once it
+# exists). `public` and `graphql_public` are the CLI defaults, kept for
+# the GraphQL endpoint and because `public` still needs to exist for
+# Supabase's own internal use even though this product stores nothing
+# there. IMPORTANT: PostgREST's default schema is the FIRST entry in this
+# list — leaving `public` first means an `.from(...)` call that doesn't
+# explicitly set `db.schema` silently targets `public` instead of `pilot`.
+# lib/supabase/{client,server,proxy,service-role}.ts all pin
+# `db: { schema: "pilot" }` explicitly for exactly this reason — do not
+# rely on this list's ordering as the real safeguard.
+schemas = ["public", "graphql_public", "pilot"]
+# CLI default. `extensions` is where pgcrypto/uuid-ossp/pg_net live;
+# narrowing this list is how an unqualified call to one of those starts
+# failing to resolve with a confusing "function does not exist" from
+# PostgREST rather than an obvious config error.
+extra_search_path = ["public", "extensions"]

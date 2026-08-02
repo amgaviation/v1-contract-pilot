@@ -4,8 +4,8 @@ import type { Database } from "@/lib/supabase/database.types";
 
 /**
  * Refreshes the Supabase auth session on every matched request. Required
- * so Server Components always see a valid session — see proxy.ts for the
- * route matcher.
+ * so Server Components always see a valid session — see proxy.ts (repo
+ * root) for the route matcher.
  */
 export async function updateSession(request: NextRequest) {
   const response = NextResponse.next({ request });
@@ -13,11 +13,21 @@ export async function updateSession(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // No Supabase project exists yet in Phase 0 — every request would
-  // otherwise 500 here. Once the project is provisioned and
-  // NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY are set, this proxy starts doing
-  // its real job automatically; nothing else changes.
   if (!supabaseUrl || !supabaseAnonKey) {
+    // No Supabase project exists yet in Phase 0, so this is expected in
+    // development and preview right now. It must NOT stay silent once an
+    // auth gate exists: this is exactly the code path a real deployment's
+    // auth check hangs off (see the comment at the bottom of this
+    // function), so a misconfigured env var here — a renamed key, a
+    // Preview-vs-Production scoping mistake — would otherwise make every
+    // route render unauthenticated with no error and no log line. Fail
+    // loudly everywhere except local development, where an unconfigured
+    // Supabase project is the normal starting state.
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY are unset in production — refusing to serve requests without a working auth gate."
+      );
+    }
     return response;
   }
 
@@ -32,10 +42,11 @@ async function refreshSession(
 ) {
   let response = initialResponse;
 
-  const supabase = createServerClient<Database>(
+  const supabase = createServerClient<Database, "pilot">(
     supabaseUrl,
     supabaseAnonKey,
     {
+      db: { schema: "pilot" },
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -55,7 +66,10 @@ async function refreshSession(
 
   // Touch the session so an expired token gets refreshed before it
   // reaches a Server Component. Auth gating on specific routes is a
-  // Phase 1 follow-up once pilot.accounts / pilot.account_members exist.
+  // Phase 1 follow-up once pilot.accounts / pilot.account_members exist —
+  // when it lands, the redirect-to-login belongs right after this call,
+  // which is exactly why the missing-env case above must fail loudly
+  // rather than silently pass every request through ungated.
   await supabase.auth.getUser();
 
   return response;

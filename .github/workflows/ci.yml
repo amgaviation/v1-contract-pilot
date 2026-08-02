@@ -1,0 +1,27 @@
+name: CI
+
+# docs/PLAN.md says twice that the token-discipline check must run "from
+# the first commit" — this is that. Runs npm test (typecheck +
+# tokens:verify) plus a production build on every push and PR.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      - run: npm run build
