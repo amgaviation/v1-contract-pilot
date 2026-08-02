@@ -2,10 +2,8 @@
 # defaults (this project doesn't run `supabase start` locally yet — no
 # live project exists, see docs/PLAN.md "BLOCKER").
 #
-# project_id is set once `supabase link` runs against the real project —
-# leaving it unset here (rather than a placeholder value) so the CLI's own
-# "not linked" error is the signal, instead of a silently-wrong id.
-# project_id = "<new-project-ref>"
+# project_id is set once `supabase link` runs against the real project.
+project_id = "igbeahtixmbanjdyqgwo"
 
 [api]
 enabled = true

@@ -8,6 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "tokens:verify": "node scripts/verify-tokens.mjs",
+    "tenancy:verify": "node scripts/tenancy-verify.mjs",
     "test": "npm run typecheck && npm run tokens:verify"
   },
   "dependencies": {
