@@ -1,0 +1,460 @@
+/* ==========================================================================
+   V1 — DESIGN TOKENS  ("Approach Plate")
+   ==========================================================================
+   This file — together with lib/brand.ts — is the ENTIRE visual system.
+   Locked 2026-08-02 (docs/PLAN.md decision #19). Tony intends a full
+   redesign later; that stays a two-file change only if this rule holds:
+
+     NO COMPONENT MAY HARDCODE A COLOR, RADIUS, FONT, OR SPACING VALUE.
+
+   Every hex code, every `border-radius: 2px`, every `font-family: ...`
+   outside this file is a defect. scripts/verify-tokens.mjs enforces this
+   mechanically in CI — see docs/PLAN.md "Additional risk".
+
+   Built from the instrument approach chart: hard rules, boxed panels,
+   zero radius, a fixed dark left rail, high information density. Nothing
+   decorative — every rule here separates something.
+   ========================================================================== */
+
+@theme {
+  /* ---- palette ---- */
+  --color-v1-ink: #0e1215; /* chart ink — text, rail, 2px section rules */
+  --color-v1-paper: #ffffff; /* panel surface */
+  --color-v1-bg: #edeff0; /* app ground */
+  --color-v1-field: #f5f7f7; /* table headers, inset blocks, disclaimer ground */
+  --color-v1-line: #b9c0c4; /* panel border, 1px */
+  --color-v1-hair: #dfe3e5; /* row divider, 1px */
+  --color-v1-mute: #5a646b; /* secondary text */
+  --color-v1-accent: #0e5f68; /* plate teal — primary action, active nav */
+  --color-v1-accent-ink: #ffffff;
+
+  /* ---- status: the ONLY other color allowed anywhere in the product ---- */
+  --color-v1-ok: #1c6f45;
+  --color-v1-bad: #a32b18;
+  --color-v1-warn: #8a5a00;
+
+  /* ---- form ---- */
+  --radius-v1: 0px; /* everywhere, no exceptions */
+
+  /* ---- type ---- */
+  --font-v1-display: var(--font-roboto-condensed), "Arial Narrow", sans-serif;
+  --font-v1-body: var(--font-roboto), system-ui, sans-serif;
+  --font-v1-data: var(--font-roboto-mono), ui-monospace, monospace;
+}
+
+:root {
+  /* Values referenced from plain CSS below (Tailwind's @theme block above
+     covers utility classes; these cover the hand-written component rules
+     in this same file, which intentionally do NOT use Tailwind's
+     arbitrary-value syntax so a `grep -R "#[0-9a-fA-F]\{3,8\}"` across
+     app/ and components/ has nothing to find outside this one file). */
+  --v1-ink: #0e1215;
+  --v1-paper: #ffffff;
+  --v1-bg: #edeff0;
+  --v1-field: #f5f7f7;
+  --v1-line: #b9c0c4;
+  --v1-hair: #dfe3e5;
+  --v1-mute: #5a646b;
+  --v1-accent: #0e5f68;
+  --v1-accent-ink: #ffffff;
+  --v1-ok: #1c6f45;
+  --v1-bad: #a32b18;
+  --v1-warn: #8a5a00;
+
+  --v1-radius: 0px;
+  --v1-row: 28px; /* table row height */
+  --v1-rail: 172px; /* left nav width */
+
+  --v1-font-display: var(--font-roboto-condensed), "Arial Narrow", sans-serif;
+  --v1-font-body: var(--font-roboto), system-ui, sans-serif;
+  --v1-font-data: var(--font-roboto-mono), ui-monospace, monospace;
+}
+
+/* ==========================================================================
+   Component classes. These map tokens to reusable class names so .tsx
+   files never touch a var() directly for color/radius/font — they apply
+   a semantic class ("v1-panel", "v1-tag--ok") and Tailwind layout
+   utilities (flex, grid, gap-*) for everything else. Ordinary Tailwind
+   spacing utilities (p-4, gap-3, etc.) are fine to use directly in
+   components: they come from Tailwind's own centralized scale, not a
+   per-component magic number, so they don't defeat the single-source
+   rule this file exists to enforce.
+   ========================================================================== */
+
+@layer base {
+  html,
+  body {
+    background: var(--v1-bg);
+    color: var(--v1-ink);
+    font-family: var(--v1-font-body);
+    font-size: 13px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  ::selection {
+    background: var(--v1-accent);
+    color: var(--v1-accent-ink);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--v1-accent);
+    outline-offset: 1px;
+  }
+}
+
+@layer components {
+  /* ---- shell ---- */
+  .v1-shell {
+    display: flex;
+    min-height: 100dvh;
+  }
+
+  .v1-shell-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .v1-main {
+    flex: 1;
+    padding: 18px 22px 26px;
+  }
+
+  .v1-footer {
+    padding: 12px 22px;
+    border-top: 1px solid var(--v1-hair);
+    background: var(--v1-field);
+    font-size: 11px;
+    color: var(--v1-mute);
+  }
+
+  /* ---- left rail ---- */
+  .v1-rail {
+    width: var(--v1-rail);
+    flex: none;
+    background: var(--v1-ink);
+    color: #c9d2d6;
+    padding: 14px 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+    position: sticky;
+    top: 0;
+  }
+
+  .v1-rail-brand {
+    padding: 0 15px 14px;
+    border-bottom: 1px solid #2b3439;
+    margin-bottom: 12px;
+  }
+
+  .v1-rail-wordmark {
+    display: block;
+    font-family: var(--v1-font-display);
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.2em;
+    color: #ffffff;
+  }
+
+  .v1-rail-descriptor {
+    display: block;
+    font-family: var(--v1-font-display);
+    font-size: 9.5px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: #7e8b92;
+    margin-top: 4px;
+  }
+
+  .v1-rail-nav {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .v1-rail-nav-item {
+    display: block;
+    padding: 7px 15px;
+    font-family: var(--v1-font-display);
+    font-size: 11.5px;
+    letter-spacing: 0.075em;
+    text-transform: uppercase;
+    color: #93a0a7;
+    text-decoration: none;
+    border-left: 3px solid transparent;
+  }
+
+  .v1-rail-nav-item:hover {
+    color: #c9d2d6;
+  }
+
+  .v1-rail-nav-item--active {
+    color: #ffffff;
+    background: #1b2429;
+    border-left-color: var(--v1-accent);
+  }
+
+  .v1-rail-account {
+    margin-top: auto;
+    padding: 12px 15px 0;
+    border-top: 1px solid #2b3439;
+    font-size: 10.5px;
+    color: #7e8b92;
+    letter-spacing: 0.06em;
+  }
+
+  .v1-rail-account-name {
+    display: block;
+    color: #c9d2d6;
+    font-size: 11.5px;
+    letter-spacing: 0.09em;
+    margin-bottom: 2px;
+  }
+
+  /* ---- page header ---- */
+  .v1-page-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    border-bottom: 2px solid var(--v1-ink);
+    padding-bottom: 9px;
+    margin-bottom: 14px;
+  }
+
+  .v1-page-title {
+    margin: 0;
+    font-family: var(--v1-font-display);
+    font-size: 15px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+
+  .v1-page-subtitle {
+    margin: 3px 0 0;
+    font-size: 11.5px;
+    color: var(--v1-mute);
+  }
+
+  /* ---- kpi ---- */
+  .v1-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border: 1px solid var(--v1-line);
+    background: var(--v1-paper);
+    margin-bottom: 14px;
+  }
+
+  .v1-kpi {
+    padding: 10px 12px;
+    border-right: 1px solid var(--v1-hair);
+  }
+
+  .v1-kpi:last-child {
+    border-right: 0;
+  }
+
+  .v1-kpi-label {
+    margin: 0 0 5px;
+    font-family: var(--v1-font-display);
+    font-size: 9.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--v1-mute);
+    font-weight: 700;
+  }
+
+  .v1-kpi-value {
+    font-family: var(--v1-font-data);
+    font-variant-numeric: tabular-nums;
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  .v1-kpi-sub {
+    font-size: 10.5px;
+    color: var(--v1-mute);
+    margin-top: 2px;
+  }
+
+  /* ---- panel ---- */
+  .v1-panel {
+    border: 1px solid var(--v1-line);
+    background: var(--v1-paper);
+    margin-bottom: 14px;
+  }
+
+  .v1-panel-header {
+    background: var(--v1-ink);
+    color: #ffffff;
+    padding: 5px 11px;
+    font-family: var(--v1-font-display);
+    font-size: 9.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 700;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .v1-panel-header em {
+    font-style: normal;
+    font-family: var(--v1-font-body);
+    text-transform: none;
+    letter-spacing: 0.02em;
+    color: #8fa0a7;
+    font-size: 10.5px;
+    font-weight: 400;
+  }
+
+  .v1-panel--warn .v1-panel-header {
+    background: var(--v1-warn);
+  }
+
+  /* ---- table ---- */
+  .v1-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .v1-table th {
+    background: var(--v1-field);
+    text-align: left;
+    padding: 5px 11px;
+    font-family: var(--v1-font-display);
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--v1-mute);
+    font-weight: 700;
+    border-bottom: 1px solid var(--v1-line);
+  }
+
+  .v1-table td {
+    padding: 6px 11px;
+    font-size: 12px;
+    border-bottom: 1px solid var(--v1-hair);
+    vertical-align: top;
+    height: var(--v1-row);
+  }
+
+  .v1-table tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .v1-table .v1-total td {
+    border-top: 2px solid var(--v1-ink);
+    font-weight: 700;
+  }
+
+  .v1-num {
+    font-family: var(--v1-font-data);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .v1-r {
+    text-align: right;
+  }
+
+  /* ---- status tag: outlined in currentColor, never a filled pill ---- */
+  .v1-tag {
+    display: inline-block;
+    font-family: var(--v1-font-display);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 700;
+    padding: 2px 7px;
+    white-space: nowrap;
+    border: 1px solid currentColor;
+  }
+
+  .v1-tag--ok {
+    color: var(--v1-ok);
+  }
+  .v1-tag--bad {
+    color: var(--v1-bad);
+  }
+  .v1-tag--warn {
+    color: var(--v1-warn);
+  }
+  .v1-tag--neutral {
+    color: var(--v1-mute);
+  }
+
+  /* ---- button ---- */
+  .v1-btn {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--v1-ink);
+    background: var(--v1-paper);
+    color: var(--v1-ink);
+    padding: 5px 11px;
+    font-family: var(--v1-font-display);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .v1-btn:hover {
+    background: var(--v1-field);
+  }
+
+  .v1-btn--primary {
+    background: var(--v1-accent);
+    border-color: var(--v1-accent);
+    color: var(--v1-accent-ink);
+  }
+
+  .v1-btn--primary:hover {
+    background: var(--v1-ink);
+    border-color: var(--v1-ink);
+  }
+
+  /* ---- disclaimer ---- */
+  .v1-disclaimer {
+    padding: 8px 11px;
+    background: var(--v1-field);
+    border-top: 1px solid var(--v1-hair);
+    font-size: 10.5px;
+    color: var(--v1-mute);
+    line-height: 1.45;
+  }
+
+  /* ---- generic row (attention items, ready-to-invoice items) ---- */
+  .v1-row {
+    padding: 9px 11px;
+    border-bottom: 1px solid var(--v1-hair);
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  .v1-row:last-child {
+    border-bottom: 0;
+  }
+
+  .v1-row-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .v1-row-detail {
+    font-size: 10.5px;
+    color: var(--v1-mute);
+  }
+}
