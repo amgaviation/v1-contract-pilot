@@ -190,6 +190,33 @@ create policy account_members_select on pilot.account_members
 -- but the UI for it doesn't exist yet — better to ship this table with no
 -- client write path than to guess at its shape now and get it wrong.
 
+-- ----------------------------------------------------------------------------
+-- Grants. RLS policies alone are not sufficient in Postgres: a role also
+-- needs the underlying table/schema privilege before RLS is even
+-- consulted. `pilot` is a non-public schema, so `authenticated` needs
+-- explicit USAGE on the schema plus per-table privileges — unlike
+-- amgaviation/amg1, where everything lives in the auto-exposed `public`
+-- schema and only the table grants are needed. Grants are intentionally
+-- narrower than the RLS policies allow where no policy exists yet (e.g.
+-- no INSERT grant on either table for `authenticated`, matching the "no
+-- client-writable INSERT" comments above) — a matching RLS policy without
+-- the grant is inert, and a grant without a policy is a real hole, so
+-- both must be kept in lockstep whenever either changes.
+-- ----------------------------------------------------------------------------
+grant usage on schema pilot to authenticated;
+grant all on schema pilot to service_role;
+
+grant select, update on pilot.accounts to authenticated;
+grant select, insert, update, delete on pilot.accounts to service_role;
+
+grant select on pilot.account_members to authenticated;
+grant select, insert, update, delete on pilot.account_members to service_role;
+
+-- Also required: this schema must be added to Supabase's exposed API
+-- schemas (supabase/config.toml `[api] schemas`, mirrored in the
+-- project's Data API settings once it exists) or PostgREST never serves
+-- it regardless of the grants above.
+
 -- ============================================================================
 -- Two-tenant isolation is the gate on this phase (docs/PLAN.md Phase 1 /
 -- Verification: npm run tenancy:verify). That script does not exist yet —

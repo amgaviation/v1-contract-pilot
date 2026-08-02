@@ -1,0 +1,12 @@
+# Minimal Supabase project config. Most sections are left at their CLI
+# defaults (this project doesn't run `supabase start` locally yet — no
+# live project exists, see docs/PLAN.md "BLOCKER"). The one setting that
+# genuinely cannot be skipped: `pilot` must be an exposed API schema, or
+# every grant and RLS policy in supabase/migrations/ is inert — PostgREST
+# only serves schemas listed here (mirrored in the hosted project's Data
+# API settings once it exists).
+
+[api]
+enabled = true
+schemas = ["public", "pilot"]
+extra_search_path = ["public"]
