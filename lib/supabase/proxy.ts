@@ -10,8 +10,8 @@ import type { Database } from "@/lib/supabase/database.types";
 export async function updateSession(request: NextRequest) {
   const response = NextResponse.next({ request });
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseUrl = process.env.NEXT_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_SUPABASE_PUBLISHABLE_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey) {
     // No Supabase project exists yet in Phase 0, so this is expected in
@@ -25,7 +25,7 @@ export async function updateSession(request: NextRequest) {
     // Supabase project is the normal starting state.
     if (process.env.NODE_ENV === "production") {
       throw new Error(
-        "NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY are unset in production — refusing to serve requests without a working auth gate."
+        "NEXT_SUPABASE_URL / NEXT_SUPABASE_PUBLISHABLE_KEY are unset in production — refusing to serve requests without a working auth gate."
       );
     }
     return response;

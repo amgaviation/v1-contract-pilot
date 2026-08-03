@@ -29,6 +29,21 @@ const nextConfig: NextConfig = {
   images: {
     formats: ["image/avif", "image/webp"],
   },
+  // Next.js only auto-inlines env vars prefixed NEXT_PUBLIC_ into the
+  // browser bundle. The project's Vercel env vars use NEXT_SUPABASE_URL /
+  // NEXT_SUPABASE_PUBLISHABLE_KEY instead (no NEXT_PUBLIC_ prefix), so
+  // lib/supabase/client.ts (a browser-side module) would otherwise see
+  // both as undefined. This `env` block is Next's supported mechanism for
+  // inlining a specific, named var into the client bundle regardless of
+  // prefix — deliberately limited to these two, since both are safe to
+  // ship to the browser (a Supabase project URL and its publishable key
+  // are public by design, same as an anon key). NEVER add
+  // NEXT_SUPABASE_SECRET_KEY here — that would bake the service-role
+  // secret into the client JavaScript bundle, shipped to every visitor.
+  env: {
+    NEXT_SUPABASE_URL: process.env.NEXT_SUPABASE_URL,
+    NEXT_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_SUPABASE_PUBLISHABLE_KEY,
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

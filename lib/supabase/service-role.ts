@@ -23,7 +23,7 @@ import type { Database } from "@/lib/supabase/database.types";
  *
  * Read docs/PLAN.md's note on the trust story before treating "no admin
  * bypass" as a stronger claim than it is: this client, in the hands of
- * whoever holds SUPABASE_SERVICE_ROLE_KEY, is exactly that bypass. The
+ * whoever holds NEXT_SUPABASE_SECRET_KEY, is exactly that bypass. The
  * product's real guarantee is that no RLS policy and no OTHER application
  * code path grants tenant A anything about tenant B — this file is the
  * one deliberate, narrowly-scoped exception, not a demonstration that no
@@ -42,12 +42,12 @@ import type { Database } from "@/lib/supabase/database.types";
  * silently changing what this client's authority is scoped to.
  */
 export function createServiceClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = process.env.NEXT_SUPABASE_URL;
+  const serviceKey = process.env.NEXT_SUPABASE_SECRET_KEY;
 
   if (!url || !serviceKey) {
     throw new Error(
-      "SUPABASE_SERVICE_ROLE_KEY (and NEXT_PUBLIC_SUPABASE_URL) must be set for privileged operations."
+      "NEXT_SUPABASE_SECRET_KEY (and NEXT_SUPABASE_URL) must be set for privileged operations."
     );
   }
 
