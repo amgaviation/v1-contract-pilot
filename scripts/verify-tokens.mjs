@@ -76,6 +76,12 @@ const EXEMPT_FILES = new Set([
   join(ROOT, "app", "components.css"),
   join(ROOT, "app", "globals.css"),
   join(ROOT, "lib", "brand.ts"),
+  // MUI's theme needs literal values at module-eval time (see that file's
+  // header) — a CSS custom property can't cross into a JS theme object.
+  // Values are a hand-kept mirror of app/tokens/colors.css, not a second
+  // source of truth: if a token there changes, lib/theme.ts must change
+  // with it.
+  join(ROOT, "lib", "theme.ts"),
 ]);
 const EXEMPT_DIRS = [join(ROOT, "app", "tokens")];
 const SCAN_EXTENSIONS = new Set([".ts", ".tsx", ".css"]);
