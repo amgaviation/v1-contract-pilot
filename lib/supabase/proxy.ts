@@ -86,6 +86,13 @@ async function refreshSession(
     path === "/login" ||
     path === "/signup" ||
     path.startsWith("/welcome") ||
+    // Password recovery is by definition a signed-out surface. /auth/confirm
+    // must pass through because it is what MINTS the session — gating it on
+    // one would make every emailed link bounce to /login and lose its token.
+    // /reset-password does its own session check (see its page).
+    path === "/forgot-password" ||
+    path === "/reset-password" ||
+    path.startsWith("/auth/") ||
     // The Stripe webhook is machine-to-machine and carries no session. It
     // authenticates by signature (see the route), which is stronger than a
     // cookie here — redirecting it to /login would silently break
