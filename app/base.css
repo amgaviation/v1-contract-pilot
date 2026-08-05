@@ -1,0 +1,34 @@
+/* Reset, ground, focus, selection.
+
+   Synced from the "V1 Design" design system (claude.ai/design). Verbatim. */
+
+html { font-size: 100%; }
+
+body {
+  background: var(--v1-bg);
+  /* The ambient wash. Two very low-opacity radials, fixed, so a blurred panel
+     has depth behind it. Anything stronger would be decoration. */
+  background-image:
+    radial-gradient(1100px 700px at 12% -8%, var(--v1-bg-wash-1), transparent 62%),
+    radial-gradient(900px 620px at 92% 4%, var(--v1-bg-wash-2), transparent 60%);
+  background-attachment: fixed;
+  color: var(--v1-ink);
+  font-family: var(--v1-font-body);
+  font-size: var(--v1-text-body);
+  line-height: var(--v1-leading-body);
+  -webkit-font-smoothing: antialiased;
+  margin: 0;
+}
+
+* { box-sizing: border-box; }
+
+::selection { background: var(--v1-accent); color: var(--v1-accent-ink); }
+
+/* Focus is a soft blue ring plus a solid edge, so it reads on glass, on an
+   opaque cell, and against a blue button alike. */
+:focus-visible { outline: 2px solid var(--v1-accent); outline-offset: 2px; border-radius: var(--v1-radius-sm); }
+
+a { color: var(--v1-accent); text-decoration: none; border-bottom: 1px solid var(--v1-accent-line); }
+a:hover { border-bottom-color: var(--v1-accent); }
+
+.v1-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }

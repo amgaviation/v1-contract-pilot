@@ -1,0 +1,45 @@
+/* Spacing, form and dimension.
+
+   Synced from the "V1 Design" design system (claude.ai/design). Verbatim.
+
+   Radius is no longer zero. A blurred translucent sheet with square corners
+   reads as brutalist, and this pass is asked to read as elegant, so panels
+   take 14px and controls 8px. Radius is now the second-strongest identity
+   token here after the glass itself; keep the two values and do not add a
+   third.
+
+   The scale opened one step from the dense pass to give glass room to breathe,
+   and rows went to 34px. That still clears 20 visible records on a laptop. */
+
+:root {
+  --v1-space-0: 0;
+  --v1-space-1: 2px;
+  --v1-space-2: 4px;
+  --v1-space-3: 6px;
+  --v1-space-4: 8px;
+  --v1-space-5: 10px;
+  --v1-space-6: 12px;
+  --v1-space-7: 14px;   /* cell vertical pad */
+  --v1-space-8: 16px;   /* horizontal gutter inside every panel */
+  --v1-space-9: 20px;
+  --v1-space-10: 24px;  /* gap between stacked panels */
+  --v1-space-11: 20px;  /* rail horizontal gutter */
+  --v1-space-12: 28px;
+  --v1-space-13: 32px;  /* page gutter */
+  --v1-space-14: 44px;
+
+  --v1-radius: 14px;      /* panels, cards, the rail's inner sheet */
+  --v1-radius-sm: 8px;    /* buttons, inputs, tags */
+  --v1-radius-pill: 999px;
+  --v1-border: 1px;
+  --v1-rule: 1px;         /* totals separator; the 2px ink rule is retired */
+  --v1-row: 34px;
+  --v1-control: 34px;
+  --v1-rail: 216px;
+  --v1-nav-marker: 3px;
+
+  --gutter-panel: var(--v1-space-8);
+  --gutter-page: var(--v1-space-13);
+  --stack-panel: var(--v1-space-10);
+  --radius-all: var(--v1-radius);
+}

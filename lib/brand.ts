@@ -21,14 +21,21 @@ export const BRAND = {
 export type Brand = typeof BRAND;
 
 /**
- * Must match --v1-ink in app/tokens.css exactly. Duplicated here only
- * because Next's `<meta name="theme-color">` (the `viewport.themeColor`
- * export in app/layout.tsx) needs a literal string at the metadata-export
- * layer and cannot read a CSS custom property. If --v1-ink ever changes,
- * this must change with it — that coupling is the reason it lives here
- * rather than as an unexplained literal in layout.tsx.
+ * Must match --v1-bg in app/tokens/colors.css exactly. Duplicated here
+ * only because Next's `<meta name="theme-color">` (the
+ * `viewport.themeColor` export in app/layout.tsx) needs a literal string
+ * at the metadata-export layer and cannot read a CSS custom property. If
+ * --v1-bg ever changes, this must change with it — that coupling is the
+ * reason it lives here rather than as an unexplained literal in
+ * layout.tsx.
+ *
+ * This is the page GROUND, not the ink. theme-color tints the browser's
+ * own chrome, so it should continue the surface the user is looking at:
+ * under the previous dark-rail system that happened to be the ink, but
+ * V1 Design is white-heavy glass over a cool near-white, so it is the
+ * ground.
  */
-export const THEME_COLOR = "#0e1215";
+export const THEME_COLOR = "#eef1f6";
 
 /**
  * COUNSEL-REVIEWED COPY — verbatim, docs/PLAN.md Design system. This is

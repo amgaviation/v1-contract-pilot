@@ -6,7 +6,7 @@
 // Importing it directly here (rather than reaching for inline styles,
 // which would defeat the token-discipline rule this codebase otherwise
 // holds everywhere else) means this page still renders on the base
-// styles from app/tokens.css's @layer base.
+// styles from the token layer (app/base.css + app/components.css).
 import "./globals.css";
 
 export default function GlobalError({

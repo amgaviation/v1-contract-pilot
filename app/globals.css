@@ -1,2 +1,15 @@
 @import "tailwindcss";
-@import "./tokens.css";
+
+/* The V1 Design system, synced from claude.ai/design. Import order matters:
+   tokens define the custom properties, base consumes them for the document
+   ground, components consume them for every .v1-* class. Nothing outside
+   these files may spell out a colour, radius, blur, shadow or font — see
+   scripts/verify-tokens.mjs, which enforces that in CI. */
+@import "./tokens/fonts.css";
+@import "./tokens/colors.css";
+@import "./tokens/typography.css";
+@import "./tokens/spacing.css";
+@import "./tokens/effects.css";
+@import "./tokens/dark.css";
+@import "./base.css";
+@import "./components.css";

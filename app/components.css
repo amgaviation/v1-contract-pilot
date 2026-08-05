@@ -1,0 +1,198 @@
+/* Component classes. A .tsx file applies a class; it never reaches for a var()
+   to set colour, radius, blur or type.
+
+   Synced from the "V1 Design" design system (claude.ai/design). Verbatim —
+   formatting preserved so a future sync diffs cleanly against upstream —
+   with ONE deliberate divergence, recorded here so a future sync does not
+   silently undo it:
+
+   UPSTREAM AUTHORS BOTH `backdrop-filter` AND `-webkit-backdrop-filter`.
+   Do not copy that pair back in. Lightning CSS (which Next 16 uses to
+   compile Tailwind v4) treats an author-written prefix as a signal that it
+   owns prefixing for that declaration, and collapses the pair down to the
+   -webkit- form alone — the compiled rule that shipped here was
+   `.v1-rail{...-webkit-backdrop-filter:var(--v1-blur);...}` with the
+   standard property GONE. Chromium honours the alias so it looked correct
+   in review; Firefox supports unprefixed backdrop-filter and does not
+   alias the -webkit- spelling, so the glass would have silently stopped
+   blurring there — losing the system's entire visual identity in one
+   browser, with nothing failing loudly. Declaring only the standard
+   property lets Lightning CSS add prefixes from browserslist itself, which
+   is what it is for. Verified by grepping the compiled bundle, not by
+   reading the source.
+
+   The governing rule, restated because every class below obeys it: containers
+   are glass, content is opaque. .v1-rail, .v1-panel, .v1-panel-header,
+   .v1-toolbar and .v1-footer blur what is behind them. .v1-table tbody,
+   .v1-kpis and every cell sit on --v1-solid. */
+
+/* ---- shell ---- */
+.v1-shell { display: flex; min-height: 100dvh; }
+.v1-shell-body { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.v1-main { flex: 1; padding: var(--v1-space-12) var(--v1-space-13) var(--v1-space-14); min-width: 0; }
+.v1-footer { padding: var(--v1-space-9) var(--v1-space-13); font-size: var(--v1-text-footer); color: var(--v1-faint); }
+
+/* ---- rail: a glass sheet, not a dark bezel ---- */
+.v1-rail { width: var(--v1-rail); flex: none; padding: var(--v1-space-9) var(--v1-space-6); display: flex; flex-direction: column; gap: var(--v1-space-9); min-height: 100dvh; background: var(--v1-glass); backdrop-filter: var(--v1-blur); border-right: var(--v1-border) solid var(--v1-line); }
+.v1-rail-brand { padding: var(--v1-space-2) var(--v1-space-4) 0; }
+.v1-rail-wordmark { display: block; font-family: var(--v1-font-label); font-weight: var(--v1-weight-strong); font-size: var(--v1-text-mark); letter-spacing: var(--v1-track-mark); color: var(--v1-ink); }
+.v1-rail-descriptor { display: block; font-family: var(--v1-font-label); font-weight: var(--v1-weight-label); font-size: var(--v1-text-label); letter-spacing: var(--v1-track-caption); text-transform: uppercase; color: var(--v1-faint); margin-top: var(--v1-space-3); }
+.v1-rail-nav { display: flex; flex-direction: column; gap: var(--v1-space-1); }
+.v1-rail-nav-item { display: block; padding: var(--v1-space-4) var(--v1-space-5); border: 0; border-radius: var(--v1-radius-sm); background: none; font-family: var(--v1-font-body); font-weight: var(--v1-weight-medium); font-size: var(--v1-text-small); letter-spacing: var(--v1-track-nav); color: var(--v1-mute); text-align: left; cursor: pointer; width: 100%; }
+.v1-rail-nav-item:hover { background: var(--v1-glass-tint); color: var(--v1-ink); }
+/* Commanded: the destination you are in. */
+/* The label uses --v1-accent-text, not --v1-accent: raw accent on accent-soft
+   over glass measures ~4.0:1 light and ~3.1:1 dark, under AA for 12.5px/600.
+   The solid blue left edge still carries "commanded". */
+.v1-rail-nav-item--active { background: var(--v1-accent-soft); color: var(--v1-accent-text); font-weight: var(--v1-weight-strong); box-shadow: inset var(--v1-nav-marker) 0 0 var(--v1-accent); }
+.v1-rail-account { margin-top: auto; padding: var(--v1-space-5); border-top: var(--v1-border) solid var(--v1-hair); font-size: var(--v1-text-micro); color: var(--v1-faint); }
+.v1-rail-account-name { display: block; color: var(--v1-ink); font-size: var(--v1-text-small); font-weight: var(--v1-weight-medium); margin-bottom: var(--v1-space-1); }
+
+/* ---- page header ---- */
+.v1-page-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; padding-bottom: var(--v1-space-6); margin-bottom: var(--v1-space-9); }
+.v1-page-title { margin: 0; font-family: var(--v1-font-label); font-size: var(--v1-text-title); letter-spacing: var(--v1-track-title); font-weight: var(--v1-weight-strong); }
+.v1-page-subtitle { margin: var(--v1-space-3) 0 0; font-size: var(--v1-text-small); color: var(--v1-mute); }
+.v1-actions { display: flex; gap: var(--v1-space-4); align-items: center; flex-wrap: wrap; }
+
+/* ---- financial figures: one glass sheet, hairline divided ---- */
+.v1-kpis { display: grid; grid-template-columns: repeat(4, 1fr); border: var(--v1-border) solid var(--v1-line); border-radius: var(--v1-radius); background: var(--v1-glass-strong); backdrop-filter: var(--v1-blur); box-shadow: var(--v1-shadow-1), var(--v1-shadow-inset); margin-bottom: var(--v1-space-10); overflow: hidden; }
+.v1-kpi { padding: var(--v1-space-7) var(--v1-space-8); border-right: var(--v1-border) solid var(--v1-hair); }
+.v1-kpi:last-child { border-right: 0; }
+.v1-kpi-label { margin: 0 0 var(--v1-space-3); font-family: var(--v1-font-label); font-size: var(--v1-text-label); letter-spacing: var(--v1-track-kpi-label); text-transform: uppercase; color: var(--v1-faint); font-weight: var(--v1-weight-label); }
+.v1-kpi-value { font-family: var(--v1-font-data); font-variant-numeric: tabular-nums; font-size: var(--v1-text-figure); font-weight: var(--v1-weight-strong); letter-spacing: var(--v1-track-figure); }
+.v1-kpi-sub { font-size: var(--v1-text-micro); color: var(--v1-faint); margin-top: var(--v1-space-2); }
+
+/* ---- panel: the glass sheet everything groups inside ---- */
+.v1-panel { border: var(--v1-border) solid var(--v1-line); border-radius: var(--v1-radius); background: var(--v1-glass-strong); backdrop-filter: var(--v1-blur); box-shadow: var(--v1-shadow-1), var(--v1-shadow-inset); margin-bottom: var(--v1-space-10); overflow: hidden; }
+.v1-panel-header { padding: var(--v1-space-5) var(--v1-space-8); border-bottom: var(--v1-border) solid var(--v1-hair); display: flex; justify-content: space-between; align-items: baseline; gap: var(--v1-space-6); font-family: var(--v1-font-label); font-size: var(--v1-text-label); letter-spacing: var(--v1-track-caption); text-transform: uppercase; font-weight: var(--v1-weight-label); color: var(--v1-ink); }
+.v1-panel-header h2 { margin: 0; font: inherit; letter-spacing: inherit; text-transform: inherit; white-space: nowrap; }
+.v1-panel-context { text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--v1-font-data); font-variant-numeric: tabular-nums; text-transform: none; letter-spacing: 0; color: var(--v1-faint); font-size: var(--v1-text-micro); font-weight: var(--v1-weight-body); }
+.v1-panel--warn { border-color: var(--v1-warn-soft); }
+.v1-panel--warn .v1-panel-header { background: var(--v1-warn-soft); color: var(--v1-warn); }
+.v1-panel--warn .v1-panel-context { color: var(--v1-warn); opacity: 0.75; }
+.v1-panel-body { padding: var(--v1-space-8); }
+
+/* ---- table: content plane, opaque ----
+   A wide record scrolls sideways inside its panel rather than losing its last
+   column. A tail number clipped at the edge is a defect. */
+.v1-table-scroll { overflow-x: auto; overflow-y: hidden; background: var(--v1-solid); }
+.v1-table { width: 100%; border-collapse: collapse; background: var(--v1-solid); }
+.v1-table th { background: var(--v1-field); text-align: left; padding: var(--v1-space-3) var(--v1-space-8); font-family: var(--v1-font-label); font-size: var(--v1-text-label); letter-spacing: var(--v1-track-th); text-transform: uppercase; color: var(--v1-faint); font-weight: var(--v1-weight-label); border-bottom: var(--v1-border) solid var(--v1-hair); }
+/* A column header never wraps: wrapping costs a row of height, and colgroup
+   widths are only hints under table-layout: auto. */
+.v1-table thead th { white-space: nowrap; }
+.v1-table td { padding: var(--v1-space-3) var(--v1-space-8); font-size: var(--v1-text-cell); border-bottom: var(--v1-border) solid var(--v1-hair); vertical-align: middle; height: var(--v1-row); }
+.v1-table tbody th { background: transparent; text-align: left; padding: var(--v1-space-3) var(--v1-space-8); font-family: var(--v1-font-body); font-size: var(--v1-text-cell); font-weight: var(--v1-weight-medium); text-transform: none; letter-spacing: normal; color: var(--v1-ink); border-bottom: var(--v1-border) solid var(--v1-hair); vertical-align: middle; height: var(--v1-row); }
+.v1-table tr:last-child td, .v1-table tr:last-child th { border-bottom: 0; }
+.v1-table .v1-total td { border-top: var(--v1-rule) solid var(--v1-line); font-weight: var(--v1-weight-strong); background: var(--v1-field); }
+/* Ruled columns, opt-in. Past about eight columns a flight record is far easier
+   to track across when it keeps them, the way a logbook page does. */
+.v1-table--ruled th + th, .v1-table--ruled td + td, .v1-table--ruled td + th, .v1-table--ruled th + td { border-left: var(--v1-border) solid var(--v1-hair); }
+.v1-table--tight th, .v1-table--tight td { padding-left: var(--v1-space-5); padding-right: var(--v1-space-5); }
+.v1-num { font-family: var(--v1-font-data); font-variant-numeric: tabular-nums; }
+.v1-table td.v1-num, .v1-table th.v1-num { white-space: nowrap; }
+.v1-table .v1-nowrap { white-space: nowrap; }
+.v1-r { text-align: right; }
+/* Commanded: the row you selected. A soft blue field with a solid left edge,
+   which keeps the figures in that row as legible as every other row. */
+.v1-table tbody tr.v1-selected td, .v1-table tbody tr.v1-selected th { background: var(--v1-accent-soft); color: var(--v1-ink); }
+.v1-table tbody tr.v1-selected td:first-child, .v1-table tbody tr.v1-selected th:first-child { box-shadow: inset var(--v1-nav-marker) 0 0 var(--v1-accent); }
+.v1-table tbody tr.v1-clickable { cursor: pointer; }
+.v1-table tbody tr.v1-clickable:hover td, .v1-table tbody tr.v1-clickable:hover th { background: var(--v1-field); }
+.v1-table tbody tr.v1-selected.v1-clickable:hover td, .v1-table tbody tr.v1-selected.v1-clickable:hover th { background: var(--v1-accent-soft); }
+
+/* ---- status: a soft annunciator chip, still shape-coded ---- */
+.v1-tag { display: inline-flex; align-items: center; gap: var(--v1-space-2); font-family: var(--v1-font-label); font-size: var(--v1-text-tag); letter-spacing: var(--v1-track-tag); text-transform: uppercase; font-weight: var(--v1-weight-label); padding: var(--v1-space-1) var(--v1-space-4); white-space: nowrap; border: var(--v1-border) solid transparent; border-radius: var(--v1-radius-pill); }
+.v1-tag--ok { color: var(--v1-ok); background: var(--v1-ok-soft); }
+.v1-tag--bad { color: var(--v1-bad); background: var(--v1-bad-soft); }
+.v1-tag--warn { color: var(--v1-warn); background: var(--v1-warn-soft); }
+.v1-tag--neutral { color: var(--v1-mute); background: var(--v1-glass-tint); border-color: var(--v1-hair); }
+/* The glyph carries the level without hue: circle normal, triangle caution,
+   square warning, hollow circle non-actionable. */
+.v1-tag-glyph { font-family: var(--v1-font-body); font-size: 8px; line-height: 1; }
+
+/* ---- button ---- */
+.v1-btn { display: inline-flex; align-items: center; gap: var(--v1-space-3); min-height: var(--v1-control); border: var(--v1-border) solid var(--v1-line); border-radius: var(--v1-radius-sm); background: var(--v1-glass-strong); backdrop-filter: var(--v1-blur-slight); color: var(--v1-ink); padding: var(--v1-space-3) var(--v1-space-7); font-family: var(--v1-font-label); font-size: var(--v1-text-micro); letter-spacing: var(--v1-track-btn); font-weight: var(--v1-weight-strong); cursor: pointer; white-space: nowrap; box-shadow: var(--v1-shadow-1); }
+.v1-btn:hover { background: var(--v1-solid); border-color: var(--v1-mute); }
+/* Commanded: the one action that commits. */
+.v1-btn--primary { background: var(--v1-accent); border-color: var(--v1-accent); color: var(--v1-accent-ink); backdrop-filter: none; }
+.v1-btn--primary:hover { background: var(--v1-ink); border-color: var(--v1-ink); box-shadow: var(--v1-shadow-2); }
+.v1-btn:disabled { color: var(--v1-faint); border-color: var(--v1-hair); background: var(--v1-glass-tint); box-shadow: none; cursor: not-allowed; }
+.v1-btn--primary:disabled { background: var(--v1-accent-soft); border-color: transparent; color: var(--v1-faint); }
+
+/* ---- disclaimer ---- */
+.v1-disclaimer { padding: var(--v1-space-5) var(--v1-space-8); background: var(--v1-glass-tint); border-top: var(--v1-border) solid var(--v1-hair); font-size: var(--v1-text-micro); color: var(--v1-mute); line-height: var(--v1-leading-prose); }
+
+/* ---- list row ---- */
+.v1-row { padding: var(--v1-space-6) var(--v1-space-8); border-bottom: var(--v1-border) solid var(--v1-hair); display: flex; justify-content: space-between; gap: var(--v1-space-6); align-items: center; background: var(--v1-solid); }
+.v1-row:last-child { border-bottom: 0; }
+.v1-row-label { display: block; font-size: var(--v1-text-cell); font-weight: var(--v1-weight-strong); }
+.v1-row-detail { display: block; font-size: var(--v1-text-micro); color: var(--v1-faint); margin-top: var(--v1-space-1); }
+.v1-row-amount { font-family: var(--v1-font-data); font-variant-numeric: tabular-nums; font-weight: var(--v1-weight-strong); font-size: var(--v1-text-strong); letter-spacing: var(--v1-track-figure); }
+
+/* ---- form ---- */
+.v1-field-label { display: block; font-family: var(--v1-font-label); font-size: var(--v1-text-label); letter-spacing: var(--v1-track-kpi-label); text-transform: uppercase; color: var(--v1-faint); font-weight: var(--v1-weight-label); margin-bottom: var(--v1-space-3); }
+.v1-input, .v1-select, .v1-textarea { width: 100%; min-height: var(--v1-control); border: var(--v1-border) solid var(--v1-line); border-radius: var(--v1-radius-sm); background: var(--v1-solid); color: var(--v1-ink); font-family: var(--v1-font-body); font-size: var(--v1-text-cell); padding: var(--v1-space-3) var(--v1-space-5); }
+.v1-input--num { font-family: var(--v1-font-data); font-variant-numeric: tabular-nums; text-align: right; }
+.v1-input:hover, .v1-select:hover, .v1-textarea:hover { border-color: var(--v1-mute); }
+.v1-input:focus-visible, .v1-select:focus-visible, .v1-textarea:focus-visible { outline: none; border-color: var(--v1-accent); box-shadow: var(--v1-ring-accent); }
+.v1-input::placeholder, .v1-textarea::placeholder { color: var(--v1-faint); }
+.v1-input:disabled, .v1-select:disabled { background: var(--v1-glass-tint); color: var(--v1-faint); }
+.v1-select { appearance: none; padding-right: 28px; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 15px) calc(50% + 1px), calc(100% - 11px) calc(50% + 1px); background-size: 4px 4px, 4px 4px; background-repeat: no-repeat; }
+.v1-input--invalid { border-color: var(--v1-bad); }
+.v1-field-note { font-size: var(--v1-text-micro); color: var(--v1-faint); margin-top: var(--v1-space-2); }
+.v1-field-note--invalid { color: var(--v1-bad); }
+.v1-field-grid { display: grid; gap: var(--v1-space-6) var(--v1-space-7); }
+
+/* ---- empty state ---- */
+.v1-empty { padding: var(--v1-space-14) var(--v1-space-8); text-align: center; background: var(--v1-solid); }
+.v1-empty-title { font-family: var(--v1-font-label); font-size: var(--v1-text-body); font-weight: var(--v1-weight-strong); letter-spacing: var(--v1-track-title); margin: 0 0 var(--v1-space-4); }
+.v1-empty-body { font-size: var(--v1-text-micro); color: var(--v1-mute); margin: 0 auto var(--v1-space-9); max-width: 46ch; line-height: var(--v1-leading-prose); }
+.v1-empty .v1-actions { justify-content: center; }
+
+/* ---- layout ---- */
+.v1-cols { display: grid; gap: var(--v1-space-10); align-items: start; }
+/* A grid item's default min-width: auto resolves to its content's min-content
+   width, which a nowrap-header table inflates past the container. Without this,
+   the track grows and the table clips instead of scrolling inside its panel. */
+.v1-cols > * { min-width: 0; }
+.v1-cols--overview { grid-template-columns: 1.32fr 1fr; }
+.v1-cols--split { grid-template-columns: 1fr 1fr; }
+.v1-cols--list-detail { grid-template-columns: 1fr 1.1fr; }
+@media (max-width: 1180px) { .v1-cols { grid-template-columns: 1fr; } }
+
+/* ---- toolbar ---- */
+.v1-toolbar { display: flex; gap: var(--v1-space-4); align-items: center; flex-wrap: wrap; padding: var(--v1-space-5) var(--v1-space-8); border-bottom: var(--v1-border) solid var(--v1-hair); background: var(--v1-glass-tint); }
+.v1-toolbar .v1-input, .v1-toolbar .v1-select { width: auto; min-width: 150px; }
+.v1-toolbar-spacer { margin-left: auto; }
+.v1-toolbar-count { font-family: var(--v1-font-label); font-size: var(--v1-text-label); letter-spacing: var(--v1-track-th); text-transform: uppercase; color: var(--v1-faint); font-weight: var(--v1-weight-label); }
+
+/* ---- detail-record field pairs ---- */
+.v1-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); margin: 0; border-bottom: var(--v1-border) solid var(--v1-hair); background: var(--v1-solid); }
+.v1-meta > div { padding: var(--v1-space-6) var(--v1-space-8); border-right: var(--v1-border) solid var(--v1-hair); }
+.v1-meta > div:last-child { border-right: 0; }
+.v1-meta dt { font-family: var(--v1-font-label); font-size: var(--v1-text-label); letter-spacing: var(--v1-track-kpi-label); text-transform: uppercase; color: var(--v1-faint); font-weight: var(--v1-weight-label); margin-bottom: var(--v1-space-2); }
+.v1-meta dd { margin: 0; font-size: var(--v1-text-cell); }
+
+/* ---- the outgoing invoice ----
+   A different reader: the pilot's client, on paper. Glass cannot print, so this
+   surface takes none of it. Literal ink values, no blur, no shadow, no radius,
+   no accent, no attribution. It is the one place the theme cannot reach. */
+.v1-doc { background: #ffffff; color: #0d1220; width: 8.5in; min-height: 11in; padding: 0.62in 0.7in; font-family: var(--v1-font-body); font-size: 11px; line-height: 1.5; margin: 0 auto; border-radius: 0; }
+.v1-doc-top { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0d1220; padding-bottom: 12px; }
+.v1-doc-issuer { font-family: var(--v1-font-doc); font-size: var(--v1-text-doc); font-weight: 600; letter-spacing: -0.02em; }
+.v1-doc-issuer-line { font-family: var(--v1-font-body); font-size: 10px; letter-spacing: normal; color: #5a6478; font-weight: 400; }
+.v1-doc-kind { font-family: var(--v1-font-doc); font-size: 14px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; text-align: right; }
+.v1-doc-label { font-family: var(--v1-font-label); font-size: 9.5px; letter-spacing: 0.09em; text-transform: uppercase; color: #5a6478; font-weight: 600; }
+.v1-doc-table { width: 100%; border-collapse: collapse; }
+.v1-doc-table th { text-align: left; font-family: var(--v1-font-label); font-size: 9.5px; letter-spacing: 0.075em; text-transform: uppercase; color: #5a6478; font-weight: 600; border-bottom: 1px solid #0d1220; padding: 5px 6px; }
+.v1-doc-table td { padding: 6px; border-bottom: 1px solid #e6e9ee; font-size: 11px; vertical-align: top; background: transparent; }
+.v1-doc-table .v1-total td { border-top: 2px solid #0d1220; border-bottom: 0; font-weight: 600; background: transparent; }
+.v1-doc-terms { border-top: 1px solid #e6e9ee; margin-top: 24px; padding-top: 10px; font-size: 10px; color: #5a6478; }
+@media print { .v1-doc { width: auto; min-height: 0; margin: 0; padding: 0; } }
+
+/* ---- reduced transparency: honour the OS setting. Glass becomes opaque. ---- */
+@media (prefers-reduced-transparency: reduce) {
+  .v1-rail, .v1-panel, .v1-kpis, .v1-btn { background: var(--v1-solid); backdrop-filter: none; }
+  .v1-toolbar, .v1-disclaimer { background: var(--v1-field); }
+}

@@ -40,16 +40,32 @@ Standard (pilot's own client billing).
 
 ## Design system
 
-"Approach Plate" — built from the instrument approach chart. The **entire**
-visual system lives in two files:
+**"V1 Design"** — white-heavy glass, synced from Claude Design. Full detail
+and the re-sync procedure are in [`docs/DESIGN-SYSTEM.md`](docs/DESIGN-SYSTEM.md).
+The short version:
 
-- `app/tokens.css` — every color, radius, spacing, and type value
+> **Glass at the container level, opaque at the content level.** Rails,
+> panels and buttons are translucent and blurred. Table bodies, cells and
+> figures sit on an opaque surface — a pilot compares a column of decimal
+> hours down a page, and that must not be traded for decoration.
+
+Blue `#2768F5` means *commanded*: the action that commits, the destination
+you are in, the row you selected. Nothing else may use it. Status uses the
+aviation annunciator scale (green / amber / red), each chip carrying a shape
+as well as a hue so the level survives greyscale. Inter across four roles.
+Nothing animates.
+
+The **entire** visual system lives in the token layer:
+
+- `app/tokens/*.css` — colour, type, spacing, effects, dark theme
+- `app/base.css` — reset, ground, focus, selection
+- `app/components.css` — every `.v1-*` class
 - `lib/brand.ts` — every brand string ("V1", "powered by AMG Aviation")
 
-**No component may hardcode a color, radius, font, or brand string.**
-`npm run tokens:verify` enforces this in CI — see that script's header
-comment. Tony intends a full design overhaul later; this discipline is
-what keeps that a two-file change.
+**No component may hardcode a colour, radius, font, shadow, blur, or brand
+string.** `npm run tokens:verify` enforces this in CI — see that script's
+header comment. That discipline is what made the Approach Plate → V1 Design
+overhaul a token-layer swap rather than a component rewrite.
 
 ## Getting started
 

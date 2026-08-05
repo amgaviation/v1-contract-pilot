@@ -68,8 +68,8 @@ about what's a database-engineering guarantee versus an operational commitment.
 | 16 | Invoice delivery | **Both** — send from the platform, or download and send manually. Pilot chooses. |
 | 17 | Design system | **Entirely new, from scratch.** No AMG colors, type, or tokens. The v2 mockup is a content inventory only — layout, hierarchy, and interaction patterns are designed fresh. |
 | 18 | Brand placement | AMG appears **only** as the words "Powered by AMG Aviation" in the footer and about page. Nowhere else. |
-| 19 | Palette and wordmark | **LOCKED — "Approach Plate".** Instrument-chart aesthetic: chart ink `#0E1215`, plate teal `#0E5F68`, zero radius, fixed dark left rail, 28px rows, borders not shadows. Roboto Condensed / Roboto / Roboto Mono. Full token set in Design system below. |
-| 20 | Design longevity | Tony **intends to overhaul the design later.** Therefore every visual value lives in `lib/brand.ts` + `app/tokens.css` only. A hex code, radius, or font in any component is a defect. |
+| 19 | Palette and wordmark | ~~LOCKED — "Approach Plate"~~ — **SUPERSEDED 2026-08-05 by "V1 Design"**; see `docs/DESIGN-SYSTEM.md`. The overhaul anticipated in #20 happened. The shipping system is white-heavy glass: Inter, commanded blue `#2768F5`, the aviation annunciator scale for status, 14px/8px radius, a two-step shadow scale, 34px rows, a 216px glass rail. The "Design system — built from scratch" section below describes the RETIRED direction and is kept only as the record of what was replaced — do not build to it. |
+| 20 | Design longevity | Tony **intended to overhaul the design later** — and did, in the V1 Design sync. The rule that made that cheap held: it was a token-layer change, not a component rewrite. Every visual value still lives in the token layer (`app/tokens/*.css`, `app/base.css`, `app/components.css`) plus `lib/brand.ts`. A hex code, radius, font, shadow or blur in any component is a defect, enforced by `npm run tokens:verify`. |
 
 ### Standing gates (unchanged)
 - Aviation counsel reviews the currency disclaimer wording before the flag is enabled.
@@ -247,6 +247,14 @@ route, tail number, day count, dates, and a rate-plus-expenses split; and a **Ne
 queue covering past-due invoices, unassigned receipts, and outstanding W-9s.
 
 ### LOCKED DIRECTION — "Approach Plate"
+
+> ⚠️ **RETIRED 2026-08-05 — HISTORICAL RECORD ONLY.** Everything in this section was
+> superseded by the "V1 Design" system (see `docs/DESIGN-SYSTEM.md` and decision #19 above).
+> None of the values below ship. They are kept so the reasoning behind what was replaced
+> survives, and because the *discipline* described here — one accent with one meaning, three
+> status levels and no more, a fixed rail, tables dense enough to review a quarter of work in
+> one screen, every value in the token layer — carried over even though the values did not.
+> **Do not build to this section.**
 
 Chosen by Tony. Built from the instrument approach chart: hard rules, boxed panels, zero radius,
 a fixed dark left rail, and high information density. Nothing decorative — every rule separates

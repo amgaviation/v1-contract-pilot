@@ -55,11 +55,35 @@ import { join, extname, relative } from "node:path";
 
 const ROOT = process.cwd();
 const SCAN_DIRS = ["app", "components", "lib"];
+
+/**
+ * The token layer — the only place a visual value may be spelled out.
+ *
+ * This was a single file (app/tokens.css) under the previous design
+ * direction. V1 Design ships the layer as upstream structures it: six
+ * token files, a base layer for the document ground, and one component
+ * sheet. Exempting the whole of app/tokens/ plus base.css and
+ * components.css mirrors that architecture exactly, so a future sync from
+ * claude.ai/design drops in without fighting this script.
+ *
+ * app/components.css is exempt for a real reason, not convenience: it is
+ * where `.v1-doc` lives, and that surface deliberately uses literal ink
+ * values because it prints — glass cannot survive a laser printer, so the
+ * outgoing invoice is the one surface no theme is allowed to reach.
+ */
 const EXEMPT_FILES = new Set([
-  join(ROOT, "app", "tokens.css"),
+  join(ROOT, "app", "base.css"),
+  join(ROOT, "app", "components.css"),
+  join(ROOT, "app", "globals.css"),
   join(ROOT, "lib", "brand.ts"),
 ]);
+const EXEMPT_DIRS = [join(ROOT, "app", "tokens")];
 const SCAN_EXTENSIONS = new Set([".ts", ".tsx", ".css"]);
+
+function isExempt(file) {
+  if (EXEMPT_FILES.has(file)) return true;
+  return EXEMPT_DIRS.some((dir) => file.startsWith(dir + "/"));
+}
 
 const TAILWIND_PALETTE_COLORS = [
   "slate", "gray", "zinc", "neutral", "stone", "red", "orange", "amber",
@@ -95,18 +119,63 @@ const RULES = [
       /\b(?:color|background-color|border-color|fill|stroke)\s*:\s*([a-zA-Z]+)\s*;/g,
     filter: (match) => !NAMED_COLOR_ALLOWLIST.has(match[1].toLowerCase()),
   },
+  /*
+   * A NOTE ON THE SHAPE OF THE FOUR RULES BELOW.
+   *
+   * Each means "this property must resolve through a token", so each needs
+   * a negative lookahead for `var(`. The obvious spelling —
+   *
+   *     /border-radius\s*:\s*(?!var\()[^;]*;/
+   *
+   * — is broken, and shipped broken in the previous version of this file.
+   * `\s*` is greedy but it BACKTRACKS: when the lookahead fails at the
+   * position after the space, the engine retries with `\s*` matching zero
+   * characters, which slides the lookahead onto the SPACE rather than onto
+   * `var`, where `(?!var\()` trivially succeeds. The guard then guards
+   * nothing, and `border-radius: var(--v1-radius);` — the correct form —
+   * is reported as a violation.
+   *
+   * The fix is to pull the whitespace inside the lookahead, leaving no
+   * separate quantifier to backtrack over:
+   *
+   *     /border-radius\s*:(?!\s*var\()[^;]*;/
+   *
+   * Found by probing this script against a file of known-good and
+   * known-bad declarations, not by reading it. Probe any future rule of
+   * this shape the same way — the failure is invisible on inspection.
+   */
   {
     name: "non-token border-radius",
     appliesTo: "css",
-    // [\s\S]*? (not [^;]*) so a value wrapped onto its own line is still
-    // matched — the bug that let a two-line border-radius declaration
-    // pass the previous per-line scanner.
-    pattern: /border-radius\s*:\s*(?!0\b)(?!var\()[\s\S]*?;/g,
+    // [^;]* rather than [^\n;]* so a value wrapped onto its own line is
+    // still matched: a negated character class matches newlines.
+    pattern: /border-radius\s*:(?!\s*(?:0\b|var\())[^;]*;/g,
   },
   {
     name: "font-family outside the token file",
     appliesTo: "css",
-    pattern: /font-family\s*:\s*(?!var\()[\s\S]*?;/g,
+    pattern: /font-family\s*:(?!\s*var\()[^;]*;/g,
+  },
+  {
+    // New under V1 Design. The previous direction had zero elevation and
+    // zero blur, so there was nothing to police — any shadow at all was
+    // already caught as a hex or rgba() literal. This system has both, and
+    // they are the two values most likely to be quietly duplicated. "A
+    // surface may take exactly one shadow" and "keep the two radii and do
+    // not add a third" are only enforceable if every shadow and blur
+    // resolves through the token layer.
+    name: "non-token box-shadow (must resolve through a --v1-shadow-* token)",
+    appliesTo: "css",
+    // The var() lookahead spans the whole declaration rather than just its
+    // head: a legitimate shadow is often two tokens composed —
+    // `var(--v1-shadow-1), var(--v1-shadow-inset)` — so requiring var()
+    // immediately after the colon would reject the system's own idiom.
+    pattern: /box-shadow\s*:(?!\s*none\b)(?![^;]*var\()[^;]*;/g,
+  },
+  {
+    name: "non-token backdrop-filter (must resolve through a --v1-blur-* token)",
+    appliesTo: "css",
+    pattern: /backdrop-filter\s*:(?!\s*(?:none\b|var\())[^;]*;/g,
   },
   {
     name: "inline style={{...}} object",
@@ -176,7 +245,7 @@ function lineNumberAt(content, index) {
 }
 
 function scanFile(file) {
-  if (EXEMPT_FILES.has(file)) return;
+  if (isExempt(file)) return;
   const ext = extname(file);
   const raw = readFileSync(file, "utf8");
   const content = stripComments(raw, ext);
@@ -222,11 +291,13 @@ if (violations.length > 0) {
     console.error(`    ${v.snippet}\n`);
   }
   console.error(
-    "Every visual value must live in app/tokens.css or lib/brand.ts. See that file's header comment for why this is enforced.\n"
+    "Every visual value must live in the token layer — app/tokens/*.css, app/base.css,\n" +
+      "app/components.css — or in lib/brand.ts. See those files' header comments for why\n" +
+      "this is enforced, and docs/DESIGN-SYSTEM.md for how the layer syncs from upstream.\n"
   );
   process.exit(1);
 }
 
 console.log(
-  "tokens:verify passed — no hardcoded visual values outside app/tokens.css / lib/brand.ts."
+  "tokens:verify passed — no hardcoded visual values outside the token layer / lib/brand.ts."
 );

@@ -1,40 +1,37 @@
-import { Roboto, Roboto_Condensed, Roboto_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 
 /**
- * The locked type system for "Approach Plate" (see docs/PLAN.md → Design
- * system). All three are loaded via next/font/google, which downloads the
- * font files at BUILD time and serves them from this app's own origin —
- * there is no runtime request to Google's font CDN and no risk of a
- * silent system-font fallback. This satisfies the plan's "self-hosted,
- * no CDN" requirement; it is a deliberate substitution for the plan's
- * literal `next/font/local` suggestion, made because raw font binaries
- * weren't available to vendor by hand in this environment. Functionally
- * equivalent for the property that matters (zero third-party runtime
- * requests).
+ * The type system for "V1 Design" (synced from claude.ai/design — see
+ * docs/DESIGN-SYSTEM.md). One family across all four roles, separated by
+ * weight, size and tracking rather than by face:
+ *
+ *   label  600, uppercase, tracked — labels, captions, buttons, nav
+ *   body   400/500 — running text and table cells
+ *   data   500/600 + font-variant-numeric: tabular-nums — every figure.
+ *          Inter's tabular figures are fixed-width, so money and decimal
+ *          hours align down a column.
+ *   doc    600 — invoice letterhead and logbook attestation
+ *
+ * Loaded via next/font/google, which downloads the font files at BUILD
+ * time and serves them from this app's own origin. The upstream design
+ * system pulls Inter from the Google Fonts CDN with an `@import`, and its
+ * readme asks for woff2 binaries so that dependency can be dropped — this
+ * is the better resolution of that request: no runtime request to Google,
+ * no third-party connection on the critical path, and no risk of a silent
+ * system-font fallback.
+ *
+ * Weight 700 is deliberately NOT loaded. The design system is explicit
+ * that "elegance here is restraint in weight — headings sit at 600, not
+ * 700, and the uppercase labels carry meaning through tracking rather
+ * than boldness." Every weight token in app/tokens/typography.css tops
+ * out at 600, so shipping 700 would be bytes for a weight nothing is
+ * permitted to use.
  */
-export const robotoCondensed = Roboto_Condensed({
+export const inter = Inter({
   subsets: ["latin"],
-  weight: ["700"],
-  variable: "--font-roboto-condensed",
+  weight: ["400", "500", "600"],
+  variable: "--font-inter",
   display: "swap",
 });
 
-export const roboto = Roboto({
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
-  variable: "--font-roboto",
-  display: "swap",
-});
-
-export const robotoMono = Roboto_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
-  variable: "--font-roboto-mono",
-  display: "swap",
-});
-
-export const fontVariables = [
-  robotoCondensed.variable,
-  roboto.variable,
-  robotoMono.variable,
-].join(" ");
+export const fontVariables = inter.variable;

@@ -43,7 +43,7 @@ export default function OverviewPage() {
               : "No invoices past due."}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="v1-actions">
           <Button>Log a trip</Button>
           <Button variant="primary">Create invoice</Button>
         </div>
@@ -55,39 +55,39 @@ export default function OverviewPage() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1.32fr_1fr] gap-4">
+      <div className="v1-cols v1-cols--overview">
         <div>
           <Panel title="Currency & expirations" context="From your logbook and document dates">
-            <table className="v1-table v1-table-currency">
-              <caption className="v1-visually-hidden">
-                Currency and document expirations
-              </caption>
-              <colgroup>
-                <col />
-                <col />
-                <col />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th scope="col">Item</th>
-                  <th scope="col">Detail</th>
-                  <th scope="col" className="v1-r">
-                    Status
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {CURRENCY_ROWS.map((row) => (
-                  <tr key={row.id}>
-                    <th scope="row">{row.label}</th>
-                    <td className="v1-num">{row.detail}</td>
-                    <td className="v1-r">
-                      <StatusTag variant={row.status}>{row.statusLabel}</StatusTag>
-                    </td>
+            {/* .v1-table-scroll, not the panel body: a wide record scrolls
+                sideways inside its panel rather than losing its last column.
+                A tail number clipped at the edge is a defect. */}
+            <div className="v1-table-scroll">
+              <table className="v1-table">
+                <caption className="v1-visually-hidden">
+                  Currency and document expirations
+                </caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Item</th>
+                    <th scope="col">Detail</th>
+                    <th scope="col" className="v1-r">
+                      Status
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {CURRENCY_ROWS.map((row) => (
+                    <tr key={row.id}>
+                      <th scope="row">{row.label}</th>
+                      <td className="v1-num">{row.detail}</td>
+                      <td className="v1-r">
+                        <StatusTag variant={row.status}>{row.statusLabel}</StatusTag>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <div className="v1-disclaimer">{CURRENCY_DISCLAIMER}</div>
           </Panel>
 
