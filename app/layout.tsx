@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { AppRouterCacheProvider } from "@mui/material-nextjs/v16-appRouter";
 import { fontVariables } from "@/lib/fonts";
 import { BRAND, THEME_COLOR } from "@/lib/brand";
-import AppShell from "@/components/mdpro/AppShell";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,12 +12,11 @@ export const metadata: Metadata = {
   },
   description:
     "Log the trip once — logbook entry, invoice, and expenses all post from it. A business tool for independent contract pilots.",
-  // No auth gate exists yet (Phase 1), so the Overview screen at "/" is
-  // reachable by anyone and shows synthetic-but-realistic client names
-  // and dollar figures. Keep this until real auth gating lands — a
-  // product whose trust story is "AMG cannot see your client list"
-  // should not have a search-engine-indexed page that looks exactly like
-  // one.
+  // Kept noindex product-wide even now that the Phase 1 auth gate is in
+  // place (app/(app)/layout.tsx redirects anyone without a session to
+  // /login). A product whose trust story is "AMG cannot see your client
+  // list" has no reason to invite a crawler onto its authenticated
+  // surface, and the login page itself carries no content worth indexing.
   robots: { index: false, follow: false },
   // From the V1 logo kit's README, adapted to Next's metadata API (which
   // renders these as <link> tags itself — no manual markup in the <head>
@@ -61,9 +59,12 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <AppRouterCacheProvider>
-          <AppShell>{children}</AppShell>
-        </AppRouterCacheProvider>
+        {/* Each route group brings its own client shell: app/(app) mounts
+            the full dashboard chrome (AppShell) behind the auth gate,
+            app/(auth) mounts a theme-only shell for the signed-out login
+            surface. The root layout stays chrome-free so nothing renders
+            the Sidenav for a signed-out visitor. */}
+        <AppRouterCacheProvider>{children}</AppRouterCacheProvider>
       </body>
     </html>
   );

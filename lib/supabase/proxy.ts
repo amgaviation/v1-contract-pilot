@@ -70,7 +70,26 @@ async function refreshSession(
   // when it lands, the redirect-to-login belongs right after this call,
   // which is exactly why the missing-env case above must fail loudly
   // rather than silently pass every request through ungated.
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // The auth gate that comment earmarked now lives here. A signed-out
+  // request to any gated path is redirected to /login (carrying the
+  // requested path as ?next so login can bounce back). /login and
+  // /welcome are the signed-out surface itself and pass through —
+  // /welcome's own page handles the no-session case, so there is no
+  // loop. app/(app)/layout.tsx re-checks server-side, so this is defense
+  // in depth, not the sole gate.
+  const path = request.nextUrl.pathname;
+  const isAuthSurface = path === "/login" || path.startsWith("/welcome");
+  if (!user && !isAuthSurface) {
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.search = "";
+    loginUrl.searchParams.set("next", path);
+    return NextResponse.redirect(loginUrl);
+  }
 
   return response;
 }
