@@ -29,6 +29,19 @@ const nextConfig: NextConfig = {
   images: {
     formats: ["image/avif", "image/webp"],
   },
+  experimental: {
+    serverActions: {
+      // Receipt upload goes through a Server Action, and Next caps a
+      // Server Action body at 1 MB by default. A phone photo of a hotel
+      // folio is routinely 2-5 MB, so without this the primary Phase 4
+      // use case fails with an opaque framework error BEFORE any of the
+      // app's own checks or the bucket's file_size_limit can produce a
+      // sentence. Kept in step with MAX_RECEIPT_BYTES in
+      // app/(app)/expenses/actions.ts and with the bucket's own limit —
+      // all three are 10 MB, and the bucket is the authoritative one.
+      bodySizeLimit: "10mb",
+    },
+  },
   // Next.js only auto-inlines env vars prefixed NEXT_PUBLIC_ into the
   // browser bundle. The project's Vercel env vars use NEXT_SUPABASE_URL /
   // NEXT_SUPABASE_PUBLISHABLE_KEY instead (no NEXT_PUBLIC_ prefix), so
