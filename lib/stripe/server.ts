@@ -62,10 +62,10 @@ export function isLiveMode(): boolean {
  * from env config".
  */
 export function getSoloPriceId(): string {
-  const priceId = process.env.STRIPE_PRICE_SOLO;
+  const priceId = process.env.STRIPE_PRICE_ID_SOLO;
   if (!priceId) {
     throw new Error(
-      "STRIPE_PRICE_SOLO is unset — no price to check out with. Set it in the Vercel project (and .env.local for development)."
+      "STRIPE_PRICE_ID_SOLO is unset — no price to check out with. Set it in the Vercel project (and .env.local for development)."
     );
   }
   return priceId;

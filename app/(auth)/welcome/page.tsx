@@ -10,7 +10,7 @@ import { StartTrialButton } from "./welcome-actions";
 export const metadata = { title: "Welcome" };
 
 // Presentational only — the authoritative amount is the Stripe Price
-// (STRIPE_PRICE_SOLO), which is what actually gets charged. Kept in sync
+// (STRIPE_PRICE_ID_SOLO), which is what actually gets charged. Kept in sync
 // by hand; the price object is the source of truth, not this string.
 const PRICE_LABEL = "$29/month";
 

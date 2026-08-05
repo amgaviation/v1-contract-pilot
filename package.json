@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "tokens:verify": "node scripts/verify-tokens.mjs",
     "tenancy:verify": "node scripts/tenancy-verify.mjs",
-    "test": "npm run typecheck && npm run tokens:verify"
+    "test": "npm run typecheck && npm run tokens:verify",
+    "billing:verify": "node scripts/billing-verify.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.13.5",
