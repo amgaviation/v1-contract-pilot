@@ -13,7 +13,7 @@ import type { Database } from "@/lib/supabase/database.types";
  * no live database to test it against). Until that exists, the only
  * control is: read this comment before you import this function.
  *
- * It exists for exactly ONE caller: the Stripe webhook handler that
+ * It exists for exactly ONE entry point: the Stripe webhook handler that
  * provisions a new tenant on checkout completion (Phase 2), because that
  * request has no user session yet to authenticate as. It must never be
  * imported into a Client Component, never used to read or write tenant
