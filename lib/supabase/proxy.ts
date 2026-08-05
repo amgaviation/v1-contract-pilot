@@ -82,7 +82,15 @@ async function refreshSession(
   // loop. app/(app)/layout.tsx re-checks server-side, so this is defense
   // in depth, not the sole gate.
   const path = request.nextUrl.pathname;
-  const isAuthSurface = path === "/login" || path.startsWith("/welcome");
+  const isAuthSurface =
+    path === "/login" ||
+    path === "/signup" ||
+    path.startsWith("/welcome") ||
+    // The Stripe webhook is machine-to-machine and carries no session. It
+    // authenticates by signature (see the route), which is stronger than a
+    // cookie here — redirecting it to /login would silently break
+    // provisioning and Stripe would just see 307s.
+    path.startsWith("/api/stripe/");
   if (!user && !isAuthSurface) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";

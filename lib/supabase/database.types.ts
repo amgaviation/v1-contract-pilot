@@ -568,6 +568,39 @@ export type Database = {
           },
         ];
       };
+      stripe_events: {
+        // Webhook idempotency/ordering ledger (Phase 2). service_role
+        // only — `authenticated` has no grant and no RLS policy, so this
+        // type exists for the webhook's own writes, not for app queries.
+        Row: {
+          id: string;
+          type: string;
+          stripe_created_at: string;
+          object_id: string | null;
+          processed_at: string | null;
+          livemode: boolean;
+          received_at: string;
+        };
+        Insert: {
+          id: string;
+          type: string;
+          stripe_created_at: string;
+          object_id?: string | null;
+          processed_at?: string | null;
+          livemode: boolean;
+          received_at?: string;
+        };
+        Update: {
+          id?: string;
+          type?: string;
+          stripe_created_at?: string;
+          object_id?: string | null;
+          processed_at?: string | null;
+          livemode?: boolean;
+          received_at?: string;
+        };
+        Relationships: [];
+      };
       invoice_number_sequences: {
         Row: { account_id: string; next_number: number };
         Insert: { account_id: string; next_number?: number };
