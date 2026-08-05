@@ -1,19 +1,21 @@
 "use client";
 
 import { useActionState } from "react";
-import NextLink from "next/link";
 import Card from "@mui/material/Card";
 import TextField from "@mui/material/TextField";
 import MDBox from "@/components/mdpro/MDBox";
 import MDTypography from "@/components/mdpro/MDTypography";
 import MDButton from "@/components/mdpro/MDButton";
 import { BRAND } from "@/lib/brand";
-import { signIn, type SignInState } from "./actions";
+import { setNewPassword, type ResetPasswordState } from "./actions";
 
-const initialState: SignInState = { error: null };
+const initialState: ResetPasswordState = { error: null };
 
-export default function LoginForm({ next }: { next: string }) {
-  const [state, formAction, pending] = useActionState(signIn, initialState);
+export default function ResetPasswordForm() {
+  const [state, formAction, pending] = useActionState(
+    setNewPassword,
+    initialState
+  );
 
   return (
     <Card sx={{ width: "100%", maxWidth: "22rem" }}>
@@ -23,29 +25,27 @@ export default function LoginForm({ next }: { next: string }) {
             {BRAND.name}
           </MDTypography>
           <MDTypography variant="button" color="text" fontWeight="regular">
-            {BRAND.descriptor}
+            Choose a new password
           </MDTypography>
         </MDBox>
 
-        <input type="hidden" name="next" value={next} />
-
         <MDBox mb={2}>
           <TextField
-            type="email"
-            name="email"
-            label="Email"
+            type="password"
+            name="password"
+            label="New password"
             fullWidth
-            autoComplete="email"
+            autoComplete="new-password"
             required
           />
         </MDBox>
         <MDBox mb={2}>
           <TextField
             type="password"
-            name="password"
-            label="Password"
+            name="confirm"
+            label="Confirm new password"
             fullWidth
-            autoComplete="current-password"
+            autoComplete="new-password"
             required
           />
         </MDBox>
@@ -66,35 +66,8 @@ export default function LoginForm({ next }: { next: string }) {
             fullWidth
             disabled={pending}
           >
-            {pending ? "Signing in…" : "Sign in"}
+            {pending ? "Saving…" : "Save password"}
           </MDButton>
-        </MDBox>
-
-        <MDBox mt={2} textAlign="center">
-          <MDTypography
-            component={NextLink}
-            href="/forgot-password"
-            variant="caption"
-            color="info"
-            fontWeight="medium"
-          >
-            Forgot your password?
-          </MDTypography>
-        </MDBox>
-
-        <MDBox mt={1} textAlign="center">
-          <MDTypography variant="caption" color="text">
-            New here?{" "}
-            <MDTypography
-              component={NextLink}
-              href="/signup"
-              variant="caption"
-              color="info"
-              fontWeight="medium"
-            >
-              Create an account
-            </MDTypography>
-          </MDTypography>
         </MDBox>
       </MDBox>
     </Card>
