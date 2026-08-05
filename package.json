@@ -10,7 +10,8 @@
     "tokens:verify": "node scripts/verify-tokens.mjs",
     "tenancy:verify": "node scripts/tenancy-verify.mjs",
     "test": "npm run typecheck && npm run tokens:verify",
-    "billing:verify": "node scripts/billing-verify.mjs"
+    "billing:verify": "node scripts/billing-verify.mjs",
+    "trip:verify": "node scripts/trip-verify.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.13.5",
