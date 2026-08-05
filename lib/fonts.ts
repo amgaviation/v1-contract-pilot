@@ -20,16 +20,14 @@ import { Inter } from "next/font/google";
  * no third-party connection on the critical path, and no risk of a silent
  * system-font fallback.
  *
- * Weight 700 is deliberately NOT loaded. The design system is explicit
- * that "elegance here is restraint in weight — headings sit at 600, not
- * 700, and the uppercase labels carry meaning through tracking rather
- * than boldness." Every weight token in app/tokens/typography.css tops
- * out at 600, so shipping 700 would be bytes for a weight nothing is
- * permitted to use.
+ * Weights 300–700 are loaded because the ported Material Dashboard theme
+ * (lib/mdpro/theme/base/typography.js) spans fontWeightLight (300) through
+ * fontWeightBold (700) — the retired design system's "no 700" restraint
+ * rule went with it.
  */
 export const inter = Inter({
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["300", "400", "500", "600", "700"],
   variable: "--font-inter",
   display: "swap",
 });
