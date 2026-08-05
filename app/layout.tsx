@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { fontVariables } from "@/lib/fonts";
 import { BRAND, THEME_COLOR } from "@/lib/brand";
+import { AppThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -33,7 +34,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={fontVariables}>
-      <body>{children}</body>
+      <body>
+        <AppThemeProvider>{children}</AppThemeProvider>
+      </body>
     </html>
   );
 }

@@ -1,5 +1,3 @@
-@import "tailwindcss";
-
 /* The V1 Design system, synced from claude.ai/design. Import order matters:
    tokens define the custom properties, base consumes them for the document
    ground, components consume them for every .v1-* class. Nothing outside

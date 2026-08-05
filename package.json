@@ -12,6 +12,9 @@
     "test": "npm run typecheck && npm run tokens:verify"
   },
   "dependencies": {
+    "@emotion/react": "^11.13.5",
+    "@emotion/styled": "^11.13.5",
+    "@mui/material": "^6.1.9",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.1",
     "next": "^16.2.11",
@@ -20,12 +23,9 @@
     "server-only": "^0.0.1"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.1",
-    "postcss": "^8.5.23",
-    "tailwindcss": "^4.0.0",
     "typescript": "^5.7.2"
   }
 }
