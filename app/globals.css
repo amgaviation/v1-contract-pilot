@@ -1,13 +1,18 @@
-/* The V1 Design system, synced from claude.ai/design. Import order matters:
-   tokens define the custom properties, base consumes them for the document
-   ground, components consume them for every .v1-* class. Nothing outside
-   these files may spell out a colour, radius, blur, shadow or font — see
-   scripts/verify-tokens.mjs, which enforces that in CI. */
-@import "./tokens/fonts.css";
-@import "./tokens/colors.css";
-@import "./tokens/typography.css";
-@import "./tokens/spacing.css";
-@import "./tokens/effects.css";
-@import "./tokens/dark.css";
-@import "./base.css";
-@import "./components.css";
+/* The visual system now lives in lib/mdpro (the ported Material Dashboard
+   3 PRO React theme, applied via components/mdpro/AppShell) — this file no
+   longer carries a design system. It exists only for the V1 logo mark
+   (components/ui/logo.tsx), whose fills are brand-identity constants from
+   the logo kit, not UI tokens: the wordmark is literal black, the bug is
+   literal #036BFC on every ground (see that component's header). The
+   sizing rules below are carried over verbatim from the retired
+   app/components.css; --v1-logo-size holds what used to be
+   --v1-text-mark (20px, "wordmark") from the retired token layer. */
+
+:root {
+  --v1-logo-mark: #000000;
+  --v1-logo-bug: #036bfc;
+  --v1-logo-size: 20px;
+}
+
+.v1-logo { display: inline-block; line-height: 0; }
+.v1-logo svg { height: var(--v1-logo-size); width: auto; display: block; }

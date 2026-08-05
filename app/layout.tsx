@@ -1,7 +1,8 @@
 import type { Metadata, Viewport } from "next";
+import { AppRouterCacheProvider } from "@mui/material-nextjs/v16-appRouter";
 import { fontVariables } from "@/lib/fonts";
 import { BRAND, THEME_COLOR } from "@/lib/brand";
-import { AppThemeProvider } from "@/components/theme-provider";
+import AppShell from "@/components/mdpro/AppShell";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -50,8 +51,19 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={fontVariables}>
+      <head>
+        {/* Material Icons font, exactly as the Material Dashboard kit's
+            public/index.html linked it — the Sidenav/Navbar/Configurator
+            render icons as <Icon> ligatures from this family. */}
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css?family=Material+Icons|Material+Icons+Outlined|Material+Icons+Two+Tone|Material+Icons+Round|Material+Icons+Sharp"
+        />
+      </head>
       <body>
-        <AppThemeProvider>{children}</AppThemeProvider>
+        <AppRouterCacheProvider>
+          <AppShell>{children}</AppShell>
+        </AppRouterCacheProvider>
       </body>
     </html>
   );

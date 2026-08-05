@@ -5,11 +5,12 @@ import { BRAND } from "@/lib/brand";
  * inlined verbatim (Barlow 600 converted to outlines — no font dependency).
  *
  * One SVG, not two: both fills are CSS custom properties
- * (`--v1-logo-mark` / `--v1-logo-bug`, defined in app/tokens/colors.css and
- * overridden for dark in app/tokens/dark.css), so the mark repaints through
- * the same `[data-theme="dark"]` switch as everything else in the token
- * layer — no separate light/dark DOM copy, no JS, and no way for the mark
- * and the surface it sits on to independently drift out of sync.
+ * (`--v1-logo-mark` / `--v1-logo-bug`, now defined in app/globals.css —
+ * the retired token layer's only survivors). The kit fixes the wordmark
+ * at literal black/white and the bug at one blue on every ground; with
+ * the old `[data-theme="dark"]` switch gone (dark mode is now the MD
+ * theme's Configurator toggle, which doesn't stamp a DOM attribute),
+ * only the light-ground values are defined.
  *
  * Per the kit's construction spec: don't recolor anything but the bug,
  * don't move it, don't add graduations below 80px, minimum size 16px.

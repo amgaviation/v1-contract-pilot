@@ -59,31 +59,31 @@ const SCAN_DIRS = ["app", "components", "lib"];
 /**
  * The token layer — the only place a visual value may be spelled out.
  *
- * This was a single file (app/tokens.css) under the previous design
- * direction. V1 Design ships the layer as upstream structures it: six
- * token files, a base layer for the document ground, and one component
- * sheet. Exempting the whole of app/tokens/ plus base.css and
- * components.css mirrors that architecture exactly, so a future sync from
- * claude.ai/design drops in without fighting this script.
+ * Under the current design direction that layer IS the ported Material
+ * Dashboard 3 PRO React system: lib/mdpro/ (theme, theme-dark, context,
+ * routes) and components/mdpro/ (MD* base components and examples/).
+ * Visual literals live there by design — a Creative Tim theme is a tree
+ * of literal palette/shadow/radius values, and the port keeps upstream's
+ * files as close to verbatim as the license header asks. Those ported
+ * files are .js and therefore already outside this script's .ts/.tsx/.css
+ * scan set, but the directory exemption makes the policy explicit and
+ * future-proofs any .tsx additions inside those trees. Everything
+ * OUTSIDE those directories must reach visual values through the theme
+ * (sx callbacks, MD component props), never as literals — that is what
+ * keeps a future re-theme a lib/mdpro-only change.
  *
- * app/components.css is exempt for a real reason, not convenience: it is
- * where `.v1-doc` lives, and that surface deliberately uses literal ink
- * values because it prints — glass cannot survive a laser printer, so the
- * outgoing invoice is the one surface no theme is allowed to reach.
+ * app/globals.css stays exempt: it carries only the V1 logo mark's
+ * brand-identity constants (see components/ui/logo.tsx), which are
+ * deliberately literal.
  */
 const EXEMPT_FILES = new Set([
-  join(ROOT, "app", "base.css"),
-  join(ROOT, "app", "components.css"),
   join(ROOT, "app", "globals.css"),
   join(ROOT, "lib", "brand.ts"),
-  // MUI's theme needs literal values at module-eval time (see that file's
-  // header) — a CSS custom property can't cross into a JS theme object.
-  // Values are a hand-kept mirror of app/tokens/colors.css, not a second
-  // source of truth: if a token there changes, lib/theme.ts must change
-  // with it.
-  join(ROOT, "lib", "theme.ts"),
 ]);
-const EXEMPT_DIRS = [join(ROOT, "app", "tokens")];
+const EXEMPT_DIRS = [
+  join(ROOT, "lib", "mdpro"),
+  join(ROOT, "components", "mdpro"),
+];
 const SCAN_EXTENSIONS = new Set([".ts", ".tsx", ".css"]);
 
 function isExempt(file) {
@@ -297,9 +297,10 @@ if (violations.length > 0) {
     console.error(`    ${v.snippet}\n`);
   }
   console.error(
-    "Every visual value must live in the token layer — app/tokens/*.css, app/base.css,\n" +
-      "app/components.css — or in lib/brand.ts. See those files' header comments for why\n" +
-      "this is enforced, and docs/DESIGN-SYSTEM.md for how the layer syncs from upstream.\n"
+    "Every visual value must live in the token layer — lib/mdpro/ and components/mdpro/\n" +
+      "(the ported Material Dashboard system) — or in lib/brand.ts / app/globals.css (the\n" +
+      "logo-mark constants). Reach visual values through the MUI theme (sx callbacks, MD\n" +
+      "component props) instead of spelling them out.\n"
   );
   process.exit(1);
 }
