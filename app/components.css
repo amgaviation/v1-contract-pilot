@@ -35,8 +35,23 @@
 /* ---- rail: a glass sheet, not a dark bezel ---- */
 .v1-rail { width: var(--v1-rail); flex: none; padding: var(--v1-space-9) var(--v1-space-6); display: flex; flex-direction: column; gap: var(--v1-space-9); min-height: 100dvh; background: var(--v1-glass); backdrop-filter: var(--v1-blur); border-right: var(--v1-border) solid var(--v1-line); }
 .v1-rail-brand { padding: var(--v1-space-2) var(--v1-space-4) 0; }
+/* Not used by the app shell since the V1 logo kit landed — RailNav renders
+   <Logo /> instead (see the block below). Kept for text-only contexts a
+   drawn mark can't reach (email subject lines, the invoice PDF's plain-text
+   fallback), so a future editor porting one of those doesn't have to
+   reinvent this rule. */
 .v1-rail-wordmark { display: block; font-family: var(--v1-font-label); font-weight: var(--v1-weight-strong); font-size: var(--v1-text-mark); letter-spacing: var(--v1-track-mark); color: var(--v1-ink); }
 .v1-rail-descriptor { display: block; font-family: var(--v1-font-label); font-weight: var(--v1-weight-label); font-size: var(--v1-text-label); letter-spacing: var(--v1-track-caption); text-transform: uppercase; color: var(--v1-faint); margin-top: var(--v1-space-3); }
+
+/* ---- the V1 mark (components/ui/logo.tsx) ----
+   One SVG; both its fills are --v1-logo-mark / --v1-logo-bug, so it
+   repaints for dark through the same [data-theme="dark"] switch as every
+   other token — see app/tokens/colors.css and dark.css. --v1-text-mark
+   sets the height so the mark occupies the same visual weight the text
+   wordmark it replaces did; width is intrinsic (auto) so the kit's fixed
+   aspect ratio is never stretched. */
+.v1-logo { display: inline-block; line-height: 0; }
+.v1-logo svg { height: var(--v1-text-mark); width: auto; display: block; }
 .v1-rail-nav { display: flex; flex-direction: column; gap: var(--v1-space-1); }
 .v1-rail-nav-item { display: block; padding: var(--v1-space-4) var(--v1-space-5); border: 0; border-radius: var(--v1-radius-sm); background: none; font-family: var(--v1-font-body); font-weight: var(--v1-weight-medium); font-size: var(--v1-text-small); letter-spacing: var(--v1-track-nav); color: var(--v1-mute); text-align: left; cursor: pointer; width: 100%; }
 .v1-rail-nav-item:hover { background: var(--v1-glass-tint); color: var(--v1-ink); }

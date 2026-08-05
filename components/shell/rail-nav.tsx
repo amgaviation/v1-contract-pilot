@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BRAND } from "@/lib/brand";
+import { Logo } from "@/components/ui/logo";
 
 const NAV_ITEMS = [
   { label: "Overview", href: "/" },
@@ -26,7 +27,7 @@ export function RailNav({
   return (
     <aside className="v1-rail">
       <div className="v1-rail-brand">
-        <span className="v1-rail-wordmark">{BRAND.wordmark}</span>
+        <Logo />
         <span className="v1-rail-descriptor">{BRAND.descriptor}</span>
       </div>
       <nav className="v1-rail-nav">
