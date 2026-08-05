@@ -37,6 +37,8 @@ import Icon from "@mui/material/Icon";
 
 // Material Dashboard 3 PRO React components
 import MDBox from "@/components/mdpro/MDBox";
+import MDTypography from "@/components/mdpro/MDTypography";
+import MDButton from "@/components/mdpro/MDButton";
 
 // Material Dashboard 3 PRO React examples
 import Sidenav from "@/components/mdpro/examples/Sidenav";
@@ -60,7 +62,7 @@ import {
 // Brand strings — the single permitted source (lib/brand.ts)
 import { BRAND } from "@/lib/brand";
 
-function AppShellContent({ children }) {
+function AppShellContent({ children, accountName, userEmail, signOutAction }) {
   const [controller, dispatch] = useMaterialUIController();
   const {
     miniSidenav,
@@ -129,6 +131,46 @@ function AppShellContent({ children }) {
     </MDBox>
   );
 
+  // Account identity + sign-out, pinned top-right so it clears the
+  // left Sidenav and the bottom-right settings button. Rendered only when
+  // the server layout supplies a signed-in context (see
+  // app/(app)/layout.tsx) — the account name comes from the real
+  // pilot.accounts row, never a placeholder. The sign-out is a server
+  // action passed as a form action, so this client component never
+  // touches a Supabase client itself.
+  const accountMenu = accountName && signOutAction && (
+    <MDBox
+      position="fixed"
+      top="1rem"
+      right="2rem"
+      zIndex={99}
+      display="flex"
+      alignItems="center"
+      gap={1.5}
+    >
+      <MDBox textAlign="right" lineHeight={1.1}>
+        <MDTypography variant="button" fontWeight="medium" display="block">
+          {accountName}
+        </MDTypography>
+        {userEmail ? (
+          <MDTypography variant="caption" color="text">
+            {userEmail}
+          </MDTypography>
+        ) : null}
+      </MDBox>
+      <form action={signOutAction}>
+        <MDButton
+          type="submit"
+          variant="outlined"
+          color="dark"
+          size="small"
+        >
+          Sign out
+        </MDButton>
+      </form>
+    </MDBox>
+  );
+
   return (
     <ThemeProvider theme={darkMode ? themeDark : theme}>
       <CssBaseline />
@@ -143,6 +185,7 @@ function AppShellContent({ children }) {
           />
           <Configurator />
           {configsButton}
+          {accountMenu}
         </>
       )}
       {layout === "vr" && <Configurator />}
@@ -153,16 +196,33 @@ function AppShellContent({ children }) {
 
 AppShellContent.propTypes = {
   children: PropTypes.node.isRequired,
+  accountName: PropTypes.string,
+  userEmail: PropTypes.string,
+  signOutAction: PropTypes.func,
 };
 
-export default function AppShell({ children }) {
+export default function AppShell({
+  children,
+  accountName,
+  userEmail,
+  signOutAction,
+}) {
   return (
     <MaterialUIControllerProvider>
-      <AppShellContent>{children}</AppShellContent>
+      <AppShellContent
+        accountName={accountName}
+        userEmail={userEmail}
+        signOutAction={signOutAction}
+      >
+        {children}
+      </AppShellContent>
     </MaterialUIControllerProvider>
   );
 }
 
 AppShell.propTypes = {
   children: PropTypes.node.isRequired,
+  accountName: PropTypes.string,
+  userEmail: PropTypes.string,
+  signOutAction: PropTypes.func,
 };
