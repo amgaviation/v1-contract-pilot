@@ -26,6 +26,11 @@
   --v1-mute: #98a2b3;
   --v1-faint: #6b7688;
 
+  /* The V1 mark on a dark ground — see colors.css for why this is its own
+     token rather than --v1-ink. --v1-logo-bug is NOT overridden here: the
+     kit fixes it at #036BFC on every ground. */
+  --v1-logo-mark: #ffffff;
+
   --v1-line: rgb(255 255 255 / 0.10);
   --v1-hair: rgb(255 255 255 / 0.06);
   --v1-edge-top: rgb(255 255 255 / 0.10);

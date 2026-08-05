@@ -18,6 +18,22 @@ export const metadata: Metadata = {
   // should not have a search-engine-indexed page that looks exactly like
   // one.
   robots: { index: false, follow: false },
+  // From the V1 logo kit's README, adapted to Next's metadata API (which
+  // renders these as <link> tags itself — no manual markup in the <head>
+  // below). The SVG favicon carries the mark's real geometry at any size;
+  // PNG sizes are the fallback chain for browsers that don't yet support
+  // svg favicons. There is no "dark" favicon variant: browser chrome
+  // (where a favicon renders) is outside this app's [data-theme] scope, so
+  // the kit's light-ground file is correct for every user regardless of
+  // which theme they've picked inside the app.
+  icons: {
+    icon: [
+      { url: "/brand/favicon.svg", type: "image/svg+xml" },
+      { url: "/brand/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/brand/favicon-16.png", sizes: "16x16", type: "image/png" },
+    ],
+    apple: [{ url: "/brand/apple-touch-icon.png", sizes: "180x180" }],
+  },
 };
 
 export const viewport: Viewport = {
