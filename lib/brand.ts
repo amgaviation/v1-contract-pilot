@@ -40,12 +40,11 @@ export const THEME_COLOR = "#eef1f6";
 /**
  * COUNSEL-REVIEWED COPY — verbatim, docs/PLAN.md Design system. This is
  * the one string in the codebase where a paraphrase is a liability
- * question, not a style question. It lives here rather than in
- * lib/mock-data.ts specifically because that module's own header says it
- * gets deleted once Phase 3 wires the Overview screen to real data — this
- * text must survive that deletion unchanged. The currency feature itself
- * ships behind a flag, dark, until this exact wording is re-confirmed
- * with counsel (docs/PLAN.md decision #15).
+ * question, not a style question. It lives here, not inline on the
+ * Overview screen that will eventually show it, because the currency
+ * feature itself ships behind a flag, dark, until this exact wording is
+ * re-confirmed with counsel (docs/PLAN.md decision #15) — this text has to
+ * survive whatever screen work happens before that flag flips.
  */
 export const CURRENCY_DISCLAIMER =
   "Currency is calculated from the entries you logged and is a planning aid, not a determination of regulatory compliance. You remain responsible for your own currency and airworthiness decisions.";
