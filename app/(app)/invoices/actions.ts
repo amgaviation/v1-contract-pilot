@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
-import { parseDollarsToCents } from "@/lib/format";
+import { parseDollarsToCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -92,6 +92,82 @@ function parseQuantity(raw: string): number | undefined {
   return parsed;
 }
 
+/**
+ * Rounds a day-line quantity to invoice_lines.quantity's numeric(6,2)
+ * scale. Summing several trip_days.quantity values (each 0.1-1.0, one
+ * decimal place) can only ever produce a result with at most one decimal
+ * place mathematically, but IEEE 754 float addition doesn't know that —
+ * 0.1 + 0.2 is 0.30000000000000004 in JS. This is a guard against that
+ * drift, not a fudge: it never changes what the sum "should" be, it only
+ * removes noise below the column's own scale.
+ */
+function roundQuantity(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * F3: a day-row group's dates, rendered for an invoice line description.
+ * Contiguous dates ("Mar 1 to Mar 4") read as a span the way the fixed
+ * flight_day/travel_day lines always have; non-contiguous dates ("Mar 1,
+ * Mar 3, Mar 5") are listed individually instead, because a min→max span
+ * over a gap reads as billing the days in between too. `sortedIsoDates`
+ * must already be sorted ascending — every caller sorts before calling.
+ */
+function describeDayDates(sortedIsoDates: string[]): string {
+  if (isContiguous(sortedIsoDates)) {
+    return formatDateRange(sortedIsoDates[0], sortedIsoDates[sortedIsoDates.length - 1]);
+  }
+  return sortedIsoDates.map((iso) => formatDate(iso)).join(", ");
+}
+
+/** Whether a sorted list of "YYYY-MM-DD" dates has no gaps — each date is
+ * exactly one calendar day after the one before it. A single date (or an
+ * empty list) is trivially contiguous. */
+function isContiguous(sortedIsoDates: string[]): boolean {
+  for (let i = 1; i < sortedIsoDates.length; i++) {
+    const prev = new Date(`${sortedIsoDates[i - 1]}T00:00:00Z`);
+    const curr = new Date(`${sortedIsoDates[i]}T00:00:00Z`);
+    const diffDays = (curr.getTime() - prev.getTime()) / 86_400_000;
+    if (diffDays !== 1) return false;
+  }
+  return true;
+}
+
+/**
+ * F6: friendlyDbError scrubs every error code it doesn't recognize —
+ * including invoice_lines_validate_trip's double-bill guard, which does a
+ * plain `raise exception` with no explicit errcode and so defaults to
+ * P0001 — down to a generic "Couldn't save that. Try again." That's safe
+ * (no raw exception reaches the browser) but useless: it doesn't tell the
+ * pilot which trip conflicted or that the fix is to look at another
+ * invoice, and the trigger's own message does. That message DOES contain
+ * raw uuids, though (unlike trip_days/actions.ts's dayRowsDbError case,
+ * where the trigger message is already pilot-readable), so it's not
+ * passed through verbatim — this substitutes a specific, friendly
+ * sentence instead. Same pattern as trips/actions.ts's dayRowsDbError.
+ *
+ * Why this can legitimately happen: trips.billing_state only advances on
+ * an INVOICE STATUS CHANGE (pilot.invoices_sync_trip_billing_state), never
+ * on a line being added to a draft. A trip already carrying lines on
+ * someone else's draft invoice therefore still reads 'unbilled' here, so
+ * createInvoiceDraft's `billing_state === "unbilled"` filter can offer it
+ * again — and this is what the second attempt sees when the database's
+ * own double-bill guard (Phase 5's invoice_lines_validate_trip) rejects
+ * the batched insert.
+ */
+function linesDbError(
+  error: { code?: string | null; message?: string | null } | null | undefined,
+  context: string
+): string {
+  if (
+    error?.code === "P0001" &&
+    error.message?.toLowerCase().includes("already billed on invoice")
+  ) {
+    return "One or more of these trips is already on another invoice (possibly a draft). Remove it from that invoice, or drop it from this one and choose a different trip.";
+  }
+  return friendlyDbError(error, context);
+}
+
 const MANUAL_LINE_TYPES = [
   "flight_day",
   "travel_day",
@@ -176,7 +252,10 @@ export async function createInvoiceDraft(
     // public endpoint and the offered set is not the enforced set. Without
     // this a crafted POST could draft an invoice from a scheduled or
     // in-progress trip, whose day count is still moving — billing a client
-    // for a job that has not finished.
+    // for a job that has not finished. NEVER relax this to also admit
+    // 'canceled' — the cancellation-note warning below uses a separate,
+    // warning-only query instead of loosening this filter, specifically so
+    // this stays true.
     .eq("status", "completed")
     .in("id", tripIds);
 
@@ -201,25 +280,18 @@ export async function createInvoiceDraft(
   const trips = ((tripRows ?? []) as TripRow[]).filter(
     (t) => t.billing_state === "unbilled"
   );
+  const tripIdsToBill = trips.map((t) => t.id);
 
-  const { data: expenseRows, error: expensesError } = await supabase
-    .from("expenses")
-    .select("id, trip_id, category, vendor, amount_cents, incurred_on, treatment")
-    .eq("account_id", account.id)
-    .eq("treatment", "rebill")
-    .in(
-      "trip_id",
-      trips.map((t) => t.id)
-    );
-
-  if (expensesError) {
-    redirect(
-      `/invoices/${invoiceId}?warning=${encodeURIComponent(
-        friendlyDbError(expensesError, "expenses.select")
-      )}`
-    );
-  }
-
+  // ---------------------------------------------------------------------
+  // Phase 9: everything needed to prefer day rows over the scalar
+  // day_count/day_rate_cents pair, price per diem, and apply a contract
+  // minimum — fetched in parallel, alongside the pre-existing rebillable-
+  // expenses read. Joined to trip_days in app code below (a flat select
+  // plus a Map), not via a PostgREST embed — matches this codebase's
+  // existing join style (see the expenses/rebillByTrip Map in
+  // invoices/new/page.tsx), and .select() resolves to `never` here either
+  // way.
+  // ---------------------------------------------------------------------
   type ExpenseRow = {
     id: string;
     trip_id: string | null;
@@ -228,47 +300,412 @@ export async function createInvoiceDraft(
     amount_cents: number;
     incurred_on: string;
   };
+  type TripDayRow = {
+    id: string;
+    trip_id: string;
+    day_on: string;
+    day_type_id: string;
+    rate_cents: number;
+    // F1: 20260807020000 adds trip_days.quantity — the fraction of the
+    // day worked (0.1-1.0, numeric(3,1)) — so a half day is finally
+    // representable. Not yet in database.types.ts's hand-authored
+    // trip_days type (that file is Phase 9's, owned by the trips work
+    // happening concurrently), but .select() already resolves to `never`
+    // against these tables regardless of which columns are requested, so
+    // this is cast at the boundary the same way every row here already
+    // is, and needs no change there.
+    quantity: number;
+  };
+  type DayTypeRow = {
+    id: string;
+    label: string;
+    billable: boolean;
+    counts_for_per_diem: boolean;
+    invoice_line_type: "flight_day" | "travel_day" | "other";
+  };
+  type ClientBillingRow = {
+    per_diem_mode: "per_diem" | "receipts";
+    default_per_diem_cents: number | null;
+    minimum_days: number | null;
+    cancellation_policy_note: string | null;
+  };
+
+  const [
+    { data: expenseRows, error: expensesError },
+    { data: dayRows, error: dayRowsError },
+    { data: dayTypeRows, error: dayTypesError },
+    { data: clientBillingRow, error: clientBillingError },
+    { data: canceledTripRows, error: canceledTripsError },
+  ] = await Promise.all([
+    supabase
+      .from("expenses")
+      .select("id, trip_id, category, vendor, amount_cents, incurred_on, treatment")
+      .eq("account_id", account.id)
+      .eq("treatment", "rebill")
+      .in("trip_id", tripIdsToBill),
+    supabase
+      .from("trip_days")
+      .select("id, trip_id, day_on, day_type_id, rate_cents, quantity")
+      .eq("account_id", account.id)
+      .in("trip_id", tripIdsToBill),
+    // The tenant's whole day-type taxonomy — a handful of rows per
+    // account, cheaper to fetch in full than to round-trip on the exact
+    // set of day_type_ids the fetched trip_days actually use.
+    supabase
+      .from("day_types")
+      .select("id, label, billable, counts_for_per_diem, invoice_line_type")
+      .eq("account_id", account.id),
+    // This one client's billing terms. clientId is already a validated
+    // UUID; RLS plus the account_id filter below scope this to the tenant.
+    supabase
+      .from("clients")
+      .select(
+        "per_diem_mode, default_per_diem_cents, minimum_days, cancellation_policy_note"
+      )
+      .eq("account_id", account.id)
+      .eq("id", clientId)
+      .maybeSingle(),
+    // Read-only, used for exactly one thing: deciding whether to surface
+    // cancellation_policy_note as a warning. A SEPARATE query with its own
+    // status='canceled' filter — not a relaxation of the completed-only
+    // filter on the trips query above, which stays exactly as written.
+    // These rows never feed `lines`.
+    supabase
+      .from("trips")
+      .select("id")
+      .eq("account_id", account.id)
+      .eq("client_id", clientId)
+      .eq("status", "canceled")
+      .in("id", tripIds),
+  ]);
+
+  if (expensesError) {
+    redirect(
+      `/invoices/${invoiceId}?warning=${encodeURIComponent(
+        friendlyDbError(expensesError, "expenses.select")
+      )}`
+    );
+  }
+  if (dayRowsError || dayTypesError) {
+    // Can't safely tell which trips have day rows without both of these —
+    // guessing "no day rows, use the scalar fallback" on a fetch failure
+    // could under-bill a trip that actually has them. Fail loud instead.
+    redirect(
+      `/invoices/${invoiceId}?warning=${encodeURIComponent(
+        friendlyDbError(dayRowsError ?? dayTypesError, "trip_days.select")
+      )}`
+    );
+  }
+  if (clientBillingError) {
+    // Same reasoning: without per_diem_mode/minimum_days we can't tell
+    // whether to add a per-diem line or apply a contract minimum, and
+    // silently treating "fetch failed" as "neither applies" could
+    // under-bill a trip the client's terms say should bill more.
+    redirect(
+      `/invoices/${invoiceId}?warning=${encodeURIComponent(
+        friendlyDbError(clientBillingError, "clients.select")
+      )}`
+    );
+  }
+
   const expenses = (expenseRows ?? []) as ExpenseRow[];
+
+  const dayTypeMap = new Map<string, DayTypeRow>(
+    ((dayTypeRows ?? []) as DayTypeRow[]).map(
+      (dt): [string, DayTypeRow] => [dt.id, dt]
+    )
+  );
+  const dayRowsByTrip = new Map<string, TripDayRow[]>();
+  for (const row of (dayRows ?? []) as TripDayRow[]) {
+    const forTrip = dayRowsByTrip.get(row.trip_id) ?? [];
+    forTrip.push(row);
+    dayRowsByTrip.set(row.trip_id, forTrip);
+  }
+
+  const clientBilling = clientBillingRow as ClientBillingRow | null;
+  // The rate to bill per diem at, or null if this client isn't on per diem
+  // (or has no rate agreed) — narrowing on this variable, not a derived
+  // boolean, is what lets TypeScript treat it as definitely-a-number at
+  // the one place it's used below.
+  const perDiemRateCents: number | null =
+    clientBilling && clientBilling.per_diem_mode === "per_diem"
+      ? clientBilling.default_per_diem_cents
+      : null;
+  // Best-effort: a failed read here means "don't know", so it suppresses
+  // the cancellation-note warning rather than blocking the draft — no
+  // billing value depends on it, only a piece of review-time copy.
+  const anyCanceledSelected =
+    !canceledTripsError &&
+    ((canceledTripRows ?? []) as { id: string }[]).length > 0;
 
   const lines: LineInsert[] = [];
   let sortOrder = 0;
   let skippedTravelDays = false;
+  const warnings: string[] = [];
 
   for (const trip of trips) {
-    if (Number(trip.day_count) > 0) {
-      lines.push({
-        account_id: account.id,
-        invoice_id: invoiceId,
-        line_type: "flight_day",
-        description: `Flight days — ${trip.starts_on} to ${trip.ends_on}`,
-        quantity: trip.day_count,
-        unit_amount_cents: trip.day_rate_cents,
-        taxable: true,
-        trip_id: trip.id,
-        sort_order: sortOrder++,
-      });
-    }
-    if (Number(trip.travel_day_count) > 0) {
-      // A travel day with no rate on the trip has nothing to price it
-      // with — dropped rather than billed at $0, and reported in the
-      // warning so the pilot notices instead of the trip silently
-      // undercharging.
-      if (trip.travel_day_rate_cents !== null) {
-        lines.push({
+    const tripDayRows = dayRowsByTrip.get(trip.id) ?? [];
+
+    if (tripDayRows.length > 0) {
+      // ---------------------------------------------------------------
+      // DAY-ROW PATH. Group BILLABLE day rows by (day_type_id, rate_cents)
+      // — rate_cents is the SNAPSHOT taken at capture, never re-resolved
+      // from day_types.default_rate_cents or client_rates here (the
+      // trip_days migration's comment explains why: re-resolving would
+      // restate work already flown).
+      // ---------------------------------------------------------------
+      const groups = new Map<
+        string,
+        { dayTypeId: string; rateCents: number; dayOns: string[]; quantitySum: number }
+      >();
+      const unpriced = new Map<string, number>(); // day type label -> count
+
+      for (const row of tripDayRows) {
+        const dayType = dayTypeMap.get(row.day_type_id);
+        // F5: a non-billable day type (e.g. an 'off' day) is filtered out
+        // HERE, before the zero-rate check below ever runs — an off day
+        // is part of the trip's shape, never a line, and (per the trips
+        // grid) sends rate_cents=0 by design, not by mistake. That
+        // ordering is what keeps a deliberate non-billable zero from ever
+        // reaching the "had no rate set" warning meant for a genuine
+        // billable-day pricing gap.
+        if (!dayType || !dayType.billable) continue;
+
+        const rateCents = Number(row.rate_cents);
+        if (rateCents === 0) {
+          // F5: only reached for a BILLABLE day type now — a billable day
+          // with no rate is a real gap in the trip's setup, worth the
+          // pilot's attention. Skipped the same way the scalar path below
+          // skips a travel day with no rate rather than billing $0.
+          unpriced.set(dayType.label, (unpriced.get(dayType.label) ?? 0) + 1);
+          continue;
+        }
+
+        const key = `${row.day_type_id}::${rateCents}`;
+        const group = groups.get(key) ?? {
+          dayTypeId: row.day_type_id,
+          rateCents,
+          dayOns: [],
+          quantitySum: 0,
+        };
+        group.dayOns.push(row.day_on);
+        // F1: sum the rows' OWN quantity (0.1-1.0 each, a half day is a
+        // shipped feature) rather than counting rows — a group of two
+        // rows can be 2.0 days or 1.3, and counting rows always says 2.
+        group.quantitySum += Number(row.quantity);
+        groups.set(key, group);
+      }
+
+      for (const [label, count] of unpriced) {
+        // Not `${label} day(s)` — the seeded labels already end in "day"
+        // ("Flight day", "Travel day", ...), which would read "flight day
+        // day(s)". A day type's own label can't be assumed to include the
+        // word "day" at all (a tenant can rename it), so it's named
+        // explicitly instead of concatenated into a plural.
+        warnings.push(
+          `${trip.starts_on} to ${trip.ends_on}: ${count} day(s) of type "${label}" had no rate set and weren't billed.`
+        );
+      }
+
+      const tripDayLines: LineInsert[] = [];
+      for (const group of groups.values()) {
+        const dayType = dayTypeMap.get(group.dayTypeId)!;
+        // F1: round the summed quantity to invoice_lines.quantity's
+        // numeric(6,2) scale — a deliberate guard against float drift,
+        // not a fudge (see roundQuantity's own comment) — and never emit
+        // a line for a group whose summed quantity rounds to zero. Every
+        // row's own quantity is checked > 0 at the database, so this can
+        // only trip on a genuine float artifact, never on real data; it
+        // exists so that artifact fails silently-safe (no line) instead
+        // of reaching invoice_lines' `quantity > 0` CHECK as a raw 23514.
+        const qty = roundQuantity(group.quantitySum);
+        if (qty <= 0) continue;
+
+        const sortedDays = [...group.dayOns].sort();
+        tripDayLines.push({
           account_id: account.id,
           invoice_id: invoiceId,
-          line_type: "travel_day",
-          description: `Travel days — ${trip.starts_on} to ${trip.ends_on}`,
-          quantity: trip.travel_day_count,
-          unit_amount_cents: trip.travel_day_rate_cents,
+          line_type: dayType.invoice_line_type,
+          // F3: min→max always read as a span, so flight days on the
+          // 1st/3rd/5th and travel days on the 2nd/4th produced two
+          // lines both reading "1st to 5th" — an overlap that looks like
+          // double-billing to a client's AP department. Contiguous dates
+          // still get the span form (readable, and matches the fixed
+          // flight_day/travel_day lines' own style); non-contiguous dates
+          // are listed out instead. formatDate/formatDateRange
+          // (lib/format.ts) are the one date format this file uses
+          // anywhere a pilot or client reads it — no second one invented
+          // here.
+          description: `${dayType.label}s — ${describeDayDates(sortedDays)}`,
+          quantity: qty,
+          unit_amount_cents: group.rateCents,
           taxable: true,
           trip_id: trip.id,
           sort_order: sortOrder++,
         });
-      } else {
-        skippedTravelDays = true;
+      }
+
+      // Contract minimum — day-row path ONLY. A trip with no day rows
+      // never reaches this branch, so minimum_days can never change what
+      // a scalar-path trip bills.
+      if (clientBilling?.minimum_days != null) {
+        const minDays = Number(clientBilling.minimum_days);
+        if (tripDayLines.length === 0) {
+          warnings.push(
+            `${trip.starts_on} to ${trip.ends_on}: this client has a ${formatMinDays(minDays)}-day contract minimum, but the trip has no billable day line to apply it to.`
+          );
+        } else {
+          const totalBillableQty = roundQuantity(
+            tripDayLines.reduce((sum, line) => sum + Number(line.quantity ?? 0), 0)
+          );
+          if (totalBillableQty < minDays) {
+            // F2: the shortfall used to be folded into an existing day
+            // line's quantity ("Flight days — Mar 1 to Mar 1" at quantity
+            // 2 for a 1-day trip) — a one-day range billing two days is
+            // exactly what a client's AP department flags as
+            // double-billing. It's now its own line instead, so the day
+            // lines keep describing only the days actually worked.
+            //
+            // RATE CHOICE (documented here because there is no other
+            // place the pilot can see it): priced at the HIGHEST
+            // unit_amount_cents among this trip's own day lines — not an
+            // average, and not day_types.default_rate_cents, since the
+            // pilot may have overridden a rate on this specific trip.
+            // Billing the shortfall at the trip's most valuable day rate
+            // means the contract minimum can never pay the pilot LESS
+            // than the day it's topping off would have. Ties (two day
+            // types at the same rate) go to whichever already has more
+            // days on this trip, purely for a reproducible pick — there
+            // is no meaningful difference between the two once rates tie.
+            let bestRateLine = tripDayLines[0]!;
+            for (const line of tripDayLines) {
+              if (
+                line.unit_amount_cents > bestRateLine.unit_amount_cents ||
+                (line.unit_amount_cents === bestRateLine.unit_amount_cents &&
+                  Number(line.quantity ?? 0) > Number(bestRateLine.quantity ?? 0))
+              ) {
+                bestRateLine = line;
+              }
+            }
+            const shortfall = roundQuantity(minDays - totalBillableQty);
+            if (shortfall > 0) {
+              const worked = formatMinDays(totalBillableQty);
+              tripDayLines.push({
+                account_id: account.id,
+                invoice_id: invoiceId,
+                line_type: "other",
+                description: `Contract minimum — ${formatMinDays(minDays)}-day minimum, ${worked} ${
+                  totalBillableQty === 1 ? "day" : "days"
+                } worked`,
+                quantity: shortfall,
+                unit_amount_cents: bestRateLine.unit_amount_cents,
+                taxable: true,
+                trip_id: trip.id,
+                sort_order: sortOrder++,
+              });
+            }
+          }
+        }
+      }
+
+      lines.push(...tripDayLines);
+    } else {
+      // ---------------------------------------------------------------
+      // SCALAR PATH — byte-for-byte the pre-Phase-9 logic. Left untouched
+      // so a trip with zero trip_days rows bills exactly as it did before
+      // this change, with no minimum-days or other new behavior applied.
+      // ---------------------------------------------------------------
+      if (Number(trip.day_count) > 0) {
+        lines.push({
+          account_id: account.id,
+          invoice_id: invoiceId,
+          line_type: "flight_day",
+          description: `Flight days — ${trip.starts_on} to ${trip.ends_on}`,
+          quantity: trip.day_count,
+          unit_amount_cents: trip.day_rate_cents,
+          taxable: true,
+          trip_id: trip.id,
+          sort_order: sortOrder++,
+        });
+      }
+      if (Number(trip.travel_day_count) > 0) {
+        // A travel day with no rate on the trip has nothing to price it
+        // with — dropped rather than billed at $0, and reported in the
+        // warning so the pilot notices instead of the trip silently
+        // undercharging.
+        if (trip.travel_day_rate_cents !== null) {
+          lines.push({
+            account_id: account.id,
+            invoice_id: invoiceId,
+            line_type: "travel_day",
+            description: `Travel days — ${trip.starts_on} to ${trip.ends_on}`,
+            quantity: trip.travel_day_count,
+            unit_amount_cents: trip.travel_day_rate_cents,
+            taxable: true,
+            trip_id: trip.id,
+            sort_order: sortOrder++,
+          });
+        } else {
+          skippedTravelDays = true;
+        }
       }
     }
+
+    // Per diem. Gated on the trip HAVING day rows, regardless of which
+    // branch above ran — a trip with no day rows has no
+    // counts_for_per_diem count to draw on, so it gets a warning, never a
+    // line guessed from day_count.
+    if (perDiemRateCents !== null) {
+      if (tripDayRows.length > 0) {
+        const perDiemCount = tripDayRows.filter(
+          (row) => dayTypeMap.get(row.day_type_id)?.counts_for_per_diem === true
+        ).length;
+        if (perDiemCount > 0) {
+          lines.push({
+            account_id: account.id,
+            invoice_id: invoiceId,
+            line_type: "per_diem",
+            description: `Per diem — ${trip.starts_on} to ${trip.ends_on}`,
+            quantity: perDiemCount,
+            unit_amount_cents: perDiemRateCents,
+            // C10: a straight expense reimbursement is commonly not
+            // taxable — see the migration's invoice_lines.taxable comment.
+            taxable: false,
+            trip_id: trip.id,
+            sort_order: sortOrder++,
+          });
+        } else {
+          // F4: this used to fall through silently — the client is on
+          // per diem, the trip HAS day rows to count, and yet nothing
+          // billed and nothing was said. That's exactly the case worth a
+          // warning: either every day type on this trip has
+          // counts_for_per_diem=false (unlikely after the migration's fix
+          // to seed 'off' as true — an off day is the paradigm per-diem
+          // day, the pilot is away and eating whether or not they fly —
+          // but a tenant can still turn it off on a custom day type), or
+          // this trip is made up entirely of day types that don't count.
+          warnings.push(
+            `${trip.starts_on} to ${trip.ends_on}: this client is on per diem, but none of this trip's day types count toward it, so no per-diem line was added.`
+          );
+        }
+      } else {
+        warnings.push(
+          `${trip.starts_on} to ${trip.ends_on}: this client is on per diem, but the trip has no day rows to count, so no per-diem line was added.`
+        );
+      }
+    }
+  }
+
+  // Cancellation — a note, once, if the client has one on file and any
+  // SELECTED trip is canceled. Never a computed fee: see
+  // pilot.clients.cancellation_policy_note's comment in the Phase 9
+  // migration on why an unenforceable percentage is worse than recording
+  // the agreement and letting the pilot add the manual cancellation_fee
+  // line themselves.
+  if (clientBilling?.cancellation_policy_note && anyCanceledSelected) {
+    warnings.push(
+      `This client has a cancellation policy on file: "${clientBilling.cancellation_policy_note}". One or more selected trips is canceled — add a cancellation_fee line by hand if it applies.`
+    );
   }
 
   for (const expense of expenses) {
@@ -307,9 +744,16 @@ export async function createInvoiceDraft(
       // There is no cross-table transaction available from app code here
       // (no drafting RPC exists in the schema to wrap both writes), so
       // this is the best correctness this call site can offer.
+      //
+      // F6: linesDbError (not friendlyDbError) — the billing_state filter
+      // above can legitimately let a trip through that's already
+      // committed to someone else's draft invoice (see linesDbError's own
+      // comment), and when that happens this is the error the double-bill
+      // guard raises. linesDbError turns it into a sentence that names
+      // the actual problem instead of a generic "couldn't save".
       redirect(
         `/invoices/${invoiceId}?warning=${encodeURIComponent(
-          `Created the draft, but couldn't add the trip lines: ${friendlyDbError(
+          `Created the draft, but couldn't add the trip lines: ${linesDbError(
             linesError,
             "invoice_lines.insert"
           )}`
@@ -321,13 +765,26 @@ export async function createInvoiceDraft(
   revalidatePath("/invoices");
   revalidatePath("/trips");
   if (skippedTravelDays) {
+    warnings.push(
+      "One or more trips had travel days but no travel day rate set, so those days weren't billed. Add a rate on the trip and re-draft, or add a line by hand."
+    );
+  }
+  if (warnings.length > 0) {
+    // Extends the existing single-`warning`-param mechanism rather than
+    // inventing a second one — every distinct thing skipped this draft
+    // (unpriced day rows, a per-diem/minimum that couldn't be applied, a
+    // cancellation note, a legacy unpriced travel day) collapses into one
+    // string for the invoice page's single warning banner.
     redirect(
-      `/invoices/${invoiceId}?warning=${encodeURIComponent(
-        "One or more trips had travel days but no travel day rate set, so those days weren't billed. Add a rate on the trip and re-draft, or add a line by hand."
-      )}`
+      `/invoices/${invoiceId}?warning=${encodeURIComponent(warnings.join(" "))}`
     );
   }
   redirect(`/invoices/${invoiceId}`);
+}
+
+/** "2" for a whole number, "2.5" for a fractional one — minimum_days is numeric(5,1). */
+function formatMinDays(days: number): string {
+  return Number.isInteger(days) ? String(days) : days.toFixed(1);
 }
 
 function categoryLabel(category: string): string {
@@ -550,8 +1007,11 @@ export async function addInvoiceLine(
     trip_id: tripId,
   };
 
+  // F6: linesDbError, not friendlyDbError — this line can carry a
+  // tripId, so it goes through the same invoice_lines_validate_trip
+  // double-bill guard createInvoiceDraft's batched insert does.
   const { error } = await supabase.from("invoice_lines").insert(payload as never);
-  if (error) return { error: friendlyDbError(error, "invoice_lines.insert") };
+  if (error) return { error: linesDbError(error, "invoice_lines.insert") };
 
   revalidatePath(`/invoices/${invoiceId}`);
   return { error: null };
@@ -599,8 +1059,11 @@ export async function addRebillExpenseLine(
     expense_treatment: "rebill",
   };
 
+  // F6: linesDbError — this line resolves its trip via expense_id, so it
+  // hits the same double-bill guard (the expense's trip could already be
+  // committed to another live invoice).
   const { error } = await supabase.from("invoice_lines").insert(payload as never);
-  if (error) return { error: friendlyDbError(error, "invoice_lines.insert") };
+  if (error) return { error: linesDbError(error, "invoice_lines.insert") };
 
   revalidatePath(`/invoices/${invoiceId}`);
   return { error: null };

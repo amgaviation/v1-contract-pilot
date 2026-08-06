@@ -7,9 +7,19 @@ import { requireAccount } from "@/lib/supabase/account";
 import { parseDollarsToCents, parseTenth } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import type { Database } from "@/lib/supabase/database.types";
+import {
+  enumerateDates,
+  dayTypeFieldName,
+  rateFieldName,
+  quantityFieldName,
+  notesFieldName,
+  parseQuantity,
+} from "./day-utils";
 
 type TripInsert = Database["pilot"]["Tables"]["trips"]["Insert"];
 type TripUpdate = Database["pilot"]["Tables"]["trips"]["Update"];
+type TripDayInsert = Database["pilot"]["Tables"]["trip_days"]["Insert"];
+type TripDayUpdate = Database["pilot"]["Tables"]["trip_days"]["Update"];
 /**
  * What the form produces: every writable column except account_id, which
  * comes from the session. Typed off Insert rather than Update so the
@@ -29,8 +39,26 @@ export type TripFormState = {
   error: string | null;
   saved?: boolean;
   values?: Record<string, string>;
+  /**
+   * How many trip_days rows were removed because updateTrip narrowed
+   * starts_on/ends_on out from under them. See the pruning step below —
+   * removing billable days silently is not acceptable, so this rides
+   * along on the same success state trip-form.tsx already renders.
+   */
+  daysRemoved?: number;
 };
 export type LegFormState = { error: string | null };
+/**
+ * `fieldErrors` is keyed by date ("2026-03-04") and holds every row's
+ * validation problem at once — F2's fix for a 12-row grid that used to be
+ * 12 round trips, one rejected row at a time. `error` stays for problems
+ * that aren't about any one row (a missing trip id, a frozen trip).
+ */
+export type TripDaysFormState = {
+  error: string | null;
+  saved?: boolean;
+  fieldErrors?: Record<string, string>;
+};
 
 const TRIP_KINDS = [
   "owner_trip",
@@ -43,15 +71,6 @@ const TRIP_KINDS = [
 ] as const;
 
 const TRIP_STATUSES = ["scheduled", "in_progress", "completed", "canceled"] as const;
-
-/**
- * `written_off` is deliberately NOT here. The migration describes it as
- * set by hand and never overwritten by the invoice sync, so a written-off
- * trip has not necessarily been invoiced at all — telling its owner "this
- * trip has been invoiced" and refusing to delete it would be false on both
- * counts.
- */
-const INVOICED_STATES = ["invoiced", "paid"] as const;
 
 /** Fields whose submitted text is echoed back on a failed submit. */
 const TRIP_FIELDS = [
@@ -123,6 +142,47 @@ function oneOf<T extends readonly string[]>(
 function icao(formData: FormData, key: string): string | null {
   const value = String(formData.get(key) ?? "").trim().toUpperCase();
   return value === "" ? null : value;
+}
+
+/**
+ * friendlyDbError scrubs every 23514 down to "Some of those values aren't
+ * valid together" — right for most check violations, but the two freeze
+ * guards' own messages (pilot.trip_days_protect_billed and
+ * pilot.trips_protect_billed_facts, both in
+ * 20260807020000_phase9_review_fixes.sql) ARE the sentence a pilot needs
+ * to read, and the task is explicit that they must reach them unedited.
+ *
+ * F8: those triggers were rewritten to key on whether a live invoice line
+ * references the trip rather than on the cached billing_state column, and
+ * their wording changed with it — both now read "This trip is billed on
+ * %. Remove it from that invoice before changing its ...". Matching on
+ * "invoiced" stopped matching; "billed on" is what both new messages
+ * share. Used for every trip_days write AND the trips-table update in
+ * updateTrip below, since trips_protect_billed_facts fires on that
+ * statement — every other 23514 on this file still gets the generic,
+ * scrubbed message.
+ */
+function billedTripDbError(
+  error: { code?: string | null; message?: string | null } | null | undefined,
+  context: string
+): string {
+  if (error?.code === "23514" && error.message?.toLowerCase().includes("billed on")) {
+    return error.message;
+  }
+  return friendlyDbError(error, context);
+}
+
+/**
+ * The app-side precheck's own wording for "this trip is committed to a
+ * live invoice" — phrased to match the two trigger messages above
+ * (`pilot.trip_committed_invoice`'s label substituted in the same spot)
+ * so a pilot sees the same sentence whether the block happens here or at
+ * the database.
+ */
+function billedTripMessage(committedOn: string, scope: "days" | "facts"): string {
+  return scope === "days"
+    ? `This trip is billed on ${committedOn}. Remove it from that invoice before changing its days.`
+    : `This trip is billed on ${committedOn}. Remove it from that invoice before changing its dates, rates or status.`;
 }
 
 type ParsedTrip = { values: TripFields | null; error: string | null };
@@ -242,6 +302,24 @@ export async function createTrip(
   redirect(`/trips/${(data as { id: string }).id}`);
 }
 
+/**
+ * True for exactly the 23514 pilot.trips_protect_day_range raises when
+ * narrowing starts_on/ends_on would strand a trip_days row outside the
+ * new range ("Changing these dates would leave % day row(s) outside the
+ * trip. Remove those days first.") — distinguished from
+ * pilot.trip_days_validate_within_trip's per-row message ("Day % is
+ * outside the trip dates (% to %)") by the word "row(s)", which only the
+ * trips-table guard's wording contains.
+ */
+function isStrandedDayRowsError(
+  error: { code?: string | null; message?: string | null } | null | undefined
+): boolean {
+  return (
+    error?.code === "23514" &&
+    !!error.message?.toLowerCase().includes("day row(s) outside the trip")
+  );
+}
+
 export async function updateTrip(
   _prev: TripFormState,
   formData: FormData
@@ -253,35 +331,51 @@ export async function updateTrip(
 
   const supabase = await createClient();
 
-  // The invoiced-trip lock is checked BEFORE the form is parsed. The
-  // page disables the frozen fields, and a disabled input submits no
-  // value at all — parsing first would reject a locked trip with "a trip
-  // needs a start and end date", which is both wrong and baffling.
+  // The billed-trip lock is checked BEFORE the form is parsed. The page
+  // disables the frozen fields, and a disabled input submits no value at
+  // all — parsing first would reject a locked trip with "a trip needs a
+  // start and end date", which is both wrong and baffling.
   //
-  // The lock is enforced HERE, not only by the disabled
-  // controls on the page. Phase 5's triggers guard the trip's client_id
-  // once it has been billed but leave the amounts writable, so without
-  // this a tenant could rewrite day_rate_cents or day_count on a trip
-  // that has already gone out on an invoice and leave the two records
-  // disagreeing about what was flown.
-  const { data: current, error: readError } = await supabase
-    .from("trips")
-    .select("billing_state")
-    .eq("id", id)
-    .eq("account_id", account.id)
-    .maybeSingle();
+  // The lock is enforced HERE, not only by the disabled controls on the
+  // page. Phase 5's triggers guard the trip's client_id once it has been
+  // billed but leave the amounts writable, so without this a tenant
+  // could rewrite day_rate_cents or day_count on a trip that has already
+  // gone out on an invoice and leave the two records disagreeing about
+  // what was flown.
+  //
+  // F8: this used to read trips.billing_state, which the sync trigger
+  // only updates on an invoice STATUS change — so a trip sitting on a
+  // still-DRAFT invoice read 'unbilled' and stayed fully editable right
+  // through the window a pilot is most likely to be fixing it in. What
+  // actually has to gate this is whether a live invoice line references
+  // the trip, which is exactly what pilot.trip_committed_invoice answers
+  // — the same definition trips_protect_billed_facts now enforces at the
+  // database, so this precheck and that trigger can't drift apart.
+  const [{ data: current, error: readError }, { data: committedOn, error: committedError }] =
+    await Promise.all([
+      supabase.from("trips").select("id").eq("id", id).eq("account_id", account.id).maybeSingle(),
+      // `as never`: supabase-js's .rpc() resolves its args parameter to
+      // `undefined` against this hand-authored types file for any
+      // function that takes arguments — the same quirk the codebase's
+      // `.insert()`/`.update()` call sites work around the same way (see
+      // createTrip's comment above). The Args shape is still compile-time
+      // checked via the Database["pilot"]["Functions"] entry the cast
+      // target itself is defined against.
+      supabase.rpc("trip_committed_invoice", {
+        p_account_id: account.id,
+        p_trip_id: id,
+      } as never),
+    ]);
 
   if (readError) {
     return { error: friendlyDbError(readError, "trips.select") };
   }
-
-  const billingState = (current as { billing_state: string } | null)?.billing_state;
-  if (!billingState) return { error: "That trip no longer exists." };
-  if ((INVOICED_STATES as readonly string[]).includes(billingState)) {
-    return {
-      error:
-        "This trip is on an invoice, so its dates and amounts can't be changed. Correct the invoice instead.",
-    };
+  if (!current) return { error: "That trip no longer exists." };
+  if (committedError) {
+    return { error: friendlyDbError(committedError, "trip_committed_invoice") };
+  }
+  if (committedOn) {
+    return { error: billedTripMessage(committedOn, "facts") };
   }
 
   const { values, error } = parseTripForm(formData);
@@ -299,15 +393,50 @@ export async function updateTrip(
   // The account_id filter is defence in depth, not the boundary — see the
   // note in clients/actions.ts.
   const payload: TripUpdate = values;
-  const { error: updateError } = await supabase
-    .from("trips")
-    .update(payload as never)
-    .eq("id", id)
-    .eq("account_id", account.id);
+  const attemptUpdate = () =>
+    supabase
+      .from("trips")
+      .update(payload as never)
+      .eq("id", id)
+      .eq("account_id", account.id);
+
+  // F4: the old order pruned any trip_days rows outside the new date
+  // range BEFORE attempting this update, unconditionally whenever the
+  // dates changed — so a typo'd end date deleted billable rows, and if
+  // the update failed afterwards for an unrelated reason, they were gone
+  // for nothing. Reordered: attempt the update FIRST. Most date edits
+  // never strand anything and this succeeds immediately with nothing
+  // pruned. It fails only via pilot.trips_protect_day_range's specific
+  // "day row(s) outside the trip" 23514 when the new range really would
+  // strand rows — and ONLY THEN do we prune (never silently: the removed
+  // count rides back on the success state) and retry once. Any other
+  // failure — including a race where the trip got billed since the check
+  // above — reaches the pilot with nothing deleted.
+  let daysRemoved = 0;
+  let { error: updateError } = await attemptUpdate();
+
+  if (updateError && isStrandedDayRowsError(updateError)) {
+    const { error: pruneError, count: prunedCount } = await supabase
+      .from("trip_days")
+      .delete({ count: "exact" })
+      .eq("account_id", account.id)
+      .eq("trip_id", id)
+      .or(`day_on.lt.${values.starts_on},day_on.gt.${values.ends_on}`);
+
+    if (pruneError) {
+      return {
+        error: billedTripDbError(pruneError, "trip_days.prune"),
+        values: echo(formData, TRIP_FIELDS),
+      };
+    }
+    daysRemoved = prunedCount ?? 0;
+
+    ({ error: updateError } = await attemptUpdate());
+  }
 
   if (updateError) {
     return {
-      error: friendlyDbError(updateError, "trips.update"),
+      error: billedTripDbError(updateError, "trips.update"),
       values: echo(formData, TRIP_FIELDS),
     };
   }
@@ -316,7 +445,7 @@ export async function updateTrip(
   revalidatePath(`/trips/${id}`);
   // No redirect — the pilot stays on the trip to keep working on its
   // legs — so `saved` is what tells them anything happened at all.
-  return { error: null, saved: true };
+  return { error: null, saved: true, daysRemoved };
 }
 
 export async function deleteTrip(id: string): Promise<{ error: string | null }> {
@@ -448,4 +577,325 @@ export async function deleteLeg(
 
   revalidatePath(`/trips/${tripId}`);
   return { error: null };
+}
+
+// ---------------------------------------------------------------------------
+// Day grid — the whole grid is one form, saved in one round trip.
+// ---------------------------------------------------------------------------
+
+/**
+ * Saves the trip's day grid: one row per calendar day of the trip.
+ *
+ * The dates this reads are NEVER taken from the submission. day-grid.tsx
+ * names its inputs by date (`day_type:2026-08-06`, ...), but the set of
+ * dates that matters is recomputed HERE from the trip's own, freshly-read
+ * starts_on/ends_on via the same enumerateDates the form used to render
+ * them. A posted field for a date outside that recomputed list is simply
+ * never looked at — there is no field name for it to be reached through,
+ * so an out-of-range date can't reach the database no matter what a
+ * crafted POST contains.
+ */
+export async function saveTripDays(
+  _prev: TripDaysFormState,
+  formData: FormData
+): Promise<TripDaysFormState> {
+  const tripId = String(formData.get("trip_id") ?? "");
+  if (!tripId || !UUID_RE.test(tripId)) return { error: "Missing trip id." };
+
+  const { account } = await requireAccount(`/trips/${tripId}`);
+  const supabase = await createClient();
+
+  // Trip dates, the freeze check, and the account's day-type taxonomy
+  // (needed below to know which day types are billable — F2) are all
+  // independent reads, fetched together rather than as three round trips.
+  const [
+    { data: tripData, error: tripError },
+    { data: committedOn, error: committedError },
+    { data: dayTypeData, error: dayTypeError },
+  ] = await Promise.all([
+    supabase
+      .from("trips")
+      .select("starts_on, ends_on")
+      .eq("id", tripId)
+      .eq("account_id", account.id)
+      .maybeSingle(),
+    // F8: replaces a trips.billing_state check. billing_state only moves
+    // on an invoice STATUS change, so a trip sitting on a still-draft
+    // invoice read 'unbilled' and stayed editable — see updateTrip's
+    // comment on the same fix for the full reasoning. `as never`: see the
+    // matching comment on updateTrip's own rpc() call.
+    supabase.rpc("trip_committed_invoice", {
+      p_account_id: account.id,
+      p_trip_id: tripId,
+    } as never),
+    supabase.from("day_types").select("id, billable").eq("account_id", account.id),
+  ]);
+
+  if (tripError) return { error: friendlyDbError(tripError, "trips.select") };
+  const trip = tripData as { starts_on: string; ends_on: string } | null;
+  if (!trip) return { error: "That trip no longer exists." };
+
+  if (committedError) {
+    return { error: friendlyDbError(committedError, "trip_committed_invoice") };
+  }
+  // Checked here, not just by rendering the grid read-only: a page left
+  // open across an invoice being sent must not be able to post a write
+  // the database would reject anyway with a worse-worded error.
+  if (committedOn) {
+    return { error: billedTripMessage(committedOn, "days") };
+  }
+  if (dayTypeError) {
+    return { error: friendlyDbError(dayTypeError, "day_types.select") };
+  }
+
+  const billableByType = new Map(
+    ((dayTypeData ?? []) as { id: string; billable: boolean }[]).map((t): [string, boolean] => [
+      t.id,
+      t.billable,
+    ])
+  );
+
+  const dates = enumerateDates(trip.starts_on, trip.ends_on);
+
+  // A fully-populated day row, unlike TripDayInsert — whose rate_cents/
+  // quantity/notes are optional at the type level (the columns have a DB
+  // default / are nullable) even though this action always supplies all
+  // three. Keeping `submitted` on this stricter type is what lets the
+  // diff below compare `row.rate_cents`/`row.quantity`/`row.notes`
+  // without TS widening them to include `undefined`.
+  type SubmittedDay = {
+    account_id: string;
+    trip_id: string;
+    day_on: string;
+    day_type_id: string;
+    rate_cents: number;
+    quantity: number;
+    notes: string | null;
+  };
+
+  // A date whose posted day type is blank means "no row for this day" —
+  // collected to delete. Everything else is a candidate write, diffed
+  // against what's already saved below.
+  const submitted: SubmittedDay[] = [];
+  const clearDates: string[] = [];
+  // F2: every row's problems are collected here, keyed by date, instead
+  // of returning on the first bad row — a 12-row grid used to be up to 12
+  // round trips, one rejected row at a time.
+  const fieldErrors: Record<string, string> = {};
+
+  for (const date of dates) {
+    const dayTypeId = String(formData.get(dayTypeFieldName(date)) ?? "").trim();
+    if (!dayTypeId) {
+      clearDates.push(date);
+      continue;
+    }
+    if (!UUID_RE.test(dayTypeId)) {
+      fieldErrors[date] = "That day type isn't valid.";
+      continue;
+    }
+
+    // F2: a NON-BILLABLE day type (e.g. the seeded "Off day") never
+    // demands a rate — the grid hides the field and posts 0 for it, and
+    // this ignores whatever a crafted POST sent instead, forcing 0
+    // regardless. A day type this trip's account doesn't recognize is
+    // treated as billable (fail toward requiring a rate, not away from
+    // it) — the FK will reject a genuinely foreign id at write time.
+    const billable = billableByType.get(dayTypeId) ?? true;
+    const issues: string[] = [];
+    let rateCents = 0;
+
+    if (billable) {
+      const parsedRate = parseDollarsToCents(String(formData.get(rateFieldName(date)) ?? ""));
+      if (parsedRate === undefined) {
+        issues.push("The rate must be an amount like 1500 or 1500.00.");
+      } else if (parsedRate === null) {
+        issues.push("Enter a rate — use 0 if this day doesn't bill.");
+      } else if (parsedRate < 0) {
+        issues.push("The rate can't be negative.");
+      } else {
+        rateCents = parsedRate;
+      }
+    }
+
+    // F1: reject anything outside 0.1–1.0, or carrying a second decimal
+    // place — see parseQuantity/parseTenth for why that has to be
+    // checked here rather than left to Postgres.
+    const quantity = parseQuantity(String(formData.get(quantityFieldName(date)) ?? ""));
+    if (quantity === undefined) {
+      issues.push(
+        "Quantity must be a fraction of a day between 0.1 and 1.0, with at most one decimal place, like 0.5."
+      );
+    }
+
+    if (issues.length > 0) {
+      fieldErrors[date] = issues.join(" ");
+      continue;
+    }
+
+    submitted.push({
+      account_id: account.id,
+      trip_id: tripId,
+      day_on: date,
+      day_type_id: dayTypeId,
+      rate_cents: rateCents,
+      quantity: quantity as number,
+      // optional() already returns null (never undefined) for a blank
+      // field, so an update payload built from this always carries an
+      // explicit `notes: null` rather than omitting the key — omitting it
+      // would leave a stale note in place on a row the pilot just cleared.
+      notes: optional(formData, notesFieldName(date)),
+    });
+  }
+
+  // Nothing is written until every row is clean — a save that silently
+  // wrote the 10 valid rows and reported only the 2 bad ones would leave
+  // the grid in a state the pilot didn't actually ask for.
+  if (Object.keys(fieldErrors).length > 0) {
+    return { error: null, fieldErrors };
+  }
+
+  // Read what's already saved so a save only touches rows that actually
+  // changed.
+  //
+  // WHY NOT ONE .upsert(): PostgREST compiles an upsert's ON CONFLICT
+  // into `DO UPDATE SET <every payload column> = excluded.<col>`,
+  // including account_id and trip_id — and Postgres checks UPDATE
+  // privilege on every column named in that SET list even when the
+  // incoming value is identical to the stored one. The Phase 9 migration
+  // grants `authenticated` update on only (day_on, day_type_id,
+  // rate_cents, quantity, notes); account_id/trip_id are deliberately
+  // withheld (account_id is the tenancy key and must never be
+  // tenant-updatable). So a single upsert 42501s on the conflict path —
+  // i.e. on every date that already has a row, which is every save after
+  // the first. Diffing into three targeted writes, each naming only
+  // granted columns, is the fix, and it has a second benefit: an unedited
+  // row is written to by nothing, so it keeps its created_at and a no-op
+  // save is actually a no-op.
+  const { data: existingData, error: existingError } = await supabase
+    .from("trip_days")
+    .select("day_on, day_type_id, rate_cents, quantity, notes")
+    .eq("account_id", account.id)
+    .eq("trip_id", tripId);
+
+  if (existingError) {
+    return { error: friendlyDbError(existingError, "trip_days.select") };
+  }
+
+  type ExistingDay = {
+    day_on: string;
+    day_type_id: string;
+    rate_cents: number;
+    quantity: number;
+    notes: string | null;
+  };
+  const existingByDate = new Map(
+    ((existingData ?? []) as ExistingDay[]).map((row) => [row.day_on, row])
+  );
+
+  const toInsert: TripDayInsert[] = [];
+  const toUpdate: {
+    date: string;
+    day_type_id: string;
+    rate_cents: number;
+    quantity: number;
+    notes: string | null;
+  }[] = [];
+
+  for (const row of submitted) {
+    const existing = existingByDate.get(row.day_on);
+    if (!existing) {
+      toInsert.push(row);
+      continue;
+    }
+    if (
+      existing.day_type_id !== row.day_type_id ||
+      existing.rate_cents !== row.rate_cents ||
+      Number(existing.quantity) !== row.quantity ||
+      existing.notes !== row.notes
+    ) {
+      toUpdate.push({
+        date: row.day_on,
+        day_type_id: row.day_type_id,
+        rate_cents: row.rate_cents,
+        quantity: row.quantity,
+        notes: row.notes,
+      });
+    }
+  }
+
+  // toDelete: run first, same as before — dates the pilot cleared. A zero
+  // count is expected and fine, most cleared dates never had a row; only
+  // an error, never a silent no-op, is what this checks for.
+  if (clearDates.length > 0) {
+    const { error: deleteError } = await supabase
+      .from("trip_days")
+      .delete({ count: "exact" })
+      .eq("account_id", account.id)
+      .eq("trip_id", tripId)
+      .in("day_on", clearDates);
+
+    if (deleteError) {
+      return { error: billedTripDbError(deleteError, "trip_days.delete") };
+    }
+  }
+
+  // toInsert: one batched insert, not a round trip per date. Never
+  // restructured as delete-all-then-insert-all — that would leave a
+  // window where a failed insert has already destroyed rows nobody
+  // asked to change, and it would churn created_at on every row.
+  if (toInsert.length > 0) {
+    const { error: insertError, count: insertCount } = await supabase
+      .from("trip_days")
+      .insert(toInsert as never, { count: "exact" });
+
+    if (insertError) {
+      return { error: billedTripDbError(insertError, "trip_days.insert") };
+    }
+    // PostgREST returns 200 with no error for a write that matched/
+    // affected zero rows — an insert that silently landed fewer rows
+    // than submitted must not read back as a clean save.
+    if (insertCount !== toInsert.length) {
+      return { error: "Some day rows didn't save. Refresh and try again." };
+    }
+  }
+
+  // toUpdate: only the granted columns (day_type_id, rate_cents,
+  // quantity, notes) — never account_id or trip_id — keyed on the three
+  // columns that identify the row. Run concurrently: a trip is bounded by
+  // its own date range, so this is at most a few dozen statements, not a
+  // scan.
+  if (toUpdate.length > 0) {
+    const results = await Promise.all(
+      toUpdate.map((row) => {
+        const payload: TripDayUpdate = {
+          day_type_id: row.day_type_id,
+          rate_cents: row.rate_cents,
+          quantity: row.quantity,
+          notes: row.notes,
+        };
+        return supabase
+          .from("trip_days")
+          .update(payload as never, { count: "exact" })
+          .eq("account_id", account.id)
+          .eq("trip_id", tripId)
+          .eq("day_on", row.date);
+      })
+    );
+
+    for (const result of results) {
+      if (result.error) {
+        return { error: billedTripDbError(result.error, "trip_days.update") };
+      }
+      // Each statement is keyed to exactly one existing row (it came
+      // from existingByDate), so its expected count is exactly 1 — not
+      // "at least 1" or "any" — and anything else means that row didn't
+      // actually get the pilot's edit.
+      if (result.count !== 1) {
+        return { error: "Some day rows didn't save. Refresh and try again." };
+      }
+    }
+  }
+
+  revalidatePath(`/trips/${tripId}`);
+  return { error: null, saved: true };
 }

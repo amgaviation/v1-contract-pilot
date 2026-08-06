@@ -12,7 +12,7 @@ export default async function NewInvoicePage({
 }: {
   searchParams: Promise<{ client?: string }>;
 }) {
-  await requireAccount("/invoices/new");
+  const { account } = await requireAccount("/invoices/new");
   const { client: clientId } = await searchParams;
 
   const supabase = await createClient();
@@ -60,9 +60,11 @@ export default async function NewInvoicePage({
     // trips" — that's indistinguishable from an empty result otherwise,
     // and it would let a pilot draft an invoice missing trips that
     // actually exist.
-    const firstError = tripsError ?? expensesError;
-    if (firstError) {
-      tripsErrorMessage = friendlyDbError(firstError, "invoices.new.trips");
+    if (tripsError || expensesError) {
+      tripsErrorMessage = friendlyDbError(
+        tripsError ?? expensesError,
+        "invoices.new.trips"
+      );
     }
 
     type RawTrip = {
@@ -76,6 +78,8 @@ export default async function NewInvoicePage({
       travel_day_rate_cents: number | null;
     };
     const rawTrips = (tripData ?? []) as RawTrip[];
+    const tripIds = rawTrips.map((trip) => trip.id);
+
     const rebillByTrip = new Map<string, number>();
     for (const expense of (expenseData ?? []) as {
       id: string;
@@ -89,17 +93,126 @@ export default async function NewInvoicePage({
       );
     }
 
+    // This picker's estimate must resolve day rows vs. the legacy scalar
+    // day_count/day_rate_cents pair with the SAME precedence
+    // createInvoiceDraft (../actions.ts) uses to actually build the draft
+    // — a trip with trip_days rows is priced from THEM, never from the
+    // scalar pair. Without this, a pilot who fills in a trip's day grid
+    // (a half day, a different rate on one day, a day type the scalar
+    // pair knows nothing about) sees one number here and gets billed a
+    // different one on the draft it produces — the exact bug this fixes.
+    type TripDayRow = {
+      trip_id: string;
+      day_type_id: string;
+      rate_cents: number;
+      quantity: number;
+    };
+    type DayTypeRow = { id: string; billable: boolean };
+    const [
+      { data: dayRowData, error: dayRowsError },
+      { data: dayTypeData, error: dayTypesError },
+      committedResults,
+    ] = await Promise.all([
+      tripIds.length > 0
+        ? supabase
+            .from("trip_days")
+            .select("trip_id, day_type_id, rate_cents, quantity")
+            .in("trip_id", tripIds)
+        : Promise.resolve({ data: [] as TripDayRow[], error: null }),
+      supabase.from("day_types").select("id, billable"),
+      // The freeze is keyed on whether a LIVE invoice line references the
+      // trip (pilot.trip_committed_invoice), not on billing_state — a
+      // trip can be sitting on someone ELSE's draft invoice and still
+      // read 'unbilled' here (billing_state only advances on an invoice
+      // STATUS change, never on a line being added to a draft). Checked
+      // per trip, same RPC trips/actions.ts and trips/[id]/page.tsx
+      // already call. Best-effort: a failed check here doesn't block the
+      // picker (see committedByTrip below) — the batched insert's own
+      // double-bill guard is still the real enforcement either way.
+      Promise.all(
+        tripIds.map((id) =>
+          // `as never`: same reason every write in this codebase casts
+          // its payload — the hand-authored Database type doesn't resolve
+          // cleanly through this client's generics, this time for .rpc()'s
+          // args rather than .insert()'s payload. Return value is cast at
+          // the boundary below (committedByTrip), same convention.
+          supabase.rpc("trip_committed_invoice", {
+            p_account_id: account.id,
+            p_trip_id: id,
+          } as never)
+        )
+      ),
+    ]);
+
+    // Same reasoning as createInvoiceDraft's own dayRowsError/
+    // dayTypesError handling: guessing "no day rows, fall back to scalar"
+    // on a fetch failure could show (and then draft) a lower number than
+    // the trip actually has day rows for. Fail loud instead, only when
+    // the trips/expenses fetch itself didn't already set the message.
+    if (!tripsErrorMessage && (dayRowsError || dayTypesError)) {
+      tripsErrorMessage = friendlyDbError(
+        dayRowsError ?? dayTypesError,
+        "invoices.new.trip_days"
+      );
+    }
+
+    const dayTypeBillable = new Map<string, boolean>(
+      ((dayTypeData ?? []) as DayTypeRow[]).map((dt) => [dt.id, dt.billable])
+    );
+    const dayRowsByTrip = new Map<string, TripDayRow[]>();
+    for (const row of (dayRowData ?? []) as TripDayRow[]) {
+      const forTrip = dayRowsByTrip.get(row.trip_id) ?? [];
+      forTrip.push(row);
+      dayRowsByTrip.set(row.trip_id, forTrip);
+    }
+    // Best-effort, per trip: an individual RPC failure reads as "not
+    // known to be committed elsewhere" rather than blocking the whole
+    // picker — see the Promise.all comment above.
+    const committedByTrip = new Map<string, string | null>(
+      tripIds.map((id, index) => [
+        id,
+        (committedResults[index]?.data as string | null | undefined) ?? null,
+      ])
+    );
+
     trips = rawTrips.map((trip) => {
+      const tripDayRows = dayRowsByTrip.get(trip.id) ?? [];
+      const hasDayRows = tripDayRows.length > 0;
+
+      // Sum of quantity × the row's own snapshotted rate, billable day
+      // types only — the same rows and the same filter createInvoiceDraft
+      // uses, just not grouped by (day_type, rate) since this only needs
+      // a total. Rounded once at the end, not per row, the same way
+      // Postgres rounds invoice_lines.amount_cents
+      // (`round(quantity * unit_amount_cents)`), rather than compounding
+      // per-row rounding noise.
+      const dayRowValueCents = Math.round(
+        tripDayRows
+          .filter((row) => dayTypeBillable.get(row.day_type_id) === true)
+          .reduce((sum, row) => sum + Number(row.quantity) * Number(row.rate_cents), 0)
+      );
+
       const flightValue = Math.round(trip.day_rate_cents * Number(trip.day_count));
       const travelValue = Math.round(
         (trip.travel_day_rate_cents ?? 0) * Number(trip.travel_day_count)
       );
+
       return {
         ...trip,
         rebillable_expense_cents: rebillByTrip.get(trip.id) ?? 0,
         estimated_value_cents:
-          flightValue + travelValue + (rebillByTrip.get(trip.id) ?? 0),
-        missing_travel_rate: trip.travel_day_count > 0 && trip.travel_day_rate_cents === null,
+          (hasDayRows ? dayRowValueCents : flightValue + travelValue) +
+          (rebillByTrip.get(trip.id) ?? 0),
+        // The scalar travel-rate gap only means anything for a trip
+        // actually billing off the scalar pair — once day rows exist
+        // they supersede it entirely, the same way createInvoiceDraft
+        // never looks at travel_day_rate_cents for a day-row trip.
+        missing_travel_rate:
+          !hasDayRows &&
+          trip.travel_day_count > 0 &&
+          trip.travel_day_rate_cents === null,
+        has_day_rows: hasDayRows,
+        committed_invoice_label: committedByTrip.get(trip.id) ?? null,
       };
     });
   }

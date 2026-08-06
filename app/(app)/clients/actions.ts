@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
-import { parseDollarsToCents } from "@/lib/format";
+import { parseDollarsToCents, parseTenth } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -46,6 +46,9 @@ const CLIENT_FIELDS = [
   "default_travel_day_rate",
   "payment_terms_days",
   "default_expense_treatment",
+  "per_diem_mode",
+  "minimum_days",
+  "cancellation_policy_note",
   "w9_status",
   "notes",
 ] as const;
@@ -58,6 +61,7 @@ function echo(formData: FormData) {
 
 const EXPENSE_TREATMENTS = ["rebill", "deduct", "unassigned"] as const;
 const W9_STATUSES = ["not_requested", "requested", "on_file"] as const;
+const PER_DIEM_MODES = ["per_diem", "receipts"] as const;
 
 /** Trims, and turns an empty string into NULL rather than storing "". */
 function optional(formData: FormData, key: string): string | null {
@@ -124,6 +128,26 @@ function parseClientForm(formData: FormData): ParsedClient {
     return { ...empty, error: "Payment terms must be a whole number of days." };
   }
 
+  // numeric(5,1): one decimal place, and Postgres would silently round a
+  // second one rather than refuse it — see parseTenth. Blank is a valid
+  // "no trip minimum agreed", not zero. Bounded at 999 to match the
+  // database CHECK added by 20260807020000 — see that migration's
+  // section 7 for why the bound has to live in both places.
+  //
+  // F4: "trip minimum," not "contract minimum" — see client-form.tsx's
+  // comment on the same field for why the old name was the ambiguous
+  // reading.
+  const minimumDays = parseTenth(String(formData.get("minimum_days") ?? ""), {
+    max: 999,
+    allowBlank: true,
+  });
+  if (minimumDays === undefined) {
+    return {
+      ...empty,
+      error: "Trip minimum must be a number of days with at most one decimal place, like 2 or 2.5.",
+    };
+  }
+
   return {
     error: null,
     values: {
@@ -147,6 +171,9 @@ function parseClientForm(formData: FormData): ParsedClient {
         EXPENSE_TREATMENTS,
         "unassigned"
       ),
+      per_diem_mode: oneOf(formData, "per_diem_mode", PER_DIEM_MODES, "receipts"),
+      minimum_days: minimumDays,
+      cancellation_policy_note: optional(formData, "cancellation_policy_note"),
       w9_status: oneOf(formData, "w9_status", W9_STATUSES, "not_requested"),
       notes: optional(formData, "notes"),
     },

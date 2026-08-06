@@ -18,6 +18,10 @@
  *   20260802190437_pilot_schema_tenancy.sql           (accounts, account_members)
  *   20260805070000_phase3_clients_trips_expenses.sql  (clients..documents, expirations)
  *   20260805090000_phase5_invoices.sql                (invoices, invoice_lines, ...)
+ *   20260807000000_phase9_day_types_and_trip_days.sql (day_types, trip_days,
+ *                                                      client_rates, +3 clients cols)
+ *   20260807020000_phase9_review_fixes.sql            (trip_days.quantity,
+ *                                                      pilot.trip_committed_invoice)
  */
 export type Json =
   | string
@@ -185,6 +189,12 @@ export type Database = {
           default_travel_day_rate_cents: number | null;
           payment_terms_days: number;
           default_expense_treatment: "rebill" | "deduct" | "unassigned";
+          // Added by 20260807000000_phase9_day_types_and_trip_days.sql.
+          // 'receipts' is the default because it is what the product
+          // already did — meals arrive as pilot.expenses rows.
+          per_diem_mode: "per_diem" | "receipts";
+          minimum_days: number | null;
+          cancellation_policy_note: string | null;
           w9_status: "not_requested" | "requested" | "on_file";
           w9_sent_at: string | null;
           w9_received_at: string | null;
@@ -211,6 +221,9 @@ export type Database = {
           default_travel_day_rate_cents?: number | null;
           payment_terms_days?: number;
           default_expense_treatment?: "rebill" | "deduct" | "unassigned";
+          per_diem_mode?: "per_diem" | "receipts";
+          minimum_days?: number | null;
+          cancellation_policy_note?: string | null;
           w9_status?: "not_requested" | "requested" | "on_file";
           w9_sent_at?: string | null;
           w9_received_at?: string | null;
@@ -237,6 +250,9 @@ export type Database = {
           default_travel_day_rate_cents?: number | null;
           payment_terms_days?: number;
           default_expense_treatment?: "rebill" | "deduct" | "unassigned";
+          per_diem_mode?: "per_diem" | "receipts";
+          minimum_days?: number | null;
+          cancellation_policy_note?: string | null;
           w9_status?: "not_requested" | "requested" | "on_file";
           w9_sent_at?: string | null;
           w9_received_at?: string | null;
@@ -568,6 +584,158 @@ export type Database = {
           },
         ];
       };
+      // -----------------------------------------------------------------
+      // Phase 9 Layer 1 — 20260807000000_phase9_day_types_and_trip_days.sql
+      //
+      // day_types is the tenant's own taxonomy; invoice_line_type is the
+      // boundary where that taxonomy hands off to Phase 5's fixed line
+      // vocabulary. Note it excludes 'per_diem' and 'reimbursable_expense':
+      // per-diem lines are computed from counts_for_per_diem, and a
+      // reimbursable_expense line must reference a real expense row.
+      // -----------------------------------------------------------------
+      day_types: {
+        Row: {
+          id: string;
+          account_id: string;
+          key: string;
+          label: string;
+          billable: boolean;
+          counts_for_per_diem: boolean;
+          default_rate_cents: number | null;
+          invoice_line_type: "flight_day" | "travel_day" | "other";
+          sort_order: number;
+          is_builtin: boolean;
+          archived_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        // `is_builtin` is deliberately absent from Insert and Update: it is
+        // the seeding trigger's claim about provenance, and the column is
+        // withheld from the tenant's grants in the migration. Typing it as
+        // writable here would let app code write something the database
+        // will reject — a compile-time lie about a runtime rule.
+        Insert: {
+          account_id: string;
+          key: string;
+          label: string;
+          billable?: boolean;
+          counts_for_per_diem?: boolean;
+          default_rate_cents?: number | null;
+          invoice_line_type?: "flight_day" | "travel_day" | "other";
+          sort_order?: number;
+          archived_at?: string | null;
+        };
+        // `key` is absent from Update for the same reason: the migration
+        // grants UPDATE on label but not key. A pilot renames the label.
+        Update: {
+          label?: string;
+          billable?: boolean;
+          counts_for_per_diem?: boolean;
+          default_rate_cents?: number | null;
+          invoice_line_type?: "flight_day" | "travel_day" | "other";
+          sort_order?: number;
+          archived_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "day_types_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "accounts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      trip_days: {
+        Row: {
+          id: string;
+          account_id: string;
+          trip_id: string;
+          day_on: string;
+          day_type_id: string;
+          // Snapshotted at capture. Never re-resolved from day_types, or a
+          // rate change would restate work already flown.
+          rate_cents: number;
+          // Added by 20260807020000_phase9_review_fixes.sql. Fraction of
+          // the day worked, 0.1 to 1.0 — see that migration's section 3
+          // for why day_count's numeric(5,1) half-days had nowhere to go
+          // without it.
+          quantity: number;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          account_id: string;
+          trip_id: string;
+          day_on: string;
+          day_type_id: string;
+          rate_cents?: number;
+          quantity?: number;
+          notes?: string | null;
+        };
+        Update: {
+          day_on?: string;
+          day_type_id?: string;
+          rate_cents?: number;
+          quantity?: number;
+          notes?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "trip_days_account_id_trip_id_fkey";
+            columns: ["account_id", "trip_id"];
+            isOneToOne: false;
+            referencedRelation: "trips";
+            referencedColumns: ["account_id", "id"];
+          },
+          {
+            foreignKeyName: "trip_days_account_id_day_type_id_fkey";
+            columns: ["account_id", "day_type_id"];
+            isOneToOne: false;
+            referencedRelation: "day_types";
+            referencedColumns: ["account_id", "id"];
+          },
+        ];
+      };
+      client_rates: {
+        Row: {
+          id: string;
+          account_id: string;
+          client_id: string;
+          day_type_id: string;
+          rate_cents: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          account_id: string;
+          client_id: string;
+          day_type_id: string;
+          rate_cents: number;
+        };
+        // Only the rate moves: (account_id, client_id, day_type_id) is what
+        // identifies an override, so re-pointing one is a delete + insert.
+        Update: {
+          rate_cents?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "client_rates_account_id_client_id_fkey";
+            columns: ["account_id", "client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["account_id", "id"];
+          },
+          {
+            foreignKeyName: "client_rates_account_id_day_type_id_fkey";
+            columns: ["account_id", "day_type_id"];
+            isOneToOne: false;
+            referencedRelation: "day_types";
+            referencedColumns: ["account_id", "id"];
+          },
+        ];
+      };
       stripe_events: {
         // Webhook idempotency/ordering ledger (Phase 2). service_role
         // only — `authenticated` has no grant and no RLS policy, so this
@@ -886,6 +1054,15 @@ export type Database = {
       next_invoice_number: {
         Args: { target_account_id: string };
         Returns: string;
+      };
+      // Added by 20260807020000_phase9_review_fixes.sql. The label of a
+      // live (non-void) invoice billing this trip ("INV-0042" or "a draft
+      // invoice"), or null. SECURITY INVOKER — see that migration's
+      // section 2 for why this is the single definition every freeze
+      // guard, and this app, reads instead of trips.billing_state.
+      trip_committed_invoice: {
+        Args: { p_account_id: string; p_trip_id: string };
+        Returns: string | null;
       };
     };
     Enums: Record<string, never>;

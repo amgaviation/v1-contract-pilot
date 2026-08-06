@@ -29,6 +29,9 @@ export type ClientFormValues = {
   default_travel_day_rate_cents?: number | null;
   payment_terms_days?: number | null;
   default_expense_treatment?: string | null;
+  per_diem_mode?: string | null;
+  minimum_days?: number | null;
+  cancellation_policy_note?: string | null;
   w9_status?: string | null;
   notes?: string | null;
 };
@@ -37,6 +40,11 @@ const TREATMENTS = [
   { value: "unassigned", label: "Decide per expense" },
   { value: "rebill", label: "Rebill to the client" },
   { value: "deduct", label: "Keep as a deduction" },
+];
+
+const PER_DIEM_MODES = [
+  { value: "receipts", label: "Itemised meal receipts" },
+  { value: "per_diem", label: "Per diem" },
 ];
 
 const W9_STATUSES = [
@@ -256,6 +264,69 @@ export default function ClientForm({
               multiline
               rows={3}
               defaultValue={initial("notes", values.notes)}
+            />
+          </Grid>
+        </Grid>
+
+        <MDBox mt={4} mb={2}>
+          <MDTypography variant="h6">Contract terms</MDTypography>
+          <MDTypography variant="button" color="text" fontWeight="regular">
+            What this client&rsquo;s agreement says beyond the rates above.
+          </MDTypography>
+        </MDBox>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={6}>
+            <TextField
+              select
+              name="per_diem_mode"
+              label="Meals"
+              fullWidth
+              defaultValue={initial("per_diem_mode", values.per_diem_mode, "receipts")}
+              // F3: the old copy read as unconditional. Per diem only
+              // reaches the invoice draft for a trip whose day grid has
+              // been filled in and saved — createInvoiceDraft has no
+              // per-diem count to draw on otherwise, so a trip without one
+              // still falls back to expecting meal receipts regardless of
+              // this setting.
+              helperText="Adds a per-diem line on trips whose day grid has been filled in. A trip without one still expects meal receipts."
+            >
+              {PER_DIEM_MODES.map((option) => (
+                <MenuItem key={option.value} value={option.value}>
+                  {option.label}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <TextField
+              name="minimum_days"
+              // F4: "Contract minimum" reads, to most pilots, as the OTHER
+              // minimum this industry uses — a full day rate regardless of
+              // hours flown (references/contract-pilot-business.md §4) —
+              // which this product already honors for free by billing in
+              // whole days. What this field actually sets is the other
+              // one: a floor on the total days a short TRIP bills.
+              // "Trip minimum" is the unambiguous name for that.
+              label="Trip minimum (days)"
+              fullWidth
+              inputMode="decimal"
+              defaultValue={initial("minimum_days", values.minimum_days)}
+              // F3 + F4: names the behavior in the same terms a pilot
+              // reads their own invoice in, and states the gate — this
+              // only bites once the trip's day grid has been filled in
+              // and saved; a trip without one isn't held to it.
+              helperText="A 1-day trip for a client with a 2-day minimum bills 2 days — once the trip's day grid has been filled in."
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField
+              name="cancellation_policy_note"
+              label="Cancellation terms"
+              fullWidth
+              multiline
+              rows={2}
+              defaultValue={initial("cancellation_policy_note", values.cancellation_policy_note)}
+              helperText="Recorded for reference only — not applied automatically. Add the fee line yourself if the client owes one."
             />
           </Grid>
         </Grid>
