@@ -1,103 +1,110 @@
 # V1 — powered by AMG Aviation
 
 A standalone SaaS for independent contract pilots to run their own business:
-clients, invoices, expenses, logbook, and currency. **Log the trip once —
-logbook entry, invoice, and expense file all post from it.**
+clients, trips, invoices, expenses, logbook, documents. **Log the trip once —
+logbook entry, invoice line, and expense file all post from it.**
 
-This is a separate product from `amgaviation/amg1` (AMG's own operational
-site and crew portal) — different brand, different Supabase project,
-different codebase, by design. AMG appears in exactly one place in this
-product: the footer, as "powered by AMG Aviation." See the full plan for
-why and the complete decision record.
+This is a separate product from AMG's own operational site and crew portal —
+different brand, different Supabase project, different codebase, by design.
+AMG appears in exactly one place: the footer, as "powered by AMG Aviation".
+`docs/PLAN.md` carries the full decision record and the reasoning.
 
 ## Status
 
-Phase 0 (Foundations) scaffold. Not deployed, not connected to a live
-Supabase project. See `docs/PLAN.md` for the full build plan and
-`docs/DESIGN-RESEARCH.md` for forward-looking design research (not yet
-implemented — the current build uses the locked "Approach Plate" direction
-as-is).
+Live Supabase project, live Stripe (test mode), deployed to Vercel. Phases 0–6
+and 8 are built; Phase 9 Layer 1 (tenant-defined day types and rate cards) is
+merged. Phase 7 (currency) is deliberately unbuilt — it ships behind a flag,
+dark, and only after counsel re-confirms the disclaimer wording.
 
-**Blocked:** three things need resolving outside this environment before the
-next step can happen —
-1. The Supabase MCP connection needs re-authorization before the new
-   "master" Supabase project (`docs/PLAN.md` §2) can be created and
-   `supabase/migrations/` can be applied.
-2. The GitHub integration used to build this scaffold can't create new
-   repositories (403 on both a personal-account and an org-scoped attempt).
-3. The Vercel integration can't create new projects either (403, same
-   shape, with and without an explicit team).
-
-This repo exists only as a local git history until (1) and (2) are
-resolved, or someone with the right access creates the repo/project by
-hand and this history is pushed to it.
+**One thing blocks real users:** signup returns `Error sending confirmation
+email`. SMTP is configured against Resend, credentials are accepted, and the
+send is rejected with `550 — the sending domain is not verified`. Until
+`amgaviationgroup.com` is verified at resend.com/domains (DKIM + SPF records),
+or the sender is temporarily pointed at `onboarding@resend.dev`, no new pilot
+can complete signup.
 
 ## Stack
 
-Next.js 16 · React 19 · TypeScript (strict) · Tailwind v4 (CSS-first) ·
+Next.js 16 · React 19 · TypeScript (strict) · **Radix Themes** ·
 Supabase (`@supabase/ssr`) · Stripe (platform billing) + Stripe Connect
-Standard (pilot's own client billing).
+(the pilot's own client billing) · `@react-pdf/renderer` for invoices.
 
-## Design system
+No Tailwind, no CSS-in-JS, no component library beyond Radix. Ten runtime
+dependencies.
 
-**"V1 Design"** — white-heavy glass, synced from Claude Design. Full detail
-and the re-sync procedure are in [`docs/DESIGN-SYSTEM.md`](docs/DESIGN-SYSTEM.md).
-The short version:
+## The design system is five props
 
-> **Glass at the container level, opaque at the content level.** Rails,
-> panels and buttons are translucent and blurred. Table bodies, cells and
-> figures sit on an opaque surface — a pilot compares a column of decimal
-> hours down a page, and that must not be traded for decoration.
+The entire visual system is the `<Theme>` element in `app/layout.tsx`:
 
-Blue `#2768F5` means *commanded*: the action that commits, the destination
-you are in, the row you selected. Nothing else may use it. Status uses the
-aviation annunciator scale (green / amber / red), each chip carrying a shape
-as well as a hue so the level survives greyscale. Inter across four roles.
-Nothing animates.
-
-The **entire** visual system lives in the token layer:
-
-- `app/tokens/*.css` — colour, type, spacing, effects, dark theme
-- `app/base.css` — reset, ground, focus, selection
-- `app/components.css` — every `.v1-*` class
-- `lib/brand.ts` — every brand string ("V1", "powered by AMG Aviation")
-
-**No component may hardcode a colour, radius, font, shadow, blur, or brand
-string.** `npm run tokens:verify` enforces this in CI — see that script's
-header comment. That discipline is what made the Approach Plate → V1 Design
-overhaul a token-layer swap rather than a component rewrite.
-
-## Getting started
-
-```bash
-npm install
-cp .env.example .env.local   # fill in once the Supabase project exists
-npm run dev
+```tsx
+<Theme accentColor="blue" grayColor="slate" radius="small"
+       scaling="95%" panelBackground="solid">
 ```
 
-```bash
-npm run typecheck       # tsc --noEmit
-npm run tokens:verify    # fails on any hardcoded visual value outside the two token files
-npm test                 # both of the above
+There is no token file, no theme object, and no design document. Restyling the
+product means changing those props. That is deliberate: the look was specified
+in prose three times before this — an "Approach Plate" spec, a white-heavy
+glass system, then a ported Material Dashboard kit — and each time the code
+drifted away from the document describing it. A component cannot drift from a
+token layer that does not exist.
+
+`panelBackground="solid"` is the one non-default choice worth knowing: Radix
+defaults panels to translucent, and a pilot comparing a column of decimal
+hours should not read it over a blur.
+
+Dark mode follows the operating system, stamped onto `<html>` by a small
+inline script before first paint — Radix's dark tokens are class-scoped and
+its stylesheet has no `prefers-color-scheme` queries, so the prop alone does
+not do it.
+
+### The four files allowed to spell a visual value out
+
+Everything else must reach the theme through a component prop, or through
+`style={{ ... var(--gray-a5) ... }}` for the cases Radix has no prop for.
+`npm run tokens:verify` enforces this in CI and each of these documents its
+own exemption at the top of the file:
+
+| File | Why |
+|---|---|
+| `app/globals.css` | The V1 mark's brand constants. The wordmark is literal black (white on dark), the bug literal `#036BFC` on every ground — trademark artwork, not UI tokens, so a future accent change can never retint it. |
+| `lib/brand.ts` | The two `theme-color` values. Next's metadata layer cannot read CSS. |
+| `lib/pdf-palette.ts` | The invoice PDF's colours, from `@radix-ui/colors` — the same scales Radix Themes is built on, published as JS, because `@react-pdf/renderer` cannot read CSS. |
+| `lib/invoice-pdf.tsx` | react-pdf's `StyleSheet.create()` cannot take a `var()` at all. Its colours still come from `pdf-palette`. |
+
+## Layout
+
+```
+app/(app)/          the authenticated product. One gate — requireAccount()
+                    in the route-group layout — covers every screen.
+app/(auth)/         login, signup, password reset, and the post-checkout
+                    welcome screen.
+app/api/stripe/     the webhook. The only place the service-role client is
+                    used, anywhere in the product.
+lib/supabase/       browser, server and service-role clients, all pinned to
+                    the `pilot` schema.
+supabase/migrations/  every schema change, applied in order. Read the file
+                    headers — they carry the reasoning, including the
+                    mistakes that produced the corrective migrations.
+scripts/            executable verification, the house convention in place
+                    of a test framework.
 ```
 
-## Directory map
+## Verification
 
 ```
-app/                  routes (App Router). page.tsx = Overview, the home screen
-components/shell/      left rail nav + app shell layout
-components/ui/         Button, Panel, StatusTag, KpiTile — all token-driven
-lib/brand.ts           the only source of brand strings
-lib/fonts.ts            self-hosted Roboto / Roboto Condensed / Roboto Mono
-lib/mock-data.ts       synthetic demo data for the Overview screen (deleted in Phase 3)
-lib/supabase/          browser / server clients, service-role.ts (own file, server-only), proxy session-refresh helper
-supabase/migrations/   Phase 1 tenancy schema (pilot.accounts, pilot.account_members, RLS)
-scripts/verify-tokens.mjs   the token-discipline scanner
+npm run test                  typecheck + tokens:verify
+npm run tokens:verify         no visual value hardcoded outside the four files
+npm run tenancy:verify        two-tenant isolation — the gate on everything
+npm run billing:verify        trial, webhook idempotency, out-of-order events
+npm run trip:verify           trip → invoice line, expense, logbook DRAFT
+npm run customisation:verify  day types, rate cards, and the money regression
 ```
 
-## What's next
+The verify scripts drive real authenticated Supabase clients rather than the
+service role, because every guarantee they test is a guarantee of RLS plus
+column-scoped grants — and the service role holds BYPASSRLS, so asserting
+through it would prove nothing. Every negative case asserts a specific
+SQLSTATE; "an error happened" is not a pass. They refuse to run against a
+non-local host without an explicit opt-in, because they create auth users.
 
-See `docs/PLAN.md` §Build order. Phase 2 (Stripe subscription + self-serve
-provisioning) is next once the Supabase project exists, followed by Clients
-and Trips (Phase 3) — the parent-record model the whole product is built
-around.
+All fixtures are synthetic. No live pilot data, ever.

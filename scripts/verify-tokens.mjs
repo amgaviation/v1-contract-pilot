@@ -1,52 +1,54 @@
 #!/usr/bin/env node
 /**
- * Design-overhaul insurance (docs/PLAN.md "Additional risk").
+ * Keeps components from reaching around Radix Themes.
  *
- * Tony intends to overhaul this design later, and that only stays a
- * two-file change (app/tokens.css + lib/brand.ts) if no component ever
- * hardcodes a visual value. This script makes that mechanically
- * impossible to violate silently, rather than a matter of discipline.
+ * The product's entire visual system is the <Theme> element in
+ * app/layout.tsx — five props, no token file, no theme object, no
+ * component stylesheet. That arrangement is only true for as long as no
+ * component hardcodes a value the theme cannot reach, and this script is
+ * what makes that mechanical rather than a matter of discipline.
  *
- * REWRITE NOTE: an adversarial code review of the first version of this
- * script found it caught almost nothing beyond bare same-line hex codes
- * — inline `style={{ borderRadius: 6 }}` objects, every modern CSS color
- * function (oklch, color-mix, lab, lch, hwb — notably Tailwind v4's OWN
- * default palette is oklch, so this was the format a developer was most
- * likely to paste), named CSS colors, 4-digit hex, every Tailwind
- * rounded-, font-[...], and color-utility class, and any declaration whose
- * value wrapped onto a second line all passed silently. `lib/` was never
- * scanned even though it was listed as exempt. This version was built by
- * empirically probing the old one and fixing every gap that probe found
- * — see the review this responded to for the full list.
+ * WHY THAT MATTERS MORE HERE THAN IT DID BEFORE. Under a hand-built token
+ * layer, a stray hex was a value in the wrong file — annoying, findable,
+ * fixable by moving it. Under Radix Themes there is nowhere to move it to:
+ * a literal in a component is simply outside the system, and no
+ * re-theming will ever reach it. The look has already been decided three
+ * times in this codebase and drifted each time; the drift was never a
+ * decision, it was accumulated literals.
  *
- * Scans app/, components/, and lib/ (excluding app/tokens.css and
- * lib/brand.ts, the two files everything is allowed to live in) for:
- *   - hex colors, at any valid length (3/4/6/8 digit)
- *   - rgb()/rgba()/hsl()/hsla() AND oklch()/oklab()/lab()/lch()/hwb()/
- *     color-mix()/color() — Tailwind v4's default palette is oklch
- *   - bare named CSS colors on color/background/border/fill/stroke
- *     properties (heuristic — not the full 150-name CSS list)
- *   - non-zero border-radius / any font-family declaration in a CSS file,
- *     matched across the whole file so a value wrapped onto its own line
- *     can't hide from a per-line scanner
- *   - JSX inline `style={{...}}` objects, flagged outright — there is no
- *     legitimate use of one in this design system, and it's exactly where
- *     camelCase borderRadius/fontFamily/fontWeight/fontSize hide from any
- *     CSS-syntax-shaped regex
- *   - Tailwind utility classes that hardcode a value instead of going
- *     through a token: rounded-*, font-[...], and bg-/text-/border-/
- *     ring-/fill-/stroke-/decoration-/from-/via-/to-/divide-/outline-/
- *     caret-/accent-/shadow- combined with a default-palette color name
- *     or an arbitrary `[...]` value
+ * Scans app/, components/ and lib/ for:
+ *   - hex colours at any valid length (3/4/6/8 digit)
+ *   - rgb()/rgba()/hsl()/hsla(), and oklch()/oklab()/lab()/lch()/hwb()/
+ *     color-mix()/color()
+ *   - bare named CSS colours on colour-bearing properties (a heuristic,
+ *     not the full 150-name list)
+ *   - non-zero border-radius, any font-family, non-token box-shadow and
+ *     backdrop-filter — matched across the whole file so a value wrapped
+ *     onto its own line cannot hide from a per-line scanner
+ *   - JSX inline `style={{...}}` objects, flagged outright. Radix Themes
+ *     components take props for this, and an inline object is exactly
+ *     where camelCase borderRadius/fontFamily/fontSize hide from any
+ *     CSS-shaped regex
+ *   - `@mui/*` and `@emotion/*` imports, which this rebuild removed
  *   - the literal brand strings "V1" / "AMG" outside lib/brand.ts
  *
- * Line comments and block comments are stripped before scanning, so this
- * file's own explanatory prose about hex codes and brand strings doesn't
- * trip the checks meant for actual rendered code. This is a textual
- * heuristic, not a parser — a `//` inside a string literal (e.g. a URL)
- * can be mis-stripped. Given this script's job is catching accidental
- * hardcoding, not verifying arbitrary code, that tradeoff favors fewer
- * false positives over perfect comment detection.
+ * The three files allowed to spell a value out are listed at EXEMPT_FILES
+ * below, each with the reason it earns the exemption.
+ *
+ * REWRITE NOTE, retained because it is still the reason several of these
+ * patterns look the way they do: an adversarial review of the first
+ * version found it caught almost nothing beyond bare same-line hex —
+ * inline style objects, every modern colour function, named colours,
+ * 4-digit hex, and any declaration whose value wrapped onto a second line
+ * all passed silently, and lib/ was never scanned despite being listed.
+ * The current patterns were built by probing the old script empirically,
+ * not by reading it. Probe any new rule the same way; see the note above
+ * the border-radius rule for a lookahead that reads correct and is not.
+ *
+ * Line and block comments are stripped before scanning, so this file's own
+ * prose about hex codes and brand strings does not trip the checks. That
+ * is a textual heuristic, not a parser — a `//` inside a string literal
+ * can be mis-stripped, a tradeoff that favours fewer false positives.
  *
  * Run: npm run tokens:verify
  */
@@ -57,45 +59,52 @@ const ROOT = process.cwd();
 const SCAN_DIRS = ["app", "components", "lib"];
 
 /**
- * The token layer — the only place a visual value may be spelled out.
+ * THERE IS NO LONGER A TOKEN LAYER TO PROTECT, and that is the point.
  *
- * Under the current design direction that layer IS the ported Material
- * Dashboard 3 PRO React system: lib/mdpro/ (theme, theme-dark, context,
- * routes) and components/mdpro/ (MD* base components and examples/).
- * Visual literals live there by design — a Creative Tim theme is a tree
- * of literal palette/shadow/radius values, and the port keeps upstream's
- * files as close to verbatim as the license header asks. Those ported
- * files are .js and therefore already outside this script's .ts/.tsx/.css
- * scan set, but the directory exemption makes the policy explicit and
- * future-proofs any .tsx additions inside those trees. Everything
- * OUTSIDE those directories must reach visual values through the theme
- * (sx callbacks, MD component props), never as literals — that is what
- * keeps a future re-theme a lib/mdpro-only change.
+ * Radix Themes owns every colour, radius, shadow and space step, and it is
+ * configured entirely by the <Theme> props in app/layout.tsx. So this
+ * script's job changed: it used to keep a hand-built token file
+ * authoritative, and it now keeps components from reaching AROUND the
+ * theme. A hex in a component is no longer "a value in the wrong file" —
+ * it is a value the theme cannot reach at all, which is worse, because no
+ * amount of re-theming will ever move it.
  *
- * app/globals.css stays exempt: it carries only the V1 logo mark's
- * brand-identity constants (see components/ui/logo.tsx), which are
- * deliberately literal.
+ * Only three files may spell a visual value out:
+ *
+ *   app/globals.css     the V1 mark's brand-identity constants. The
+ *                       wordmark is literal black and the bug literal
+ *                       #036BFC on every ground; wiring them to the accent
+ *                       would let a future accent change retint trademark
+ *                       artwork.
+ *   lib/brand.ts        the two theme-color literals, which Next's
+ *                       metadata layer cannot read from CSS.
+ *   lib/pdf-palette.ts  the bridge to the invoice PDF. @react-pdf/renderer
+ *                       has its own styling engine and cannot read CSS, so
+ *                       it reaches the same Radix scales through
+ *                       @radix-ui/colors instead. Read that file's header
+ *                       before adding anything to it.
+ *   lib/invoice-pdf.tsx the PDF document itself. Same reason, one step
+ *                       further: react-pdf's StyleSheet.create() is not
+ *                       CSS and not a JSX style prop — it cannot take a
+ *                       var() reference at all, so `fontSize: 10` is the
+ *                       only thing that can be written there. Its COLOURS
+ *                       still come from pdf-palette, which is the part
+ *                       that actually matters; sizes and weights are
+ *                       necessarily literal in a PDF.
  */
 const EXEMPT_FILES = new Set([
   join(ROOT, "app", "globals.css"),
   join(ROOT, "lib", "brand.ts"),
+  join(ROOT, "lib", "pdf-palette.ts"),
+  join(ROOT, "lib", "invoice-pdf.tsx"),
 ]);
-const EXEMPT_DIRS = [
-  join(ROOT, "lib", "mdpro"),
-  join(ROOT, "components", "mdpro"),
-];
+const EXEMPT_DIRS = [];
 const SCAN_EXTENSIONS = new Set([".ts", ".tsx", ".css"]);
 
 function isExempt(file) {
   if (EXEMPT_FILES.has(file)) return true;
   return EXEMPT_DIRS.some((dir) => file.startsWith(dir + "/"));
 }
-
-const TAILWIND_PALETTE_COLORS = [
-  "slate", "gray", "zinc", "neutral", "stone", "red", "orange", "amber",
-  "yellow", "lime", "green", "emerald", "teal", "cyan", "sky", "blue",
-  "indigo", "violet", "purple", "fuchsia", "pink", "rose", "white", "black",
-].join("|");
 
 const NAMED_COLOR_ALLOWLIST = new Set([
   "inherit", "currentcolor", "transparent", "initial", "unset", "none", "inset",
@@ -170,7 +179,7 @@ const RULES = [
     // surface may take exactly one shadow" and "keep the two radii and do
     // not add a third" are only enforceable if every shadow and blur
     // resolves through the token layer.
-    name: "non-token box-shadow (must resolve through a --v1-shadow-* token)",
+    name: "non-token box-shadow (must resolve through a Radix --shadow-* var)",
     appliesTo: "css",
     // The var() lookahead spans the whole declaration rather than just its
     // head: a legitimate shadow is often two tokens composed —
@@ -179,37 +188,66 @@ const RULES = [
     pattern: /box-shadow\s*:(?!\s*none\b)(?![^;]*var\()[^;]*;/g,
   },
   {
-    name: "non-token backdrop-filter (must resolve through a --v1-blur-* token)",
+    name: "non-token backdrop-filter",
     appliesTo: "css",
     pattern: /backdrop-filter\s*:(?!\s*(?:none\b|var\())[^;]*;/g,
   },
   {
-    name: "inline style={{...}} object",
+    // Inline style objects are NOT banned outright under Radix Themes, and
+    // the previous blanket ban would have been wrong here. Radix exposes
+    // its scales as CSS custom properties and deliberately does not give
+    // every surface a prop, so `style={{ borderRight: "1px solid
+    // var(--gray-a5)" }}` is the library's own idiom for the cases Box and
+    // Flex don't cover. Banning it would push people toward worse
+    // workarounds.
+    //
+    // What is still banned is a camelCase visual property carrying a
+    // LITERAL — `borderRadius: 6`, `fontFamily: "Inter"` — because those
+    // are JS object keys that no CSS-syntax regex will ever see, which is
+    // exactly where hardcoded values hide. Requiring var() on this short
+    // list keeps the escape hatch open and the theme authoritative.
+    // THE WHITESPACE IS INSIDE THE LOOKAHEAD, and it has to be — this rule
+    // shipped broken for exactly as long as it took to run it once. Written
+    // as `\s*:\s*(?!["'`]?\s*var\()`, the trailing `\s*` is greedy and
+    // BACKTRACKS: when the lookahead correctly fails against `"var(`, the
+    // engine retries with `\s*` matching zero characters, which slides the
+    // lookahead onto the SPACE, where `var\(` cannot match and the negative
+    // lookahead trivially succeeds. Every correct `borderRadius:
+    // "var(--radius-2)"` was reported as a violation.
+    //
+    // This is the second rule in this file to hit that trap; the note above
+    // the border-radius rule describes the first. Both were found by
+    // running the script, not by reading it. Probe the next one too.
+    name: "camelCase style property with a literal value (must use var(--…))",
     appliesTo: "code",
-    // No legitimate use in this design system — every visual value goes
-    // through a `.v1-*` class. This is also the only reliable way to
-    // catch camelCase JSX style props (borderRadius, fontFamily,
-    // fontWeight, fontSize, ...), which no CSS-syntax regex will ever
-    // match since they're JS object keys, not CSS declarations.
-    pattern: /\bstyle\s*=\s*\{\s*\{/g,
+    pattern:
+      /\b(?:borderRadius|fontFamily|fontSize|fontWeight|letterSpacing|boxShadow|lineHeight)\s*:(?!\s*["'`]?\s*var\()/g,
   },
   {
-    name: "hardcoded Tailwind radius utility",
+    // THE RULE THAT KEEPS THIS REBUILD FROM UNDOING ITSELF.
+    //
+    // MUI and emotion were removed wholesale, along with the ported
+    // Material Dashboard theme. The failure mode is not someone deciding
+    // to bring MUI back — it is one import sneaking in for one component
+    // that Radix Themes does not happen to have, and then a second, until
+    // two design systems are live at once and neither can be restyled.
+    // Radix Themes plus the unstyled Radix primitives underneath it cover
+    // this product; anything genuinely missing gets built, not imported.
+    // MATCH THE SPECIFIER, NOT THE `from` KEYWORD. Anchoring on `from`
+    // caught `import X from "@mui/material"` and nothing else — a review
+    // probe found three working ways past it:
+    //
+    //     import "@emotion/css";              // side-effect import
+    //     require("@emotion/styled");         // CJS
+    //     await import("@mui/icons-material") // dynamic
+    //
+    // all of which reintroduce the removed system with a green
+    // tokens:verify. A quoted module specifier is the thing that is
+    // actually forbidden, so that is what this looks for, in any syntax
+    // that can carry one.
+    name: "@mui or @emotion import (this product is on Radix Themes)",
     appliesTo: "code",
-    pattern: /\brounded(?:-[\w[\]/.%#]+)?\b/g,
-  },
-  {
-    name: "hardcoded Tailwind font utility",
-    appliesTo: "code",
-    pattern: /\bfont-\[[^\]]*\]/g,
-  },
-  {
-    name: "hardcoded Tailwind color utility",
-    appliesTo: "code",
-    pattern: new RegExp(
-      String.raw`\b(?:bg|text|border|ring|fill|stroke|decoration|from|via|to|divide|outline|caret|accent|shadow)-(?:\[[^\]]*\]|(?:${TAILWIND_PALETTE_COLORS})(?:-\d{2,3})?)\b`,
-      "g"
-    ),
+    pattern: /["']@(?:mui|emotion)\/[^"']+["']/g,
   },
   {
     name: 'literal brand string ("V1" / "AMG") outside lib/brand.ts',
@@ -297,14 +335,20 @@ if (violations.length > 0) {
     console.error(`    ${v.snippet}\n`);
   }
   console.error(
-    "Every visual value must live in the token layer — lib/mdpro/ and components/mdpro/\n" +
-      "(the ported Material Dashboard system) — or in lib/brand.ts / app/globals.css (the\n" +
-      "logo-mark constants). Reach visual values through the MUI theme (sx callbacks, MD\n" +
-      "component props) instead of spelling them out.\n"
+    "Radix Themes owns every visual value in this product. Reach for it instead of\n" +
+      "spelling a value out:\n\n" +
+      "  colour, size, weight   a Radix component prop — <Text color=\"gray\" size=\"2\">,\n" +
+      "                         <Badge color=\"amber\">, <Flex gap=\"3\">\n" +
+      "  something with no prop  style={{ ... var(--gray-a5) ... }} — Radix's own idiom.\n" +
+      "                         The scales are CSS custom properties; use them by name.\n" +
+      "  the whole product's look  the five <Theme> props in app/layout.tsx. That is the\n" +
+      "                         entire design system; there is no token file to edit.\n\n" +
+      "Only app/globals.css, lib/brand.ts, lib/pdf-palette.ts and lib/invoice-pdf.tsx may\n" +
+      "spell a value out, and each documents why at the top of the file.\n"
   );
   process.exit(1);
 }
 
 console.log(
-  "tokens:verify passed — no hardcoded visual values outside the token layer / lib/brand.ts."
+  "tokens:verify passed — no visual values hardcoded outside the four documented files."
 );

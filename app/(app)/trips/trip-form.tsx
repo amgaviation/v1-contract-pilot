@@ -1,14 +1,19 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useId, useState } from "react";
 import NextLink from "next/link";
-import Card from "@mui/material/Card";
-import Grid from "@mui/material/Grid";
-import TextField from "@mui/material/TextField";
-import MenuItem from "@mui/material/MenuItem";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
+import {
+  Button,
+  Callout,
+  Card,
+  Flex,
+  Grid,
+  Heading,
+  Select,
+  Text,
+  TextArea,
+  TextField,
+} from "@radix-ui/themes";
 import { centsToInput } from "@/lib/format";
 import type { TripFormState } from "./actions";
 
@@ -57,6 +62,12 @@ const STATUSES = [
   { value: "completed", label: "Completed" },
   { value: "canceled", label: "Canceled" },
 ];
+
+/** Radix forbids an empty-string Select.Item value. "No client yet" is a
+ * real, postable choice (client_id is optional), so it gets a sentinel
+ * that never leaves this component — the hidden input below always posts
+ * the real client_id, translating the sentinel back to "". */
+const NO_CLIENT = "__none__";
 
 const initialState: TripFormState = { error: null };
 
@@ -112,6 +123,31 @@ export default function TripForm({
   const [travelRate, setTravelRate] = useState(() =>
     submitted?.travel_day_rate ?? centsToInput(values.travel_day_rate_cents)
   );
+  // Radix's Select.Root always renders its posting <select> with
+  // `defaultValue`, never `value` (@radix-ui/react-select's
+  // SelectBubbleInput) — so it is uncontrolled from React's point of view
+  // regardless of what Select.Root is given, and it is what the browser
+  // actually posts if `name` stays on it. React 19's post-action
+  // form.reset() restores it to its mount-time option even on a rejected
+  // submit, silently discarding the pilot's pick. Fix: no `name` on any
+  // Select.Root here — the real value is posted from a controlled hidden
+  // input instead, which React re-asserts after a reset. `genTick` forces
+  // a remount of every Select on each dispatch so a stray reset-driven
+  // onValueChange has no stale instance left to fire against.
+  const [genTick, setGenTick] = useState(0);
+  useEffect(() => {
+    setGenTick((g) => g + 1);
+  }, [state]);
+  const [tripKind, setTripKind] = useState(() => initial("trip_kind", "contract_pilot"));
+  const [status, setStatus] = useState(() => initial("status", "scheduled"));
+  useEffect(() => {
+    if (submitted?.trip_kind !== undefined) setTripKind(String(submitted.trip_kind || "contract_pilot"));
+    if (submitted?.status !== undefined) setStatus(String(submitted.status || "scheduled"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitted]);
+  const clientLabelId = useId();
+  const tripKindId = useId();
+  const statusId = useId();
 
   function pickClient(nextId: string) {
     setClientId(nextId);
@@ -133,228 +169,252 @@ export default function TripForm({
   }
 
   return (
-    <Card>
-      <MDBox p={3} component="form" action={formAction}>
+    <Card size="3">
+      <form action={formAction}>
         {values.id ? <input type="hidden" name="id" value={values.id} /> : null}
+        {/* The real client_id, always in sync with clientId — see NO_CLIENT
+            above for why the Select itself can't post this directly. */}
+        <input type="hidden" name="client_id" value={clientId} />
 
-        <MDBox mb={2}>
-          <MDTypography variant="h6">The job</MDTypography>
-        </MDBox>
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
-            <TextField
-              select
-              name="client_id"
-              label="Client"
-              fullWidth
-              value={clientId}
-              onChange={(event) => pickClient(event.target.value)}
+        <Heading as="h2" size="4" mb="3">
+          The job
+        </Heading>
+        <Grid columns={{ initial: "1", md: "2" }} gap="3">
+          <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
+            <Text as="label" size="2" weight="medium" id={`${clientLabelId}-label`}>
+              Client
+            </Text>
+            <Select.Root
+              key={`client-${genTick}`}
+              value={clientId === "" ? NO_CLIENT : clientId}
+              onValueChange={(next) => pickClient(next === NO_CLIENT ? "" : next)}
               disabled={locked}
-              helperText={
-                clients.length === 0
-                  ? "No active clients yet — you can add one later."
-                  : "Who you're billing for this trip"
-              }
             >
-              <MenuItem value="">No client yet</MenuItem>
-              {clients.map((client) => (
-                <MenuItem key={client.id} value={client.id}>
-                  {client.name}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <TextField
-              select
-              name="trip_kind"
-              label="Trip kind"
-              fullWidth
-              defaultValue={initial("trip_kind", "contract_pilot")}
-            >
-              {TRIP_KINDS.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <TextField
-              select
-              name="status"
-              label="Status"
-              fullWidth
-              defaultValue={initial("status", "scheduled")}
-            >
-              {STATUSES.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <TextField
+              <Select.Trigger
+                id={clientLabelId}
+                aria-labelledby={`${clientLabelId}-label`}
+                placeholder="No client yet"
+              />
+              <Select.Content>
+                <Select.Item value={NO_CLIENT}>No client yet</Select.Item>
+                {clients.map((client) => (
+                  <Select.Item key={client.id} value={client.id}>
+                    {client.name}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+            <Text size="1" color="gray">
+              {clients.length === 0
+                ? "No active clients yet — you can add one later."
+                : "Who you're billing for this trip"}
+            </Text>
+          </Flex>
+
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" id={`${tripKindId}-label`}>
+              Trip kind
+            </Text>
+            <Select.Root key={`trip-kind-${genTick}`} value={tripKind} onValueChange={setTripKind}>
+              <Select.Trigger id={tripKindId} aria-labelledby={`${tripKindId}-label`} />
+              <Select.Content>
+                {TRIP_KINDS.map((option) => (
+                  <Select.Item key={option.value} value={option.value}>
+                    {option.label}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+            <input type="hidden" name="trip_kind" value={tripKind} />
+          </Flex>
+
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" id={`${statusId}-label`}>
+              Status
+            </Text>
+            <Select.Root key={`status-${genTick}`} value={status} onValueChange={setStatus}>
+              <Select.Trigger id={statusId} aria-labelledby={`${statusId}-label`} />
+              <Select.Content>
+                {STATUSES.map((option) => (
+                  <Select.Item key={option.value} value={option.value}>
+                    {option.label}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+            <input type="hidden" name="status" value={status} />
+          </Flex>
+
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" htmlFor="starts_on">
+              Starts
+            </Text>
+            <TextField.Root
+              id="starts_on"
               type="date"
               name="starts_on"
-              label="Starts"
-              fullWidth
               required
               disabled={locked}
-              InputLabelProps={{ shrink: true }}
               defaultValue={initial("starts_on")}
             />
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <TextField
+          </Flex>
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" htmlFor="ends_on">
+              Ends
+            </Text>
+            <TextField.Root
+              id="ends_on"
               type="date"
               name="ends_on"
-              label="Ends"
-              fullWidth
               required
               disabled={locked}
-              InputLabelProps={{ shrink: true }}
               defaultValue={initial("ends_on")}
             />
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <TextField
+          </Flex>
+
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" htmlFor="aircraft_ident">
+              Tail number
+            </Text>
+            <TextField.Root
+              id="aircraft_ident"
               name="aircraft_ident"
-              label="Tail number"
-              fullWidth
               defaultValue={initial("aircraft_ident")}
             />
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <TextField
+          </Flex>
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" htmlFor="aircraft_type">
+              Aircraft type
+            </Text>
+            <TextField.Root
+              id="aircraft_type"
               name="aircraft_type"
-              label="Aircraft type"
-              fullWidth
               defaultValue={initial("aircraft_type")}
-              helperText="e.g. CE-560XL"
             />
-          </Grid>
+            <Text size="1" color="gray">
+              e.g. CE-560XL
+            </Text>
+          </Flex>
         </Grid>
 
-        <MDBox mt={4} mb={2}>
-          <MDTypography
-            variant="h6"
-            sx={hasDayRows ? { opacity: 0.6 } : undefined}
-          >
+        <Flex direction="column" gap="1" mt="5" mb="3">
+          <Heading as="h2" size="4" color={hasDayRows ? "gray" : undefined}>
             {hasDayRows ? "What it bills (legacy)" : "What it bills"}
-          </MDTypography>
-          <MDTypography variant="caption" color="text" fontWeight="regular">
+          </Heading>
+          <Text size="1" color="gray">
             {hasDayRows
               ? "The day grid below now sets what's actually billed — these fields are the old scalar input, kept only as the day grid's original seed. Editing them does not change the invoice."
               : "Seeds the day grid below the first time it's opened. Once that grid has rows, they — not these fields — are what's actually billed."}
-          </MDTypography>
-        </MDBox>
-        <Grid
-          container
-          spacing={2}
-          sx={hasDayRows ? { opacity: 0.6 } : undefined}
-        >
-          <Grid item xs={12} md={4}>
-            <TextField
+          </Text>
+        </Flex>
+        <Grid columns={{ initial: "1", md: "2" }} gap="3">
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" htmlFor="day_rate">
+              Day rate (USD)
+            </Text>
+            <TextField.Root
+              id="day_rate"
               name="day_rate"
-              label="Day rate (USD)"
-              fullWidth
               required
               inputMode="decimal"
               value={dayRate}
               onChange={(event) => setDayRate(event.target.value)}
               disabled={locked}
-              helperText="Fills in from the client's rate agreement"
             />
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <TextField
+            <Text size="1" color="gray">
+              Fills in from the client's rate agreement
+            </Text>
+          </Flex>
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" htmlFor="day_count">
+              Days
+            </Text>
+            <TextField.Root
+              id="day_count"
               type="number"
               name="day_count"
-              label="Days"
-              fullWidth
-              inputProps={{ step: "0.5", min: "0" }}
+              step="0.5"
+              min="0"
               defaultValue={initial("day_count")}
               disabled={locked}
-              helperText="Half days are allowed"
             />
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <TextField
+            <Text size="1" color="gray">
+              Half days are allowed
+            </Text>
+          </Flex>
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" htmlFor="travel_day_rate">
+              Travel day rate (USD)
+            </Text>
+            <TextField.Root
+              id="travel_day_rate"
               name="travel_day_rate"
-              label="Travel day rate (USD)"
-              fullWidth
               inputMode="decimal"
               value={travelRate}
               onChange={(event) => setTravelRate(event.target.value)}
               disabled={locked}
             />
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <TextField
+          </Flex>
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" htmlFor="travel_day_count">
+              Travel days
+            </Text>
+            <TextField.Root
+              id="travel_day_count"
               type="number"
               name="travel_day_count"
-              label="Travel days"
-              fullWidth
-              inputProps={{ step: "1", min: "0" }}
+              step="1"
+              min="0"
               defaultValue={initial("travel_day_count", "0")}
               disabled={locked}
-              helperText="Days to and from the aircraft"
             />
-          </Grid>
-          <Grid item xs={12}>
-            <TextField
-              name="notes"
-              label="Notes"
-              fullWidth
-              multiline
-              rows={3}
-              defaultValue={initial("notes")}
-            />
-          </Grid>
+            <Text size="1" color="gray">
+              Days to and from the aircraft
+            </Text>
+          </Flex>
+          <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
+            <Text as="label" size="2" weight="medium" htmlFor="notes">
+              Notes
+            </Text>
+            <TextArea id="notes" name="notes" rows={3} defaultValue={initial("notes")} />
+          </Flex>
         </Grid>
 
         {/* role="alert" so a screen reader hears the rejection; without it
             the form silently resets and nothing is announced. */}
-        <MDBox mt={3} role="alert" aria-live="polite">
+        <Flex mt="4" role="alert" aria-live="polite">
           {state.error ? (
-            <MDTypography variant="caption" color="error">
-              {state.error}
-            </MDTypography>
+            <Callout.Root color="red" size="1">
+              <Callout.Text>{state.error}</Callout.Text>
+            </Callout.Root>
           ) : state.saved ? (
-            <MDTypography variant="caption" color="success">
-              {state.daysRemoved
-                ? `Trip saved. Removed ${state.daysRemoved} day row${
-                    state.daysRemoved === 1 ? "" : "s"
-                  } that fell outside the new dates.`
-                : "Trip saved."}
-            </MDTypography>
+            <Callout.Root color="green" size="1">
+              <Callout.Text>
+                {state.daysRemoved
+                  ? `Trip saved. Removed ${state.daysRemoved} day row${
+                      state.daysRemoved === 1 ? "" : "s"
+                    } that fell outside the new dates.`
+                  : "Trip saved."}
+              </Callout.Text>
+            </Callout.Root>
           ) : null}
-        </MDBox>
+        </Flex>
 
-        <MDBox mt={3} display="flex" gap={1.5}>
-          <MDButton
+        <Flex mt="4" gap="3">
+          <Button
             type="submit"
-            variant="gradient"
-            color="info"
             disabled={pending || locked}
             title={
               locked ? "This trip is on an invoice and can't be changed." : undefined
             }
           >
             {pending ? "Saving…" : submitLabel}
-          </MDButton>
-          <MDButton
-            component={NextLink}
-            href={cancelHref}
-            variant="outlined"
-            color="info"
-          >
-            Cancel
-          </MDButton>
-        </MDBox>
-      </MDBox>
+          </Button>
+          <Button asChild variant="outline">
+            <NextLink href={cancelHref}>Cancel</NextLink>
+          </Button>
+        </Flex>
+      </form>
     </Card>
   );
 }

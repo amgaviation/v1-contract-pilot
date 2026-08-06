@@ -1,12 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import NextLink from "next/link";
-import Card from "@mui/material/Card";
-import TextField from "@mui/material/TextField";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
+import { Box, Button, Callout, Card, Flex, Text, TextField } from "@radix-ui/themes";
 import { BRAND } from "@/lib/brand";
 import { requestPasswordReset, type ForgotPasswordState } from "./actions";
 
@@ -22,88 +18,78 @@ export default function ForgotPasswordForm({
     initialState
   );
 
-  return (
-    <Card sx={{ width: "100%", maxWidth: "22rem" }}>
-      <MDBox p={4} component="form" action={formAction}>
-        <MDBox mb={3} textAlign="center">
-          <MDTypography variant="h4" fontWeight="bold">
-            {BRAND.name}
-          </MDTypography>
-          <MDTypography variant="button" color="text" fontWeight="regular">
-            Reset your password
-          </MDTypography>
-        </MDBox>
+  // React 19 resets an uncontrolled form on every action dispatch,
+  // including the error path — a rejected submit would otherwise blank
+  // the email field too. Keep it controlled so it survives.
+  const [email, setEmail] = useState("");
 
-        {state.sent ? (
-          <MDBox mb={2}>
-            <MDTypography variant="button" color="text" fontWeight="regular">
+  return (
+    <Card size="4" style={{ width: "100%", maxWidth: "22rem" }}>
+      <form action={formAction}>
+        <Flex direction="column" gap="3">
+          <Flex direction="column" align="center" gap="1" mb="1">
+            <Text size="6" weight="bold">
+              {BRAND.name}
+            </Text>
+            <Text size="2" color="gray">
+              Reset your password
+            </Text>
+          </Flex>
+
+          {state.sent ? (
+            <Text size="2" color="gray">
               If that email has an account, a reset link is on its way. The
               link is single-use and expires shortly, so use it soon.
-            </MDTypography>
-          </MDBox>
-        ) : (
-          <>
-            {expired ? (
-              <MDBox mb={2}>
-                <MDTypography variant="caption" color="error">
-                  That reset link has expired or was already used. Request a
-                  new one below.
-                </MDTypography>
-              </MDBox>
-            ) : null}
+            </Text>
+          ) : (
+            <>
+              {expired ? (
+                <Callout.Root color="red" size="1">
+                  <Callout.Text>
+                    That reset link has expired or was already used. Request
+                    a new one below.
+                  </Callout.Text>
+                </Callout.Root>
+              ) : null}
 
-            <MDBox mb={2}>
-              <MDTypography variant="button" color="text" fontWeight="regular">
+              <Text size="2" color="gray">
                 Enter your email and we&rsquo;ll send you a link to set a new
                 password.
-              </MDTypography>
-            </MDBox>
+              </Text>
 
-            <MDBox mb={2}>
-              <TextField
-                type="email"
-                name="email"
-                label="Email"
-                fullWidth
-                autoComplete="email"
-                required
-              />
-            </MDBox>
+              <Box>
+                <Text as="label" size="2" weight="medium" htmlFor="email">
+                  Email
+                </Text>
+                <TextField.Root
+                  id="email"
+                  type="email"
+                  name="email"
+                  autoComplete="email"
+                  required
+                  mt="1"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </Box>
 
-            {state.error ? (
-              <MDBox mb={2}>
-                <MDTypography variant="caption" color="error">
+              {state.error ? (
+                <Text size="1" color="red" role="alert" aria-live="polite">
                   {state.error}
-                </MDTypography>
-              </MDBox>
-            ) : null}
+                </Text>
+              ) : null}
 
-            <MDBox mt={2}>
-              <MDButton
-                type="submit"
-                variant="gradient"
-                color="info"
-                fullWidth
-                disabled={pending}
-              >
+              <Button type="submit" disabled={pending} mt="1">
                 {pending ? "Sending…" : "Send reset link"}
-              </MDButton>
-            </MDBox>
-          </>
-        )}
+              </Button>
+            </>
+          )}
 
-        <MDBox mt={2} textAlign="center">
-          <MDTypography
-            component={NextLink}
-            href="/login"
-            variant="caption"
-            color="info"
-            fontWeight="medium"
-          >
-            Back to sign in
-          </MDTypography>
-        </MDBox>
-      </MDBox>
+          <Text asChild size="1" align="center">
+            <NextLink href="/login">Back to sign in</NextLink>
+          </Text>
+        </Flex>
+      </form>
     </Card>
   );
 }

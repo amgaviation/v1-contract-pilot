@@ -1,13 +1,5 @@
-import Card from "@mui/material/Card";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
-
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
+import { Callout, Card, Flex, Heading, Table, Text } from "@radix-ui/themes";
+import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
@@ -46,13 +38,12 @@ export default async function LogbookDraftsPage() {
   if (tripError) {
     return (
       <PageShell title="Trip drafts" subtitle="Legs from completed trips, waiting on your review.">
-        <Card>
-          <MDBox p={3}>
-            <MDTypography variant="button" color="error">
-              {friendlyDbError(tripError, "trips.select")}
-            </MDTypography>
-          </MDBox>
-        </Card>
+        <Callout.Root color="red">
+          <Callout.Icon>
+            <ExclamationTriangleIcon />
+          </Callout.Icon>
+          <Callout.Text>{friendlyDbError(tripError, "trips.select")}</Callout.Text>
+        </Callout.Root>
       </PageShell>
     );
   }
@@ -81,26 +72,24 @@ export default async function LogbookDraftsPage() {
   if (legsError) {
     return (
       <PageShell title="Trip drafts" subtitle="Legs from completed trips, waiting on your review.">
-        <Card>
-          <MDBox p={3}>
-            <MDTypography variant="button" color="error">
-              {friendlyDbError(legsError, "trip_legs.select")}
-            </MDTypography>
-          </MDBox>
-        </Card>
+        <Callout.Root color="red">
+          <Callout.Icon>
+            <ExclamationTriangleIcon />
+          </Callout.Icon>
+          <Callout.Text>{friendlyDbError(legsError, "trip_legs.select")}</Callout.Text>
+        </Callout.Root>
       </PageShell>
     );
   }
   if (confirmedError) {
     return (
       <PageShell title="Trip drafts" subtitle="Legs from completed trips, waiting on your review.">
-        <Card>
-          <MDBox p={3}>
-            <MDTypography variant="button" color="error">
-              {friendlyDbError(confirmedError, "logbook_entries.select")}
-            </MDTypography>
-          </MDBox>
-        </Card>
+        <Callout.Root color="red">
+          <Callout.Icon>
+            <ExclamationTriangleIcon />
+          </Callout.Icon>
+          <Callout.Text>{friendlyDbError(confirmedError, "logbook_entries.select")}</Callout.Text>
+        </Callout.Root>
       </PageShell>
     );
   }
@@ -133,113 +122,109 @@ export default async function LogbookDraftsPage() {
     >
       {pendingTrips.length === 0 ? (
         <Card>
-          <MDBox p={4} textAlign="center">
-            <MDTypography variant="h6">Nothing to review</MDTypography>
-            <MDTypography variant="button" color="text" fontWeight="regular">
+          <Flex direction="column" align="center" gap="2" py="6">
+            <Heading as="h3" size="4">Nothing to review</Heading>
+            <Text size="2" color="gray" align="center">
               Complete a trip with legs and its proposed entries will show up here for you to
               confirm — nothing reaches your logbook automatically.
-            </MDTypography>
-          </MDBox>
+            </Text>
+          </Flex>
         </Card>
       ) : (
-        pendingTrips.map(({ trip, legs: tripLegs }) => (
-          <MDBox key={trip.id} mb={3}>
-            <Card>
-              <MDBox p={3} pb={2} display="flex" justifyContent="space-between" alignItems="flex-start" gap={2}>
-                <MDBox lineHeight={1.3}>
-                  <MDTypography variant="h6">{formatDateRange(trip.starts_on, trip.ends_on)}</MDTypography>
-                  <MDTypography variant="caption" color="text">
-                    {trip.aircraft_ident ?? "No tail number"}
-                    {trip.aircraft_type ? ` · ${trip.aircraft_type}` : ""}
-                  </MDTypography>
-                </MDBox>
-                <ConfirmTripButton tripId={trip.id} legCount={tripLegs.length} />
-              </MDBox>
-              <MDBox px={3} pb={3}>
-                <TableContainer sx={{ boxShadow: "none" }}>
-                  <Table>
-                    <TableHead sx={{ display: "table-header-group" }}>
-                      <TableRow>
-                        {["Date", "Route", "Total", "Night", "Instrument", "Landings", ""].map(
-                          (heading, index) => (
-                            <TableCell key={heading || index} align={index >= 2 && index <= 5 ? "right" : "left"}>
-                              <MDTypography variant="caption" fontWeight="bold" textTransform="uppercase">
-                                {heading}
-                              </MDTypography>
-                            </TableCell>
-                          )
-                        )}
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {tripLegs.map((leg) => {
-                        const proposal = draftPayloadForLeg(trip, leg);
-                        // logbookFrom()/draftPayloadForLeg return `any`, so
-                        // nothing type-checks these numeric(4,1) columns —
-                        // Number() coerces the same way trips/invoices
-                        // already do for their own numerics, so a value
-                        // that ever arrives as a string doesn't silently
-                        // concatenate instead of sum.
-                        const landings =
-                          Number(proposal.day_landings_full_stop) +
-                          Number(proposal.day_landings_touch_go) +
-                          Number(proposal.night_landings_full_stop) +
-                          Number(proposal.night_landings_touch_go);
-                        return (
-                          <TableRow key={leg.id}>
-                            <TableCell>
-                              <MDTypography variant="button" fontWeight="medium">
-                                {formatDate(proposal.entry_date)}
-                              </MDTypography>
-                            </TableCell>
-                            <TableCell>
-                              <MDTypography variant="button" color="text" fontWeight="regular">
-                                {proposal.from_icao ?? "—"} → {proposal.to_icao ?? "—"}
-                              </MDTypography>
-                            </TableCell>
-                            <TableCell align="right">
-                              <MDTypography variant="button" fontWeight="regular">
-                                {Number(proposal.total_time).toFixed(1)}
-                              </MDTypography>
-                            </TableCell>
-                            <TableCell align="right">
-                              <MDTypography variant="button" color="text" fontWeight="regular">
-                                {Number(proposal.night_time ?? 0).toFixed(1)}
-                              </MDTypography>
-                            </TableCell>
-                            <TableCell align="right">
-                              <MDTypography variant="button" color="text" fontWeight="regular">
-                                {Number(proposal.instrument_actual_time ?? 0).toFixed(1)}
-                              </MDTypography>
-                            </TableCell>
-                            <TableCell align="right">
-                              <MDTypography variant="button" color="text" fontWeight="regular">
-                                {landings}
-                              </MDTypography>
-                            </TableCell>
-                            <TableCell align="right">
-                              <ConfirmLegButton
-                                tripLegId={leg.id}
-                                label={`${proposal.from_icao ?? "?"} to ${proposal.to_icao ?? "?"} on ${formatDate(proposal.entry_date)}`}
-                              />
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-                <MDBox mt={2}>
-                  <MDTypography variant="caption" color="text" fontWeight="regular">
-                    These numbers come straight from the trip's legs. Edit them on the trip
-                    first if anything's wrong — you can also fix any individual field on the
-                    logbook entry after confirming.
-                  </MDTypography>
-                </MDBox>
-              </MDBox>
+        <Flex direction="column" gap="4">
+          {pendingTrips.map(({ trip, legs: tripLegs }) => (
+            <Card key={trip.id}>
+              <Flex direction="column" gap="3" p="2">
+                <Flex justify="between" align="start" gap="3" wrap="wrap">
+                  <Flex direction="column">
+                    <Heading as="h3" size="4">{formatDateRange(trip.starts_on, trip.ends_on)}</Heading>
+                    <Text size="1" color="gray">
+                      {trip.aircraft_ident ?? "No tail number"}
+                      {trip.aircraft_type ? ` · ${trip.aircraft_type}` : ""}
+                    </Text>
+                  </Flex>
+                  <ConfirmTripButton tripId={trip.id} legCount={tripLegs.length} />
+                </Flex>
+
+                <Table.Root variant="ghost">
+                  <Table.Header>
+                    <Table.Row>
+                      <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
+                      <Table.ColumnHeaderCell>Route</Table.ColumnHeaderCell>
+                      <Table.ColumnHeaderCell justify="end">Total</Table.ColumnHeaderCell>
+                      <Table.ColumnHeaderCell justify="end">Night</Table.ColumnHeaderCell>
+                      <Table.ColumnHeaderCell justify="end">Instrument</Table.ColumnHeaderCell>
+                      <Table.ColumnHeaderCell justify="end">Landings</Table.ColumnHeaderCell>
+                      <Table.ColumnHeaderCell justify="end"> </Table.ColumnHeaderCell>
+                    </Table.Row>
+                  </Table.Header>
+                  <Table.Body>
+                    {tripLegs.map((leg) => {
+                      const proposal = draftPayloadForLeg(trip, leg);
+                      // logbookFrom()/draftPayloadForLeg return `any`, so
+                      // nothing type-checks these numeric(4,1) columns —
+                      // Number() coerces the same way trips/invoices
+                      // already do for their own numerics, so a value
+                      // that ever arrives as a string doesn't silently
+                      // concatenate instead of sum.
+                      const landings =
+                        Number(proposal.day_landings_full_stop) +
+                        Number(proposal.day_landings_touch_go) +
+                        Number(proposal.night_landings_full_stop) +
+                        Number(proposal.night_landings_touch_go);
+                      return (
+                        <Table.Row key={leg.id}>
+                          <Table.Cell>
+                            <Text size="2" weight="medium">
+                              {formatDate(proposal.entry_date)}
+                            </Text>
+                          </Table.Cell>
+                          <Table.Cell>
+                            <Text size="2" color="gray">
+                              {proposal.from_icao ?? "—"} → {proposal.to_icao ?? "—"}
+                            </Text>
+                          </Table.Cell>
+                          <Table.Cell justify="end">
+                            <Text size="2" className="tnum">
+                              {Number(proposal.total_time).toFixed(1)}
+                            </Text>
+                          </Table.Cell>
+                          <Table.Cell justify="end">
+                            <Text size="2" color="gray" className="tnum">
+                              {Number(proposal.night_time ?? 0).toFixed(1)}
+                            </Text>
+                          </Table.Cell>
+                          <Table.Cell justify="end">
+                            <Text size="2" color="gray" className="tnum">
+                              {Number(proposal.instrument_actual_time ?? 0).toFixed(1)}
+                            </Text>
+                          </Table.Cell>
+                          <Table.Cell justify="end">
+                            <Text size="2" color="gray" className="tnum">
+                              {landings}
+                            </Text>
+                          </Table.Cell>
+                          <Table.Cell justify="end">
+                            <ConfirmLegButton
+                              tripLegId={leg.id}
+                              label={`${proposal.from_icao ?? "?"} to ${proposal.to_icao ?? "?"} on ${formatDate(proposal.entry_date)}`}
+                            />
+                          </Table.Cell>
+                        </Table.Row>
+                      );
+                    })}
+                  </Table.Body>
+                </Table.Root>
+
+                <Text size="1" color="gray">
+                  These numbers come straight from the trip's legs. Edit them on the trip
+                  first if anything's wrong — you can also fix any individual field on the
+                  logbook entry after confirming.
+                </Text>
+              </Flex>
             </Card>
-          </MDBox>
-        ))
+          ))}
+        </Flex>
       )}
     </PageShell>
   );

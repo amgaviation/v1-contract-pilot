@@ -1,21 +1,21 @@
 import NextLink from "next/link";
-import Card from "@mui/material/Card";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
-
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
-import MDBadge from "@/components/mdpro/MDBadge";
+import {
+  Badge,
+  Button,
+  Callout,
+  Card,
+  Flex,
+  Heading,
+  Link as RadixLink,
+  Table,
+  Text,
+} from "@radix-ui/themes";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+import { tripValueCents, type TripDayValueRow } from "@/lib/trip-value";
 import PageShell from "../page-shell";
 
 export const metadata = { title: "Trips" };
@@ -35,55 +35,22 @@ type TripListRow = {
   billing_state: string;
 };
 
-type TripDayValueRow = { day_type_id: string; rate_cents: number; quantity: number };
+type BadgeInfo = { color: "gray" | "blue" | "green" | "red" | "amber"; label: string };
 
-/**
- * F3: once a trip has day_days rows, createInvoiceDraft prices it from
- * THEM — summing quantity x rate_cents over the BILLABLE rows — and
- * ignores day_rate_cents/day_count/travel_day_rate_cents/
- * travel_day_count entirely. Showing the scalar total for such a trip
- * would be exactly the "two sources for one number" defect this comment
- * used to warn about while creating it: a number on screen the invoice
- * will not actually bill. Flight days AND travel days, in the scalar
- * fallback, for the same reason as before — Phase 5 drafts travel days as
- * their own invoice line.
- */
-function tripValueCents(
-  trip: TripListRow,
-  dayRowsByTrip: Map<string, TripDayValueRow[]>,
-  billableByDayType: Map<string, boolean>
-): number {
-  const dayRows = dayRowsByTrip.get(trip.id);
-  if (dayRows && dayRows.length > 0) {
-    return dayRows.reduce((sum, row) => {
-      if (!billableByDayType.get(row.day_type_id)) return sum;
-      return sum + Math.round(Number(row.quantity) * row.rate_cents);
-    }, 0);
-  }
-  return (
-    Math.round(trip.day_rate_cents * Number(trip.day_count)) +
-    Math.round(
-      (trip.travel_day_rate_cents ?? 0) * Number(trip.travel_day_count ?? 0)
-    )
-  );
-}
-
-type Badge = { tone: string; label: string };
-
-const STATUS_FALLBACK: Badge = { tone: "secondary", label: "Scheduled" };
-const STATUS_BADGE: Record<string, Badge> = {
+const STATUS_FALLBACK: BadgeInfo = { color: "gray", label: "Scheduled" };
+const STATUS_BADGE: Record<string, BadgeInfo> = {
   scheduled: STATUS_FALLBACK,
-  in_progress: { tone: "info", label: "In progress" },
-  completed: { tone: "success", label: "Completed" },
-  canceled: { tone: "dark", label: "Canceled" },
+  in_progress: { color: "blue", label: "In progress" },
+  completed: { color: "green", label: "Completed" },
+  canceled: { color: "gray", label: "Canceled" },
 };
 
-const BILLING_FALLBACK: Badge = { tone: "warning", label: "Unbilled" };
-const BILLING_BADGE: Record<string, Badge> = {
+const BILLING_FALLBACK: BadgeInfo = { color: "amber", label: "Unbilled" };
+const BILLING_BADGE: Record<string, BadgeInfo> = {
   unbilled: BILLING_FALLBACK,
-  invoiced: { tone: "info", label: "Invoiced" },
-  paid: { tone: "success", label: "Paid" },
-  written_off: { tone: "secondary", label: "Written off" },
+  invoiced: { color: "blue", label: "Invoiced" },
+  paid: { color: "green", label: "Paid" },
+  written_off: { color: "gray", label: "Written off" },
 };
 
 export default async function TripsPage() {
@@ -116,6 +83,14 @@ export default async function TripsPage() {
   const dayRowsByTrip = new Map<string, TripDayValueRow[]>();
   const billableByDayType = new Map<string, boolean>();
   const tripIds = trips.map((t) => t.id);
+  // H8: this read used to throw and 500 the whole page on a transient
+  // failure — harsher than the primary `trips` query below, which
+  // degrades to a Callout instead. Can't safely tell which trips have day
+  // rows without both queries succeeding (guessing "no day rows, use the
+  // scalar fallback" could understate a trip that actually bills more
+  // through its grid), so on failure the Value column itself is hidden
+  // rather than risk showing a wrong number.
+  let dayGridError = false;
   if (tripIds.length > 0) {
     const [{ data: dayRowsData, error: dayRowsError }, { data: dayTypeData, error: dayTypeError }] =
       await Promise.all([
@@ -126,24 +101,17 @@ export default async function TripsPage() {
         supabase.from("day_types").select("id, billable"),
       ]);
 
-    // Can't safely tell which trips have day rows without both of these —
-    // guessing "no day rows, use the scalar fallback" on a fetch failure
-    // could understate a trip that actually bills more through its grid.
     if (dayRowsError || dayTypeError) {
-      throw new Error(
-        `Couldn't load day grids for the trips list: ${
-          (dayRowsError ?? dayTypeError)?.message
-        }`
-      );
-    }
-
-    for (const row of (dayRowsData ?? []) as (TripDayValueRow & { trip_id: string })[]) {
-      const forTrip = dayRowsByTrip.get(row.trip_id) ?? [];
-      forTrip.push(row);
-      dayRowsByTrip.set(row.trip_id, forTrip);
-    }
-    for (const t of (dayTypeData ?? []) as { id: string; billable: boolean }[]) {
-      billableByDayType.set(t.id, t.billable);
+      dayGridError = true;
+    } else {
+      for (const row of (dayRowsData ?? []) as (TripDayValueRow & { trip_id: string })[]) {
+        const forTrip = dayRowsByTrip.get(row.trip_id) ?? [];
+        forTrip.push(row);
+        dayRowsByTrip.set(row.trip_id, forTrip);
+      }
+      for (const t of (dayTypeData ?? []) as { id: string; billable: boolean }[]) {
+        billableByDayType.set(t.id, t.billable);
+      }
     }
   }
 
@@ -162,136 +130,104 @@ export default async function TripsPage() {
             }`
       }
       action={
-        <MDButton
-          component={NextLink}
-          href="/trips/new"
-          variant="gradient"
-          color="info"
-        >
-          Log a trip
-        </MDButton>
+        <Button asChild>
+          <NextLink href="/trips/new">Log a trip</NextLink>
+        </Button>
       }
     >
       <Card>
-        <MDBox p={3}>
-          {error ? (
-            <MDTypography variant="button" color="error">
-              {friendlyDbError(error, "trips.select")}
-            </MDTypography>
-          ) : trips.length === 0 ? (
-            <MDBox py={4} textAlign="center">
-              <MDTypography variant="h6">No trips yet</MDTypography>
-              <MDTypography variant="button" color="text" fontWeight="regular">
-                Log the trip once. Its legs feed your logbook, its days feed
-                the invoice, and its expenses file themselves against it.
-              </MDTypography>
-              <MDBox mt={3}>
-                <MDButton
-                  component={NextLink}
-                  href="/trips/new"
-                  variant="gradient"
-                  color="info"
-                >
-                  Log your first trip
-                </MDButton>
-              </MDBox>
-            </MDBox>
-          ) : (
-            <TableContainer sx={{ boxShadow: "none" }}>
-              <Table>
-                <TableHead sx={{ display: "table-header-group" }}>
-                  <TableRow>
-                    {["Dates", "Client", "Aircraft", "Days", "Value", "Status", "Billing"].map(
-                      (heading, index) => (
-                        <TableCell
-                          key={heading}
-                          align={index === 3 || index === 4 ? "right" : "left"}
-                        >
-                          <MDTypography
-                            variant="caption"
-                            fontWeight="bold"
-                            textTransform="uppercase"
-                          >
-                            {heading}
-                          </MDTypography>
-                        </TableCell>
-                      )
-                    )}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {trips.map((trip) => {
-                    const status = STATUS_BADGE[trip.status] ?? STATUS_FALLBACK;
-                    const billing =
-                      BILLING_BADGE[trip.billing_state] ?? BILLING_FALLBACK;
-                    return (
-                      <TableRow key={trip.id}>
-                        <TableCell component="th" scope="row">
-                          <MDTypography
-                            component={NextLink}
-                            href={`/trips/${trip.id}`}
-                            variant="button"
-                            fontWeight="medium"
-                          >
+        {error ? (
+          <Callout.Root color="red" m="3">
+            <Callout.Text>{friendlyDbError(error, "trips.select")}</Callout.Text>
+          </Callout.Root>
+        ) : trips.length === 0 ? (
+          <Flex direction="column" align="center" gap="3" py="6" px="3">
+            <Heading as="h3" size="4">No trips yet</Heading>
+            <Text size="2" color="gray" align="center">
+              Log the trip once. Its legs feed your logbook, its days feed
+              the invoice, and its expenses file themselves against it.
+            </Text>
+            <Button asChild>
+              <NextLink href="/trips/new">Log your first trip</NextLink>
+            </Button>
+          </Flex>
+        ) : (
+          <>
+            {dayGridError ? (
+              <Callout.Root color="amber" m="3">
+                <Callout.Text>
+                  Couldn&rsquo;t load day grids for these trips, so the Value
+                  column is hidden rather than risk showing a wrong number.
+                </Callout.Text>
+              </Callout.Root>
+            ) : null}
+            <Table.Root>
+              <Table.Header>
+                <Table.Row>
+                  <Table.ColumnHeaderCell>Dates</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Aircraft</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell justify="end">Days</Table.ColumnHeaderCell>
+                  {dayGridError ? null : (
+                    <Table.ColumnHeaderCell justify="end">Value</Table.ColumnHeaderCell>
+                  )}
+                  <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Billing</Table.ColumnHeaderCell>
+                </Table.Row>
+              </Table.Header>
+              <Table.Body>
+                {trips.map((trip) => {
+                  const status = STATUS_BADGE[trip.status] ?? STATUS_FALLBACK;
+                  const billing =
+                    BILLING_BADGE[trip.billing_state] ?? BILLING_FALLBACK;
+                  return (
+                    <Table.Row key={trip.id}>
+                      <Table.RowHeaderCell>
+                        <RadixLink asChild weight="medium">
+                          <NextLink href={`/trips/${trip.id}`}>
                             {formatDateRange(trip.starts_on, trip.ends_on)}
-                          </MDTypography>
-                        </TableCell>
-                        <TableCell>
-                          <MDTypography
-                            variant="button"
-                            color="text"
-                            fontWeight="regular"
-                          >
-                            {trip.client_id
-                              ? clientNames.get(trip.client_id) ?? "—"
-                              : "No client"}
-                          </MDTypography>
-                        </TableCell>
-                        <TableCell>
-                          <MDTypography
-                            variant="button"
-                            color="text"
-                            fontWeight="regular"
-                          >
-                            {trip.aircraft_ident ?? "—"}
-                          </MDTypography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <MDTypography variant="button" fontWeight="regular">
-                            {trip.day_count}
-                          </MDTypography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <MDTypography variant="button" fontWeight="medium">
-                            {formatCents(tripValueCents(trip, dayRowsByTrip, billableByDayType))}
-                          </MDTypography>
-                        </TableCell>
-                        <TableCell>
-                          <MDBadge
-                            variant="gradient"
-                            color={status.tone}
-                            badgeContent={status.label}
-                            size="sm"
-                            container
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <MDBadge
-                            variant="gradient"
-                            color={billing.tone}
-                            badgeContent={billing.label}
-                            size="sm"
-                            container
-                          />
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-        </MDBox>
+                          </NextLink>
+                        </RadixLink>
+                      </Table.RowHeaderCell>
+                      <Table.Cell>
+                        <Text size="2" color="gray">
+                          {trip.client_id
+                            ? clientNames.get(trip.client_id) ?? "—"
+                            : "No client"}
+                        </Text>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Text size="2" color="gray">
+                          {trip.aircraft_ident ?? "—"}
+                        </Text>
+                      </Table.Cell>
+                      <Table.Cell justify="end">
+                        <Text size="2" className="tnum">
+                          {trip.day_count}
+                        </Text>
+                      </Table.Cell>
+                      {dayGridError ? null : (
+                        <Table.Cell justify="end">
+                          <Text size="2" weight="medium" className="tnum">
+                            {formatCents(
+                              tripValueCents(trip, dayRowsByTrip.get(trip.id), billableByDayType)
+                            )}
+                          </Text>
+                        </Table.Cell>
+                      )}
+                      <Table.Cell>
+                        <Badge color={status.color}>{status.label}</Badge>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Badge color={billing.color}>{billing.label}</Badge>
+                      </Table.Cell>
+                    </Table.Row>
+                  );
+                })}
+              </Table.Body>
+            </Table.Root>
+          </>
+        )}
       </Card>
     </PageShell>
   );

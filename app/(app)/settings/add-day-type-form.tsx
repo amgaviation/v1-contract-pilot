@@ -1,14 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
-import Card from "@mui/material/Card";
-import Grid from "@mui/material/Grid";
-import TextField from "@mui/material/TextField";
-import MenuItem from "@mui/material/MenuItem";
-import Switch from "@mui/material/Switch";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
+import { useActionState, useEffect, useState } from "react";
+import { Button, Card, Flex, Grid, Heading, Select, Switch, Text, TextField } from "@radix-ui/themes";
 import { createDayType, type DayTypeFormState } from "./day-types-actions";
 
 const initialState: DayTypeFormState = { error: null };
@@ -32,97 +25,114 @@ export default function AddDayTypeForm() {
     return echoed === undefined ? fallback : echoed === "on";
   };
 
+  // See the fix note in day-type-row.tsx: Select.Root's posting <select>
+  // is always uncontrolled from React's point of view, so `name` is
+  // dropped here too and the real value posts from a controlled hidden
+  // input, re-seeded from the echoed submission on a rejected add.
+  const [invoiceLineType, setInvoiceLineType] = useState(() =>
+    initial("invoice_line_type", "flight_day")
+  );
+  useEffect(() => {
+    if (submitted?.invoice_line_type !== undefined) {
+      setInvoiceLineType(String(submitted.invoice_line_type));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitted]);
+
   return (
     <Card>
-      <MDBox p={3} component="form" action={formAction}>
-        <MDBox mb={2} lineHeight={1.25}>
-          <MDTypography variant="h6">Add a day type</MDTypography>
-          <MDTypography variant="button" color="text" fontWeight="regular">
-            Give it a name your trips and invoices will use. You choose
-            which invoice line it bills as; that part is fixed.
-          </MDTypography>
-        </MDBox>
+      <form action={formAction}>
+        <Flex direction="column" gap="4" p="1">
+          <Flex direction="column" gap="1">
+            <Heading as="h2" size="4">Add a day type</Heading>
+            <Text size="2" color="gray">
+              Give it a name your trips and invoices will use. You choose which invoice line it
+              bills as; that part is fixed.
+            </Text>
+          </Flex>
 
-        <Grid container spacing={2} alignItems="flex-start">
-          <Grid item xs={12} md={4}>
-            <TextField
-              name="label"
-              label="Label"
-              fullWidth
-              required
-              defaultValue={initial("label")}
-              helperText="Ground school day, for example"
-            />
+          <Grid columns={{ initial: "2", md: "10" }} gap="3" align="start">
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 4" }}>
+              <Text size="1" color="gray">
+                Label
+              </Text>
+              <TextField.Root name="label" required defaultValue={initial("label")} />
+              <Text size="1" color="gray">
+                Ground school day, for example
+              </Text>
+            </Flex>
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+              <Text as="label" size="2" color="gray">
+                <Flex gap="2" align="center" mt="4">
+                  <Switch
+                    name="billable"
+                    value="on"
+                    defaultChecked={checked("billable", true)}
+                    aria-label="Billable"
+                  />
+                  Billable
+                </Flex>
+              </Text>
+            </Flex>
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+              <Text as="label" size="2" color="gray">
+                <Flex gap="2" align="center" mt="4">
+                  <Switch
+                    name="counts_for_per_diem"
+                    value="on"
+                    defaultChecked={checked("counts_for_per_diem", true)}
+                    aria-label="Counts for per diem"
+                  />
+                  Per diem
+                </Flex>
+              </Text>
+            </Flex>
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+              <Text size="1" color="gray">
+                Default rate (USD)
+              </Text>
+              <TextField.Root name="default_rate" inputMode="decimal" defaultValue={initial("default_rate")} />
+              <Text size="1" color="gray">
+                Optional
+              </Text>
+            </Flex>
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+              <Text as="label" size="1" color="gray" id="add-bills-as-label">
+                Bills as
+              </Text>
+              <Select.Root value={invoiceLineType} onValueChange={setInvoiceLineType}>
+                <Select.Trigger aria-labelledby="add-bills-as-label" />
+                <Select.Content>
+                  {LINE_TYPE_OPTIONS.map((option) => (
+                    <Select.Item key={option.value} value={option.value}>
+                      {option.label}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+              <input type="hidden" name="invoice_line_type" value={invoiceLineType} />
+            </Flex>
           </Grid>
-          <Grid item xs={6} md={2}>
-            <MDBox display="flex" alignItems="center" gap={1} pt={1}>
-              <Switch
-                name="billable"
-                defaultChecked={checked("billable", true)}
-                inputProps={{ "aria-label": "Billable" }}
-              />
-              <MDTypography variant="caption" color="text">
-                Billable
-              </MDTypography>
-            </MDBox>
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <MDBox display="flex" alignItems="center" gap={1} pt={1}>
-              <Switch
-                name="counts_for_per_diem"
-                defaultChecked={checked("counts_for_per_diem", true)}
-                inputProps={{ "aria-label": "Counts for per diem" }}
-              />
-              <MDTypography variant="caption" color="text">
-                Per diem
-              </MDTypography>
-            </MDBox>
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <TextField
-              name="default_rate"
-              label="Default rate (USD)"
-              fullWidth
-              inputMode="decimal"
-              defaultValue={initial("default_rate")}
-              helperText="Optional"
-            />
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <TextField
-              select
-              name="invoice_line_type"
-              label="Bills as"
-              fullWidth
-              defaultValue={initial("invoice_line_type", "flight_day")}
-            >
-              {LINE_TYPE_OPTIONS.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Grid>
-        </Grid>
 
-        <MDBox mt={2} role="alert" aria-live="polite">
-          {state.error ? (
-            <MDTypography variant="caption" color="error">
-              {state.error}
-            </MDTypography>
-          ) : state.saved ? (
-            <MDTypography variant="caption" color="success">
-              Added.
-            </MDTypography>
-          ) : null}
-        </MDBox>
+          <div role="alert" aria-live="polite">
+            {state.error ? (
+              <Text size="1" color="red">
+                {state.error}
+              </Text>
+            ) : state.saved ? (
+              <Text size="1" color="green">
+                Added.
+              </Text>
+            ) : null}
+          </div>
 
-        <MDBox mt={2}>
-          <MDButton type="submit" variant="gradient" color="info" disabled={pending}>
-            {pending ? "Adding…" : "Add day type"}
-          </MDButton>
-        </MDBox>
-      </MDBox>
+          <Flex>
+            <Button type="submit" disabled={pending}>
+              {pending ? "Adding…" : "Add day type"}
+            </Button>
+          </Flex>
+        </Flex>
+      </form>
     </Card>
   );
 }

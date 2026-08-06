@@ -1,13 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
-import Card from "@mui/material/Card";
-import Grid from "@mui/material/Grid";
-import TextField from "@mui/material/TextField";
-import MenuItem from "@mui/material/MenuItem";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
+import { useActionState, useEffect, useState } from "react";
+import { Button, Card, Flex, Grid, Text, TextField, Select } from "@radix-ui/themes";
 import { formatDate } from "@/lib/format";
 import { updateInvoiceHeader, updateInvoiceNotes, type InvoiceFormState } from "../actions";
 
@@ -58,91 +52,113 @@ function DraftHeader({
     return stored === null || stored === undefined ? fallback : String(stored);
   };
 
+  // Radix's Select.Root always renders its posting <select> with
+  // `defaultValue`, never `value` (@radix-ui/react-select's
+  // SelectBubbleInput) — so it's uncontrolled from React's point of view
+  // no matter what Select.Root is given, and it's what the browser
+  // actually posts when `name` stays on it. React 19's post-action
+  // form.reset() restores it to its mount-time option even on a rejected
+  // submit, silently reassigning the invoice to the wrong client. Fixed
+  // by dropping `name` and posting the real value from a controlled
+  // hidden input instead.
+  const [clientId, setClientId] = useState(() => initial("client_id", invoice.client_id));
+  useEffect(() => {
+    if (submitted?.client_id !== undefined) setClientId(String(submitted.client_id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitted]);
+
   return (
-    <Card>
-      <MDBox p={3} component="form" action={formAction}>
+    <Card size="3">
+      <form action={formAction}>
         <input type="hidden" name="id" value={invoice.id} />
-        <MDTypography variant="h6" mb={2}>
+        <Text as="div" size="4" weight="bold" mb="3">
           Billing details
-        </MDTypography>
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
-            <TextField
-              select
-              name="client_id"
-              label="Client"
-              fullWidth
-              defaultValue={initial("client_id", invoice.client_id)}
-            >
-              {clients.map((client) => (
-                <MenuItem key={client.id} value={client.id}>
-                  {client.name}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Grid>
-          <Grid item xs={6} md={3}>
-            <TextField
+        </Text>
+        <Grid columns={{ initial: "1", md: "12" }} gap="3">
+          <Flex direction="column" gap="1" style={{ gridColumn: "span 6" }}>
+            <Text as="label" size="2" weight="medium" id="client-label">
+              Client
+            </Text>
+            <Select.Root value={clientId} onValueChange={setClientId}>
+              <Select.Trigger aria-labelledby="client-label" />
+              <Select.Content>
+                {clients.map((client) => (
+                  <Select.Item key={client.id} value={client.id}>
+                    {client.name}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+            <input type="hidden" name="client_id" value={clientId} />
+          </Flex>
+          <Flex direction="column" gap="1" style={{ gridColumn: "span 3" }}>
+            <Text as="label" size="2" weight="medium" htmlFor="issued_on">
+              Issue date
+            </Text>
+            <TextField.Root
+              id="issued_on"
               type="date"
               name="issued_on"
-              label="Issue date"
-              fullWidth
-              InputLabelProps={{ shrink: true }}
               defaultValue={initial("issued_on", invoice.issued_on)}
-              helperText="Defaults to today when sent"
             />
-          </Grid>
-          <Grid item xs={6} md={3}>
-            <TextField
+            <Text size="1" color="gray">
+              Defaults to today when sent
+            </Text>
+          </Flex>
+          <Flex direction="column" gap="1" style={{ gridColumn: "span 3" }}>
+            <Text as="label" size="2" weight="medium" htmlFor="due_on">
+              Due date
+            </Text>
+            <TextField.Root
+              id="due_on"
               type="date"
               name="due_on"
-              label="Due date"
-              fullWidth
-              InputLabelProps={{ shrink: true }}
               defaultValue={initial("due_on", invoice.due_on)}
-              helperText="Defaults from the client's terms"
             />
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <TextField
+            <Text size="1" color="gray">
+              Defaults from the client&rsquo;s terms
+            </Text>
+          </Flex>
+          <Flex direction="column" gap="1" style={{ gridColumn: "span 4" }}>
+            <Text as="label" size="2" weight="medium" htmlFor="tax_rate_percent">
+              Tax rate (%)
+            </Text>
+            <TextField.Root
+              id="tax_rate_percent"
               name="tax_rate_percent"
-              label="Tax rate (%)"
-              fullWidth
               inputMode="decimal"
               defaultValue={initial(
                 "tax_rate_percent",
                 (invoice.tax_rate_bps / 100).toString()
               )}
             />
-          </Grid>
-          <Grid item xs={12} md={8}>
-            <TextField
-              name="notes"
-              label="Notes"
-              fullWidth
-              defaultValue={initial("notes", invoice.notes)}
-            />
-          </Grid>
+          </Flex>
+          <Flex direction="column" gap="1" style={{ gridColumn: "span 8" }}>
+            <Text as="label" size="2" weight="medium" htmlFor="notes">
+              Notes
+            </Text>
+            <TextField.Root id="notes" name="notes" defaultValue={initial("notes", invoice.notes)} />
+          </Flex>
         </Grid>
 
-        <MDBox mt={2} role="alert" aria-live="polite">
+        <Flex mt="3" role="alert" aria-live="polite">
           {state.error ? (
-            <MDTypography variant="caption" color="error">
+            <Text size="1" color="red">
               {state.error}
-            </MDTypography>
+            </Text>
           ) : state.saved ? (
-            <MDTypography variant="caption" color="success">
+            <Text size="1" color="green">
               Saved.
-            </MDTypography>
+            </Text>
           ) : null}
-        </MDBox>
+        </Flex>
 
-        <MDBox mt={2}>
-          <MDButton type="submit" variant="gradient" color="info" disabled={pending}>
+        <Flex mt="3">
+          <Button type="submit" disabled={pending}>
             {pending ? "Saving…" : "Save details"}
-          </MDButton>
-        </MDBox>
-      </MDBox>
+          </Button>
+        </Flex>
+      </form>
     </Card>
   );
 }
@@ -165,65 +181,59 @@ function LockedHeader({
   const clientName = clients.find((c) => c.id === invoice.client_id)?.name ?? "—";
 
   return (
-    <Card>
-      <MDBox p={3}>
-        <MDTypography variant="h6" mb={2}>
-          Billing details
-        </MDTypography>
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
-            <MDTypography variant="caption" color="text" textTransform="uppercase">
-              Client
-            </MDTypography>
-            <MDTypography variant="button" fontWeight="medium" display="block">
-              {clientName}
-            </MDTypography>
-          </Grid>
-          <Grid item xs={6} md={3}>
-            <MDTypography variant="caption" color="text" textTransform="uppercase">
-              Issued
-            </MDTypography>
-            <MDTypography variant="button" fontWeight="medium" display="block">
-              {formatDate(invoice.issued_on)}
-            </MDTypography>
-          </Grid>
-          <Grid item xs={6} md={3}>
-            <MDTypography variant="caption" color="text" textTransform="uppercase">
-              Due
-            </MDTypography>
-            <MDTypography variant="button" fontWeight="medium" display="block">
-              {formatDate(invoice.due_on)}
-            </MDTypography>
-          </Grid>
-        </Grid>
+    <Card size="3">
+      <Text as="div" size="4" weight="bold" mb="3">
+        Billing details
+      </Text>
+      <Grid columns={{ initial: "1", md: "12" }} gap="3">
+        <Flex direction="column" gap="1" style={{ gridColumn: "span 6" }}>
+          <Text size="1" color="gray">
+            Client
+          </Text>
+          <Text weight="medium">{clientName}</Text>
+        </Flex>
+        <Flex direction="column" gap="1" style={{ gridColumn: "span 3" }}>
+          <Text size="1" color="gray">
+            Issued
+          </Text>
+          <Text weight="medium">{formatDate(invoice.issued_on)}</Text>
+        </Flex>
+        <Flex direction="column" gap="1" style={{ gridColumn: "span 3" }}>
+          <Text size="1" color="gray">
+            Due
+          </Text>
+          <Text weight="medium">{formatDate(invoice.due_on)}</Text>
+        </Flex>
+      </Grid>
 
-        <MDBox mt={2} component="form" action={formAction}>
-          <input type="hidden" name="id" value={invoice.id} />
-          <TextField
-            name="notes"
-            label="Notes"
-            fullWidth
-            defaultValue={invoice.notes ?? ""}
-            helperText="This is issued — only notes and delivery status can still change."
-          />
-          <MDBox mt={1} role="alert" aria-live="polite">
-            {state.error ? (
-              <MDTypography variant="caption" color="error">
-                {state.error}
-              </MDTypography>
-            ) : state.saved ? (
-              <MDTypography variant="caption" color="success">
-                Saved.
-              </MDTypography>
-            ) : null}
-          </MDBox>
-          <MDBox mt={1.5}>
-            <MDButton type="submit" variant="outlined" color="info" size="small" disabled={pending}>
-              {pending ? "Saving…" : "Save notes"}
-            </MDButton>
-          </MDBox>
-        </MDBox>
-      </MDBox>
+      <form action={formAction} style={{ marginTop: "var(--space-3)" }}>
+        <input type="hidden" name="id" value={invoice.id} />
+        <Flex direction="column" gap="1">
+          <Text as="label" size="2" weight="medium" htmlFor="notes-locked">
+            Notes
+          </Text>
+          <TextField.Root id="notes-locked" name="notes" defaultValue={invoice.notes ?? ""} />
+          <Text size="1" color="gray">
+            This is issued — only notes and delivery status can still change.
+          </Text>
+        </Flex>
+        <Flex mt="2" role="alert" aria-live="polite">
+          {state.error ? (
+            <Text size="1" color="red">
+              {state.error}
+            </Text>
+          ) : state.saved ? (
+            <Text size="1" color="green">
+              Saved.
+            </Text>
+          ) : null}
+        </Flex>
+        <Flex mt="2">
+          <Button type="submit" variant="outline" size="1" disabled={pending}>
+            {pending ? "Saving…" : "Save notes"}
+          </Button>
+        </Flex>
+      </form>
     </Card>
   );
 }

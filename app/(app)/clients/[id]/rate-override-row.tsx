@@ -1,10 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import TextField from "@mui/material/TextField";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
+import { Box, Button, Flex, Text, TextField } from "@radix-ui/themes";
 import { centsToInput, formatCents } from "@/lib/format";
 import { setClientRateOverride, type RateOverrideFormState } from "./rate-overrides-actions";
 
@@ -36,57 +33,60 @@ export default function RateOverrideRow({
     state.values?.rate !== undefined ? state.values.rate : centsToInput(overrideRateCents);
 
   return (
-    <MDBox
-      component="form"
-      action={formAction}
-      display="flex"
-      alignItems="flex-start"
-      flexWrap="wrap"
-      gap={2}
-      py={1.5}
-    >
-      <input type="hidden" name="client_id" value={clientId} />
-      <input type="hidden" name="day_type_id" value={dayTypeId} />
+    <Flex asChild align="start" wrap="wrap" gap="4" py="3">
+      <form action={formAction}>
+        <input type="hidden" name="client_id" value={clientId} />
+        <input type="hidden" name="day_type_id" value={dayTypeId} />
 
-      <MDBox sx={{ minWidth: 180, flex: "1 1 180px" }} pt={1}>
-        <MDTypography variant="button" fontWeight="medium">
-          {label}
-        </MDTypography>
-        <MDTypography display="block" variant="caption" color="text">
-          Default: {defaultRateCents === null ? "no rate agreed" : formatCents(defaultRateCents)}
-        </MDTypography>
-        {archived ? (
-          <MDTypography display="block" variant="caption" color="warning">
-            Archived — kept here only because this client still has an
-            override on it
-          </MDTypography>
-        ) : null}
-      </MDBox>
+        <Box minWidth="180px" style={{ flex: "1 1 180px" }} pt="1">
+          <Text as="div" size="2" weight="medium">
+            {label}
+          </Text>
+          <Text as="div" size="1" color="gray">
+            Default: {defaultRateCents === null ? "no rate agreed" : formatCents(defaultRateCents)}
+          </Text>
+          {archived ? (
+            <Text as="div" size="1" color="amber">
+              Archived — kept here only because this client still has an
+              override on it
+            </Text>
+          ) : null}
+        </Box>
 
-      <TextField
-        name="rate"
-        label="Override (USD)"
-        inputMode="decimal"
-        size="small"
-        defaultValue={rateValue}
-        helperText="Blank uses the default"
-      />
+        <Flex direction="column" gap="1">
+          <Text as="label" size="2" weight="medium" htmlFor={`rate-${dayTypeId}`}>
+            Override (USD)
+          </Text>
+          <TextField.Root
+            id={`rate-${dayTypeId}`}
+            name="rate"
+            inputMode="decimal"
+            size="2"
+            defaultValue={rateValue}
+          />
+          <Text size="1" color="gray">
+            Blank uses the default
+          </Text>
+        </Flex>
 
-      <MDButton type="submit" variant="outlined" color="info" size="small" disabled={pending}>
-        {pending ? "Saving…" : "Save"}
-      </MDButton>
+        <Box pt="6">
+          <Button type="submit" variant="outline" size="2" disabled={pending}>
+            {pending ? "Saving…" : "Save"}
+          </Button>
+        </Box>
 
-      <MDBox role="alert" aria-live="polite" sx={{ minWidth: 80 }}>
-        {state.error ? (
-          <MDTypography variant="caption" color="error">
-            {state.error}
-          </MDTypography>
-        ) : state.saved ? (
-          <MDTypography variant="caption" color="success">
-            Saved.
-          </MDTypography>
-        ) : null}
-      </MDBox>
-    </MDBox>
+        <Box role="alert" aria-live="polite" minWidth="80px" pt="6">
+          {state.error ? (
+            <Text size="1" color="red">
+              {state.error}
+            </Text>
+          ) : state.saved ? (
+            <Text size="1" color="green">
+              Saved.
+            </Text>
+          ) : null}
+        </Box>
+      </form>
+    </Flex>
   );
 }

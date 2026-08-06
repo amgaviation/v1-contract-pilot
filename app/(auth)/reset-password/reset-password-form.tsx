@@ -1,11 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import Card from "@mui/material/Card";
-import TextField from "@mui/material/TextField";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
+import { Box, Button, Card, Flex, Text, TextField } from "@radix-ui/themes";
 import { BRAND } from "@/lib/brand";
 import { setNewPassword, type ResetPasswordState } from "./actions";
 
@@ -18,58 +14,56 @@ export default function ResetPasswordForm() {
   );
 
   return (
-    <Card sx={{ width: "100%", maxWidth: "22rem" }}>
-      <MDBox p={4} component="form" action={formAction}>
-        <MDBox mb={3} textAlign="center">
-          <MDTypography variant="h4" fontWeight="bold">
-            {BRAND.name}
-          </MDTypography>
-          <MDTypography variant="button" color="text" fontWeight="regular">
-            Choose a new password
-          </MDTypography>
-        </MDBox>
+    <Card size="4" style={{ width: "100%", maxWidth: "22rem" }}>
+      <form action={formAction}>
+        <Flex direction="column" gap="3">
+          <Flex direction="column" align="center" gap="1" mb="1">
+            <Text size="6" weight="bold">
+              {BRAND.name}
+            </Text>
+            <Text size="2" color="gray">
+              Choose a new password
+            </Text>
+          </Flex>
 
-        <MDBox mb={2}>
-          <TextField
-            type="password"
-            name="password"
-            label="New password"
-            fullWidth
-            autoComplete="new-password"
-            required
-          />
-        </MDBox>
-        <MDBox mb={2}>
-          <TextField
-            type="password"
-            name="confirm"
-            label="Confirm new password"
-            fullWidth
-            autoComplete="new-password"
-            required
-          />
-        </MDBox>
+          <Box>
+            <Text as="label" size="2" weight="medium" htmlFor="password">
+              New password
+            </Text>
+            <TextField.Root
+              id="password"
+              type="password"
+              name="password"
+              autoComplete="new-password"
+              required
+              mt="1"
+            />
+          </Box>
+          <Box>
+            <Text as="label" size="2" weight="medium" htmlFor="confirm">
+              Confirm new password
+            </Text>
+            <TextField.Root
+              id="confirm"
+              type="password"
+              name="confirm"
+              autoComplete="new-password"
+              required
+              mt="1"
+            />
+          </Box>
 
-        {state.error ? (
-          <MDBox mb={2}>
-            <MDTypography variant="caption" color="error">
+          {state.error ? (
+            <Text size="1" color="red" role="alert" aria-live="polite">
               {state.error}
-            </MDTypography>
-          </MDBox>
-        ) : null}
+            </Text>
+          ) : null}
 
-        <MDBox mt={2}>
-          <MDButton
-            type="submit"
-            variant="gradient"
-            color="info"
-            fullWidth
-            disabled={pending}
-          >
+          <Button type="submit" disabled={pending} mt="1">
             {pending ? "Saving…" : "Save password"}
-          </MDButton>
-        </MDBox>
-      </MDBox>
+          </Button>
+        </Flex>
+      </form>
     </Card>
   );
 }

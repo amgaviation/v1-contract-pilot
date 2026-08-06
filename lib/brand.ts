@@ -21,21 +21,31 @@ export const BRAND = {
 export type Brand = typeof BRAND;
 
 /**
- * Must match --v1-bg in app/tokens/colors.css exactly. Duplicated here
- * only because Next's `<meta name="theme-color">` (the
- * `viewport.themeColor` export in app/layout.tsx) needs a literal string
- * at the metadata-export layer and cannot read a CSS custom property. If
- * --v1-bg ever changes, this must change with it — that coupling is the
- * reason it lives here rather than as an unexplained literal in
- * layout.tsx.
+ * `<meta name="theme-color">`, which tints the browser's own chrome. It
+ * has to continue the surface the reader is looking at, so it is the page
+ * GROUND, not the ink.
  *
- * This is the page GROUND, not the ink. theme-color tints the browser's
- * own chrome, so it should continue the surface the user is looking at:
- * under the previous dark-rail system that happened to be the ink, but
- * V1 Design is white-heavy glass over a cool near-white, so it is the
- * ground.
+ * Duplicated as literals only because Next's `viewport.themeColor` export
+ * is evaluated at the metadata layer, which cannot read a CSS custom
+ * property — so it cannot ask Radix Themes for `--color-background` the
+ * way every component does.
+ *
+ * These are Radix's slate scale step 1, light and dark, matching
+ * `grayColor="slate"` on the <Theme> in app/layout.tsx. Change that prop
+ * and these must change with it; that coupling is why they live here with
+ * an explanation rather than as bare literals in layout.tsx.
+ *
+ * Two values rather than one because the <Theme> sets no `appearance`,
+ * which means it inherits the reader's own light/dark preference. A single
+ * theme-color would be wrong for half the users.
+ *
+ * (The previous value, #eef1f6, was the ground of a design system that was
+ * deleted in 6ed0e46 — it referred to an app/tokens/colors.css that no
+ * longer existed, so it had been tinting browser chrome to match nothing
+ * at all.)
  */
-export const THEME_COLOR = "#eef1f6";
+export const THEME_COLOR_LIGHT = "#fcfcfd";
+export const THEME_COLOR_DARK = "#111113";
 
 /**
  * COUNSEL-REVIEWED COPY — verbatim, docs/PLAN.md Design system. This is

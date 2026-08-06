@@ -1,6 +1,4 @@
-import Card from "@mui/material/Card";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
+import { Card, Flex, Heading, Text } from "@radix-ui/themes";
 import type { Database } from "@/lib/supabase/database.types";
 import RateOverrideRow from "./rate-override-row";
 
@@ -29,38 +27,36 @@ export default function RateOverridesPanel({
     .sort((a, b) => a.sort_order - b.sort_order || a.key.localeCompare(b.key));
 
   return (
-    <Card>
-      <MDBox p={3}>
-        <MDBox mb={2} lineHeight={1.25}>
-          <MDTypography variant="h6">Rate overrides</MDTypography>
-          <MDTypography variant="button" color="text" fontWeight="regular">
-            What this client pays per day type, if different from your usual
-            rate. Blank uses the day type&rsquo;s own default. A change here
-            affects days captured from now on — it never re-prices work
-            already recorded.
-          </MDTypography>
-        </MDBox>
+    <Card size="3">
+      <Flex direction="column" gap="1" mb="3">
+        <Heading as="h3" size="4">Rate overrides</Heading>
+        <Text size="2" color="gray">
+          What this client pays per day type, if different from your usual
+          rate. Blank uses the day type&rsquo;s own default. A change here
+          affects days captured from now on — it never re-prices work
+          already recorded.
+        </Text>
+      </Flex>
 
-        {visibleDayTypes.length === 0 ? (
-          <MDTypography variant="button" color="text" fontWeight="regular">
-            No active day types yet. Add some under Settings → Day types.
-          </MDTypography>
-        ) : (
-          <MDBox display="flex" flexDirection="column">
-            {visibleDayTypes.map((dayType) => (
-              <RateOverrideRow
-                key={dayType.id}
-                clientId={clientId}
-                dayTypeId={dayType.id}
-                label={dayType.label}
-                archived={Boolean(dayType.archived_at)}
-                defaultRateCents={dayType.default_rate_cents}
-                overrideRateCents={overrideByDayType.get(dayType.id) ?? null}
-              />
-            ))}
-          </MDBox>
-        )}
-      </MDBox>
+      {visibleDayTypes.length === 0 ? (
+        <Text size="2" color="gray">
+          No active day types yet. Add some under Settings → Day types.
+        </Text>
+      ) : (
+        <Flex direction="column">
+          {visibleDayTypes.map((dayType) => (
+            <RateOverrideRow
+              key={dayType.id}
+              clientId={clientId}
+              dayTypeId={dayType.id}
+              label={dayType.label}
+              archived={Boolean(dayType.archived_at)}
+              defaultRateCents={dayType.default_rate_cents}
+              overrideRateCents={overrideByDayType.get(dayType.id) ?? null}
+            />
+          ))}
+        </Flex>
+      )}
     </Card>
   );
 }

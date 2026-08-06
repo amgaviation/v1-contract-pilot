@@ -1,40 +1,28 @@
-"use client";
-
 import NextLink from "next/link";
-import Card from "@mui/material/Card";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
-import AuthShell from "@/components/mdpro/AuthShell";
+import { Button, Card, Flex, Text } from "@radix-ui/themes";
 
 /**
  * Root 404 — reached for any unmatched path, signed in or out. It renders
- * OUTSIDE the (app) dashboard chrome, so it brings its own theme-only
- * shell (AuthShell) rather than DashboardLayout/Sidenav, which need the
- * dashboard controller this page doesn't sit inside. MDButton with
- * component={NextLink} renders a real <a> styled as a button.
+ * outside the (app) dashboard chrome, so it brings its own theme-only
+ * shell rather than the (app) shell, which needs requireAccount() and a
+ * resolved route this page doesn't have.
  */
 export default function NotFound() {
   return (
-    <AuthShell>
-      <Card sx={{ width: "100%", maxWidth: "30rem" }}>
-        <MDBox p={4} textAlign="center" lineHeight={1.4}>
-          <MDTypography variant="h4">Not found</MDTypography>
-          <MDBox mt={1} mb={3}>
-            <MDTypography variant="button" color="text" fontWeight="regular">
-              There&rsquo;s nothing at this address.
-            </MDTypography>
-          </MDBox>
-          <MDButton
-            component={NextLink}
-            href="/"
-            variant="gradient"
-            color="info"
-          >
-            Back to overview
-          </MDButton>
-        </MDBox>
+    <Flex align="center" justify="center" minHeight="100vh" p="4">
+      <Card size="4" style={{ width: "100%", maxWidth: "30rem" }}>
+        <Flex direction="column" align="center" gap="3" style={{ textAlign: "center" }}>
+          <Text size="6" weight="bold">
+            Not found
+          </Text>
+          <Text size="2" color="gray">
+            There&rsquo;s nothing at this address.
+          </Text>
+          <Button asChild>
+            <NextLink href="/">Back to overview</NextLink>
+          </Button>
+        </Flex>
       </Card>
-    </AuthShell>
+    </Flex>
   );
 }

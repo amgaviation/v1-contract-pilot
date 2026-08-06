@@ -1,18 +1,13 @@
 "use client";
 
-import Card from "@mui/material/Card";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
-import AuthShell from "@/components/mdpro/AuthShell";
+import { Button, Card, Flex, Text } from "@radix-ui/themes";
 
 /**
  * Root error boundary. An unhandled throw anywhere below the root layout
  * lands here, replacing the group layouts (and their dashboard chrome),
- * so it brings its own theme-only shell (AuthShell) rather than
- * DashboardLayout/Sidenav, which need the dashboard controller that is no
- * longer mounted at this point. Next.js requires error.tsx to be a Client
- * Component.
+ * so it brings its own theme-only shell rather than the (app) shell,
+ * which needs requireAccount() and tenant data that may be exactly what
+ * threw. Next.js requires error.tsx to be a Client Component.
  */
 export default function Error({
   reset,
@@ -21,20 +16,18 @@ export default function Error({
   reset: () => void;
 }) {
   return (
-    <AuthShell>
-      <Card sx={{ width: "100%", maxWidth: "30rem" }}>
-        <MDBox p={4} textAlign="center" lineHeight={1.4}>
-          <MDTypography variant="h4">Something went wrong</MDTypography>
-          <MDBox mt={1} mb={3}>
-            <MDTypography variant="button" color="text" fontWeight="regular">
-              That didn&rsquo;t load. Try again, or head back to the overview.
-            </MDTypography>
-          </MDBox>
-          <MDButton variant="gradient" color="info" onClick={reset}>
-            Try again
-          </MDButton>
-        </MDBox>
+    <Flex align="center" justify="center" minHeight="100vh" p="4">
+      <Card size="4" style={{ width: "100%", maxWidth: "30rem" }}>
+        <Flex direction="column" align="center" gap="3" style={{ textAlign: "center" }}>
+          <Text size="6" weight="bold">
+            Something went wrong
+          </Text>
+          <Text size="2" color="gray">
+            That didn&rsquo;t load. Try again, or head back to the overview.
+          </Text>
+          <Button onClick={reset}>Try again</Button>
+        </Flex>
       </Card>
-    </AuthShell>
+    </Flex>
   );
 }

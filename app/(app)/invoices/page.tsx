@@ -1,16 +1,15 @@
 import NextLink from "next/link";
-import Card from "@mui/material/Card";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
-
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
-import MDBadge from "@/components/mdpro/MDBadge";
+import {
+  Badge,
+  Button,
+  Callout,
+  Card,
+  Flex,
+  Link as RadixLink,
+  Table,
+  Text,
+} from "@radix-ui/themes";
+import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
@@ -35,15 +34,15 @@ type TotalsRow = {
   balance_due_cents: number;
 };
 
-type Badge = { tone: string; label: string };
+type Badge = { color: "gray" | "blue" | "amber" | "green" | "red"; label: string };
 
-const STATUS_FALLBACK: Badge = { tone: "secondary", label: "Draft" };
+const STATUS_FALLBACK: Badge = { color: "gray", label: "Draft" };
 const STATUS_BADGE: Record<string, Badge> = {
   draft: STATUS_FALLBACK,
-  sent: { tone: "info", label: "Sent" },
-  partial: { tone: "warning", label: "Partially paid" },
-  paid: { tone: "success", label: "Paid" },
-  void: { tone: "dark", label: "Void" },
+  sent: { color: "blue", label: "Sent" },
+  partial: { color: "amber", label: "Partially paid" },
+  paid: { color: "green", label: "Paid" },
+  void: { color: "gray", label: "Void" },
 };
 
 export default async function InvoicesPage() {
@@ -100,150 +99,99 @@ export default async function InvoicesPage() {
             }`
       }
       action={
-        <MDButton
-          component={NextLink}
-          href="/invoices/new"
-          variant="gradient"
-          color="info"
-        >
-          New invoice
-        </MDButton>
+        <Button asChild>
+          <NextLink href="/invoices/new">New invoice</NextLink>
+        </Button>
       }
     >
-      <Card>
-        <MDBox p={3}>
-          {firstError ? (
-            <MDTypography variant="button" color="error">
-              {friendlyDbError(firstError, "invoices.select")}
-            </MDTypography>
-          ) : invoices.length === 0 ? (
-            <MDBox py={4} textAlign="center">
-              <MDTypography variant="h6">No invoices yet</MDTypography>
-              <MDTypography variant="button" color="text" fontWeight="regular">
-                Draft one from a client and the trips you've already flown
-                for them — the flight days, travel days, and rebilled
-                expenses fill themselves in.
-              </MDTypography>
-              <MDBox mt={3}>
-                <MDButton
-                  component={NextLink}
-                  href="/invoices/new"
-                  variant="gradient"
-                  color="info"
-                >
-                  Draft your first invoice
-                </MDButton>
-              </MDBox>
-            </MDBox>
-          ) : (
-            <TableContainer sx={{ boxShadow: "none" }}>
-              <Table>
-                <TableHead sx={{ display: "table-header-group" }}>
-                  <TableRow>
-                    {[
-                      "Number",
-                      "Client",
-                      "Issued",
-                      "Due",
-                      "Status",
-                      "Total",
-                      "Balance due",
-                    ].map((heading, index) => (
-                      <TableCell
-                        key={heading}
-                        align={index >= 5 ? "right" : "left"}
+      <Card size="3">
+        {firstError ? (
+          <Callout.Root color="red">
+            <Callout.Icon>
+              <ExclamationTriangleIcon />
+            </Callout.Icon>
+            <Callout.Text>{friendlyDbError(firstError, "invoices.select")}</Callout.Text>
+          </Callout.Root>
+        ) : invoices.length === 0 ? (
+          <Flex direction="column" align="center" gap="3" py="6">
+            <Text size="4" weight="bold">
+              No invoices yet
+            </Text>
+            <Text size="2" color="gray" align="center">
+              Draft one from a client and the trips you&rsquo;ve already flown
+              for them — the flight days, travel days, and rebilled expenses
+              fill themselves in.
+            </Text>
+            <Button asChild>
+              <NextLink href="/invoices/new">Draft your first invoice</NextLink>
+            </Button>
+          </Flex>
+        ) : (
+          <Table.Root variant="ghost">
+            <Table.Header>
+              <Table.Row>
+                <Table.ColumnHeaderCell>Number</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>Issued</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>Due</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell justify="end">Total</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell justify="end">Balance due</Table.ColumnHeaderCell>
+              </Table.Row>
+            </Table.Header>
+            <Table.Body>
+              {invoices.map((invoice) => {
+                const badge = STATUS_BADGE[invoice.status] ?? STATUS_FALLBACK;
+                const totals = totalsByInvoice.get(invoice.id);
+                const overdue = overdueIds.has(invoice.id);
+                return (
+                  <Table.Row key={invoice.id}>
+                    <Table.RowHeaderCell>
+                      <RadixLink asChild weight="medium">
+                        <NextLink href={`/invoices/${invoice.id}`}>
+                          {invoice.invoice_number ?? "Draft"}
+                        </NextLink>
+                      </RadixLink>
+                    </Table.RowHeaderCell>
+                    <Table.Cell>
+                      <Text color="gray">{clientNames.get(invoice.client_id) ?? "—"}</Text>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Text color="gray">{formatDate(invoice.issued_on)}</Text>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Text color={overdue ? "red" : "gray"} weight={overdue ? "medium" : "regular"}>
+                        {formatDate(invoice.due_on)}
+                        {overdue ? " · overdue" : ""}
+                      </Text>
+                    </Table.Cell>
+                    <Table.Cell>
+                      {overdue ? (
+                        <Badge color="red">Overdue</Badge>
+                      ) : (
+                        <Badge color={badge.color}>{badge.label}</Badge>
+                      )}
+                    </Table.Cell>
+                    <Table.Cell justify="end">
+                      <Text weight="medium" className="tnum">
+                        {formatCents(totals?.total_cents ?? 0)}
+                      </Text>
+                    </Table.Cell>
+                    <Table.Cell justify="end">
+                      <Text
+                        weight="medium"
+                        color={(totals?.balance_due_cents ?? 0) > 0 ? "amber" : "gray"}
+                        className="tnum"
                       >
-                        <MDTypography
-                          variant="caption"
-                          fontWeight="bold"
-                          textTransform="uppercase"
-                        >
-                          {heading}
-                        </MDTypography>
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {invoices.map((invoice) => {
-                    const badge = STATUS_BADGE[invoice.status] ?? STATUS_FALLBACK;
-                    const totals = totalsByInvoice.get(invoice.id);
-                    const overdue = overdueIds.has(invoice.id);
-                    return (
-                      <TableRow key={invoice.id}>
-                        <TableCell component="th" scope="row">
-                          <MDTypography
-                            component={NextLink}
-                            href={`/invoices/${invoice.id}`}
-                            variant="button"
-                            fontWeight="medium"
-                          >
-                            {invoice.invoice_number ?? "Draft"}
-                          </MDTypography>
-                        </TableCell>
-                        <TableCell>
-                          <MDTypography
-                            variant="button"
-                            color="text"
-                            fontWeight="regular"
-                          >
-                            {clientNames.get(invoice.client_id) ?? "—"}
-                          </MDTypography>
-                        </TableCell>
-                        <TableCell>
-                          <MDTypography
-                            variant="button"
-                            color="text"
-                            fontWeight="regular"
-                          >
-                            {formatDate(invoice.issued_on)}
-                          </MDTypography>
-                        </TableCell>
-                        <TableCell>
-                          <MDTypography
-                            variant="button"
-                            color={overdue ? "error" : "text"}
-                            fontWeight={overdue ? "medium" : "regular"}
-                          >
-                            {formatDate(invoice.due_on)}
-                            {overdue ? " · overdue" : ""}
-                          </MDTypography>
-                        </TableCell>
-                        <TableCell>
-                          <MDBadge
-                            variant="gradient"
-                            color={badge.tone}
-                            badgeContent={badge.label}
-                            size="sm"
-                            container
-                          />
-                        </TableCell>
-                        <TableCell align="right">
-                          <MDTypography variant="button" fontWeight="medium">
-                            {formatCents(totals?.total_cents ?? 0)}
-                          </MDTypography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <MDTypography
-                            variant="button"
-                            fontWeight="medium"
-                            color={
-                              (totals?.balance_due_cents ?? 0) > 0
-                                ? "warning"
-                                : "text"
-                            }
-                          >
-                            {formatCents(totals?.balance_due_cents ?? 0)}
-                          </MDTypography>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-        </MDBox>
+                        {formatCents(totals?.balance_due_cents ?? 0)}
+                      </Text>
+                    </Table.Cell>
+                  </Table.Row>
+                );
+              })}
+            </Table.Body>
+          </Table.Root>
+        )}
       </Card>
     </PageShell>
   );

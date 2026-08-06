@@ -1,7 +1,4 @@
-import Grid from "@mui/material/Grid";
-import Card from "@mui/material/Card";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
+import { Card, Flex, Grid, Text } from "@radix-ui/themes";
 
 import { requireAccount } from "@/lib/supabase/account";
 import { createClient } from "@/lib/supabase/server";
@@ -26,12 +23,29 @@ export default async function SettingsPage({
 }) {
   const { tab } = await searchParams;
 
-  // requireAccount already returns the full account row, so there is no
-  // second query to make here — and no query error to mishandle.
+  // requireAccount's row has everything this page needs for its own
+  // server-rendered text (logo_url, plan, status below), but it is also
+  // the full `accounts` row — stripe_customer_id, stripe_subscription_id,
+  // connect_account_id, plan, status, trial_ends_at included — and that
+  // row must never be handed whole to a client component: passing it as
+  // a prop puts all of it in the RSC flight payload sent to the browser,
+  // regardless of what the prop's TYPE claims. So `values` below is its
+  // own query, selecting only the columns SettingsValues declares, and
+  // needs no cast because the query and the type finally agree.
   const { account, role, user } = await requireAccount("/settings");
   const canEdit = role === "owner";
 
   const supabase = await createClient();
+  const { data: settingsValuesData } = await supabase
+    .from("accounts")
+    .select(
+      "legal_name, address_line1, address_line2, city, state, postal_code, country, invoice_prefix"
+    )
+    .eq("id", account.id)
+    .maybeSingle();
+
+  const settingsValues: SettingsValues = settingsValuesData ?? {};
+
   // RLS scopes this to the caller's tenant; no account_id filter is
   // needed or wanted on a plain listing select (see the note in
   // clients/page.tsx). Ordered the same way the trip day grid orders its
@@ -52,45 +66,41 @@ export default async function SettingsPage({
       <SettingsTabs
         initialTab={tab}
         business={
-          <Grid container spacing={3}>
-            <Grid item xs={12} lg={8}>
-              <SettingsForm values={account as SettingsValues} canEdit={canEdit} />
-            </Grid>
-            <Grid item xs={12} lg={4}>
-              <MDBox mb={3}>
-                <LogoPanel hasLogo={Boolean(account.logo_url)} canEdit={canEdit} />
-              </MDBox>
+          <Grid columns={{ initial: "1", lg: "3" }} gap="4">
+            <Flex direction="column" gap="4" style={{ gridColumn: "span 2" }}>
+              <SettingsForm values={settingsValues} canEdit={canEdit} />
+            </Flex>
+            <Flex direction="column" gap="4">
+              <LogoPanel hasLogo={Boolean(account.logo_url)} canEdit={canEdit} />
               <Card>
-                <MDBox p={3} lineHeight={1.4}>
-                  <MDTypography variant="h6">Plan</MDTypography>
-                  <MDTypography display="block" variant="button" color="text" fontWeight="regular">
+                <Flex direction="column" gap="2" p="1">
+                  <Text weight="bold" size="4">
+                    Plan
+                  </Text>
+                  <Text size="2" color="gray">
                     {account.plan ?? "—"} · {account.status}
-                  </MDTypography>
+                  </Text>
                   {/* Read-only on purpose. Plan, seat count and every Stripe
                       column are withheld from the tenant UPDATE grant AND
                       blocked by the accounts_protect_billing_columns trigger,
                       so billing state changes only ever arrive through the
                       Stripe webhook. Showing an editable control here would
                       promise something the database refuses. */}
-                  <MDBox mt={1}>
-                    <MDTypography variant="caption" color="text">
-                      Billing is managed through Stripe. Changes to your plan
-                      arrive here automatically.
-                    </MDTypography>
-                  </MDBox>
-                </MDBox>
+                  <Text size="1" color="gray">
+                    Billing is managed through Stripe. Changes to your plan arrive here
+                    automatically.
+                  </Text>
+                </Flex>
               </Card>
-            </Grid>
+            </Flex>
           </Grid>
         }
         dayTypes={
           dayTypesError ? (
             <Card>
-              <MDBox p={3}>
-                <MDTypography variant="button" color="error">
-                  Couldn&rsquo;t load your day types. Try reloading the page.
-                </MDTypography>
-              </MDBox>
+              <Text size="2" color="red">
+                Couldn&rsquo;t load your day types. Try reloading the page.
+              </Text>
             </Card>
           ) : (
             <DayTypesPanel dayTypes={dayTypes} canEdit={canEdit} />

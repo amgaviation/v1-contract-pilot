@@ -1,23 +1,24 @@
-import Card from "@mui/material/Card";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
+import { Card, Flex, Spinner, Text } from "@radix-ui/themes";
 
 /**
  * Segment-level fallback. Each of these screens blocks on a round trip to
- * Supabase before it can render anything — /trips/[id] on three queries —
- * so without a `loading.tsx` the pilot gets a dead screen with no signal
- * that anything is happening.
+ * Supabase before it can render anything — /trips/[id] on six queries — so
+ * without a `loading.tsx` the pilot gets a dead screen with no signal that
+ * anything is happening.
+ *
+ * role="status" + aria-live is what makes this reach a screen reader; the
+ * spinner is the sighted half of the same statement. aria-hidden on the
+ * spinner keeps it from being announced twice.
  */
 export default function LoadingPanel({ label }: { label: string }) {
   return (
-    <MDBox py={3}>
-      <Card>
-        <MDBox p={3} role="status" aria-live="polite">
-          <MDTypography variant="button" color="text" fontWeight="regular">
-            Loading {label}…
-          </MDTypography>
-        </MDBox>
-      </Card>
-    </MDBox>
+    <Card>
+      <Flex align="center" gap="2" p="2" role="status" aria-live="polite">
+        <Spinner aria-hidden />
+        <Text size="2" color="gray">
+          Loading {label}…
+        </Text>
+      </Flex>
+    </Card>
   );
 }

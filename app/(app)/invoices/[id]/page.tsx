@@ -1,12 +1,6 @@
 import { notFound } from "next/navigation";
-import Card from "@mui/material/Card";
-import Grid from "@mui/material/Grid";
-import Divider from "@mui/material/Divider";
-
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDBadge from "@/components/mdpro/MDBadge";
-import MDButton from "@/components/mdpro/MDButton";
+import { Badge, Button, Callout, Card, Flex, Grid, Separator, Text } from "@radix-ui/themes";
+import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
@@ -42,16 +36,17 @@ type TotalsRow = {
   balance_due_cents: number;
 };
 
-type Badge = { tone: string; label: string };
-const STATUS_FALLBACK: Badge = { tone: "secondary", label: "Draft" };
+type Badge = { color: "gray" | "blue" | "amber" | "green" | "red"; label: string };
+const STATUS_FALLBACK: Badge = { color: "gray", label: "Draft" };
 const STATUS_BADGE: Record<string, Badge> = {
   draft: STATUS_FALLBACK,
-  sent: { tone: "info", label: "Sent" },
-  partial: { tone: "warning", label: "Partially paid" },
-  paid: { tone: "success", label: "Paid" },
-  void: { tone: "dark", label: "Void" },
+  sent: { color: "blue", label: "Sent" },
+  partial: { color: "amber", label: "Partially paid" },
+  paid: { color: "green", label: "Paid" },
+  void: { color: "gray", label: "Void" },
 };
 
+// invoice PDF route is owned elsewhere; this screen only links to it.
 export default async function InvoicePage({
   params,
   searchParams,
@@ -116,6 +111,9 @@ export default async function InvoicePage({
   // normal styling just because the view read failed transiently.
   const moneyError = totalsError ?? paymentError ?? overdueError ?? clientError;
 
+  // invoices_protect_issued only lets a draft's client/dates/tax/lines
+  // change — every branch below keys off this same flag so the screen
+  // never offers a control the database would refuse.
   const draft = invoice.status === "draft";
 
   // Rebillable expenses this client's trips carry, not already attached to
@@ -151,110 +149,81 @@ export default async function InvoicePage({
     <PageShell
       title={invoice.invoice_number ?? "Draft invoice"}
       subtitle={
-        <MDBox display="flex" alignItems="center" gap={1} mt={0.5}>
-          <MDBadge
-            variant="gradient"
-            color={badge.tone}
-            badgeContent={badge.label}
-            size="sm"
-            container
-          />
-          <MDTypography variant="button" color={overdue ? "error" : "text"} fontWeight="regular">
+        <Flex align="center" gap="2" mt="1">
+          <Badge color={badge.color}>{badge.label}</Badge>
+          <Text color={overdue ? "red" : "gray"}>
             {invoice.issued_on ? `Issued ${formatDate(invoice.issued_on)}` : "Not yet issued"}
             {invoice.due_on ? ` · Due ${formatDate(invoice.due_on)}${overdue ? " (overdue)" : ""}` : ""}
-          </MDTypography>
-        </MDBox>
+          </Text>
+        </Flex>
       }
       action={
         invoice.status !== "draft" ? (
-          <MDButton
-            component="a"
-            href={`/invoices/${invoice.id}/pdf`}
-            target="_blank"
-            rel="noopener noreferrer"
-            variant="outlined"
-            color="info"
-          >
-            Download PDF
-          </MDButton>
+          <Button asChild variant="outline">
+            <a href={`/invoices/${invoice.id}/pdf`} target="_blank" rel="noopener noreferrer">
+              Download PDF
+            </a>
+          </Button>
         ) : undefined
       }
     >
       {warning ? (
-        <MDBox mb={3}>
-          <Card>
-            <MDBox p={2}>
-              <MDTypography variant="button" color="warning" fontWeight="regular">
-                {warning}
-              </MDTypography>
-            </MDBox>
-          </Card>
-        </MDBox>
+        <Callout.Root color="amber" mb="4">
+          <Callout.Icon>
+            <ExclamationTriangleIcon />
+          </Callout.Icon>
+          <Callout.Text>{warning}</Callout.Text>
+        </Callout.Root>
       ) : null}
 
       {moneyError ? (
-        <MDBox mb={3}>
-          <Card>
-            <MDBox p={2}>
-              <MDTypography variant="button" color="error">
-                {friendlyDbError(moneyError, "invoices.detail")}
-              </MDTypography>
-            </MDBox>
-          </Card>
-        </MDBox>
+        <Callout.Root color="red" mb="4">
+          <Callout.Icon>
+            <ExclamationTriangleIcon />
+          </Callout.Icon>
+          <Callout.Text>{friendlyDbError(moneyError, "invoices.detail")}</Callout.Text>
+        </Callout.Root>
       ) : null}
 
-      <Grid container spacing={3}>
-        <Grid item xs={12} lg={7}>
-          <MDBox mb={3}>
-            <HeaderForm invoice={invoice} clients={clients} locked={!draft} />
-          </MDBox>
+      <Grid columns={{ initial: "1", lg: "12" }} gap="4">
+        <Flex direction="column" gap="4" style={{ gridColumn: "span 7" }}>
+          <HeaderForm invoice={invoice} clients={clients} locked={!draft} />
 
-          <Card>
-            <MDBox p={3}>
-              <MDTypography variant="h6" mb={2}>
-                Lines
-              </MDTypography>
-              <LinesEditor
-                invoiceId={invoice.id}
-                lines={lines}
-                editable={draft}
-                rebillable={rebillable}
-              />
+          <Card size="3">
+            <Text as="div" size="4" weight="bold" mb="3">
+              Lines
+            </Text>
+            <LinesEditor
+              invoiceId={invoice.id}
+              lines={lines}
+              editable={draft}
+              rebillable={rebillable}
+            />
 
-              <Divider sx={{ my: 2 }} />
+            <Separator size="4" my="4" />
 
-              {totalsError ? (
-                <MDTypography variant="button" color="error">
-                  {friendlyDbError(totalsError, "invoice_totals.select")}
-                </MDTypography>
-              ) : (
-                <MDBox display="flex" flexDirection="column" gap={0.5} alignItems="flex-end">
-                  <TotalsLine label="Subtotal" value={totals?.subtotal_cents ?? 0} />
-                  <TotalsLine label="Tax" value={totals?.tax_cents ?? 0} />
-                  <TotalsLine label="Total" value={totals?.total_cents ?? 0} emphasize />
-                  <TotalsLine label="Paid" value={totals?.amount_paid_cents ?? 0} />
-                  <TotalsLine
-                    label="Balance due"
-                    value={totals?.balance_due_cents ?? 0}
-                    emphasize
-                  />
-                </MDBox>
-              )}
-            </MDBox>
+            {totalsError ? (
+              <Text color="red">{friendlyDbError(totalsError, "invoice_totals.select")}</Text>
+            ) : (
+              <Flex direction="column" gap="1" align="end">
+                <TotalsLine label="Subtotal" value={totals?.subtotal_cents ?? 0} />
+                <TotalsLine label="Tax" value={totals?.tax_cents ?? 0} />
+                <TotalsLine label="Total" value={totals?.total_cents ?? 0} emphasize />
+                <TotalsLine label="Paid" value={totals?.amount_paid_cents ?? 0} />
+                <TotalsLine
+                  label="Balance due"
+                  value={totals?.balance_due_cents ?? 0}
+                  emphasize
+                />
+              </Flex>
+            )}
           </Card>
-        </Grid>
+        </Flex>
 
-        <Grid item xs={12} lg={5}>
-          <MDBox mb={3}>
-            <StatusActions invoice={invoice} hasLines={lines.length > 0} />
-          </MDBox>
-          <PaymentPanel
-            invoiceId={invoice.id}
-            status={invoice.status}
-            payments={payments}
-          />
-        </Grid>
+        <Flex direction="column" gap="4" style={{ gridColumn: "span 5" }}>
+          <StatusActions invoice={invoice} hasLines={lines.length > 0} />
+          <PaymentPanel invoiceId={invoice.id} status={invoice.status} payments={payments} />
+        </Flex>
       </Grid>
     </PageShell>
   );
@@ -270,17 +239,13 @@ function TotalsLine({
   emphasize?: boolean;
 }) {
   return (
-    <MDBox display="flex" gap={2} minWidth={220} justifyContent="space-between">
-      <MDTypography
-        variant="button"
-        color="text"
-        fontWeight={emphasize ? "bold" : "regular"}
-      >
+    <Flex gap="4" minWidth="220px" justify="between">
+      <Text color="gray" weight={emphasize ? "bold" : "regular"}>
         {label}
-      </MDTypography>
-      <MDTypography variant="button" fontWeight={emphasize ? "bold" : "regular"}>
+      </Text>
+      <Text weight={emphasize ? "bold" : "regular"} className="tnum">
         {formatCents(value)}
-      </MDTypography>
-    </MDBox>
+      </Text>
+    </Flex>
   );
 }
