@@ -35,6 +35,17 @@ export type TripOption = {
   rebillable_expense_cents: number;
   estimated_value_cents: number;
   missing_travel_rate: boolean;
+  /** Whether estimated_value_cents was derived from this trip's day-by-day
+   * grid (pilot.trip_days) rather than day_count/day_rate_cents — shown
+   * as a caption so a pilot who edited the grid understands why the
+   * figure moved. */
+  has_day_rows: boolean;
+  /** The label of a live (non-void) invoice already billing this trip —
+   * pilot.trip_committed_invoice — or null. Set when the trip's
+   * billing_state still reads 'unbilled' (it only advances on an invoice
+   * STATUS change) but it's already sitting on someone else's live
+   * invoice, including a draft. */
+  committed_invoice_label: string | null;
 };
 
 const initialState: InvoiceFormState = { error: null };
@@ -64,11 +75,16 @@ export default function DraftForm({
     router.push(id ? `/invoices/new?client=${id}` : "/invoices/new");
   }
 
-  function toggleTrip(id: string) {
+  function toggleTrip(trip: TripOption) {
+    // Defence in depth alongside the checkbox's own `disabled` — a trip
+    // already committed to a live invoice elsewhere can never enter
+    // selection, so a stray toggle can't put it on the submitted
+    // trip_ids list regardless of how it was triggered.
+    if (trip.committed_invoice_label !== null) return;
     setSelectedTrips((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(trip.id)) next.delete(trip.id);
+      else next.add(trip.id);
       return next;
     });
   }
@@ -156,58 +172,90 @@ export default function DraftForm({
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {trips.map((trip) => (
-                      <TableRow key={trip.id}>
-                        <TableCell padding="checkbox">
-                          <Checkbox
-                            checked={selectedTrips.has(trip.id)}
-                            onChange={() => toggleTrip(trip.id)}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <MDTypography variant="button" fontWeight="regular">
-                            {formatDateRange(trip.starts_on, trip.ends_on)}
-                          </MDTypography>
-                        </TableCell>
-                        <TableCell>
-                          <MDTypography variant="button" color="text" fontWeight="regular">
-                            {trip.aircraft_ident ?? "—"}
-                          </MDTypography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <MDTypography variant="button" fontWeight="regular">
-                            {trip.day_count} × {formatCents(trip.day_rate_cents)}
-                          </MDTypography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <MDTypography
-                            variant="button"
-                            fontWeight="regular"
-                            color={trip.missing_travel_rate ? "warning" : "text"}
-                          >
-                            {trip.travel_day_count > 0
-                              ? trip.missing_travel_rate
-                                ? `${trip.travel_day_count} × no rate set`
-                                : `${trip.travel_day_count} × ${formatCents(
-                                    trip.travel_day_rate_cents
-                                  )}`
-                              : "—"}
-                          </MDTypography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <MDTypography variant="button" color="text" fontWeight="regular">
-                            {trip.rebillable_expense_cents > 0
-                              ? formatCents(trip.rebillable_expense_cents)
-                              : "—"}
-                          </MDTypography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <MDTypography variant="button" fontWeight="medium">
-                            {formatCents(trip.estimated_value_cents)}
-                          </MDTypography>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {trips.map((trip) => {
+                      const disabled = trip.committed_invoice_label !== null;
+                      return (
+                        <TableRow key={trip.id} sx={disabled ? { opacity: 0.55 } : undefined}>
+                          <TableCell padding="checkbox">
+                            <Checkbox
+                              checked={selectedTrips.has(trip.id)}
+                              onChange={() => toggleTrip(trip)}
+                              disabled={disabled}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <MDTypography variant="button" fontWeight="regular">
+                              {formatDateRange(trip.starts_on, trip.ends_on)}
+                            </MDTypography>
+                            {disabled ? (
+                              <MDTypography variant="caption" color="warning" display="block">
+                                Already on {trip.committed_invoice_label}
+                              </MDTypography>
+                            ) : null}
+                          </TableCell>
+                          <TableCell>
+                            <MDTypography variant="button" color="text" fontWeight="regular">
+                              {trip.aircraft_ident ?? "—"}
+                            </MDTypography>
+                          </TableCell>
+                          <TableCell align="right">
+                            {trip.has_day_rows ? (
+                              <MDTypography variant="button" color="text" fontWeight="regular">
+                                From day grid
+                              </MDTypography>
+                            ) : (
+                              <MDTypography variant="button" fontWeight="regular">
+                                {trip.day_count} × {formatCents(trip.day_rate_cents)}
+                              </MDTypography>
+                            )}
+                          </TableCell>
+                          <TableCell align="right">
+                            {trip.has_day_rows ? (
+                              <MDTypography variant="button" color="text" fontWeight="regular">
+                                —
+                              </MDTypography>
+                            ) : (
+                              <MDTypography
+                                variant="button"
+                                fontWeight="regular"
+                                color={trip.missing_travel_rate ? "warning" : "text"}
+                              >
+                                {trip.travel_day_count > 0
+                                  ? trip.missing_travel_rate
+                                    ? `${trip.travel_day_count} × no rate set`
+                                    : `${trip.travel_day_count} × ${formatCents(
+                                        trip.travel_day_rate_cents
+                                      )}`
+                                  : "—"}
+                              </MDTypography>
+                            )}
+                          </TableCell>
+                          <TableCell align="right">
+                            <MDTypography variant="button" color="text" fontWeight="regular">
+                              {trip.rebillable_expense_cents > 0
+                                ? formatCents(trip.rebillable_expense_cents)
+                                : "—"}
+                            </MDTypography>
+                          </TableCell>
+                          <TableCell align="right">
+                            <MDTypography variant="button" fontWeight="medium">
+                              {formatCents(trip.estimated_value_cents)}
+                            </MDTypography>
+                            {trip.has_day_rows ? (
+                              <MDTypography
+                                variant="caption"
+                                color="text"
+                                fontWeight="regular"
+                                display="block"
+                                title="Priced from this trip's day-by-day grid (quantity × rate for each billable day), not the trip's flat day count/rate."
+                              >
+                                from day grid
+                              </MDTypography>
+                            ) : null}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </TableContainer>

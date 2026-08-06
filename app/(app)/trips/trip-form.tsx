@@ -67,6 +67,7 @@ export default function TripForm({
   submitLabel,
   cancelHref = "/trips",
   locked = false,
+  hasDayRows = false,
 }: {
   action: (state: TripFormState, formData: FormData) => Promise<TripFormState>;
   clients: ClientOption[];
@@ -75,6 +76,15 @@ export default function TripForm({
   cancelHref?: string;
   /** The trip is on an invoice: its money and dates are frozen. */
   locked?: boolean;
+  /**
+   * F3: once the trip's day grid has rows, createInvoiceDraft prices the
+   * trip from THEM and ignores this section's four columns entirely — so
+   * the fields below stop being "what it bills" and become the day
+   * grid's own seed input. Only ever true on the edit screen (a new trip
+   * has no day grid yet); defaults false so trips/new's form reads
+   * exactly as it always has.
+   */
+  hasDayRows?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
 
@@ -228,9 +238,23 @@ export default function TripForm({
         </Grid>
 
         <MDBox mt={4} mb={2}>
-          <MDTypography variant="h6">What it bills</MDTypography>
+          <MDTypography
+            variant="h6"
+            sx={hasDayRows ? { opacity: 0.6 } : undefined}
+          >
+            {hasDayRows ? "What it bills (legacy)" : "What it bills"}
+          </MDTypography>
+          <MDTypography variant="caption" color="text" fontWeight="regular">
+            {hasDayRows
+              ? "The day grid below now sets what's actually billed — these fields are the old scalar input, kept only as the day grid's original seed. Editing them does not change the invoice."
+              : "Seeds the day grid below the first time it's opened. Once that grid has rows, they — not these fields — are what's actually billed."}
+          </MDTypography>
         </MDBox>
-        <Grid container spacing={2}>
+        <Grid
+          container
+          spacing={2}
+          sx={hasDayRows ? { opacity: 0.6 } : undefined}
+        >
           <Grid item xs={12} md={4}>
             <TextField
               name="day_rate"
@@ -300,7 +324,11 @@ export default function TripForm({
             </MDTypography>
           ) : state.saved ? (
             <MDTypography variant="caption" color="success">
-              Trip saved.
+              {state.daysRemoved
+                ? `Trip saved. Removed ${state.daysRemoved} day row${
+                    state.daysRemoved === 1 ? "" : "s"
+                  } that fell outside the new dates.`
+                : "Trip saved."}
             </MDTypography>
           ) : null}
         </MDBox>

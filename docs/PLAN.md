@@ -451,3 +451,169 @@ predictable: a developer needs a slightly darker border at 2am and types a hex. 
 turn a one-file overhaul into a two-week refactor. `npm run tokens:verify` exists to make that
 mechanically impossible rather than a matter of discipline — it must run in CI from the first
 commit, not be added once the problem appears.
+
+---
+
+# Phase 9 — Make it theirs (tenant customisation)
+
+Tony's direction: a pilot should be able to customise their platform "however they want, user
+friendly." The trap is reading that as a page builder. It isn't. A contract pilot is a
+one-person business who wants the software to match **their contracts and their vocabulary** —
+not to spend an evening arranging widgets.
+
+`references/contract-pilot-business.md` §4 is where the real variability sits: travel days
+"commonly paid at half to full day rate (varies — contract term to capture, not assume)",
+minimums and guarantees, standby days "sometimes at reduced rate", per diem "common instead of
+meal receipts", cancellation fees "50–100% inside 24–48 h". Every one is negotiated, every
+pilot's differ, and **none could be expressed in the product before this phase.**
+
+## The governing principle
+
+> **Taxonomy is the tenant's. State machines are ours.**
+
+A pilot may invent, rename, reorder and retire the *categories* they file things under. They
+may not redefine the *states* that money and compliance logic branch on. This is not a hedge —
+`invoices_protect_issued`, `invoice_lines_validate_trip` and `invoices_sync_trip_billing_state`
+all branch on `invoices.status` / `trips.billing_state` / `invoice_lines.line_type`, and Phase
+7's currency engine will branch on logbook values. Tenant-defined strings inside those would
+make billing and compliance unverifiable.
+
+| Vocabulary | Tenant-owned? | Why |
+|---|---|---|
+| `expenses.category`, `trips.trip_kind`, `documents.kind` | **Yes — full control** | Pure filing taxonomy. Nothing computes on them. |
+| Day types (new) | **Yes — full control** | This is the contract, and the contract is theirs. |
+| `expenses.treatment`, `invoices.status`, `trips.billing_state`, `invoice_lines.line_type` | **Label only** | Triggers and generated columns branch on these. |
+| `logbook_entries.source`, `role`, landing/approach fields | **No** | Legal record + Phase 7 inputs. FAR-defined. |
+
+## Layer 1 — Day types and rate cards  *(built: `20260807000000_phase9_day_types_and_trip_days.sql`)*
+
+**The gap it closed.** `pilot.trips` carried exactly two scalar pairs — `day_rate_cents`/
+`day_count` and `travel_day_rate_cents`/`travel_day_count`. No standby day, no per-diem count,
+no minimum, no cancellation term. `pilot.invoice_lines.line_type` therefore already declared
+`per_diem` and `cancellation_fee` values **nothing in the product could produce.**
+
+- **`pilot.day_types`** — per account, seeded at account creation with flight / travel /
+  standby / off (`accounts_seed_day_types`, mirroring `accounts_seed_invoice_sequence`).
+  `key`, `label`, `billable`, `counts_for_per_diem`, `default_rate_cents`, `sort_order`,
+  `archived_at`, `is_builtin`, and **`invoice_line_type`** — the boundary above, made a column:
+  the tenant names the day type and chooses which of Phase 5's fixed line types it bills as.
+  Seeded rates are NULL, never 0 — a seeded rate is a number the product invented turning up
+  on a real invoice.
+- **`pilot.trip_days`** — one row per calendar day. `rate_cents` is **snapshotted at capture**
+  (`references/product-translation.md` §2: "snapshot the terms at confirmation — rates
+  renegotiate; invoices must reflect the agreed ones"). Resolution order runs once, in the app,
+  at capture: client override → day type default. Never re-resolved at render.
+- **`pilot.client_rates`** — per client × day type override.
+- **`pilot.clients`** gains `per_diem_mode`, `minimum_days`, `cancellation_policy_note`.
+  Cancellation stays a **note**, not a computed rule: the percentages are convention, not law,
+  and computing an unenforceable fee is worse than recording the agreement.
+
+**Deliberate departure from the plan as written: there is no backfill.** The plan said to
+backfill `trip_days` from `day_count` / `travel_day_count`. It must not, and the reason is
+arithmetic: `day_count` is `numeric(5,1)` so a 2.5-day trip cannot become whole calendar rows
+without changing what it bills; the counts have no fixed relationship to the number of dates in
+the range; and nothing ever recorded *which* dates were flight versus travel. Any backfill
+would be inventing data, and would fail this phase's own gate — "not one issued invoice changed
+value" — silently, since totals only move the next time a draft is generated.
+
+Instead: a trip with no day rows bills exactly as it does today, through the scalar path
+`createInvoiceDraft` keeps. The trip screen's day grid seeds its **unsaved** state from the
+scalar counts, the pilot corrects it, and saving is what writes `trip_days`. Same
+draft-confirm boundary the logbook uses, for the same reason — a machine may propose a record
+with financial weight; a human confirms it.
+
+Two triggers keep day rows and trip dates honest in both directions
+(`trip_days_validate_within_trip`, `trips_protect_day_range`), and `trip_days_protect_billed`
+freezes a trip's days once it is invoiced or paid — mirroring `invoices_protect_issued`.
+
+## Layers 2–4 (not yet built)
+
+- **Their words.** `pilot.custom_options` (`expense_category` | `trip_kind` | `document_kind`),
+  seeded with today's built-ins so a pilot starts from the aviation-correct set. Those three
+  columns move from a hardcoded `CHECK` to a composite FK. Archive, never delete.
+- **Their look.** `pilot.account_preferences` — `account_id` PK plus a `jsonb` blob.
+  **This does not violate decision #20.** The token layer keeps owning every default and every
+  relationship; a tenant may override only a small, enumerated set of *slots*, injected at
+  runtime as custom properties on the app shell. A redesign is still a token-layer change.
+  Accent colour is validated server-side against a **curated palette**, never a free hex field:
+  an arbitrary colour eventually fails contrast against white badge text, and a pilot cannot be
+  expected to debug that. Read `lib/mdpro/context` and the MD PRO Configurator first — most of
+  this may already exist unused. Persist to the database, not localStorage.
+- **Their layout.** Nav order, hidden sections, Overview panel order. Hiding a section hides the
+  **nav entry only** — the route still resolves, so a bookmark or a deep link from an invoice
+  never 404s. `/settings` can never be hidden, or a pilot locks themselves out of the screen
+  that unhides things.
+
+## Verification
+
+- `npm run customisation:verify` — two tenants; seeded zero state; cross-tenant composite-FK
+  attach; `is_builtin` and `key` unwritable; archive preserves historical rendering; day rows
+  bounded by trip dates at both ends; the freeze on an invoiced trip. Negative cases assert the
+  **specific SQLSTATE**, never merely "an error happened".
+- **The money regression, the one this layer is gated on:** issue an invoice, snapshot its
+  total, then force day rows onto the trip behind it and move every rate the resolution path
+  would consult — assert the total does not change by one cent.
+
+## Known limitations of Layer 1 — recorded, not hidden
+
+Found by the security and QA reviews and deliberately left open. Each is a real gap; none is a
+defect pretending to be a feature.
+
+- **`billing_state = 'written_off'` has no writer.** The corrective migration revoked
+  `billing_state` from every tenant grant, and `invoices_sync_trip_billing_state` only ever
+  writes `unbilled` / `invoiced` / `paid`. Written-off is now an unreachable state that the
+  trips list still renders a badge for. Fixing it means either a `SECURITY DEFINER` RPC with an
+  in-body tenancy check (the `next_invoice_number` shape) or removing the state. It needs a
+  write-off *feature*, not a grant, so it waits for one rather than getting an RPC nothing calls.
+- **Per diem is a property of the day *type*, not of the day.** Standby at home base earns no
+  per diem; standby on the road does. `day_types.counts_for_per_diem` cannot express that, so a
+  pilot has to keep two day types to get it right, and nothing tells them so. The fix is an
+  `away` flag on `trip_days`, or derivation from a home base the product does not yet record.
+- **No first/last-day per-diem proration.** The draft bills full per diem × N days. The
+  convention a pilot's client will name — GSA/IRS M&IE — pays 75% on the first and last day of
+  travel. Convention, not law, but it is *the* convention, so billing 100% on both ends
+  over-bills two days on every trip. Belongs as a client-level option.
+- **A day type's `billable`, `invoice_line_type` and label are re-resolved at draft time.** Only
+  `rate_cents` is snapshotted onto `trip_days`. Toggling "Billable" in settings therefore
+  changes what already-captured, not-yet-invoiced days will bill — the same class of
+  retroactive re-pricing the rate snapshot exists to prevent, at lower stakes because committed
+  trips are frozen. Mitigated for now by warning at the point of the toggle; the real fix is to
+  snapshot those three alongside the rate.
+- **`trip_days.rate_cents` is `NOT NULL DEFAULT 0`,** so "no rate agreed" and "$0 agreed" are
+  the same value — the exact distinction `day_types.default_rate_cents` stays nullable to
+  preserve. A genuinely comped billable day cannot be recorded without a warning on every draft.
+- **A trip's date span is unbounded.** `check (ends_on >= starts_on)` is the only constraint, so
+  a year typo renders ~370 grid rows. Worth a cap; 60 days is generous for one assignment.
+- **`saveTripDays` is not transactional.** Delete, then insert, then per-date updates, across
+  separate PostgREST calls. A failure part-way leaves the grid half-applied. Every row is
+  reconstructible from the form the pilot is still looking at, so the failure mode is "save
+  again", but a single RPC would remove the window.
+
+## Deliberately not offered
+
+Free-text hex colours (contrast), arbitrary CSS/JS injection (XSS into their own invoices),
+renaming the *state* vocabularies, custom fields on the logbook (legal record; Phase 7 inputs),
+and a drag-and-drop page builder — which is not what a working pilot wants from software they
+use between legs.
+
+## What the reviews caught, and the two lessons worth carrying forward
+
+Layer 1 shipped a critical regression and a critical omission, both found by testing against
+live Postgres rather than by reading:
+
+1. **A guard whose negative case depends on a value being present passes when the value is
+   absent.** `NULL in ('invoiced','paid')` is `NULL`, not `true`, so deleting a trip walked
+   straight through the freeze on its day rows. Every `x in (...)` written as a barrier needs an
+   explicit answer for `x is null` — chosen, not inherited from SQL's default.
+2. **A trigger has no privilege of its own.** Revoking `pilot.trips.billing_state` from
+   `authenticated` broke `invoices_sync_trip_billing_state`, which is `SECURITY INVOKER` and
+   writes that column as whoever called it — so sending any invoice drafted from a trip failed
+   with `42501`, and both freeze guards became correct code watching a value that could never
+   change. Withdrawing a grant means auditing every trigger body that writes the column, not
+   only the app code that doesn't.
+
+A third, smaller one worth the same treatment: **a PostgREST `.upsert()` compiles to
+`ON CONFLICT DO UPDATE SET <every payload column>`,** and Postgres checks UPDATE privilege on
+every column in that SET list whether or not the value changes. On a table with column-scoped
+grants — which is every table in this schema — an upsert therefore fails on the conflict path,
+i.e. on every save after the first. Diff and issue targeted writes instead.

@@ -35,13 +35,31 @@ type TripListRow = {
   billing_state: string;
 };
 
+type TripDayValueRow = { day_type_id: string; rate_cents: number; quantity: number };
+
 /**
- * Flight days AND travel days. Phase 5 drafts travel days as their own
- * invoice line, so omitting them here would make this column and the
- * invoice disagree about what the job is worth — the "two sources for one
- * number" defect the invoices migration warns about repeatedly.
+ * F3: once a trip has day_days rows, createInvoiceDraft prices it from
+ * THEM — summing quantity x rate_cents over the BILLABLE rows — and
+ * ignores day_rate_cents/day_count/travel_day_rate_cents/
+ * travel_day_count entirely. Showing the scalar total for such a trip
+ * would be exactly the "two sources for one number" defect this comment
+ * used to warn about while creating it: a number on screen the invoice
+ * will not actually bill. Flight days AND travel days, in the scalar
+ * fallback, for the same reason as before — Phase 5 drafts travel days as
+ * their own invoice line.
  */
-function tripValueCents(trip: TripListRow): number {
+function tripValueCents(
+  trip: TripListRow,
+  dayRowsByTrip: Map<string, TripDayValueRow[]>,
+  billableByDayType: Map<string, boolean>
+): number {
+  const dayRows = dayRowsByTrip.get(trip.id);
+  if (dayRows && dayRows.length > 0) {
+    return dayRows.reduce((sum, row) => {
+      if (!billableByDayType.get(row.day_type_id)) return sum;
+      return sum + Math.round(Number(row.quantity) * row.rate_cents);
+    }, 0);
+  }
   return (
     Math.round(trip.day_rate_cents * Number(trip.day_count)) +
     Math.round(
@@ -90,6 +108,44 @@ export default async function TripsPage() {
   const clientNames = new Map(
     ((clientData ?? []) as { id: string; name: string }[]).map((c) => [c.id, c.name])
   );
+
+  // F3: day rows for exactly the trips just listed, plus the account's
+  // day-type taxonomy to know which of them are billable. Skipped
+  // entirely when there are no trips — an empty `.in()` list is a query
+  // with nothing to answer.
+  const dayRowsByTrip = new Map<string, TripDayValueRow[]>();
+  const billableByDayType = new Map<string, boolean>();
+  const tripIds = trips.map((t) => t.id);
+  if (tripIds.length > 0) {
+    const [{ data: dayRowsData, error: dayRowsError }, { data: dayTypeData, error: dayTypeError }] =
+      await Promise.all([
+        supabase
+          .from("trip_days")
+          .select("trip_id, day_type_id, rate_cents, quantity")
+          .in("trip_id", tripIds),
+        supabase.from("day_types").select("id, billable"),
+      ]);
+
+    // Can't safely tell which trips have day rows without both of these —
+    // guessing "no day rows, use the scalar fallback" on a fetch failure
+    // could understate a trip that actually bills more through its grid.
+    if (dayRowsError || dayTypeError) {
+      throw new Error(
+        `Couldn't load day grids for the trips list: ${
+          (dayRowsError ?? dayTypeError)?.message
+        }`
+      );
+    }
+
+    for (const row of (dayRowsData ?? []) as (TripDayValueRow & { trip_id: string })[]) {
+      const forTrip = dayRowsByTrip.get(row.trip_id) ?? [];
+      forTrip.push(row);
+      dayRowsByTrip.set(row.trip_id, forTrip);
+    }
+    for (const t of (dayTypeData ?? []) as { id: string; billable: boolean }[]) {
+      billableByDayType.set(t.id, t.billable);
+    }
+  }
 
   const unbilled = trips.filter(
     (trip) => trip.billing_state === "unbilled" && trip.status === "completed"
@@ -207,7 +263,7 @@ export default async function TripsPage() {
                         </TableCell>
                         <TableCell align="right">
                           <MDTypography variant="button" fontWeight="medium">
-                            {formatCents(tripValueCents(trip))}
+                            {formatCents(tripValueCents(trip, dayRowsByTrip, billableByDayType))}
                           </MDTypography>
                         </TableCell>
                         <TableCell>

@@ -103,22 +103,56 @@ export function parseTenth(
 }
 
 /**
+ * Parses a "YYYY-MM-DD" (or "YYYY-MM-DDTHH:mm:ss..." — only the date part
+ * is read) PostgREST date string into a UTC `Date` at that calendar day's
+ * midnight, or `null` if it isn't one. Shared by every date formatter
+ * below so the UTC-parsing rule lives in exactly one place: `new
+ * Date("2026-08-05")` is already UTC midnight, but a viewer west of
+ * Greenwich formatting that in local time sees August 4th. A trip date is
+ * a calendar fact, not an instant, so it must not shift with the reader's
+ * timezone.
+ */
+function parseCalendarDate(iso: string): Date | null {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(Date.UTC(y, m - 1, d));
+}
+
+/**
  * A `date` column (always "YYYY-MM-DD" from PostgREST) rendered for
- * display. Parsed as UTC on purpose: `new Date("2026-08-05")` is already
- * UTC midnight, but a viewer west of Greenwich formatting that in local
- * time sees August 4th. A trip date is a calendar fact, not an instant,
- * so it must not shift with the reader's timezone.
+ * display. See parseCalendarDate for why this is parsed as UTC.
  */
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
-  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
-  if (!y || !m || !d) return "—";
+  const date = parseCalendarDate(iso);
+  if (!date) return "—";
   return new Intl.DateTimeFormat("en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",
     timeZone: "UTC",
-  }).format(new Date(Date.UTC(y, m - 1, d)));
+  }).format(date);
+}
+
+/**
+ * Same as formatDate, with the weekday prefixed ("Mon, Mar 2, 2026"). A
+ * pilot scanning a dozen rows of a day grid needs Mon/Tue at a glance, not
+ * just the date — a separate export rather than a change to formatDate
+ * itself, because formatDate's other callers (invoice dates, expense
+ * dates, expirations) have no use for it and a 12-row list is where it
+ * earns its space.
+ */
+export function formatDateWithWeekday(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const date = parseCalendarDate(iso);
+  if (!date) return "—";
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(date);
 }
 
 export function formatDateRange(
