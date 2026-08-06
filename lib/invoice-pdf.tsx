@@ -15,7 +15,7 @@
  * plain named colours ("black", "grey") would have passed CI here while
  * still hardcoding the look of the one artifact a customer keeps.
  */
-import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
+import { Document, Image, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
 import { PDF_PALETTE } from "@/lib/mdpro/pdf-palette";
 import { formatCents, formatDate } from "@/lib/format";
 
@@ -27,6 +27,12 @@ export type InvoicePdfLine = {
 };
 
 export type InvoicePdfProps = {
+  /**
+   * The pilot's own logo as a base64 data URI, or null. Null is a normal
+   * state, not an error — most accounts have no logo, and one that cannot
+   * be fetched must not stop the invoice rendering.
+   */
+  logoDataUri?: string | null;
   account: {
     legal_name: string;
     address_line1: string | null;
@@ -105,9 +111,19 @@ const styles = StyleSheet.create({
   totalLabel: { color: PDF_PALETTE.muted },
   totalStrong: { fontFamily: "Helvetica-Bold" },
   notes: { marginTop: 24, paddingTop: 12, borderTopWidth: 0.5, borderTopColor: PDF_PALETTE.hairline },
+  // Bounded box, not a fixed size: `objectFit: contain` keeps a wide
+  // wordmark and a square badge both legible without distorting either.
+  logo: { maxWidth: 160, maxHeight: 48, objectFit: "contain", marginBottom: 6 },
 });
 
-export function InvoicePdf({ account, client, invoice, lines, totals }: InvoicePdfProps) {
+export function InvoicePdf({
+  logoDataUri,
+  account,
+  client,
+  invoice,
+  lines,
+  totals,
+}: InvoicePdfProps) {
   return (
     <Document>
       <Page size="LETTER" style={styles.page}>
@@ -121,6 +137,11 @@ export function InvoicePdf({ account, client, invoice, lines, totals }: InvoiceP
             {invoice.due_on ? <Text>Due {formatDate(invoice.due_on)}</Text> : null}
           </View>
           <View>
+            {logoDataUri ? (
+              /* eslint-disable-next-line jsx-a11y/alt-text -- react-pdf's
+                 Image takes no alt; a PDF has no accessibility tree here. */
+              <Image style={styles.logo} src={logoDataUri} />
+            ) : null}
             <Text style={styles.label}>From</Text>
             <Text style={styles.block}>{account.legal_name}</Text>
             {addressLines(account).map((line, i) => (
