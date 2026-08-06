@@ -71,7 +71,7 @@ export async function GET(
   const [{ data: accountRow }, { data: clientRow }] = await Promise.all([
     supabase
       .from("accounts")
-      .select("legal_name, address_line1, address_line2, city, state, postal_code, country")
+      .select("legal_name, logo_url, address_line1, address_line2, city, state, postal_code, country")
       .eq("id", account.id)
       .maybeSingle(),
     supabase
@@ -92,7 +92,9 @@ export async function GET(
     postal_code: string | null;
     country: string | null;
   };
-  const accountInfo = accountRow as (AddressFields & { legal_name: string }) | null;
+  const accountInfo = accountRow as
+    | (AddressFields & { legal_name: string; logo_url: string | null })
+    | null;
   const clientInfo = clientRow as
     | (AddressFields & { name: string; contact_name: string | null })
     | null;
@@ -117,8 +119,35 @@ export async function GET(
     balance_due_cents: 0,
   };
 
+  // The logo is fetched as BYTES and handed to react-pdf as a data URI,
+  // not as a URL. Two reasons: the bucket is private, so a URL would have
+  // to be signed and react-pdf's fetch would race the 60-second expiry;
+  // and an invoice must render even when the image cannot be reached.
+  // Any failure here degrades to a text-only invoice rather than a failed
+  // download — a pilot whose logo is momentarily unavailable still needs
+  // to bill their client.
+  let logoDataUri: string | null = null;
+  if (accountInfo.logo_url?.startsWith(`${account.id}/`)) {
+    try {
+      const { data: blob, error: logoError } = await supabase.storage
+        .from("receipts")
+        .download(accountInfo.logo_url);
+      if (logoError) throw new Error(logoError.message);
+      if (blob) {
+        const bytes = Buffer.from(await blob.arrayBuffer());
+        const mime = accountInfo.logo_url.endsWith(".png")
+          ? "image/png"
+          : "image/jpeg";
+        logoDataUri = `data:${mime};base64,${bytes.toString("base64")}`;
+      }
+    } catch (cause) {
+      console.error("[pdf] logo unavailable, rendering without it", cause);
+    }
+  }
+
   const buffer = await renderToBuffer(
     <InvoicePdf
+      logoDataUri={logoDataUri}
       account={accountInfo}
       client={clientInfo}
       invoice={invoice}
