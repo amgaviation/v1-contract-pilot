@@ -52,11 +52,26 @@ const FORMULA_LEAD = /^[=+\-@]/;
  */
 const LEADING_BLANK = /^\s+/;
 
+/**
+ * A bare negative number ("-500.00", "-1", "-0.5") is not a formula in any
+ * spreadsheet — Excel and Sheets both evaluate a leading "-" as arithmetic
+ * negation only when *something follows the number*. Once the guard below
+ * strips leading whitespace and sees the "-" trigger, this second check asks
+ * whether the whole remaining cell is just that number: digits, an optional
+ * single decimal point and more digits, nothing else. "-1+1", "-cmd|...",
+ * "- =SUM(A1)" all fail this (extra characters, or the number never
+ * actually starts right after the "-"), so they still get quarantined.
+ * This carve-out applies only to "-": "=", "+" and "@" have no legitimate
+ * bare-number reading and are always neutralised.
+ */
+const PLAIN_NEGATIVE_NUMBER = /^-\d+(\.\d+)?$/;
+
 export function csvField(value: string | number | null | undefined): string {
   const original = value === null || value === undefined ? "" : String(value);
   let s = original;
 
-  if (FORMULA_LEAD.test(original.replace(LEADING_BLANK, ""))) {
+  const stripped = original.replace(LEADING_BLANK, "");
+  if (FORMULA_LEAD.test(stripped) && !PLAIN_NEGATIVE_NUMBER.test(stripped)) {
     s = `'${original}`;
   }
 

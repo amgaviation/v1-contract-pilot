@@ -174,6 +174,35 @@ comment on column pilot.operator_qualifications.type_designator is
 -- permissive by exactly one month either way, never wider, and never
 -- automatically resets what "on time" means when a pilot has genuinely
 -- fallen out of the cycle.
+--
+-- IDEMPOTENCY (H1 fix, 2026-08-07): the whole recompute — including the
+-- 301(a) early/late comparison — is gated on
+-- `old.completed_on is distinct from new.completed_on`. An UPDATE that
+-- doesn't touch completed_on (editing notes, status, document_id, ...)
+-- must leave expires_on exactly as it was. Before this gate the function
+-- unconditionally recomputed on every UPDATE, and the 301(a) branch read
+-- `date_trunc('month', OLD.expires_on)` — the row's OWN PRIOR OUTPUT — as
+-- required_month on every one of those re-fires, not just the ones where
+-- completed_on actually changed. Concretely: a late IPC completed
+-- 2026-08-20 correctly resolves under 301(a) to expires_on = 2027-01-31
+-- (required_month reconstructed as JAN 2027, base_month AUG shifted to
+-- JAN). But then editing nothing but `notes` re-runs the same function:
+-- base_month is still AUG 2026 (completed_on unchanged), yet
+-- required_month is now recomputed from the ALREADY-SHIFTED
+-- OLD.expires_on = 2027-01-31, i.e. JAN 2027 again — AUG is one month
+-- before JAN? No: AUG is not adjacent to JAN, so on a second unrelated
+-- edit the shift stops applying and base_month reverts toward its own
+-- actual month, then N-months-ahead is measured from there, silently
+-- walking expires_on to 2027-02-28. A trigger that derives a value from
+-- a column it itself sets on the same row is not a computation, it is a
+-- feedback loop: every re-fire treats its last answer as new evidence,
+-- so the answer walks forward (or backward) an extra month per edit,
+-- with no bound and no relation to any input the caller actually
+-- changed. The fix removes the feedback path entirely: required_month
+-- must be reconstructed once, at the moment completed_on changes, from
+-- the expires_on that was in place BEFORE this edit's own recompute —
+-- never from a value this function wrote on a prior, unrelated UPDATE of
+-- the same row when completed_on did not move.
 -- ---------------------------------------------------------------------------
 create or replace function pilot.compute_operator_qualification_expiry()
 returns trigger
@@ -198,6 +227,24 @@ begin
     return new;
   end if;
 
+  -- IDEMPOTENCY GATE (H1): only recompute when this UPDATE actually moves
+  -- completed_on. Without this, editing notes/status/document_id re-fires
+  -- the function with new.completed_on = old.completed_on, and — worse —
+  -- the 301(a) branch below would reconstruct required_month from
+  -- OLD.expires_on, which on a prior fire was ITSELF this function's
+  -- output. Feeding a trigger's own derived output back in as if it were
+  -- fresh input is not a computation, it's a feedback loop: each re-fire
+  -- re-derives "the required month" from the last answer instead of from
+  -- an unchanged input, so an unrelated edit (notes, status) walks
+  -- expires_on an extra month with no relation to anything the caller
+  -- changed. Gating on tg_op = 'INSERT' or completed_on actually differing
+  -- keeps expires_on stable across any edit that doesn't touch the
+  -- completion date, exactly as a derived column should behave.
+  if tg_op = 'UPDATE' and old.completed_on is not distinct from new.completed_on then
+    new.expires_on := old.expires_on;
+    return new;
+  end if;
+
   -- 135.297(a): 6th calendar month. 135.293(a)/(b) and 135.299(a): 12th
   -- calendar month. See the migration header for the exact eCFR text.
   months_ahead := case new.requirement
@@ -207,7 +254,8 @@ begin
 
   base_month := date_trunc('month', new.completed_on)::date;
 
-  if tg_op = 'UPDATE' and old.expires_on is not null then
+  if tg_op = 'UPDATE' and old.completed_on is distinct from new.completed_on
+     and old.expires_on is not null then
     required_month := date_trunc('month', old.expires_on)::date;
     if base_month = (required_month - interval '1 month')::date
        or base_month = (required_month + interval '1 month')::date then

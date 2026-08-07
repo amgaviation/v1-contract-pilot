@@ -270,6 +270,23 @@ function EditableRow({ invoiceId, line }: { invoiceId: string; line: LineRow }) 
   // present + no "taxable" key -> unchecked; absent -> nothing submitted
   // yet, fall back to the stored row.
   const taxableChecked = submitted ? submitted.taxable === "on" : line.taxable;
+  // `defaultChecked` cannot deliver a resubmit-safe echo here: Radix's
+  // Checkbox captures its FIRST-MOUNT `checked` value in a ref
+  // (initialCheckedStateRef in @radix-ui/react-checkbox) and restores
+  // exactly that on the native <form> "reset" event React 19 fires after
+  // every action dispatch — including a rejected one. `defaultChecked`
+  // changing on re-render does not update that ref, so a pilot who
+  // unticks Taxable, then trips validation on another field, watches this
+  // box silently re-check itself on the error render. Making the box
+  // CONTROLLED (checked + onCheckedChange) sidesteps the ref entirely, and
+  // a hidden input posts the real value since a controlled Radix Checkbox
+  // doesn't reliably participate in native form submission on its own.
+  // Same pattern as trips/day-grid.tsx's `away` flag.
+  const [taxable, setTaxable] = useState(taxableChecked);
+  useEffect(() => {
+    setTaxable(taxableChecked);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitted]);
 
   return (
     <Table.Row>
@@ -316,7 +333,11 @@ function EditableRow({ invoiceId, line }: { invoiceId: string; line: LineRow }) 
             </Box>
             <Flex align="center" gap="2" asChild>
               <label>
-                <Checkbox name="taxable" defaultChecked={taxableChecked} />
+                <input type="hidden" name="taxable" value={taxable ? "on" : "off"} />
+                <Checkbox
+                  checked={taxable}
+                  onCheckedChange={(checked) => setTaxable(checked === true)}
+                />
                 <Text size="1">Taxable</Text>
               </label>
             </Flex>
@@ -357,6 +378,15 @@ function AddLineForm({ invoiceId }: { invoiceId: string }) {
   // default (true) or an unchecked box silently re-checks itself on a
   // rejected add.
   const taxableChecked = submitted ? submitted.taxable === "on" : true;
+  // Same defaultChecked/mount-time-ref problem as EditableRow's taxable
+  // checkbox (see its comment): make it controlled and post the real value
+  // through a hidden input, rather than trust Radix's own form
+  // participation to survive React 19's post-action reset.
+  const [taxable, setTaxable] = useState(taxableChecked);
+  useEffect(() => {
+    setTaxable(taxableChecked);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitted]);
   // Same Select.Root uncontrolled-bubble-input issue as elsewhere: `name`
   // dropped, real value posted from a controlled hidden input so a
   // rejected add doesn't silently revert the line type to "Other".
@@ -426,7 +456,11 @@ function AddLineForm({ invoiceId }: { invoiceId: string }) {
         </Box>
         <Flex align="center" gap="2" asChild>
           <label>
-            <Checkbox name="taxable" defaultChecked={taxableChecked} />
+            <input type="hidden" name="taxable" value={taxable ? "on" : "off"} />
+            <Checkbox
+              checked={taxable}
+              onCheckedChange={(checked) => setTaxable(checked === true)}
+            />
             <Text size="1">Taxable</Text>
           </label>
         </Flex>

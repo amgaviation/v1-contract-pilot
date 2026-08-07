@@ -16,7 +16,26 @@ const UUID_RE =
 
 const FORM_TYPES = ["1099-NEC", "1099-MISC", "other"] as const;
 
-export type TaxFormState = { error: string | null };
+export type TaxFormState = {
+  error: string | null;
+  values?: { reported_amount: string; received_on: string; notes: string };
+};
+
+const TAX_FORM_FIELDS = ["reported_amount", "received_on", "notes"] as const;
+
+/**
+ * React 19 resets an uncontrolled form on every action dispatch, error path
+ * included, so a rejected submit (e.g. "84,500" — rejected for the comma)
+ * would otherwise wipe the amount, the received date and the notes the
+ * pilot just typed. Echoing what was posted, on every return path, is what
+ * `tax-form-editor.tsx`'s `defaultValue`s re-seed from. Mirrors
+ * `app/(app)/expenses/actions.ts`'s `echo`.
+ */
+function echoTaxForm(formData: FormData): TaxFormState["values"] {
+  const out = {} as { reported_amount: string; received_on: string; notes: string };
+  for (const field of TAX_FORM_FIELDS) out[field] = String(formData.get(field) ?? "");
+  return out;
+}
 
 function isDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
@@ -48,35 +67,35 @@ export async function saveClientTaxForm(
   const { account } = await requireAccount("/reports/year-end");
 
   const clientId = String(formData.get("client_id") ?? "");
-  if (!UUID_RE.test(clientId)) return { error: "Pick a client." };
+  if (!UUID_RE.test(clientId)) return { error: "Pick a client.", values: echoTaxForm(formData) };
 
   const taxYearRaw = String(formData.get("tax_year") ?? "");
   const taxYear = Number(taxYearRaw);
   if (!Number.isInteger(taxYear) || taxYear < 2000 || taxYear > 2100) {
-    return { error: "That tax year isn't valid." };
+    return { error: "That tax year isn't valid.", values: echoTaxForm(formData) };
   }
 
   const formType = String(formData.get("form_type") ?? "1099-NEC");
   if (!(FORM_TYPES as readonly string[]).includes(formType)) {
-    return { error: "That form type isn't valid." };
+    return { error: "That form type isn't valid.", values: echoTaxForm(formData) };
   }
 
   const reportedAmount = parseDollarsToCents(
     String(formData.get("reported_amount") ?? "")
   );
   if (reportedAmount === undefined) {
-    return { error: "The reported amount must be a number like 12500 or 12500.00." };
+    return { error: "The reported amount must be a number like 12500 or 12500.00.", values: echoTaxForm(formData) };
   }
   if (reportedAmount === null) {
-    return { error: "Enter the amount the form reports." };
+    return { error: "Enter the amount the form reports.", values: echoTaxForm(formData) };
   }
   if (reportedAmount < 0) {
-    return { error: "The reported amount can't be negative." };
+    return { error: "The reported amount can't be negative.", values: echoTaxForm(formData) };
   }
 
   const receivedOnRaw = optional(formData, "received_on");
   if (receivedOnRaw && !isDate(receivedOnRaw)) {
-    return { error: "That received date isn't valid." };
+    return { error: "That received date isn't valid.", values: echoTaxForm(formData) };
   }
 
   const notes = optional(formData, "notes");
@@ -100,7 +119,7 @@ export async function saveClientTaxForm(
     .maybeSingle();
 
   if (readError) {
-    return { error: friendlyDbError(readError, "client_tax_forms.select") };
+    return { error: friendlyDbError(readError, "client_tax_forms.select"), values: echoTaxForm(formData) };
   }
 
   if (existing) {
@@ -113,8 +132,8 @@ export async function saveClientTaxForm(
       .update(update, { count: "exact" })
       .eq("id", (existing as { id: string }).id)
       .eq("account_id", account.id);
-    if (error) return { error: friendlyDbError(error, "client_tax_forms.update") };
-    if (!count) return { error: "That record no longer exists." };
+    if (error) return { error: friendlyDbError(error, "client_tax_forms.update"), values: echoTaxForm(formData) };
+    if (!count) return { error: "That record no longer exists.", values: echoTaxForm(formData) };
   } else {
     const insert: ClientTaxFormInsert = {
       account_id: account.id,
@@ -126,7 +145,7 @@ export async function saveClientTaxForm(
       notes,
     };
     const { error } = await reportsFrom(supabase, "client_tax_forms").insert(insert);
-    if (error) return { error: friendlyDbError(error, "client_tax_forms.insert") };
+    if (error) return { error: friendlyDbError(error, "client_tax_forms.insert"), values: echoTaxForm(formData) };
   }
 
   revalidatePath("/reports/year-end");

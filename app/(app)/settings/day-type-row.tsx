@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { AlertDialog, Box, Button, Card, Flex, Grid, Select, Switch, Text, TextField } from "@/components/ui";
 import { centsToInput } from "@/lib/format";
+import { unitsToInput } from "@/app/(app)/trips/day-utils";
 import type { Database } from "@/lib/supabase/database.types";
 import {
   updateDayType,
@@ -168,6 +169,24 @@ export default function DayTypeRow({
               />
               <Text size="1" color="gray">
                 Blank = no rate agreed
+              </Text>
+            </Flex>
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+              <Text size="1" color="gray">
+                Default rate fraction
+              </Text>
+              <TextField.Root
+                name="default_units"
+                inputMode="decimal"
+                placeholder="1"
+                disabled={!canEdit}
+                defaultValue={initial(
+                  "default_units",
+                  dayType.default_units === null ? "" : unitsToInput(dayType.default_units)
+                )}
+              />
+              <Text size="1" color="gray">
+                0.5 = half rate. Blank = full rate
               </Text>
             </Flex>
             <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>

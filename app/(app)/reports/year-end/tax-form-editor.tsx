@@ -41,6 +41,12 @@ export default function TaxFormEditor({
     initialState
   );
   const [formType, setFormType] = useState(existing?.formType ?? "1099-NEC");
+  // A rejected submit must show and re-post what the pilot typed, not the
+  // stored record — React 19 resets an uncontrolled form on every action
+  // dispatch, error path included, so these three fields re-seed from the
+  // action's echoed `state.values` and fall back to the stored record only
+  // when there's no submission to echo yet.
+  const submitted = state.values;
 
   if (!open) {
     return (
@@ -104,7 +110,11 @@ export default function TaxFormEditor({
               inputMode="decimal"
               placeholder="0.00"
               defaultValue={
-                existing ? centsToInput(existing.reportedAmountCents) : ""
+                submitted
+                  ? submitted.reported_amount
+                  : existing
+                    ? centsToInput(existing.reportedAmountCents)
+                    : ""
               }
               required
               style={{ width: "9rem" }}
@@ -119,7 +129,7 @@ export default function TaxFormEditor({
               id={`received-${clientId}`}
               type="date"
               name="received_on"
-              defaultValue={existing?.receivedOn ?? ""}
+              defaultValue={submitted ? submitted.received_on : existing?.receivedOn ?? ""}
               style={{ width: "10rem" }}
             />
           </Flex>
@@ -131,7 +141,7 @@ export default function TaxFormEditor({
             <TextField.Root
               id={`notes-${clientId}`}
               name="notes"
-              defaultValue={existing?.notes ?? ""}
+              defaultValue={submitted ? submitted.notes : existing?.notes ?? ""}
               placeholder="e.g. corrected form received"
             />
           </Flex>

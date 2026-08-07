@@ -107,6 +107,7 @@ export default async function NewInvoicePage({
       day_type_id: string;
       rate_cents: number;
       quantity: number;
+      units: number | null;
     };
     type DayTypeRow = { id: string; billable: boolean };
     const [
@@ -117,7 +118,7 @@ export default async function NewInvoicePage({
       tripIds.length > 0
         ? supabase
             .from("trip_days")
-            .select("trip_id, day_type_id, rate_cents, quantity")
+            .select("trip_id, day_type_id, rate_cents, quantity, units")
             .in("trip_id", tripIds)
         : Promise.resolve({ data: [] as TripDayRow[], error: null }),
       supabase.from("day_types").select("id, billable"),

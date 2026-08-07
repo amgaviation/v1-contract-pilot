@@ -61,6 +61,15 @@ export default function OperatorQualificationRow({
       ? state.values.completed_on
       : existing?.completed_on ?? "";
 
+  // expires_on is only ever hand-entered for the non-derived kinds (H4) —
+  // for the three trigger-derived checks the database always overwrites
+  // it, so there is deliberately no input for those; see DERIVED_EXPIRY_
+  // REQUIREMENTS and the trigger's own comment.
+  const expiresValue =
+    state.values?.expires_on !== undefined
+      ? state.values.expires_on
+      : existing?.expires_on ?? "";
+
   // The "add another type" blank row (allowTypeEdit) keeps a stable key in
   // the parent list across the revalidatePath refresh that follows a
   // successful save, so its local state would otherwise survive that
@@ -141,14 +150,18 @@ export default function OperatorQualificationRow({
             <Text size="1" color="gray">
               {derived ? "Valid through (computed)" : "Valid through"}
             </Text>
-            {existing?.expires_on ? (
-              <Badge color={existing.expires_on < new Date().toISOString().slice(0, 10) ? "red" : "gray"}>
-                {formatDate(existing.expires_on)}
-              </Badge>
+            {derived ? (
+              existing?.expires_on ? (
+                <Badge color={existing.expires_on < new Date().toISOString().slice(0, 10) ? "red" : "gray"}>
+                  {formatDate(existing.expires_on)}
+                </Badge>
+              ) : (
+                <Text size="2" color="gray">
+                  Set once completed
+                </Text>
+              )
             ) : (
-              <Text size="2" color="gray">
-                {derived ? "Set once completed" : "—"}
-              </Text>
+              <TextField.Root type="date" name="expires_on" defaultValue={expiresValue} />
             )}
           </Flex>
 

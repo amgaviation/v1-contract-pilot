@@ -925,7 +925,7 @@ export async function createInvoiceDraft(
 
     const { data: periodRows, error: periodsError } = await supabase
       .from("guarantee_periods")
-      .select("period_month, settled_invoice_id")
+      .select("id, period_month, guaranteed_days, settled_invoice_id")
       .eq("account_id", account.id)
       .eq("client_id", clientId)
       .in("period_month", monthKeys);
@@ -947,31 +947,65 @@ export async function createInvoiceDraft(
       );
     }
 
-    const settledInvoiceByMonth = new Map<string, string | null>(
-      (
-        (periodRows ?? []) as {
-          period_month: string;
-          settled_invoice_id: string | null;
-        }[]
-      ).map((r) => [r.period_month, r.settled_invoice_id])
+    type PeriodRow = {
+      id: string;
+      period_month: string;
+      guaranteed_days: number;
+      settled_invoice_id: string | null;
+    };
+    const existingPeriodByMonth = new Map<string, PeriodRow>(
+      ((periodRows ?? []) as PeriodRow[]).map((r) => [r.period_month, r])
     );
 
-    type GuaranteePeriodUpsert =
+    // L1: name the settling invoice the way every other warning in this
+    // file does (formatDateRange/formatMonthLabel) instead of printing
+    // settled_invoice_id — a uuid — straight into pilot-facing text.
+    // Same label shape pilot.trip_committed_invoice already uses for the
+    // per-trip version of this warning above: the invoice_number if the
+    // settling invoice has been issued one, else "a draft invoice".
+    const settledIds = [
+      ...new Set(
+        ((periodRows ?? []) as PeriodRow[])
+          .map((r) => r.settled_invoice_id)
+          .filter((id): id is string => id != null)
+      ),
+    ];
+    const settledInvoiceLabelById = new Map<string, string>();
+    if (settledIds.length > 0) {
+      const { data: settledInvoiceRows } = await supabase
+        .from("invoices")
+        .select("id, invoice_number")
+        .eq("account_id", account.id)
+        .in("id", settledIds);
+      for (const row of (settledInvoiceRows ?? []) as {
+        id: string;
+        invoice_number: string | null;
+      }[]) {
+        settledInvoiceLabelById.set(
+          row.id,
+          row.invoice_number ?? "a draft invoice"
+        );
+      }
+    }
+
+    type GuaranteePeriodInsert =
       Database["pilot"]["Tables"]["guarantee_periods"]["Insert"];
-    const periodsToUpsert: GuaranteePeriodUpsert[] = [];
 
     for (const monthKey of monthKeys) {
       const bucket = monthlyBillable.get(monthKey)!;
       const monthLabel = formatMonthLabel(monthKey);
-      const alreadySettled = settledInvoiceByMonth.get(monthKey);
+      const existingPeriod = existingPeriodByMonth.get(monthKey);
+      const alreadySettled = existingPeriod?.settled_invoice_id ?? null;
 
       if (alreadySettled) {
         // IDEMPOTENCY: a different invoice already settled this month —
         // the common shape being a second invoice for the same client,
         // drafted later, that happens to also cover a trip inside an
         // already-topped-up month. Warn, and add no second line.
+        const settledLabel =
+          settledInvoiceLabelById.get(alreadySettled) ?? "a draft invoice";
         warnings.push(
-          `${monthLabel}: this client's monthly guarantee for this month was already settled on invoice ${alreadySettled} — no second top-up line added.`
+          `${monthLabel}: this client's monthly guarantee for this month was already settled on invoice ${settledLabel} — no second top-up line added.`
         );
         continue;
       }
@@ -1011,33 +1045,82 @@ export async function createInvoiceDraft(
       // the guarantee" is a legitimate settlement outcome too, and
       // recording it here is what stops a later invoice from re-deriving
       // (and potentially double-counting) the same month.
-      periodsToUpsert.push({
-        account_id: account.id,
-        client_id: clientId,
-        period_month: monthKey,
-        guaranteed_days: minDays,
-        settled_invoice_id: invoiceId,
-      });
-    }
+      //
+      // C2 FIX — lookup-then-insert-or-update, the same shape
+      // trips/actions.ts's trip_days save and
+      // clients/[id]/rate-overrides-actions.ts's client_rates write both
+      // already use, and for the same reason: PostgREST's `.upsert()`
+      // compiles to `ON CONFLICT ... DO UPDATE SET <every payload column>
+      // = excluded.<col>`, and Postgres checks UPDATE privilege on every
+      // column named in that SET list STATICALLY — before any conflict is
+      // even evaluated, and even when the incoming value matches the
+      // stored one. The payload here is (account_id, client_id,
+      // period_month, guaranteed_days, settled_invoice_id); this
+      // migration's UPDATE grant is only (guaranteed_days,
+      // settled_invoice_id) — account_id/client_id/period_month identify
+      // the row and are insert-only, the same discipline client_rates
+      // already uses for (account_id, client_id, day_type_id). So
+      // `.upsert()` 42501'd for `authenticated` on every call, the table
+      // was never actually written, and the monthly guarantee double-
+      // billed every month split across two invoices (see this file's own
+      // header comment above). The row is already in hand from
+      // periodRows/existingPeriodByMonth above, so no extra read is
+      // needed — just branch on it, and check `{count:"exact"}` on the
+      // write so a silently-denied write surfaces here instead of at a
+      // client's AP department.
+      if (existingPeriod) {
+        const { error: updateError, count: updateCount } = await supabase
+          .from("guarantee_periods")
+          .update(
+            {
+              guaranteed_days: minDays,
+              settled_invoice_id: invoiceId,
+            } as never,
+            { count: "exact" }
+          )
+          .eq("id", existingPeriod.id)
+          .eq("account_id", account.id);
 
-    if (periodsToUpsert.length > 0) {
-      const { error: upsertError } = await supabase
-        .from("guarantee_periods")
-        .upsert(periodsToUpsert as never, {
-          onConflict: "account_id,client_id,period_month",
-        });
+        if (updateError) {
+          // The invoice line(s) above already landed in `lines` and will
+          // still be inserted below — losing the settlement record is a
+          // "this month might get topped up again" risk, not a "this
+          // invoice is wrong" one, so it's a warning, not a hard failure.
+          warnings.push(
+            `Couldn't record ${monthLabel}'s guarantee settlement (${friendlyDbError(
+              updateError,
+              "guarantee_periods.update"
+            )}). A later invoice for this client may re-offer the same month.`
+          );
+        } else if (updateCount === 0) {
+          warnings.push(
+            `Couldn't record ${monthLabel}'s guarantee settlement — no matching record to update. A later invoice for this client may re-offer the same month.`
+          );
+        }
+      } else {
+        const insertPayload: GuaranteePeriodInsert = {
+          account_id: account.id,
+          client_id: clientId,
+          period_month: monthKey,
+          guaranteed_days: minDays,
+          settled_invoice_id: invoiceId,
+        };
+        const { error: insertError, count: insertCount } = await supabase
+          .from("guarantee_periods")
+          .insert(insertPayload as never, { count: "exact" });
 
-      if (upsertError) {
-        // The invoice line(s) above already landed in `lines` and will
-        // still be inserted below — losing the settlement record is a
-        // "this month might get topped up again" risk, not a "this
-        // invoice is wrong" one, so it's a warning, not a hard failure.
-        warnings.push(
-          `Couldn't record this month's guarantee settlement (${friendlyDbError(
-            upsertError,
-            "guarantee_periods.upsert"
-          )}). A later invoice for this client may re-offer the same month.`
-        );
+        if (insertError) {
+          warnings.push(
+            `Couldn't record ${monthLabel}'s guarantee settlement (${friendlyDbError(
+              insertError,
+              "guarantee_periods.insert"
+            )}). A later invoice for this client may re-offer the same month.`
+          );
+        } else if (insertCount !== 1) {
+          warnings.push(
+            `Couldn't record ${monthLabel}'s guarantee settlement — the write didn't take. A later invoice for this client may re-offer the same month.`
+          );
+        }
       }
     }
   }

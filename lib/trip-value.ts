@@ -58,15 +58,14 @@ export type TripDayValueRow = {
   quantity: number;
   /**
    * Rate fraction (0 < x <= 1) this day bills at. OPTIONAL, not required:
-   * two callers of this function (app/(app)/page.tsx and
-   * app/(app)/invoices/new/page.tsx — outside this task's scope) do not
-   * yet select trip_days.units, and `Number(undefined)` is NaN, which
-   * would NaN out every trip's value on those screens if this were
-   * required. A missing units reads as 1.0 (full rate — what every
-   * trip_days row meant before this column existed), the same
-   * "absent means the pre-feature default" rule the migration itself
-   * applies to existing rows, so an unupdated caller keeps computing
-   * exactly what it always has.
+   * all callers of this function now select trip_days.units, but the field
+   * stays optional as a safety net — `Number(undefined)` is NaN, which
+   * would NaN out every trip's value if a future caller forgot to select
+   * it. A missing units reads as 1.0 (full rate — what every trip_days row
+   * meant before this column existed), the same "absent means the
+   * pre-feature default" rule the migration itself applies to existing
+   * rows, so an unupdated caller keeps computing exactly what it always
+   * has.
    */
   units?: number;
 };

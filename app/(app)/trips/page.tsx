@@ -96,7 +96,7 @@ export default async function TripsPage() {
       await Promise.all([
         supabase
           .from("trip_days")
-          .select("trip_id, day_type_id, rate_cents, quantity")
+          .select("trip_id, day_type_id, rate_cents, quantity, units")
           .in("trip_id", tripIds),
         supabase.from("day_types").select("id, billable"),
       ]);

@@ -198,6 +198,52 @@ comment on column pilot.trip_days.away is
 -- Rows whose day type never counted for per diem stay false — they produced
 -- no per-diem line before and produce none now. Going forward the flag is
 -- entered per day, which is the point of adding it.
+--
+-- C1 FIX — `set local role service_role` around this statement.
+--
+-- pilot.trip_days carries trip_days_protect_billed (BEFORE INSERT/UPDATE/
+-- DELETE, 20260807020000), which raises 23514 for any row whose trip is
+-- billed on a live (non-void) invoice — and it bypasses only for
+-- service_role (`current_user = 'service_role' or
+-- current_setting('role', true) = 'service_role'`). A migration runs as
+-- the table OWNER, not as service_role, so without this bypass the UPDATE
+-- above aborts the entire migration the moment it reaches the first
+-- trip_day whose trip has ever been drafted onto an invoice — which is not
+-- a rare shape, it is any tenant who has used the product's core feature.
+-- Proved against a local database built with exactly that shape (account,
+-- client, trip, one counts_for_per_diem trip_day, one draft invoice with
+-- one line billing that trip): the bare UPDATE fails with
+-- "This trip is billed on a draft invoice. Remove it from that invoice
+-- before changing its days." (23514) and rolls back everything this
+-- migration file did before it.
+--
+-- The bypass is legitimate here, specifically, for a reason that does not
+-- generalize to "any inconvenient guard can be routed around": this
+-- statement is a HISTORICAL RESTATEMENT, not an edit to a billed trip's
+-- billing. trip_days_protect_billed exists to stop someone from changing
+-- what a trip bills for AFTER it has been committed to an invoice. This
+-- backfill changes nothing a client will ever see differently — see the
+-- comment above: for every row it touches, away=true reproduces EXACTLY
+-- the per-diem billing that already existed a moment before this ran
+-- (counts_for_per_diem alone used to decide it; counts_for_per_diem AND
+-- away decides it after, and this sets away=true precisely where
+-- counts_for_per_diem was already true). It is documenting what a day
+-- already meant under the old rule, in a new column, not renegotiating a
+-- billed trip — the exact distinction the guard is meant to police, just
+-- not one it can see: it only knows "is this trip billed", not "does this
+-- write change value". service_role is the trigger's own documented
+-- escape for writes of that kind (see 20260807020000's header on why the
+-- guard grew one at all — account deletion needed the same bypass for the
+-- same reason: a system-level, value-preserving operation must not be
+-- blocked by a guard aimed at pilot-initiated edits).
+--
+-- `set local` is transaction-scoped: it reverts at the end of this
+-- migration's transaction (or immediately below via `reset role`, kept
+-- explicit rather than relied upon, in case a future migration runner
+-- ever batches multiple files into one transaction) — nothing after this
+-- statement, in this file or any other, runs with elevated privilege.
+set local role service_role;
+
 update pilot.trip_days td
    set away = true
   from pilot.day_types dt
@@ -205,6 +251,8 @@ update pilot.trip_days td
    and dt.account_id = td.account_id
    and dt.counts_for_per_diem
    and td.away = false;
+
+reset role;
 
 grant insert (away), update (away) on pilot.trip_days to authenticated;
 

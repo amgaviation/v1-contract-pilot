@@ -69,6 +69,31 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Same "right or loudly wrong, never silently partial" rule as the
+  // report.error check above — this document goes to a CPA, and a Total
+  // computed over only the first 2,000 of 2,001 rows is worse than no
+  // export at all because nothing about the file itself flags it as
+  // incomplete. queries.ts already computed whether THIS section's own
+  // query hit its row cap; refuse to emit that section rather than ship a
+  // csv whose Total silently excludes rows past the limit. (tax-forms has
+  // no limit/truncation flag — one row per client per year, never in the
+  // thousands — so it's exempt.)
+  const truncatedBySection: Partial<Record<Section, boolean>> = {
+    income: report.paymentsTruncated,
+    deductible: report.deductibleTruncated,
+    rebilled: report.rebilledTruncated,
+    unassigned: report.unassignedTruncated,
+  };
+  if (truncatedBySection[sectionParam]) {
+    return NextResponse.json(
+      {
+        error:
+          "This section has more rows than the export can safely total in one file. Narrow the date range or contact support — exporting a silently partial total would misstate your year-end figures.",
+      },
+      { status: 500 }
+    );
+  }
+
   const rows: string[] = [];
   let filenamePart: string;
 

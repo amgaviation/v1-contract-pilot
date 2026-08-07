@@ -60,7 +60,7 @@ export default function OperatorQualificationsPanel({
           determination that you are on {clientName}&rsquo;s certificate; only the operator can
           say that. 135.293/135.297/135.299&rsquo;s valid-through dates are computed for you from
           the completion date, including the 135.301(a) one-month-early/one-month-late
-          allowance. Everything else here is date you enter directly.
+          allowance. Everything else here is a date you enter directly.
         </Text>
       </Flex>
 

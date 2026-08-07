@@ -97,8 +97,11 @@ create policy client_tax_forms_delete on pilot.client_tax_forms for delete to au
   using (account_id in (select pilot.current_account_ids()));
 
 -- ---------------------------------------------------------------------------
--- GRANTS. Column-scoped per the Phase 1 pattern: account_id/id/created_at/
--- updated_at are withheld from every write grant.
+-- GRANTS. Column-scoped per the Phase 1 pattern: id/created_at/updated_at
+-- are withheld from every write grant. account_id is granted on insert only
+-- (a row has to be created against an account, and the with-check policies
+-- above pin it to one of the caller's own) but withheld from update, so an
+-- existing row can never be re-parented to a different account.
 -- ---------------------------------------------------------------------------
 grant select, delete on pilot.client_tax_forms to authenticated;
 grant insert (account_id, client_id, tax_year, form_type, reported_amount_cents,
