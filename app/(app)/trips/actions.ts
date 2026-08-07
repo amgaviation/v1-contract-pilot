@@ -82,6 +82,11 @@ const TRIP_KINDS = [
 
 const TRIP_STATUSES = ["scheduled", "in_progress", "completed", "canceled"] as const;
 
+// 20260807130000. Always exactly one part for a trip — see
+// lib/operating-rule.ts's TripOperatingRule. 'part_91' is the fallback,
+// matching the column's own DEFAULT.
+const TRIP_OPERATING_RULES = ["part_91", "part_135"] as const;
+
 // 20260807070000_trip_day_units_away_cancel.sql. Freely pilot-editable —
 // see that migration's comment on cancellation_notice_from for why this is
 // NOT canceled_at (which is trigger-owned and never appears in a form).
@@ -108,6 +113,7 @@ const TRIP_FIELDS = [
   "travel_day_count",
   "cancellation_notice_from",
   "notes",
+  "operating_rule",
 ] as const;
 
 function echo(formData: FormData, fields: readonly string[]) {
@@ -294,6 +300,7 @@ function parseTripForm(formData: FormData): ParsedTrip {
       cancellation_notice_from:
         cancellationNoticeFrom as TripFields["cancellation_notice_from"],
       notes: optional(formData, "notes"),
+      operating_rule: oneOf(formData, "operating_rule", TRIP_OPERATING_RULES, "part_91"),
     },
   };
 }

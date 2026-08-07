@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { parseDollarsToCents, parseTenth } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+import type { ClientOperatingRule } from "@/lib/operating-rule";
 import type { Database } from "@/lib/supabase/database.types";
 
 type ClientInsert = Database["pilot"]["Tables"]["clients"]["Insert"];
@@ -52,6 +53,7 @@ const CLIENT_FIELDS = [
   "cancellation_policy_note",
   "w9_status",
   "notes",
+  "operating_rule",
 ] as const;
 
 function echo(formData: FormData) {
@@ -76,6 +78,15 @@ const PER_DIEM_MODES = ["per_diem", "receipts"] as const;
 // column's own DEFAULT, so a value this form can't recognize behaves the
 // same way an absent one already does.
 const MINIMUM_BASES = ["per_trip", "per_month"] as const;
+// 20260807130000. 'unspecified' stays the fallback — matches the
+// column's own DEFAULT, so a value this form can't recognize behaves the
+// same way an absent one already does (same reasoning as MINIMUM_BASES).
+const OPERATING_RULES: readonly ClientOperatingRule[] = [
+  "unspecified",
+  "part_91",
+  "part_135",
+  "both",
+];
 
 /** Trims, and turns an empty string into NULL rather than storing "". */
 function optional(formData: FormData, key: string): string | null {
@@ -191,6 +202,7 @@ function parseClientForm(formData: FormData): ParsedClient {
       cancellation_policy_note: optional(formData, "cancellation_policy_note"),
       w9_status: oneOf(formData, "w9_status", W9_STATUSES, "not_requested"),
       notes: optional(formData, "notes"),
+      operating_rule: oneOf(formData, "operating_rule", OPERATING_RULES, "unspecified"),
     },
   };
 }

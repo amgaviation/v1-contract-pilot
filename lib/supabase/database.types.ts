@@ -211,6 +211,10 @@ export type Database = {
           w9_sent_at: string | null;
           w9_received_at: string | null;
           notes: string | null;
+          // Added by 20260807130000_operating_rule.sql. 'unspecified' is
+          // the default for every pre-existing row — see that migration's
+          // header.
+          operating_rule: "part_91" | "part_135" | "both" | "unspecified";
           archived_at: string | null;
           created_at: string;
           updated_at: string;
@@ -241,6 +245,7 @@ export type Database = {
           w9_sent_at?: string | null;
           w9_received_at?: string | null;
           notes?: string | null;
+          operating_rule?: "part_91" | "part_135" | "both" | "unspecified";
           archived_at?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -271,6 +276,7 @@ export type Database = {
           w9_sent_at?: string | null;
           w9_received_at?: string | null;
           notes?: string | null;
+          operating_rule?: "part_91" | "part_135" | "both" | "unspecified";
           archived_at?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -323,6 +329,12 @@ export type Database = {
             | "other"
             | null;
           notes: string | null;
+          // Added by 20260807130000_operating_rule.sql. Always exactly
+          // one part, unlike clients.operating_rule — see that
+          // migration's header. Defaults to 'part_91' at the column
+          // level; the app seeds it from the selected client at trip
+          // creation and leaves it independently editable.
+          operating_rule: "part_91" | "part_135";
           created_at: string;
           updated_at: string;
         };
@@ -356,6 +368,7 @@ export type Database = {
             | "other"
             | null;
           notes?: string | null;
+          operating_rule?: "part_91" | "part_135";
           created_at?: string;
           updated_at?: string;
         };
@@ -389,6 +402,7 @@ export type Database = {
             | "other"
             | null;
           notes?: string | null;
+          operating_rule?: "part_91" | "part_135";
           created_at?: string;
           updated_at?: string;
         };

@@ -42,6 +42,20 @@ export const COMPETENCY_CHECK_REQUIREMENT = "competency_check_135_293b" as const
 export const IPC_REQUIREMENT = "ipc_135_297" as const;
 export const WRITTEN_TEST_REQUIREMENT = "written_test_135_293a" as const;
 
+/** The four requirements that only make sense for a client whose
+ * operating_rule includes Part 135 (lib/operating-rule.ts's
+ * includesPart135()) — 20260807130000, closing the regulatory-audit gap
+ * that offered these rows to every client including a pure Part 91
+ * owner-flying one. The panel filters these out (with explanatory copy,
+ * not a silent disappearance) for a client that does not include
+ * Part 135. */
+export const PART_135_ONLY_REQUIREMENTS = new Set<string>([
+  WRITTEN_TEST_REQUIREMENT,
+  COMPETENCY_CHECK_REQUIREMENT,
+  IPC_REQUIREMENT,
+  LINE_CHECK_REQUIREMENT,
+]);
+
 /** The two requirements that are class/type-specific per the reg text
  * above and therefore render as a repeatable-by-type sub-list rather
  * than one fixed row. Line check is deliberately NOT in this set — see

@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useId, useState } from "react";
 import NextLink from "next/link";
-import { Button, Card, Flex, Grid, Heading, Select, Text, TextArea, TextField } from "@/components/ui";
+import { Button, Card, Checkbox, Flex, Grid, Heading, Select, Text, TextArea, TextField } from "@/components/ui";
 import type { LogbookFormState } from "./actions";
 
 export type LogbookEntryFormValues = {
@@ -25,6 +25,7 @@ export type LogbookEntryFormValues = {
   dual_received_time?: number | null;
   simulator_time?: number | null;
   simulator_device_type?: string | null;
+  day_takeoffs?: number | null;
   day_landings_full_stop?: number | null;
   day_landings_touch_go?: number | null;
   night_takeoffs?: number | null;
@@ -32,7 +33,9 @@ export type LogbookEntryFormValues = {
   night_landings_touch_go?: number | null;
   approaches_count?: number | null;
   approach_type?: string | null;
+  courses_intercepted_tracked?: boolean | null;
   holds?: number | null;
+  view_limiting_pilot_name?: string | null;
   remarks?: string | null;
 };
 
@@ -48,6 +51,7 @@ const NONE = "__none__";
 
 const SIMULATOR_DEVICES = [
   { value: NONE, label: "N/A" },
+  { value: "ffs", label: "Full flight simulator (FFS)" },
   { value: "ftd", label: "FTD" },
   { value: "atd", label: "ATD" },
   { value: "other", label: "Other device" },
@@ -117,6 +121,16 @@ export default function LogbookEntryForm({
   const [role, setRole] = useState(() => initial("role", "PIC"));
   const [simulatorDeviceType, setSimulatorDeviceType] = useState(() => initialSelect("simulator_device_type"));
   const [approachType, setApproachType] = useState(() => initialSelect("approach_type"));
+  // Drives whether the safety-pilot-name prompt shows (61.51(b)(1)(v) is
+  // only relevant when instrument_simulated_time > 0 — see the field's
+  // note below). Not validated as a hard requirement — the schema and
+  // this form cannot themselves evaluate 91.109's applicability.
+  const [instrumentSimulatedTime, setInstrumentSimulatedTime] = useState(() =>
+    Number(initial("instrument_simulated_time", "0")) || 0
+  );
+  const [coursesInterceptedTracked, setCoursesInterceptedTracked] = useState(
+    () => initial("courses_intercepted_tracked", "") === "on" || Boolean(values.courses_intercepted_tracked)
+  );
 
   // Re-seed from the echoed submission whenever the action returns state
   // (e.g. after a rejected submit), so the pilot's choice is what's shown
@@ -129,12 +143,19 @@ export default function LogbookEntryForm({
     if (submitted?.approach_type !== undefined) {
       setApproachType(submitted.approach_type ? String(submitted.approach_type) : NONE);
     }
+    if (submitted?.instrument_simulated_time !== undefined) {
+      setInstrumentSimulatedTime(Number(submitted.instrument_simulated_time) || 0);
+    }
+    if (submitted?.courses_intercepted_tracked !== undefined) {
+      setCoursesInterceptedTracked(String(submitted.courses_intercepted_tracked) === "on");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitted]);
 
   const roleId = useId();
   const deviceId = useId();
   const approachId = useId();
+  const interceptTrackId = useId();
 
   return (
     <Card>
@@ -215,7 +236,12 @@ export default function LogbookEntryForm({
             <LabeledNumber name="sic_time" label="SIC" defaultValue={initial("sic_time")} />
             <LabeledNumber name="solo_time" label="Solo" defaultValue={initial("solo_time")} />
             <LabeledNumber name="cross_country_time" label="Cross-country" defaultValue={initial("cross_country_time")} />
-            <LabeledNumber name="night_time" label="Night" defaultValue={initial("night_time")} />
+            <LabeledNumber
+              name="night_time"
+              label="Night"
+              defaultValue={initial("night_time")}
+              hint="14 CFR 1.1: end of evening civil twilight to beginning of morning civil twilight"
+            />
             <LabeledNumber
               name="instrument_actual_time"
               label="Instrument, actual"
@@ -225,6 +251,7 @@ export default function LogbookEntryForm({
               name="instrument_simulated_time"
               label="Instrument, hood/sim"
               defaultValue={initial("instrument_simulated_time")}
+              onChangeValue={setInstrumentSimulatedTime}
             />
             <LabeledNumber
               name="flight_instructor_time"
@@ -238,7 +265,7 @@ export default function LogbookEntryForm({
             />
             <LabeledNumber
               name="simulator_time"
-              label="Simulator / FTD / ATD"
+              label="Full flight simulator / FTD / ATD"
               defaultValue={initial("simulator_time")}
             />
             <Flex direction="column" gap="1">
@@ -266,10 +293,31 @@ export default function LogbookEntryForm({
             </Flex>
           </Grid>
 
+          {instrumentSimulatedTime > 0 ? (
+            <LabeledField label="Safety pilot name" htmlFor="view_limiting_pilot_name" style={{ maxWidth: 360 }}>
+              <TextField.Root
+                id="view_limiting_pilot_name"
+                name="view_limiting_pilot_name"
+                placeholder="Required by 91.109 for some simulated-instrument flights"
+                defaultValue={initial("view_limiting_pilot_name")}
+              />
+              <Text size="1" color="gray">
+                14 CFR 61.51(b)(1)(v) — name the safety pilot if 91.109 required one for this flight.
+              </Text>
+            </LabeledField>
+          ) : null}
+
           <Heading as="h2" size="4" mt="2">
             Landings, approaches, holds
           </Heading>
           <Grid columns={{ initial: "2", md: "6" }} gap="3">
+            <LabeledNumber
+              name="day_takeoffs"
+              label="Day takeoffs"
+              step="1"
+              defaultValue={initial("day_takeoffs", "0")}
+              hint="61.57(a): every aircraft carrying persons, or certificated for more than 1 pilot crewmember — not day-only"
+            />
             <LabeledNumber
               name="day_landings_full_stop"
               label="Day full-stop"
@@ -287,13 +335,14 @@ export default function LogbookEntryForm({
               label="Night takeoffs"
               step="1"
               defaultValue={initial("night_takeoffs", "0")}
+              hint="61.57(b): 1 hr after sunset – 1 hr before sunrise (not the same window as Night time above)"
             />
             <LabeledNumber
               name="night_landings_full_stop"
               label="Night full-stop"
               step="1"
               defaultValue={initial("night_landings_full_stop", "0")}
-              hint="Counts for 61.57(b)"
+              hint="61.57(b): 1 hr after sunset – 1 hr before sunrise (not the same window as Night time above)"
             />
             <LabeledNumber
               name="night_landings_touch_go"
@@ -307,7 +356,7 @@ export default function LogbookEntryForm({
               label="Approaches"
               step="1"
               defaultValue={initial("approaches_count", "0")}
-              hint="Counts for 61.57(c)"
+              hint="Instrument approaches in actual or simulated instrument conditions — counts for 61.57(c). A Visual-tagged approach below does not."
             />
             <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
               <Text as="label" htmlFor={approachId} size="1" color="gray">
@@ -325,8 +374,25 @@ export default function LogbookEntryForm({
               </Select.Root>
               <input type="hidden" name="approach_type" value={approachType === NONE ? "" : approachType} />
               <Text size="1" color="gray">
-                If the source gives you one
+                If the source gives you one. Visual does not count for 61.57(c).
               </Text>
+            </Flex>
+            <Flex direction="column" gap="1" justify="end" style={{ gridColumn: "span 2" }}>
+              <Text as="label" size="2" htmlFor={interceptTrackId}>
+                <Flex gap="2" align="center">
+                  <Checkbox
+                    id={interceptTrackId}
+                    checked={coursesInterceptedTracked}
+                    onCheckedChange={(checked) => setCoursesInterceptedTracked(checked === true)}
+                  />
+                  Intercepted &amp; tracked a course (61.57(c)(1)(iii))
+                </Flex>
+              </Text>
+              <input
+                type="hidden"
+                name="courses_intercepted_tracked"
+                value={coursesInterceptedTracked ? "on" : ""}
+              />
             </Flex>
           </Grid>
 
@@ -389,6 +455,7 @@ function LabeledNumber({
   required,
   step = "0.1",
   hint,
+  onChangeValue,
 }: {
   name: string;
   label: string;
@@ -396,6 +463,8 @@ function LabeledNumber({
   required?: boolean;
   step?: string;
   hint?: string;
+  /** Optional live-value callback, e.g. so another field can react (see instrument_simulated_time). */
+  onChangeValue?: (value: number) => void;
 }) {
   return (
     <Flex direction="column" gap="1">
@@ -411,6 +480,7 @@ function LabeledNumber({
         step={step}
         defaultValue={defaultValue}
         className="tnum"
+        onChange={onChangeValue ? (e) => onChangeValue(Number(e.target.value) || 0) : undefined}
       />
       {hint ? (
         <Text size="1" color="gray">

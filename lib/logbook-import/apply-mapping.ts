@@ -12,7 +12,9 @@ import type {
 } from "./types";
 
 const ROLES = ["PIC", "SIC"] as const;
-const SIM_DEVICES = ["ftd", "atd", "other"] as const;
+// 'ffs' = full flight simulator; see the Phase 6-corrections migration for
+// why it's a distinct device class from 'ftd'/'atd'.
+const SIM_DEVICES = ["ffs", "ftd", "atd", "other"] as const;
 const APPROACH_TYPES = [
   "ils",
   "rnav_lpv",
@@ -246,6 +248,8 @@ export function applyMapping(params: {
     const toIcao = icaoField("to_icao", "To");
     if (toIcao === undefined) return;
 
+    const dayTakeoffs = countField("day_takeoffs", "Day takeoffs");
+    if (dayTakeoffs === undefined) return;
     const dayFullStop = countField("day_landings_full_stop", "Day landings (full stop)");
     if (dayFullStop === undefined) return;
     const dayTouchGo = countField("day_landings_touch_go", "Day landings (touch & go)");
@@ -366,6 +370,24 @@ export function applyMapping(params: {
       }
     }
 
+    // courses_intercepted_tracked: 61.57(c)(1)(iii)'s intercept/track task
+    // is a boolean fact, not a count — mapped column parses to true/false
+    // (case-insensitive), same normalizeEnum discipline as role/device
+    // type/approach type. Unmapped defaults false, matching the schema's
+    // not-null default rather than treating "not recorded" as true.
+    let coursesInterceptedTracked = false;
+    if (isMapped("courses_intercepted_tracked")) {
+      const raw = cellFor(fields, "courses_intercepted_tracked");
+      const parsed = normalizeEnum(raw, ["true", "false"] as const);
+      if (parsed) coursesInterceptedTracked = parsed === "true";
+    }
+
+    // view_limiting_pilot_name: 61.51(b)(1)(v). A single descriptive value, same
+    // treatment as aircraft_ident/aircraft_type — not a narrative field.
+    const safetyPilotName = isMapped("view_limiting_pilot_name")
+      ? cellFor(fields, "view_limiting_pilot_name") || null
+      : null;
+
     // aircraft_ident: strip an Excel/Numbers/Sheets "force text" leading
     // apostrophe (a spreadsheet round-trip on a tail number like "N12345"
     // adds `'N12345` so it isn't read as a formula/number — that
@@ -472,6 +494,7 @@ export function applyMapping(params: {
       dual_received_time: dualReceivedTime,
       simulator_time: simulatorTime,
       simulator_device_type: simulatorDeviceType,
+      day_takeoffs: dayTakeoffs,
       day_landings_full_stop: dayFullStop,
       day_landings_touch_go: dayTouchGo,
       night_takeoffs: nightTakeoffs,
@@ -479,7 +502,9 @@ export function applyMapping(params: {
       night_landings_touch_go: nightTouchGo,
       approaches_count: approachesCount,
       approach_type: approachType,
+      courses_intercepted_tracked: coursesInterceptedTracked,
       holds,
+      view_limiting_pilot_name: safetyPilotName,
       remarks,
     };
 

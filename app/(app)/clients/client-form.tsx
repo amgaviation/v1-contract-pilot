@@ -15,6 +15,7 @@ import {
   TextField,
 } from "@/components/ui";
 import { centsToInput } from "@/lib/format";
+import { CLIENT_OPERATING_RULES } from "@/lib/operating-rule";
 import type { ClientFormState } from "./actions";
 
 export type ClientFormValues = {
@@ -40,6 +41,7 @@ export type ClientFormValues = {
   cancellation_policy_note?: string | null;
   w9_status?: string | null;
   notes?: string | null;
+  operating_rule?: string | null;
 };
 
 const TREATMENTS = [
@@ -126,6 +128,9 @@ export default function ClientForm({
   const [minimumBasis, setMinimumBasis] = useState(() =>
     initial("minimum_basis", values.minimum_basis, "per_trip")
   );
+  const [operatingRule, setOperatingRule] = useState(() =>
+    initial("operating_rule", values.operating_rule, "unspecified")
+  );
   useEffect(() => {
     if (submitted?.default_expense_treatment !== undefined) {
       setExpenseTreatment(String(submitted.default_expense_treatment || "unassigned"));
@@ -139,12 +144,16 @@ export default function ClientForm({
     if (submitted?.minimum_basis !== undefined) {
       setMinimumBasis(String(submitted.minimum_basis || "per_trip"));
     }
+    if (submitted?.operating_rule !== undefined) {
+      setOperatingRule(String(submitted.operating_rule || "unspecified"));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitted]);
   const expenseTreatmentId = useId();
   const w9StatusId = useId();
   const perDiemModeId = useId();
   const minimumBasisId = useId();
+  const operatingRuleId = useId();
 
   return (
     <Card size="3">
@@ -202,6 +211,34 @@ export default function ClientForm({
               name="contact_phone"
               defaultValue={initial("contact_phone", values.contact_phone)}
             />
+          </Flex>
+          <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
+            <Text as="label" size="2" weight="medium" id={`${operatingRuleId}-label`}>
+              Operating rule
+            </Text>
+            <Select.Root
+              key={`operating-rule-${genTick}`}
+              value={operatingRule}
+              onValueChange={setOperatingRule}
+            >
+              <Select.Trigger
+                id={operatingRuleId}
+                aria-labelledby={`${operatingRuleId}-label`}
+              />
+              <Select.Content>
+                {CLIENT_OPERATING_RULES.map((option) => (
+                  <Select.Item key={option.value} value={option.value}>
+                    {option.label}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+            <input type="hidden" name="operating_rule" value={operatingRule} />
+            <Text size="1" color="gray">
+              Which 14 CFR part this client&rsquo;s work is flown under. Controls whether the
+              Part 135 checks (135.293/.297/.299) below show up for this client, and seeds
+              (but doesn&rsquo;t fix) the operating rule on every new trip for them.
+            </Text>
           </Flex>
         </Grid>
 

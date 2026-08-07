@@ -44,7 +44,9 @@ export default async function TripPage({
       .order("leg_date", { ascending: true }),
     supabase
       .from("clients")
-      .select("id, name, default_day_rate_cents, default_travel_day_rate_cents")
+      .select(
+        "id, name, default_day_rate_cents, default_travel_day_rate_cents, operating_rule"
+      )
       .is("archived_at", null)
       .order("name", { ascending: true }),
     // Every day type, archived included: the grid's <select> only OFFERS

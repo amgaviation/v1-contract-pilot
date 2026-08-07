@@ -912,6 +912,64 @@ end $$;
 reset role;
 
 -- =====================================================================
+-- D1 PROBE (20260807130000). 135.301(a) grants a one-calendar-month
+-- early/late grace to a crewmember "required to take a test or a flight
+-- check under this part" -- Part 135. Applying it to a Part 91 client
+-- extends a window the regulation never extended, and the wrongness is
+-- INVISIBLE on screen: the qualification rows are hidden for a Part 91
+-- client, so a too-generous expires_on sits in the table unseen until
+-- the operating rule is corrected or pilot.expirations surfaces it.
+--
+-- The trap this probe is shaped around: the grace only fires on an
+-- UPDATE that MOVES completed_on, and only when old.expires_on is
+-- already set. An INSERT-only test computes the same value for both
+-- parts and proves nothing -- that is exactly the false pass hit while
+-- verifying this by hand. So the probe seeds, then updates to a
+-- completion one calendar month BEFORE the due month, and asserts the
+-- two clients diverge.
+-- =====================================================================
+do $$
+declare
+  c135 uuid; c91 uuid; exp135 date; exp91 date;
+begin
+  insert into pilot.clients (account_id, name, operating_rule)
+    values ('${A}', 'D1 Part 135 Operator', 'part_135') returning id into c135;
+  insert into pilot.clients (account_id, name, operating_rule)
+    values ('${A}', 'D1 Part 91 Owner', 'part_91') returning id into c91;
+
+  -- 12-calendar-month requirement completed Feb 2026, so due Feb 2027.
+  insert into pilot.operator_qualifications
+    (account_id, client_id, requirement, type_designator, status, completed_on)
+  values
+    ('${A}', c135, 'competency_check_135_293b', 'CE-560XL', 'current', '2026-02-10'),
+    ('${A}', c91,  'competency_check_135_293b', 'CE-560XL', 'current', '2026-02-10');
+
+  -- Recurrent check taken Jan 2027: one calendar month EARLY.
+  update pilot.operator_qualifications set completed_on = '2027-01-20'
+    where account_id = '${A}' and client_id in (c135, c91);
+
+  select expires_on into exp135 from pilot.operator_qualifications
+    where account_id = '${A}' and client_id = c135;
+  select expires_on into exp91 from pilot.operator_qualifications
+    where account_id = '${A}' and client_id = c91;
+
+  if exp135 is distinct from date '2028-02-29' then
+    raise exception '135.301(a) FAILURE: a Part 135 client did not receive the grace (expires_on = %, expected 2028-02-29)', exp135;
+  end if;
+  if exp91 is distinct from date '2028-01-31' then
+    raise exception '135.301(a) SCOPE FAILURE: a Part 91 client received a Part 135 grace (expires_on = %, expected 2028-01-31, the raw completion month)', exp91;
+  end if;
+  if exp135 = exp91 then
+    raise exception '135.301(a) FAILURE: both parts computed the same expiry, so the operating_rule gate is never reached';
+  end if;
+
+  raise notice 'PASS: the 135.301(a) grace reaches a Part 135 client and never a Part 91 one';
+
+  delete from pilot.operator_qualifications where account_id = '${A}' and client_id in (c135, c91);
+  delete from pilot.clients where account_id = '${A}' and id in (c135, c91);
+end $$;
+
+-- =====================================================================
 -- C1 PROBE (20260807070000's away backfill). This file's earlier passes
 -- only ever read the catalog for this migration's columns/grants — never
 -- WROTE against the shape that actually breaks: a trip_days row on a

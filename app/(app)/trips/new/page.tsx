@@ -14,7 +14,14 @@ export default async function NewTripPage() {
   // trips — archiving is about what shows up in new work, not history.
   const { data, error } = await supabase
     .from("clients")
-    .select("id, name, default_day_rate_cents, default_travel_day_rate_cents")
+    // operating_rule is selected for the same reason the two rate columns
+    // are: the picker seeds a new trip from the client it points at. Without
+    // it a new trip silently keeps the form's 'part_91' default no matter
+    // which client is chosen, which for a Part 135 operator is the wrong
+    // part on a field that gates the 135.301(a) grace (20260807130000).
+    .select(
+      "id, name, default_day_rate_cents, default_travel_day_rate_cents, operating_rule"
+    )
     .is("archived_at", null)
     .order("name", { ascending: true });
 

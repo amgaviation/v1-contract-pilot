@@ -24,7 +24,7 @@ export type LogbookFormState = {
 };
 
 const ROLES = ["PIC", "SIC"] as const;
-const SIMULATOR_DEVICE_TYPES = ["ftd", "atd", "other"] as const;
+const SIMULATOR_DEVICE_TYPES = ["ffs", "ftd", "atd", "other"] as const;
 const APPROACH_TYPES = [
   "ils",
   "rnav_lpv",
@@ -59,6 +59,7 @@ const ENTRY_FIELDS = [
   "dual_received_time",
   "simulator_time",
   "simulator_device_type",
+  "day_takeoffs",
   "day_landings_full_stop",
   "day_landings_touch_go",
   "night_takeoffs",
@@ -66,7 +67,9 @@ const ENTRY_FIELDS = [
   "night_landings_touch_go",
   "approaches_count",
   "approach_type",
+  "courses_intercepted_tracked",
   "holds",
+  "view_limiting_pilot_name",
   "remarks",
 ] as const;
 
@@ -171,6 +174,7 @@ function parseEntryForm(formData: FormData): ParsedEntry {
   }
 
   const countFields = [
+    "day_takeoffs",
     "day_landings_full_stop",
     "day_landings_touch_go",
     "night_takeoffs",
@@ -214,6 +218,9 @@ function parseEntryForm(formData: FormData): ParsedEntry {
     };
   }
 
+  // Checkbox: present in FormData only when checked.
+  const coursesInterceptedTracked = formData.get("courses_intercepted_tracked") === "on";
+
   return {
     error: null,
     values: {
@@ -235,6 +242,7 @@ function parseEntryForm(formData: FormData): ParsedEntry {
       dual_received_time: times.dual_received_time ?? null,
       simulator_time: times.simulator_time ?? null,
       simulator_device_type: simulatorDeviceType,
+      day_takeoffs: counts.day_takeoffs ?? 0,
       day_landings_full_stop: counts.day_landings_full_stop ?? 0,
       day_landings_touch_go: counts.day_landings_touch_go ?? 0,
       night_takeoffs: counts.night_takeoffs ?? 0,
@@ -242,7 +250,9 @@ function parseEntryForm(formData: FormData): ParsedEntry {
       night_landings_touch_go: counts.night_landings_touch_go ?? 0,
       approaches_count: counts.approaches_count ?? 0,
       approach_type: approachType,
+      courses_intercepted_tracked: coursesInterceptedTracked,
       holds: counts.holds ?? 0,
+      view_limiting_pilot_name: optional(formData, "view_limiting_pilot_name"),
       remarks: optional(formData, "remarks"),
     },
   };

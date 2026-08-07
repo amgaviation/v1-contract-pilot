@@ -24,13 +24,16 @@ export const FIELD_DEFS: FieldDef[] = [
   { key: "instrument_simulated_time", label: "Instrument (simulated/hood)", kind: "time" },
   { key: "flight_instructor_time", label: "Dual given (CFI)", kind: "time" },
   { key: "dual_received_time", label: "Dual received", kind: "time" },
-  { key: "simulator_time", label: "Simulator/FTD/ATD time", kind: "time" },
+  { key: "simulator_time", label: "Full flight simulator/FTD/ATD time", kind: "time" },
   {
     key: "simulator_device_type",
     label: "Simulator device type",
     kind: "enum",
-    options: ["ftd", "atd", "other"],
+    // 'ffs' = full flight simulator, the only device 61.57(b)(2) accepts
+    // for night currency; see the Phase 6-corrections migration.
+    options: ["ffs", "ftd", "atd", "other"],
   },
+  { key: "day_takeoffs", label: "Day takeoffs", kind: "count" },
   { key: "day_landings_full_stop", label: "Day landings — full stop", kind: "count" },
   { key: "day_landings_touch_go", label: "Day landings — touch & go", kind: "count" },
   { key: "night_takeoffs", label: "Night takeoffs", kind: "count" },
@@ -49,6 +52,13 @@ export const FIELD_DEFS: FieldDef[] = [
     options: ["ils", "rnav_lpv", "rnav_lnav", "vor", "loc", "ndb", "visual", "other"],
   },
   { key: "holds", label: "Holds", kind: "count" },
+  {
+    key: "courses_intercepted_tracked",
+    label: "Intercepted & tracked a course (61.57(c)(1)(iii))",
+    kind: "enum",
+    options: ["true", "false"],
+  },
+  { key: "view_limiting_pilot_name", label: "Safety pilot name (61.51(b)(1)(v))", kind: "text" },
   { key: "remarks", label: "Remarks", kind: "text" },
 ];
 

@@ -36,7 +36,11 @@ export function logbookFrom(supabase: PilotClient, table: LogbookTableName): any
 
 export type LogbookSource = "trip" | "import" | "manual" | "foreflight_sync";
 export type LogbookRole = "PIC" | "SIC";
-export type SimulatorDeviceType = "ftd" | "atd" | "other";
+// 'ffs' = full flight simulator — the only device class 61.57(b)(2) accepts
+// for NIGHT takeoff/landing currency; 'ftd' and 'atd' cover 61.57(a) day
+// currency (ftd only) and 61.57(c) instrument currency (atd) respectively.
+// See supabase/migrations/20260807120000_logbook_reg_corrections.sql.
+export type SimulatorDeviceType = "ffs" | "ftd" | "atd" | "other";
 export type ApproachType =
   | "ils"
   | "rnav_lpv"
@@ -85,6 +89,7 @@ export type LogbookEntryRow = {
   dual_received_time: number | null;
   simulator_time: number | null;
   simulator_device_type: SimulatorDeviceType | null;
+  day_takeoffs: number;
   day_landings_full_stop: number;
   day_landings_touch_go: number;
   night_takeoffs: number;
@@ -92,7 +97,17 @@ export type LogbookEntryRow = {
   night_landings_touch_go: number;
   approaches_count: number;
   approach_type: ApproachType | null;
+  // 61.57(c)(1)(iii): "Intercepting and tracking courses through the use
+  // of navigational electronic systems" — a required instrument-currency
+  // task with no prior field. Boolean, not a count: the reg states it as
+  // a task performed on the flight, not a repetition count.
+  courses_intercepted_tracked: boolean;
   holds: number;
+  // 61.51(b)(1)(v): "The name of a safety pilot, if required by
+  // Section 91.109." Nullable — only required on a subset of
+  // simulated-instrument flights; the app surfaces it as a prompt when
+  // instrument_simulated_time > 0, not a hard requirement.
+  view_limiting_pilot_name: string | null;
   remarks: string | null;
   created_at: string;
   updated_at: string;
@@ -119,6 +134,7 @@ export type LogbookEntryFlightFields = Pick<
   | "dual_received_time"
   | "simulator_time"
   | "simulator_device_type"
+  | "day_takeoffs"
   | "day_landings_full_stop"
   | "day_landings_touch_go"
   | "night_takeoffs"
@@ -126,7 +142,9 @@ export type LogbookEntryFlightFields = Pick<
   | "night_landings_touch_go"
   | "approaches_count"
   | "approach_type"
+  | "courses_intercepted_tracked"
   | "holds"
+  | "view_limiting_pilot_name"
   | "remarks"
 >;
 
@@ -249,6 +267,11 @@ export function draftPayloadForLeg(
     dual_received_time: null,
     simulator_time: null,
     simulator_device_type: null,
+    // trip_legs has no day-takeoff count at all (61.57(a) gap; see the
+    // Phase 6-corrections migration) — leaves 0 rather than guessing, same
+    // "the draft-confirm boundary is where a human resolves this" posture
+    // as everything else below.
+    day_takeoffs: 0,
     // Same problem, sharper: trip_legs has a single `day_landings`
     // count, while the logbook splits full-stop from touch-and-go
     // because tailwheel currency (61.57(a)) turns on full-stop landings
@@ -262,7 +285,13 @@ export function draftPayloadForLeg(
     night_landings_touch_go: leg.night_landings_touch_go ?? 0,
     approaches_count: leg.approaches ?? 0,
     approach_type: null,
+    // trip_legs has no field for 61.57(c)(1)(iii)'s intercept/track task
+    // either — false, not guessed true, same reasoning as day_takeoffs.
+    courses_intercepted_tracked: false,
     holds: leg.holds ?? 0,
+    // trip_legs has no safety-pilot field; leave for the pilot to fill in
+    // during review, same as the other facts this draft cannot assert.
+    view_limiting_pilot_name: null,
     // Carries forward the two facts the trip recorded but could not
     // classify, so confirming a draft never loses data — it just refuses
     // to guess where it belongs.
