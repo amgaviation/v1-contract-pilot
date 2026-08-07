@@ -394,6 +394,16 @@ export async function createInvoiceDraft(
     // this is cast at the boundary the same way every row here already
     // is, and needs no change there.
     quantity: number;
+    // 20260807070000_trip_day_units_away_cancel.sql. units is a RATE
+    // fraction (0 < x <= 1, numeric(3,2)) — distinct from quantity's TIME
+    // fraction — multiplied into a row's contribution to its invoice
+    // group's summed quantity below; see that migration's header for why
+    // it does not join the (day_type_id, rate_cents) grouping key. away
+    // is per-diem's other half: per diem now requires
+    // counts_for_per_diem (the day type) AND away (the day), not
+    // counts_for_per_diem alone.
+    units: number;
+    away: boolean;
   };
   type DayTypeRow = {
     id: string;
@@ -434,7 +444,7 @@ export async function createInvoiceDraft(
       .in("trip_id", tripIdsToBill),
     supabase
       .from("trip_days")
-      .select("id, trip_id, day_on, day_type_id, rate_cents, quantity")
+      .select("id, trip_id, day_on, day_type_id, rate_cents, quantity, units, away")
       .eq("account_id", account.id)
       .in("trip_id", tripIdsToBill),
     // The tenant's whole day-type taxonomy — a handful of rows per
@@ -458,10 +468,13 @@ export async function createInvoiceDraft(
     // cancellation_policy_note as a warning. A SEPARATE query with its own
     // status='canceled' filter — not a relaxation of the completed-only
     // filter on the trips query above, which stays exactly as written.
-    // These rows never feed `lines`.
+    // These rows never feed `lines`. starts_on/canceled_at/
+    // cancellation_notice_from (20260807070000) are what let the warning
+    // say WHEN a trip was cancelled and how far ahead of its start that
+    // was, instead of just that it happened.
     supabase
       .from("trips")
-      .select("id")
+      .select("id, starts_on, canceled_at, cancellation_notice_from")
       .eq("account_id", account.id)
       .eq("client_id", clientId)
       .eq("status", "canceled")
@@ -549,9 +562,15 @@ export async function createInvoiceDraft(
   // Best-effort: a failed read here means "don't know", so it suppresses
   // the cancellation-note warning rather than blocking the draft — no
   // billing value depends on it, only a piece of review-time copy.
-  const anyCanceledSelected =
-    !canceledTripsError &&
-    ((canceledTripRows ?? []) as { id: string }[]).length > 0;
+  type CanceledTripRow = {
+    id: string;
+    starts_on: string;
+    canceled_at: string | null;
+    cancellation_notice_from: string | null;
+  };
+  const canceledTripsSelected: CanceledTripRow[] = canceledTripsError
+    ? []
+    : ((canceledTripRows ?? []) as CanceledTripRow[]);
 
   const lines: LineInsert[] = [];
   let sortOrder = 0;
@@ -607,7 +626,17 @@ export async function createInvoiceDraft(
         // F1: sum the rows' OWN quantity (0.1-1.0 each, a half day is a
         // shipped feature) rather than counting rows — a group of two
         // rows can be 2.0 days or 1.3, and counting rows always says 2.
-        group.quantitySum += Number(row.quantity);
+        //
+        // 20260807070000: multiplied by the row's OWN units (a rate
+        // fraction, e.g. 0.5 for "this travel day pays half") — a row's
+        // contribution to the group's summed quantity is quantity*units,
+        // not bare quantity. rateCents (the group's unit_amount_cents) is
+        // untouched by units; only how much of that rate this row
+        // contributes moves. Every row written before this column existed
+        // has units=1.00, so this sum is byte-for-byte unchanged for them.
+        // See that migration's header for why units does not join the
+        // grouping key above.
+        group.quantitySum += Number(row.quantity) * Number(row.units);
         groups.set(key, group);
 
         // Monthly guarantee accumulation — see monthlyBillable's own
@@ -616,13 +645,19 @@ export async function createInvoiceDraft(
         // client; a 'per_trip' client's invoice must come out byte-for-
         // byte identical to before this feature existed, so this branch
         // must never run any code that could affect it.
+        //
+        // Bucketed at quantity*units too, for the same reason the
+        // per-trip minimum below is: a monthly guarantee is a floor on
+        // PAY, not on calendar days, so a half-rate day should count as
+        // half toward it — see 20260807070000's header for the full
+        // reasoning.
         if (minimumBasis === "per_month") {
           const monthKey = `${row.day_on.slice(0, 7)}-01`;
           const bucket = monthlyBillable.get(monthKey) ?? {
             qty: 0,
             bestRateCents: 0,
           };
-          bucket.qty += Number(row.quantity);
+          bucket.qty += Number(row.quantity) * Number(row.units);
           if (rateCents > bucket.bestRateCents) bucket.bestRateCents = rateCents;
           monthlyBillable.set(monthKey, bucket);
         }
@@ -798,8 +833,18 @@ export async function createInvoiceDraft(
     // line guessed from day_count.
     if (perDiemRateCents !== null) {
       if (tripDayRows.length > 0) {
+        // 20260807070000: per diem is for being AWAY, not for the kind of
+        // day alone — counts_for_per_diem (the day type) is now ANDed
+        // with away (the day). A standby day at home base no longer
+        // draws per diem just because "standby" is configured to count;
+        // it also has to be a day the pilot was actually away. See that
+        // migration's header for why away defaults false on every row
+        // written before this column existed (a deliberate, conservative
+        // under-count on legacy data — flagged there, not hidden here).
         const perDiemCount = tripDayRows.filter(
-          (row) => dayTypeMap.get(row.day_type_id)?.counts_for_per_diem === true
+          (row) =>
+            dayTypeMap.get(row.day_type_id)?.counts_for_per_diem === true &&
+            row.away === true
         ).length;
         if (perDiemCount > 0) {
           lines.push({
@@ -824,9 +869,14 @@ export async function createInvoiceDraft(
           // to seed 'off' as true — an off day is the paradigm per-diem
           // day, the pilot is away and eating whether or not they fly —
           // but a tenant can still turn it off on a custom day type), or
-          // this trip is made up entirely of day types that don't count.
+          // this trip is made up entirely of day types that don't count,
+          // OR (20260807070000) every eligible day type's rows are marked
+          // `away = false` — including every row on a trip captured
+          // before that column existed, which defaults false on all of
+          // them. The wording covers both causes rather than guessing
+          // which one applies to this trip.
           warnings.push(
-            `${formatDateRange(trip.starts_on, trip.ends_on)}: this client is on per diem, but none of this trip's day types count toward it, so no per-diem line was added.`
+            `${formatDateRange(trip.starts_on, trip.ends_on)}: this client is on per diem, but no day on this trip both counts toward it and is marked away from home base, so no per-diem line was added. Check the day grid's "Away" column.`
           );
         }
       } else {
@@ -992,16 +1042,28 @@ export async function createInvoiceDraft(
     }
   }
 
-  // Cancellation — a note, once, if the client has one on file and any
-  // SELECTED trip is canceled. Never a computed fee: see
+  // Cancellation — a note per canceled SELECTED trip, if the client has a
+  // policy on file. Never a computed fee: see
   // pilot.clients.cancellation_policy_note's comment in the Phase 9
   // migration on why an unenforceable percentage is worse than recording
   // the agreement and letting the pilot add the manual cancellation_fee
   // line themselves.
-  if (clientBilling?.cancellation_policy_note && anyCanceledSelected) {
-    warnings.push(
-      `This client has a cancellation policy on file: "${clientBilling.cancellation_policy_note}". One or more selected trips is canceled — add a cancellation_fee line by hand if it applies.`
-    );
+  //
+  // 20260807070000_trip_day_units_away_cancel.sql made this specific: it
+  // used to be one generic sentence for the whole invoice ("one or more
+  // selected trips is canceled"); now it names WHICH trip, WHEN it was
+  // cancelled, and how far ahead of its start date that was — the actual
+  // evidence a cancellation-fee clause needs and a client's AP department
+  // would otherwise contest. One line per canceled trip, not one for the
+  // invoice, because each trip's timing is its own fact.
+  if (clientBilling?.cancellation_policy_note) {
+    for (const trip of canceledTripsSelected) {
+      warnings.push(
+        `This client has a cancellation policy on file: "${clientBilling.cancellation_policy_note}". ${formatDate(
+          trip.starts_on
+        )} trip was ${describeCancellationTiming(trip)} — add a cancellation_fee line by hand if it applies.`
+      );
+    }
   }
 
   for (const expense of expenses) {
@@ -1099,6 +1161,60 @@ function formatMonthLabel(periodMonth: string): string {
     year: "numeric",
     timeZone: "UTC",
   });
+}
+
+/**
+ * The cancellation warning's specific, evidence-bearing clause —
+ * 20260807070000_trip_day_units_away_cancel.sql's whole point: "canceled
+ * on Aug 7 at 6:00 PM UTC, 6 hours before the trip's Aug 8 start date"
+ * instead of just "is canceled".
+ *
+ * HONEST ABOUT GRANULARITY: pilot.trips.starts_on is a `date` column —
+ * this product records no time-of-day for a trip's start anywhere — so
+ * "hours before start" is measured against that date's UTC midnight, not
+ * an actual show time. Stated in the sentence itself ("start date", not
+ * "start time") rather than implying a precision this product doesn't
+ * have.
+ */
+function describeCancellationTiming(trip: {
+  starts_on: string;
+  canceled_at: string | null;
+  cancellation_notice_from: string | null;
+}): string {
+  const noticeFrom = trip.cancellation_notice_from
+    ? ` (notice from ${trip.cancellation_notice_from})`
+    : "";
+  if (!trip.canceled_at) {
+    // Predates the trigger, or was never captured — no timestamp to
+    // reason about. Said plainly rather than guessed: see the migration's
+    // header on why no CHECK backfills this and no code should either.
+    return `canceled, but there's no cancellation timestamp on record${noticeFrom}`;
+  }
+  const canceledAt = new Date(trip.canceled_at);
+  const startOfDay = new Date(`${trip.starts_on.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(canceledAt.getTime()) || Number.isNaN(startOfDay.getTime())) {
+    return `canceled${noticeFrom}`;
+  }
+  const hours = (startOfDay.getTime() - canceledAt.getTime()) / 3_600_000;
+  const canceledAtLabel = new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "UTC",
+  }).format(canceledAt);
+  const timingLabel =
+    hours >= 0
+      ? `${formatHoursSpan(hours)} before its start date`
+      : `${formatHoursSpan(-hours)} after its start date`;
+  return `canceled ${canceledAtLabel} UTC — ${timingLabel}${noticeFrom}`;
+}
+
+/** "6 hours" / "1.5 hours" / "1 hour" — rounded to a tenth, same reasoning
+ * as roundQuantity: hides sub-tenth float noise without changing the
+ * figure a pilot would compute by hand. */
+function formatHoursSpan(hours: number): string {
+  const rounded = Math.round(hours * 10) / 10;
+  const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  return `${text} hour${rounded === 1 ? "" : "s"}`;
 }
 
 // ---------------------------------------------------------------------------

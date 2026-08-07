@@ -12,8 +12,11 @@ import {
   dayTypeFieldName,
   rateFieldName,
   quantityFieldName,
+  unitsFieldName,
+  awayFieldName,
   notesFieldName,
   parseQuantity,
+  parseUnits,
 } from "./day-utils";
 
 type TripInsert = Database["pilot"]["Tables"]["trips"]["Insert"];
@@ -79,6 +82,17 @@ const TRIP_KINDS = [
 
 const TRIP_STATUSES = ["scheduled", "in_progress", "completed", "canceled"] as const;
 
+// 20260807070000_trip_day_units_away_cancel.sql. Freely pilot-editable —
+// see that migration's comment on cancellation_notice_from for why this is
+// NOT canceled_at (which is trigger-owned and never appears in a form).
+const CANCELLATION_NOTICE_FROM = [
+  "client",
+  "pilot",
+  "weather",
+  "maintenance",
+  "other",
+] as const;
+
 /** Fields whose submitted text is echoed back on a failed submit. */
 const TRIP_FIELDS = [
   "client_id",
@@ -92,6 +106,7 @@ const TRIP_FIELDS = [
   "day_count",
   "travel_day_rate",
   "travel_day_count",
+  "cancellation_notice_from",
   "notes",
 ] as const;
 
@@ -251,6 +266,17 @@ function parseTripForm(formData: FormData): ParsedTrip {
     return { values: null, error: "Travel days must be a whole number." };
   }
 
+  // 20260807070000: nullable, unlike status/trip_kind — "no notice source
+  // recorded" is a real, common state (most trips are never cancelled),
+  // not a fallback value to coerce a blank submission into.
+  const cancellationNoticeFrom = optional(formData, "cancellation_notice_from");
+  if (
+    cancellationNoticeFrom !== null &&
+    !(CANCELLATION_NOTICE_FROM as readonly string[]).includes(cancellationNoticeFrom)
+  ) {
+    return { values: null, error: "That cancellation notice source isn't valid." };
+  }
+
   return {
     error: null,
     values: {
@@ -265,6 +291,8 @@ function parseTripForm(formData: FormData): ParsedTrip {
       day_count: dayCount,
       travel_day_count: travelCount,
       travel_day_rate_cents: travelRate,
+      cancellation_notice_from:
+        cancellationNoticeFrom as TripFields["cancellation_notice_from"],
       notes: optional(formData, "notes"),
     },
   };
@@ -776,6 +804,8 @@ export async function saveTripDays(
     day_type_id: string;
     rate_cents: number;
     quantity: number;
+    units: number;
+    away: boolean;
     notes: string | null;
   };
 
@@ -833,6 +863,18 @@ export async function saveTripDays(
       );
     }
 
+    // 20260807070000: units (a rate FRACTION, distinct from quantity's
+    // time fraction) is required the same way quantity is — the grid
+    // never posts it blank, and a crafted POST that omits or mangles it
+    // is rejected here rather than silently defaulting to something that
+    // changes what the day bills.
+    const units = parseUnits(String(formData.get(unitsFieldName(date)) ?? ""));
+    if (units === undefined) {
+      issues.push(
+        "Rate fraction must be between 0.01 and 1.00, with at most two decimal places, like 0.5 for half rate."
+      );
+    }
+
     if (issues.length > 0) {
       fieldErrors[date] = issues.join(" ");
       continue;
@@ -845,6 +887,11 @@ export async function saveTripDays(
       day_type_id: dayTypeId,
       rate_cents: rateCents,
       quantity: quantity as number,
+      units: units as number,
+      // A checkbox posts nothing at all when unchecked, so "on" is the
+      // only value to test for — same pattern as addInvoiceLine's
+      // `taxable` field (invoices/actions.ts).
+      away: String(formData.get(awayFieldName(date)) ?? "") === "on",
       // optional() already returns null (never undefined) for a blank
       // field, so an update payload built from this always carries an
       // explicit `notes: null` rather than omitting the key — omitting it
@@ -869,8 +916,8 @@ export async function saveTripDays(
   // privilege on every column named in that SET list even when the
   // incoming value is identical to the stored one. The Phase 9 migration
   // grants `authenticated` update on only (day_on, day_type_id,
-  // rate_cents, quantity, notes); account_id/trip_id are deliberately
-  // withheld (account_id is the tenancy key and must never be
+  // rate_cents, quantity, units, away, notes); account_id/trip_id are
+  // deliberately withheld (account_id is the tenancy key and must never be
   // tenant-updatable). So a single upsert 42501s on the conflict path —
   // i.e. on every date that already has a row, which is every save after
   // the first. Diffing into three targeted writes, each naming only
@@ -879,7 +926,7 @@ export async function saveTripDays(
   // save is actually a no-op.
   const { data: existingData, error: existingError } = await supabase
     .from("trip_days")
-    .select("day_on, day_type_id, rate_cents, quantity, notes")
+    .select("day_on, day_type_id, rate_cents, quantity, units, away, notes")
     .eq("account_id", account.id)
     .eq("trip_id", tripId);
 
@@ -892,6 +939,8 @@ export async function saveTripDays(
     day_type_id: string;
     rate_cents: number;
     quantity: number;
+    units: number;
+    away: boolean;
     notes: string | null;
   };
   const existingByDate = new Map(
@@ -904,6 +953,8 @@ export async function saveTripDays(
     day_type_id: string;
     rate_cents: number;
     quantity: number;
+    units: number;
+    away: boolean;
     notes: string | null;
   }[] = [];
 
@@ -917,6 +968,8 @@ export async function saveTripDays(
       existing.day_type_id !== row.day_type_id ||
       existing.rate_cents !== row.rate_cents ||
       Number(existing.quantity) !== row.quantity ||
+      Number(existing.units) !== row.units ||
+      Boolean(existing.away) !== row.away ||
       existing.notes !== row.notes
     ) {
       toUpdate.push({
@@ -924,6 +977,8 @@ export async function saveTripDays(
         day_type_id: row.day_type_id,
         rate_cents: row.rate_cents,
         quantity: row.quantity,
+        units: row.units,
+        away: row.away,
         notes: row.notes,
       });
     }
@@ -966,10 +1021,10 @@ export async function saveTripDays(
   }
 
   // toUpdate: only the granted columns (day_type_id, rate_cents,
-  // quantity, notes) — never account_id or trip_id — keyed on the three
-  // columns that identify the row. Run concurrently: a trip is bounded by
-  // its own date range, so this is at most a few dozen statements, not a
-  // scan.
+  // quantity, units, away, notes) — never account_id or trip_id — keyed on
+  // the three columns that identify the row. Run concurrently: a trip is
+  // bounded by its own date range, so this is at most a few dozen
+  // statements, not a scan.
   if (toUpdate.length > 0) {
     const results = await Promise.all(
       toUpdate.map((row) => {
@@ -977,6 +1032,8 @@ export async function saveTripDays(
           day_type_id: row.day_type_id,
           rate_cents: row.rate_cents,
           quantity: row.quantity,
+          units: row.units,
+          away: row.away,
           notes: row.notes,
         };
         return supabase

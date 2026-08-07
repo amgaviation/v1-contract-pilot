@@ -30,6 +30,10 @@ export type TripFormValues = {
   day_count?: number | null;
   travel_day_count?: number | null;
   travel_day_rate_cents?: number | null;
+  cancellation_notice_from?: string | null;
+  /** 20260807070000: trigger-owned, read-only display only — never posted
+   * by this form (there is no name attribute for it below). */
+  canceled_at?: string | null;
   notes?: string | null;
 };
 
@@ -62,6 +66,21 @@ const STATUSES = [
   { value: "completed", label: "Completed" },
   { value: "canceled", label: "Canceled" },
 ];
+
+/** 20260807070000_trip_day_units_away_cancel.sql — who the cancellation
+ * notice came from. Only meaningful once status is 'canceled', but left
+ * editable regardless of the current status: a pilot may fill it in
+ * moments before switching status to canceled in the same submit. */
+const CANCELLATION_NOTICE_FROM_OPTIONS = [
+  { value: "client", label: "Client" },
+  { value: "pilot", label: "Pilot" },
+  { value: "weather", label: "Weather" },
+  { value: "maintenance", label: "Maintenance" },
+  { value: "other", label: "Other" },
+];
+/** Radix forbids an empty-string Select.Item value — see NO_CLIENT below
+ * for the same reason. "Not recorded" is the real, postable null choice. */
+const NO_NOTICE_FROM = "__none__";
 
 /** Radix forbids an empty-string Select.Item value. "No client yet" is a
  * real, postable choice (client_id is optional), so it gets a sentinel
@@ -140,14 +159,21 @@ export default function TripForm({
   }, [state]);
   const [tripKind, setTripKind] = useState(() => initial("trip_kind", "contract_pilot"));
   const [status, setStatus] = useState(() => initial("status", "scheduled"));
+  const [cancellationNoticeFrom, setCancellationNoticeFrom] = useState(() =>
+    initial("cancellation_notice_from", "")
+  );
   useEffect(() => {
     if (submitted?.trip_kind !== undefined) setTripKind(String(submitted.trip_kind || "contract_pilot"));
     if (submitted?.status !== undefined) setStatus(String(submitted.status || "scheduled"));
+    if (submitted?.cancellation_notice_from !== undefined) {
+      setCancellationNoticeFrom(String(submitted.cancellation_notice_from || ""));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitted]);
   const clientLabelId = useId();
   const tripKindId = useId();
   const statusId = useId();
+  const noticeFromId = useId();
 
   function pickClient(nextId: string) {
     setClientId(nextId);
@@ -243,6 +269,48 @@ export default function TripForm({
               </Select.Content>
             </Select.Root>
             <input type="hidden" name="status" value={status} />
+            {values.canceled_at ? (
+              <Text size="1" color="gray">
+                Canceled {formatCancelledAt(values.canceled_at)}
+              </Text>
+            ) : null}
+          </Flex>
+
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" id={`${noticeFromId}-label`}>
+              Cancellation notice from
+            </Text>
+            <Select.Root
+              key={`notice-from-${genTick}`}
+              value={cancellationNoticeFrom === "" ? NO_NOTICE_FROM : cancellationNoticeFrom}
+              onValueChange={(next) =>
+                setCancellationNoticeFrom(next === NO_NOTICE_FROM ? "" : next)
+              }
+            >
+              <Select.Trigger
+                id={noticeFromId}
+                aria-labelledby={`${noticeFromId}-label`}
+                placeholder="Not recorded"
+              />
+              <Select.Content>
+                <Select.Item value={NO_NOTICE_FROM}>Not recorded</Select.Item>
+                {CANCELLATION_NOTICE_FROM_OPTIONS.map((option) => (
+                  <Select.Item key={option.value} value={option.value}>
+                    {option.label}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+            <input
+              type="hidden"
+              name="cancellation_notice_from"
+              value={cancellationNoticeFrom}
+            />
+            <Text size="1" color="gray">
+              Who called off the trip — supports a cancellation fee line if
+              this contract has one. The cancellation timestamp itself is
+              recorded automatically when status is set to Canceled.
+            </Text>
           </Flex>
 
           <Flex direction="column" gap="1">
@@ -417,4 +485,22 @@ export default function TripForm({
       </form>
     </Card>
   );
+}
+
+/**
+ * `canceled_at` (a timestamptz) rendered for the pilot next to the Status
+ * field — display only, never posted by this form. A local formatter
+ * rather than a lib/format.ts addition: that file's date formatters are
+ * all `date`-typed ("YYYY-MM-DD"), parsed at UTC midnight on purpose
+ * (lib/format.ts's own parseCalendarDate comment) — a real instant like
+ * this one needs the actual time-of-day shown too, which is a different
+ * formatting job, not an extension of that one.
+ */
+function formatCancelledAt(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "at an unknown time";
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
 }

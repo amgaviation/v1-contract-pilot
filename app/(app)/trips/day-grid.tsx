@@ -5,6 +5,7 @@ import {
   Box,
   Button,
   Callout,
+  Checkbox,
   Select,
   Table,
   Text,
@@ -18,10 +19,14 @@ import {
   dayTypeFieldName,
   rateFieldName,
   quantityFieldName,
+  unitsFieldName,
+  awayFieldName,
   notesFieldName,
   computeSeed,
   resolveRate,
+  resolveUnits,
   quantityToInput,
+  unitsToInput,
   type SeedDayType,
   type SeedScalars,
   type SeedRow,
@@ -33,6 +38,9 @@ export type DayTypeOption = {
   label: string;
   billable: boolean;
   default_rate_cents: number | null;
+  /** 20260807070000: default rate fraction, resolved into a row's `units`
+   * at capture the same way default_rate_cents resolves into `rate`. */
+  default_units: number | null;
   sort_order: number;
   archived_at: string | null;
 };
@@ -42,6 +50,11 @@ export type TripDayRow = {
   day_type_id: string;
   rate_cents: number;
   quantity: number;
+  /** 20260807070000: rate fraction this day bills at (0 < x <= 1). */
+  units: number;
+  /** 20260807070000: away from home base — per diem requires
+   * counts_for_per_diem (on the day type) AND this. */
+  away: boolean;
   notes: string | null;
 };
 
@@ -70,6 +83,21 @@ const QUANTITY_OPTIONS = [
 function quantityOptionsFor(value: string) {
   if (QUANTITY_OPTIONS.some((o) => o.value === value)) return QUANTITY_OPTIONS;
   return [...QUANTITY_OPTIONS, { value, label: `${value} day (custom)` }];
+}
+
+/** Full rate / Half rate cover the common cases (a travel day paid at half
+ * the day rate is the domain's own example — see
+ * 20260807070000_trip_day_units_away_cancel.sql's header); a stored value
+ * that isn't either still round-trips, same shape as QUANTITY_OPTIONS
+ * above. */
+const UNITS_OPTIONS = [
+  { value: "1.00", label: "Full rate" },
+  { value: "0.50", label: "Half rate" },
+];
+
+function unitsOptionsFor(value: string) {
+  if (UNITS_OPTIONS.some((o) => o.value === value)) return UNITS_OPTIONS;
+  return [...UNITS_OPTIONS, { value, label: `${value}x rate (custom)` }];
 }
 
 const initialState: TripDaysFormState = { error: null };
@@ -166,9 +194,18 @@ export default function DayGrid({
           rate: centsToInput(existing.rate_cents),
           notes: existing.notes ?? "",
           quantity: quantityToInput(existing.quantity),
+          units: unitsToInput(existing.units),
+          away: existing.away,
         };
       } else {
-        initial[date] = seed.rows[date] ?? { dayTypeId: "", rate: "", notes: "", quantity: "1" };
+        initial[date] = seed.rows[date] ?? {
+          dayTypeId: "",
+          rate: "",
+          notes: "",
+          quantity: "1",
+          units: "1.00",
+          away: false,
+        };
       }
     }
     return initial;
@@ -206,6 +243,12 @@ export default function DayGrid({
         // would produce, it does not itself validate the form.
         rate_cents: parseDollarsToCents(row.rate) ?? 0,
         quantity: Number(row.quantity) || 0,
+        // Same "preview what Save would do" logic for units: an
+        // unparseable/blank value reads as 1.00 (full rate) here, not 0 —
+        // 0 would zero the row out of the running total entirely, which
+        // is not what an empty units field means to the server (parseUnits
+        // rejects it as a validation error, it doesn't bill nothing).
+        units: Number(row.units) || 1,
       });
     }
     // Mirrors saveTripDays: a row with no day type chosen is never
@@ -237,7 +280,17 @@ export default function DayGrid({
   function setRow(date: string, next: Partial<SeedRow>) {
     setRows((prev) => ({
       ...prev,
-      [date]: { ...(prev[date] ?? { dayTypeId: "", rate: "", notes: "", quantity: "1" }), ...next },
+      [date]: {
+        ...(prev[date] ?? {
+          dayTypeId: "",
+          rate: "",
+          notes: "",
+          quantity: "1",
+          units: "1.00",
+          away: false,
+        }),
+        ...next,
+      },
     }));
   }
 
@@ -245,6 +298,7 @@ export default function DayGrid({
     setRow(date, {
       dayTypeId,
       rate: dayTypeId ? resolveRate(dayTypeId, clientRateByType, dayTypeById) : "",
+      units: dayTypeId ? resolveUnits(dayTypeId, dayTypeById) : "1.00",
     });
   }
 
@@ -292,12 +346,22 @@ export default function DayGrid({
               <Table.ColumnHeaderCell>Day type</Table.ColumnHeaderCell>
               <Table.ColumnHeaderCell minWidth="130px">Quantity</Table.ColumnHeaderCell>
               <Table.ColumnHeaderCell justify="end">Rate (USD)</Table.ColumnHeaderCell>
+              <Table.ColumnHeaderCell minWidth="130px">Rate fraction</Table.ColumnHeaderCell>
+              <Table.ColumnHeaderCell>Away</Table.ColumnHeaderCell>
               <Table.ColumnHeaderCell>Notes</Table.ColumnHeaderCell>
             </Table.Row>
           </Table.Header>
           <Table.Body>
             {dates.map((date) => {
-              const row = rows[date] ?? { dayTypeId: "", rate: "", notes: "", quantity: "1" };
+              const row =
+                rows[date] ?? {
+                  dayTypeId: "",
+                  rate: "",
+                  notes: "",
+                  quantity: "1",
+                  units: "1.00",
+                  away: false,
+                };
               const selectedType = row.dayTypeId ? dayTypeById.get(row.dayTypeId) : undefined;
               const nonBillable = selectedType ? selectedType.billable === false : false;
               const fieldError = state.fieldErrors?.[date];
@@ -305,6 +369,8 @@ export default function DayGrid({
               const dayTypeCtlId = `day-type-${date}`;
               const quantityCtlId = `quantity-${date}`;
               const rateCtlId = `rate-${date}`;
+              const unitsCtlId = `units-${date}`;
+              const awayCtlId = `away-${date}`;
               const notesCtlId = `notes-${date}`;
               return (
                 <Fragment key={date}>
@@ -397,6 +463,55 @@ export default function DayGrid({
                         </>
                       )}
                     </Table.Cell>
+                    <Table.Cell minWidth="130px">
+                      {/* Rate fraction is never blank, same as Quantity —
+                          no sentinel needed on the Select. Shown even for
+                          a non-billable day type: it stores a value
+                          regardless (harmless, since rate_cents is forced
+                          to 0 for those rows), and hiding it would be one
+                          more special case for no benefit. */}
+                      <input type="hidden" name={unitsFieldName(date)} value={row.units} />
+                      <Select.Root
+                        key={`units-${date}-${formGen}`}
+                        size="1"
+                        value={row.units}
+                        disabled={!row.dayTypeId}
+                        onValueChange={(next) => setRow(date, { units: next })}
+                      >
+                        <Select.Trigger
+                          id={unitsCtlId}
+                          aria-label={`Rate fraction for ${formatDateWithWeekday(date)}`}
+                          aria-invalid={fieldError ? true : undefined}
+                          aria-describedby={fieldError ? errorId : undefined}
+                          style={{ width: "100%" }}
+                        />
+                        <Select.Content>
+                          {unitsOptionsFor(row.units).map((o) => (
+                            <Select.Item key={o.value} value={o.value}>
+                              {o.label}
+                            </Select.Item>
+                          ))}
+                        </Select.Content>
+                      </Select.Root>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Text as="label" size="2" htmlFor={awayCtlId}>
+                        <input
+                          type="hidden"
+                          name={awayFieldName(date)}
+                          value={row.away ? "on" : "off"}
+                        />
+                        <Checkbox
+                          id={awayCtlId}
+                          checked={row.away}
+                          disabled={!row.dayTypeId}
+                          aria-label={`Away from home base on ${formatDateWithWeekday(date)}`}
+                          onCheckedChange={(checked) =>
+                            setRow(date, { away: checked === true })
+                          }
+                        />
+                      </Text>
+                    </Table.Cell>
                     <Table.Cell minWidth="180px">
                       <TextField.Root
                         id={notesCtlId}
@@ -412,7 +527,7 @@ export default function DayGrid({
                   </Table.Row>
                   {fieldError ? (
                     <Table.Row>
-                      <Table.Cell colSpan={5} pt="0">
+                      <Table.Cell colSpan={7} pt="0">
                         <Text id={errorId} size="1" color="red">
                           {fieldError}
                         </Text>
@@ -489,6 +604,8 @@ function ReadOnlyGrid({
             <Table.ColumnHeaderCell>Day type</Table.ColumnHeaderCell>
             <Table.ColumnHeaderCell>Quantity</Table.ColumnHeaderCell>
             <Table.ColumnHeaderCell justify="end">Rate</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell>Rate fraction</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell>Away</Table.ColumnHeaderCell>
             <Table.ColumnHeaderCell>Notes</Table.ColumnHeaderCell>
           </Table.Row>
         </Table.Header>
@@ -501,6 +618,7 @@ function ReadOnlyGrid({
                     id: existing.day_type_id,
                     key: "",
                     default_rate_cents: null,
+                    default_units: null,
                     archived_at: null,
                     billable: true,
                   },
@@ -525,6 +643,16 @@ function ReadOnlyGrid({
                 <Table.Cell justify="end">
                   <Text size="2" className="tnum">
                     {existing ? formatCents(existing.rate_cents) : "—"}
+                  </Text>
+                </Table.Cell>
+                <Table.Cell>
+                  <Text size="2" color="gray" className="tnum">
+                    {existing ? unitsToInput(existing.units) : "—"}
+                  </Text>
+                </Table.Cell>
+                <Table.Cell>
+                  <Text size="2" color="gray">
+                    {existing ? (existing.away ? "Away" : "Home base") : "—"}
                   </Text>
                 </Table.Cell>
                 <Table.Cell>

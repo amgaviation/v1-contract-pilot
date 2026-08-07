@@ -55,12 +55,14 @@ export default async function TripPage({
     // which day rows actually count toward the billed total.
     supabase
       .from("day_types")
-      .select("id, key, label, billable, default_rate_cents, sort_order, archived_at")
+      .select(
+        "id, key, label, billable, default_rate_cents, default_units, sort_order, archived_at"
+      )
       .order("sort_order", { ascending: true })
       .order("key", { ascending: true }),
     supabase
       .from("trip_days")
-      .select("day_on, day_type_id, rate_cents, quantity, notes")
+      .select("day_on, day_type_id, rate_cents, quantity, units, away, notes")
       .eq("trip_id", id)
       .order("day_on", { ascending: true }),
     // Fetched account-wide and filtered to this trip's client below,

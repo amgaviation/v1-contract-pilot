@@ -47,6 +47,17 @@ export function rateFieldName(date: string): string {
 export function quantityFieldName(date: string): string {
   return `quantity:${date}`;
 }
+/** 20260807070000_trip_day_units_away_cancel.sql — the rate FRACTION this
+ * day bills at (0 < x <= 1), distinct from quantityFieldName's TIME
+ * fraction. */
+export function unitsFieldName(date: string): string {
+  return `units:${date}`;
+}
+/** Same migration — per-day "away from home base", the second half of
+ * per-diem eligibility alongside the day type's counts_for_per_diem. */
+export function awayFieldName(date: string): string {
+  return `away:${date}`;
+}
 export function notesFieldName(date: string): string {
   return `notes:${date}`;
 }
@@ -55,6 +66,10 @@ export type SeedDayType = {
   id: string;
   key: string;
   default_rate_cents: number | null;
+  /** 20260807070000: the day type's default rate FRACTION, resolved into
+   * a row's `units` at capture the same way default_rate_cents resolves
+   * into `rate`. */
+  default_units: number | null;
   archived_at: string | null;
   /**
    * Added for F2: a non-billable day type (e.g. the seeded "Off day")
@@ -83,6 +98,16 @@ export type SeedRow = {
    * type: see quantityToInput/parseQuantity below.
    */
   quantity: string;
+  /**
+   * 20260807070000: the rate FRACTION text ("1.00" full rate, "0.50" half
+   * rate) — distinct from `quantity`. Never blank, same round-trip
+   * discipline as quantity: see unitsToInput/parseUnits below.
+   */
+  units: string;
+  /** 20260807070000: away from home base, for per-diem eligibility.
+   * Always false unless the pilot has explicitly ticked it — see that
+   * migration's header for why the product never guesses this. */
+  away: boolean;
 };
 
 export type SeedResult = {
@@ -133,6 +158,37 @@ export function parseQuantity(raw: string): number | undefined {
   return value;
 }
 
+/** Units (a rate fraction) → plain decimal input text, "1.00" for full
+ * rate. Two decimal places, matching pilot.trip_days.units' numeric(3,2) —
+ * quantityToInput above only needs one because trip_days.quantity is
+ * numeric(3,1). */
+export function unitsToInput(units: number | null | undefined): string {
+  if (units === null || units === undefined || !Number.isFinite(units)) {
+    return "1.00";
+  }
+  return units.toFixed(2);
+}
+
+/**
+ * Parses a day grid units field into the rate fraction it represents, or
+ * `undefined` if it isn't a valid pilot.trip_days.units value — outside
+ * (0, 1], or carrying more than two decimal places.
+ *
+ * A local parser rather than reusing parseTenth: that helper checks ONE
+ * decimal place (day_count/quantity are numeric(*,1)), but trip_days.units
+ * is numeric(3,2) — two decimal places — and Postgres would silently
+ * ROUND a third decimal rather than reject it, so the same "check the
+ * scale here, not just the bound" reasoning parseTenth documents applies,
+ * at a different scale.
+ */
+export function parseUnits(raw: string): number | undefined {
+  const value = raw.trim();
+  if (!/^\d{1,3}(\.\d{1,2})?$/.test(value)) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1) return undefined;
+  return parsed;
+}
+
 /**
  * The trip screen's zero-state seed: turns the trip's existing scalar
  * day_rate_cents/day_count/travel_day_rate_cents/travel_day_count into a
@@ -160,7 +216,24 @@ export function computeSeed(
   scalars: SeedScalars
 ): SeedResult {
   const rows: Record<string, SeedRow> = {};
-  for (const date of dates) rows[date] = { dayTypeId: "", rate: "", notes: "", quantity: "1" };
+  for (const date of dates)
+    rows[date] = {
+      dayTypeId: "",
+      rate: "",
+      notes: "",
+      quantity: "1",
+      // Always 1.00/false at seed time, never resolved from
+      // default_units or guessed — see resolveUnits' own comment and
+      // 20260807070000's header: the scalar day_rate_cents/
+      // travel_day_rate_cents this seed reads FROM already represent
+      // whatever full number the pilot set (even a hand-halved one), so
+      // seeding units=1.00 here is what keeps a first Save on a legacy
+      // trip byte-for-byte identical in value to what it billed before
+      // this column existed. away has no scalar source to seed from at
+      // all — the product records no home base.
+      units: "1.00",
+      away: false,
+    };
 
   const travelType =
     dayTypes.find((t) => t.key === "travel" && !t.archived_at) ?? null;
@@ -218,6 +291,8 @@ export function computeSeed(
         rate: centsToInput(scalars.travelDayRateCents ?? 0),
         notes: "",
         quantity: "1",
+        units: "1.00",
+        away: false,
       };
     } else {
       approximate = true;
@@ -230,6 +305,8 @@ export function computeSeed(
         rate: centsToInput(scalars.dayRateCents),
         notes: "",
         quantity: "1",
+        units: "1.00",
+        away: false,
       };
     } else {
       approximate = true;
@@ -242,6 +319,8 @@ export function computeSeed(
         rate: centsToInput(scalars.dayRateCents),
         notes: "",
         quantity: quantityToInput(dayFraction),
+        units: "1.00",
+        away: false,
       };
     } else {
       approximate = true;
@@ -270,4 +349,26 @@ export function resolveRate(
     return centsToInput(dayType.default_rate_cents);
   }
   return "";
+}
+
+/**
+ * Resolves a day type's pre-filled rate FRACTION at capture: the day
+ * type's own default_units, else "1.00" (full rate). No client-level
+ * override exists for units — pilot.client_rates only overrides
+ * rate_cents (see the trip_days migration's own comment on client_rates:
+ * "Consulted ONLY at day capture, to fill trip_days.rate_cents"), and
+ * this does not add a parallel per-client units override that was never
+ * asked for. Never reads a saved trip_days.units — same snapshot
+ * discipline as resolveRate.
+ */
+export function resolveUnits(
+  dayTypeId: string,
+  dayTypeById: Map<string, SeedDayType>
+): string {
+  if (!dayTypeId) return "1.00";
+  const dayType = dayTypeById.get(dayTypeId);
+  if (dayType && dayType.default_units !== null && dayType.default_units !== undefined) {
+    return unitsToInput(dayType.default_units);
+  }
+  return "1.00";
 }

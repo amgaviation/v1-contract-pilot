@@ -35,6 +35,14 @@
  * this preserves what these screens have always meant by a trip's value —
  * but do not describe this number to a pilot as "what the invoice will
  * total", because it is not.
+ *
+ * UNITS (20260807070000_trip_day_units_away_cancel.sql): a row's
+ * contribution to its group's summed quantity is `quantity * units`, not
+ * bare quantity — units is a RATE fraction (e.g. a travel day paid at half
+ * the day rate), distinct from quantity's TIME fraction, and it does NOT
+ * join the (day_type_id, rate_cents) grouping key. See that migration's
+ * header for the full reasoning; it applies here identically because this
+ * function mirrors createInvoiceDraft's day-row path exactly.
  */
 
 export type TripValueScalar = {
@@ -48,6 +56,19 @@ export type TripDayValueRow = {
   day_type_id: string;
   rate_cents: number;
   quantity: number;
+  /**
+   * Rate fraction (0 < x <= 1) this day bills at. OPTIONAL, not required:
+   * two callers of this function (app/(app)/page.tsx and
+   * app/(app)/invoices/new/page.tsx — outside this task's scope) do not
+   * yet select trip_days.units, and `Number(undefined)` is NaN, which
+   * would NaN out every trip's value on those screens if this were
+   * required. A missing units reads as 1.0 (full rate — what every
+   * trip_days row meant before this column existed), the same
+   * "absent means the pre-feature default" rule the migration itself
+   * applies to existing rows, so an unupdated caller keeps computing
+   * exactly what it always has.
+   */
+  units?: number;
 };
 
 /**
@@ -74,7 +95,8 @@ export function tripValueCents(
       if (!billableByDayType.get(row.day_type_id)) continue;
       const key = `${row.day_type_id}:${row.rate_cents}`;
       const group = groups.get(key) ?? { rateCents: row.rate_cents, quantitySum: 0 };
-      group.quantitySum += Number(row.quantity);
+      const units = row.units == null ? 1 : Number(row.units);
+      group.quantitySum += Number(row.quantity) * units;
       groups.set(key, group);
     }
     let total = 0;

@@ -20,10 +20,12 @@ import ClientForm from "../client-form";
 import { updateClientRecord } from "../actions";
 import ArchiveButton from "./archive-button";
 import RateOverridesPanel from "./rate-overrides-panel";
+import OperatorQualificationsPanel from "./operator-qualifications-panel";
 
 type ClientRow = Database["pilot"]["Tables"]["clients"]["Row"];
 type DayTypeRow = Database["pilot"]["Tables"]["day_types"]["Row"];
 type ClientRateRow = Database["pilot"]["Tables"]["client_rates"]["Row"];
+type OperatorQualificationRow = Database["pilot"]["Tables"]["operator_qualifications"]["Row"];
 
 type OpenTripRow = {
   id: string;
@@ -89,7 +91,8 @@ export default async function EditClientPage({
   // the query itself made that override invisible while it still applied
   // to any not-yet-invoiced day already captured under the old type.
   // RateOverridesPanel is what decides active-vs-archived-with-override.
-  const [dayTypesResult, ratesResult, openTripsResult, invoicesResult] = await Promise.all([
+  const [dayTypesResult, ratesResult, openTripsResult, invoicesResult, qualificationsResult] =
+    await Promise.all([
     supabase
       .from("day_types")
       .select("*")
@@ -116,6 +119,7 @@ export default async function EditClientPage({
       .in("status", ["sent", "partial"])
       .order("due_on", { ascending: true })
       .limit(OUTSTANDING_INVOICES_LIMIT),
+    supabase.from("operator_qualifications").select("*").eq("client_id", id),
   ]);
 
   const dayTypes = (dayTypesResult.data ?? []) as DayTypeRow[];
@@ -125,6 +129,9 @@ export default async function EditClientPage({
   const openTrips = (openTripsResult.data ?? []) as OpenTripRow[];
   const outstandingInvoices = (invoicesResult.data ?? []) as OutstandingInvoiceRow[];
   const linkedRecordsError = openTripsResult.error ?? invoicesResult.error;
+
+  const qualifications = (qualificationsResult.data ?? []) as OperatorQualificationRow[];
+  const qualificationsLoadError = Boolean(qualificationsResult.error);
 
   const invoiceIds = outstandingInvoices.map((inv) => inv.id);
   const balancesResult = invoiceIds.length
@@ -272,6 +279,15 @@ export default async function EditClientPage({
           />
         </Box>
       )}
+
+      <Box mt="4">
+        <OperatorQualificationsPanel
+          clientId={client.id}
+          clientName={client.name}
+          qualifications={qualifications}
+          loadError={qualificationsLoadError}
+        />
+      </Box>
     </PageShell>
   );
 }

@@ -24,6 +24,10 @@
  *                                                      pilot.trip_committed_invoice)
  *   20260807040000_client_minimum_basis.sql           (clients.minimum_basis,
  *                                                      guarantee_periods)
+ *   20260807070000_trip_day_units_away_cancel.sql      (day_types.default_units,
+ *                                                      trip_days.units/away,
+ *                                                      trips.canceled_at/
+ *                                                      cancellation_notice_from)
  */
 export type Json =
   | string
@@ -306,6 +310,18 @@ export type Database = {
           travel_day_count: number;
           travel_day_rate_cents: number | null;
           billing_state: "unbilled" | "invoiced" | "paid" | "written_off";
+          // Added by 20260807070000_trip_day_units_away_cancel.sql.
+          // Trigger-owned (pilot.trips_set_canceled_at) — deliberately
+          // absent from Insert/Update below, the same treatment as
+          // billing_state/updated_at: app code never sets this directly.
+          canceled_at: string | null;
+          cancellation_notice_from:
+            | "client"
+            | "pilot"
+            | "weather"
+            | "maintenance"
+            | "other"
+            | null;
           notes: string | null;
           created_at: string;
           updated_at: string;
@@ -332,6 +348,13 @@ export type Database = {
           travel_day_count?: number;
           travel_day_rate_cents?: number | null;
           billing_state?: "unbilled" | "invoiced" | "paid" | "written_off";
+          cancellation_notice_from?:
+            | "client"
+            | "pilot"
+            | "weather"
+            | "maintenance"
+            | "other"
+            | null;
           notes?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -358,6 +381,13 @@ export type Database = {
           travel_day_count?: number;
           travel_day_rate_cents?: number | null;
           billing_state?: "unbilled" | "invoiced" | "paid" | "written_off";
+          cancellation_notice_from?:
+            | "client"
+            | "pilot"
+            | "weather"
+            | "maintenance"
+            | "other"
+            | null;
           notes?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -612,6 +642,12 @@ export type Database = {
           billable: boolean;
           counts_for_per_diem: boolean;
           default_rate_cents: number | null;
+          // Added by 20260807070000_trip_day_units_away_cancel.sql. Rate
+          // FRACTION default (0 < x <= 1) — e.g. 0.5 for "travel pays
+          // half" — resolved at trip_days capture into trip_days.units,
+          // same as default_rate_cents resolves into rate_cents. NULL
+          // means no default fraction recorded.
+          default_units: number | null;
           invoice_line_type: "flight_day" | "travel_day" | "other";
           sort_order: number;
           is_builtin: boolean;
@@ -631,6 +667,7 @@ export type Database = {
           billable?: boolean;
           counts_for_per_diem?: boolean;
           default_rate_cents?: number | null;
+          default_units?: number | null;
           invoice_line_type?: "flight_day" | "travel_day" | "other";
           sort_order?: number;
           archived_at?: string | null;
@@ -642,6 +679,7 @@ export type Database = {
           billable?: boolean;
           counts_for_per_diem?: boolean;
           default_rate_cents?: number | null;
+          default_units?: number | null;
           invoice_line_type?: "flight_day" | "travel_day" | "other";
           sort_order?: number;
           archived_at?: string | null;
@@ -671,6 +709,17 @@ export type Database = {
           // for why day_count's numeric(5,1) half-days had nowhere to go
           // without it.
           quantity: number;
+          // Added by 20260807070000_trip_day_units_away_cancel.sql. Rate
+          // fraction (0 < x <= 1), snapshotted at capture — distinct from
+          // quantity (time worked): see that migration's header for why
+          // units multiplies into a row's contribution to its invoice
+          // group's summed quantity rather than joining the grouping key.
+          units: number;
+          // Added by the same migration. Away from home base, for per-diem
+          // purposes — per diem is counts_for_per_diem (on the day type)
+          // AND away (on the day). Defaults false; see that migration's
+          // header for why false is the conservative default.
+          away: boolean;
           notes: string | null;
           created_at: string;
           updated_at: string;
@@ -682,6 +731,8 @@ export type Database = {
           day_type_id: string;
           rate_cents?: number;
           quantity?: number;
+          units?: number;
+          away?: boolean;
           notes?: string | null;
         };
         Update: {
@@ -689,6 +740,8 @@ export type Database = {
           day_type_id?: string;
           rate_cents?: number;
           quantity?: number;
+          units?: number;
+          away?: boolean;
           notes?: string | null;
         };
         Relationships: [
@@ -1040,6 +1093,94 @@ export type Database = {
             columns: ["account_id", "settled_invoice_id"];
             isOneToOne: false;
             referencedRelation: "invoices";
+            referencedColumns: ["account_id", "id"];
+          },
+        ];
+      };
+      // -----------------------------------------------------------------
+      // 20260807060000_operator_qualifications.sql — what the pilot has
+      // been told/shown by an operator about their standing on THAT
+      // operator's Part 135 certificate. NOT a determination that they
+      // are on the certificate. expires_on is derived (by
+      // pilot.compute_operator_qualification_expiry, a BEFORE INSERT OR
+      // UPDATE trigger) for competency_check_135_293, ipc_135_297 and
+      // line_check_135_299 only, including the 135.301(a) one-month-
+      // early/one-month-late provision; every other requirement kind
+      // leaves it as whatever was submitted (nullable, pilot-entered).
+      // -----------------------------------------------------------------
+      operator_qualifications: {
+        Row: {
+          id: string;
+          account_id: string;
+          client_id: string;
+          requirement:
+            | "basic_indoc"
+            | "initial_training"
+            | "recurrent_training"
+            | "competency_check_135_293"
+            | "ipc_135_297"
+            | "line_check_135_299"
+            | "drug_alcohol_program_120"
+            | "prd_consent_111"
+            | "insurance_approval"
+            | "company_manuals"
+            | "other";
+          completed_on: string | null;
+          status: "not_started" | "in_progress" | "current" | "lapsed" | "n_a";
+          expires_on: string | null;
+          type_designator: string;
+          notes: string | null;
+          document_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          account_id: string;
+          client_id: string;
+          requirement:
+            | "basic_indoc"
+            | "initial_training"
+            | "recurrent_training"
+            | "competency_check_135_293"
+            | "ipc_135_297"
+            | "line_check_135_299"
+            | "drug_alcohol_program_120"
+            | "prd_consent_111"
+            | "insurance_approval"
+            | "company_manuals"
+            | "other";
+          completed_on?: string | null;
+          status?: "not_started" | "in_progress" | "current" | "lapsed" | "n_a";
+          expires_on?: string | null;
+          type_designator?: string;
+          notes?: string | null;
+          document_id?: string | null;
+        };
+        // client_id/requirement/type_designator are NOT updatable — the
+        // three together identify the row (unique(account_id, client_id,
+        // requirement, type_designator)); re-pointing any of them is a
+        // delete-and-insert, matching client_rates/guarantee_periods.
+        Update: {
+          completed_on?: string | null;
+          status?: "not_started" | "in_progress" | "current" | "lapsed" | "n_a";
+          expires_on?: string | null;
+          notes?: string | null;
+          document_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "operator_qualifications_account_id_client_id_fkey";
+            columns: ["account_id", "client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["account_id", "id"];
+          },
+          {
+            foreignKeyName: "operator_qualifications_account_id_document_id_fkey";
+            columns: ["account_id", "document_id"];
+            isOneToOne: false;
+            referencedRelation: "documents";
             referencedColumns: ["account_id", "id"];
           },
         ];
