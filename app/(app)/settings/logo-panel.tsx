@@ -1,10 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import Card from "@mui/material/Card";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
+import { Button, Card, Flex, Heading, Text } from "@radix-ui/themes";
 import {
   uploadLogo,
   removeLogo,
@@ -28,26 +25,25 @@ export default function LogoPanel({
 
   return (
     <Card>
-      <MDBox p={3}>
-        <MDBox mb={2} lineHeight={1.25}>
-          <MDTypography variant="h6">Logo</MDTypography>
-          <MDTypography variant="button" color="text" fontWeight="regular">
+      <Flex direction="column" gap="3" p="1">
+        <Flex direction="column" gap="1">
+          <Heading size="4">Logo</Heading>
+          <Text size="2" color="gray">
             Printed at the top of your invoices. PNG or JPEG, up to 2 MB.
-          </MDTypography>
-        </MDBox>
+          </Text>
+        </Flex>
 
         {hasLogo ? (
-          <MDBox mb={2} display="flex" gap={1.5} alignItems="center" flexWrap="wrap">
-            <MDTypography variant="button" color="text" fontWeight="regular">
+          <Flex gap="3" align="center" wrap="wrap">
+            <Text size="2" color="gray">
               A logo is on file.
-            </MDTypography>
+            </Text>
             {/* Opened through a signed URL minted at click time rather than
                 rendered inline — the same rule receipts follow, since a
                 signed URL is a bearer token in a query string. */}
-            <MDButton
-              variant="outlined"
-              color="info"
-              size="small"
+            <Button
+              variant="outline"
+              size="1"
               disabled={previewing}
               onClick={() =>
                 startPreview(async () => {
@@ -62,12 +58,12 @@ export default function LogoPanel({
               }
             >
               {previewing ? "Opening…" : "View"}
-            </MDButton>
+            </Button>
             {canEdit ? (
-              <MDButton
-                variant="outlined"
-                color="error"
-                size="small"
+              <Button
+                variant="outline"
+                color="red"
+                size="1"
                 disabled={removing}
                 onClick={() =>
                   startRemove(async () => {
@@ -78,44 +74,39 @@ export default function LogoPanel({
                 }
               >
                 {removing ? "Removing…" : "Remove"}
-              </MDButton>
+              </Button>
             ) : null}
-          </MDBox>
+          </Flex>
         ) : null}
 
         {canEdit ? (
-          <MDBox component="form" action={formAction}>
-            <input
-              type="file"
-              name="logo"
-              accept="image/png,image/jpeg"
-              aria-label="Logo image"
-            />
-            <MDBox mt={2}>
-              <MDButton
-                type="submit"
-                variant="outlined"
-                color="info"
-                disabled={pending}
-              >
+          <form action={formAction}>
+            <Flex direction="column" gap="2" align="start">
+              <input
+                type="file"
+                name="logo"
+                accept="image/png,image/jpeg"
+                aria-label="Logo image"
+              />
+              <Button type="submit" variant="outline" disabled={pending}>
                 {pending ? "Uploading…" : hasLogo ? "Replace logo" : "Upload logo"}
-              </MDButton>
-            </MDBox>
-          </MDBox>
+              </Button>
+            </Flex>
+          </form>
         ) : null}
 
-        <MDBox mt={2} role="alert" aria-live="polite">
+        <div role="alert" aria-live="polite">
           {state.error ?? error ? (
-            <MDTypography variant="caption" color="error">
+            <Text size="1" color="red">
               {state.error ?? error}
-            </MDTypography>
+            </Text>
           ) : state.saved ? (
-            <MDTypography variant="caption" color="success">
+            <Text size="1" color="green">
               Logo saved.
-            </MDTypography>
+            </Text>
           ) : null}
-        </MDBox>
-      </MDBox>
+        </div>
+      </Flex>
     </Card>
   );
 }

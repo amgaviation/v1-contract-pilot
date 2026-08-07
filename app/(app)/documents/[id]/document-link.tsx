@@ -1,9 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
+import { Button, Flex, Text } from "@radix-ui/themes";
 import { documentUrl } from "../actions";
 
 /**
@@ -20,11 +18,10 @@ export default function DocumentLink({ path }: { path: string }) {
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <MDBox>
-      <MDButton
-        variant="outlined"
-        color="info"
-        size="small"
+    <Flex direction="column" gap="1">
+      <Button
+        variant="outline"
+        size="1"
         disabled={pending}
         onClick={() =>
           startTransition(async () => {
@@ -42,14 +39,12 @@ export default function DocumentLink({ path }: { path: string }) {
         }
       >
         {pending ? "Opening…" : "View file"}
-      </MDButton>
+      </Button>
       {error ? (
-        <MDBox mt={1} role="alert">
-          <MDTypography variant="caption" color="error">
-            {error}
-          </MDTypography>
-        </MDBox>
+        <Text size="1" color="red" role="alert">
+          {error}
+        </Text>
       ) : null}
-    </MDBox>
+    </Flex>
   );
 }

@@ -1,14 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useId, useState } from "react";
 import NextLink from "next/link";
-import Card from "@mui/material/Card";
-import Grid from "@mui/material/Grid";
-import TextField from "@mui/material/TextField";
-import MenuItem from "@mui/material/MenuItem";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
+import { Button, Card, Flex, Grid, Heading, Select, Text, TextArea, TextField } from "@radix-ui/themes";
 import type { LogbookFormState } from "./actions";
 
 export type LogbookEntryFormValues = {
@@ -47,15 +41,20 @@ const ROLES = [
   { value: "SIC", label: "SIC" },
 ];
 
+// Radix Select.Item forbids an empty-string value, so the "no selection"
+// options below use this sentinel and are translated back to "" before
+// the value reaches the form's actual field name.
+const NONE = "__none__";
+
 const SIMULATOR_DEVICES = [
-  { value: "", label: "N/A" },
+  { value: NONE, label: "N/A" },
   { value: "ftd", label: "FTD" },
   { value: "atd", label: "ATD" },
   { value: "other", label: "Other device" },
 ];
 
 const APPROACH_TYPES = [
-  { value: "", label: "Not recorded" },
+  { value: NONE, label: "Not recorded" },
   { value: "ils", label: "ILS" },
   { value: "rnav_lpv", label: "RNAV (LPV)" },
   { value: "rnav_lnav", label: "RNAV (LNAV)" },
@@ -86,7 +85,20 @@ export default function LogbookEntryForm({
   /** Read-only context shown above the form, e.g. "Confirmed from a trip on 12 AUG 2026". */
   provenanceNote?: string;
 }) {
-  const [state, formAction, pending] = useActionState(action, initialState);
+  // Select.Root never controls the native <select> Radix mounts for form
+  // submission (it always renders `defaultValue`, never `value` — see
+  // @radix-ui/react-select's SelectBubbleInput), so a React-19 post-action
+  // form reset silently reverts it to its mount-time option no matter what
+  // the pilot picked. We drop `name` off every Select.Root so it stops
+  // emitting that bubble input, and post the value from our own controlled
+  // hidden input instead, which React re-asserts after a reset.
+  async function wrappedAction(prevState: LogbookFormState, formData: FormData) {
+    for (const key of ["simulator_device_type", "approach_type"]) {
+      if (formData.get(key) === NONE) formData.set(key, "");
+    }
+    return action(prevState, formData);
+  }
+  const [state, formAction, pending] = useActionState(wrappedAction, initialState);
 
   // Echoed submission wins over the row's stored values — React 19 resets
   // an uncontrolled form on every dispatch, including a rejected one.
@@ -97,333 +109,314 @@ export default function LogbookEntryForm({
     const stored = values[key];
     return stored === null || stored === undefined ? fallback : String(stored);
   };
+  const initialSelect = (key: keyof LogbookEntryFormValues, fallback = "") => {
+    const value = initial(key, fallback);
+    return value === "" ? NONE : value;
+  };
+
+  const [role, setRole] = useState(() => initial("role", "PIC"));
+  const [simulatorDeviceType, setSimulatorDeviceType] = useState(() => initialSelect("simulator_device_type"));
+  const [approachType, setApproachType] = useState(() => initialSelect("approach_type"));
+
+  // Re-seed from the echoed submission whenever the action returns state
+  // (e.g. after a rejected submit), so the pilot's choice is what's shown
+  // AND what's posted next, not the mount-time value.
+  useEffect(() => {
+    if (submitted?.role !== undefined) setRole(String(submitted.role || "PIC"));
+    if (submitted?.simulator_device_type !== undefined) {
+      setSimulatorDeviceType(submitted.simulator_device_type ? String(submitted.simulator_device_type) : NONE);
+    }
+    if (submitted?.approach_type !== undefined) {
+      setApproachType(submitted.approach_type ? String(submitted.approach_type) : NONE);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitted]);
+
+  const roleId = useId();
+  const deviceId = useId();
+  const approachId = useId();
 
   return (
     <Card>
-      <MDBox p={3} component="form" action={formAction}>
-        {values.id ? <input type="hidden" name="id" value={values.id} /> : null}
+      <form action={formAction}>
+        <Flex direction="column" gap="4" p="2">
+          {values.id ? <input type="hidden" name="id" value={values.id} /> : null}
 
-        {provenanceNote ? (
-          <MDBox mb={3}>
-            <MDTypography variant="caption" color="text" fontWeight="regular">
+          {provenanceNote ? (
+            <Text size="1" color="gray">
               {provenanceNote}
-            </MDTypography>
-          </MDBox>
-        ) : null}
+            </Text>
+          ) : null}
 
-        <MDBox mb={2}>
-          <MDTypography variant="h6">The flight</MDTypography>
-        </MDBox>
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={3}>
-            <TextField
-              type="date"
-              name="entry_date"
-              label="Date"
-              fullWidth
-              required
-              InputLabelProps={{ shrink: true }}
-              defaultValue={initial("entry_date")}
-            />
+          <Heading as="h2" size="4">
+            The flight
+          </Heading>
+          <Grid columns={{ initial: "2", md: "12" }} gap="3">
+            <LabeledField label="Date" htmlFor="entry_date" style={{ gridColumn: "span 3" }}>
+              <TextField.Root
+                id="entry_date"
+                type="date"
+                name="entry_date"
+                required
+                defaultValue={initial("entry_date")}
+              />
+            </LabeledField>
+            <LabeledField label="Tail number" htmlFor="aircraft_ident" style={{ gridColumn: "span 3" }}>
+              <TextField.Root
+                id="aircraft_ident"
+                name="aircraft_ident"
+                placeholder="Tail number"
+                defaultValue={initial("aircraft_ident")}
+              />
+            </LabeledField>
+            <LabeledField label="Aircraft type" htmlFor="aircraft_type" style={{ gridColumn: "span 3" }}>
+              <TextField.Root
+                id="aircraft_type"
+                name="aircraft_type"
+                placeholder="Aircraft type (e.g. CE-560XL)"
+                defaultValue={initial("aircraft_type")}
+              />
+            </LabeledField>
+            <LabeledField label="From" htmlFor="from_icao" style={{ gridColumn: "span 2" }}>
+              <TextField.Root
+                id="from_icao"
+                name="from_icao"
+                placeholder="From (KBED)"
+                defaultValue={initial("from_icao")}
+              />
+            </LabeledField>
+            <LabeledField label="To" htmlFor="to_icao" style={{ gridColumn: "span 1" }}>
+              <TextField.Root id="to_icao" name="to_icao" placeholder="To (KTEB)" defaultValue={initial("to_icao")} />
+            </LabeledField>
           </Grid>
-          <Grid item xs={6} md={3}>
-            <TextField
-              name="aircraft_ident"
-              label="Tail number"
-              fullWidth
-              defaultValue={initial("aircraft_ident")}
-            />
-          </Grid>
-          <Grid item xs={6} md={3}>
-            <TextField
-              name="aircraft_type"
-              label="Aircraft type"
-              fullWidth
-              defaultValue={initial("aircraft_type")}
-              helperText="e.g. CE-560XL"
-            />
-          </Grid>
-          <Grid item xs={6} md={1.5}>
-            <TextField name="from_icao" label="From" fullWidth placeholder="KBED" defaultValue={initial("from_icao")} />
-          </Grid>
-          <Grid item xs={6} md={1.5}>
-            <TextField name="to_icao" label="To" fullWidth placeholder="KTEB" defaultValue={initial("to_icao")} />
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <TextField
-              select
-              name="role"
-              label="Role"
-              fullWidth
-              defaultValue={initial("role", "PIC")}
-              helperText="PIC or SIC for this flight"
-            >
-              {ROLES.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Grid>
-        </Grid>
+          <Flex direction="column" gap="1" style={{ maxWidth: 240 }}>
+            <Text as="label" htmlFor={roleId} size="1" color="gray">
+              Role
+            </Text>
+            <Select.Root value={role} onValueChange={setRole}>
+              <Select.Trigger id={roleId} aria-label="Role" />
+              <Select.Content>
+                {ROLES.map((option) => (
+                  <Select.Item key={option.value} value={option.value}>
+                    {option.label}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+            <input type="hidden" name="role" value={role} />
+          </Flex>
 
-        <MDBox mt={4} mb={2}>
-          <MDTypography variant="h6">Time (hours, tenths)</MDTypography>
-        </MDBox>
-        <Grid container spacing={2}>
-          <Grid item xs={6} md={2}>
-            <TextField
-              type="number"
-              name="total_time"
-              label="Total time"
-              fullWidth
-              required
-              inputProps={{ step: "0.1", min: "0" }}
-              defaultValue={initial("total_time")}
-            />
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <TextField
-              type="number"
-              name="pic_time"
-              label="PIC"
-              fullWidth
-              inputProps={{ step: "0.1", min: "0" }}
-              defaultValue={initial("pic_time")}
-            />
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <TextField
-              type="number"
-              name="sic_time"
-              label="SIC"
-              fullWidth
-              inputProps={{ step: "0.1", min: "0" }}
-              defaultValue={initial("sic_time")}
-            />
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <TextField
-              type="number"
-              name="solo_time"
-              label="Solo"
-              fullWidth
-              inputProps={{ step: "0.1", min: "0" }}
-              defaultValue={initial("solo_time")}
-            />
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <TextField
-              type="number"
-              name="cross_country_time"
-              label="Cross-country"
-              fullWidth
-              inputProps={{ step: "0.1", min: "0" }}
-              defaultValue={initial("cross_country_time")}
-            />
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <TextField
-              type="number"
-              name="night_time"
-              label="Night"
-              fullWidth
-              inputProps={{ step: "0.1", min: "0" }}
-              defaultValue={initial("night_time")}
-            />
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <TextField
-              type="number"
+          <Heading as="h2" size="4" mt="2">
+            Time (hours, tenths)
+          </Heading>
+          <Grid columns={{ initial: "2", md: "6" }} gap="3">
+            <LabeledNumber name="total_time" label="Total time" required defaultValue={initial("total_time")} />
+            <LabeledNumber name="pic_time" label="PIC" defaultValue={initial("pic_time")} />
+            <LabeledNumber name="sic_time" label="SIC" defaultValue={initial("sic_time")} />
+            <LabeledNumber name="solo_time" label="Solo" defaultValue={initial("solo_time")} />
+            <LabeledNumber name="cross_country_time" label="Cross-country" defaultValue={initial("cross_country_time")} />
+            <LabeledNumber name="night_time" label="Night" defaultValue={initial("night_time")} />
+            <LabeledNumber
               name="instrument_actual_time"
               label="Instrument, actual"
-              fullWidth
-              inputProps={{ step: "0.1", min: "0" }}
               defaultValue={initial("instrument_actual_time")}
             />
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <TextField
-              type="number"
+            <LabeledNumber
               name="instrument_simulated_time"
               label="Instrument, hood/sim"
-              fullWidth
-              inputProps={{ step: "0.1", min: "0" }}
               defaultValue={initial("instrument_simulated_time")}
             />
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <TextField
-              type="number"
+            <LabeledNumber
               name="flight_instructor_time"
               label="CFI given"
-              fullWidth
-              inputProps={{ step: "0.1", min: "0" }}
               defaultValue={initial("flight_instructor_time")}
             />
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <TextField
-              type="number"
+            <LabeledNumber
               name="dual_received_time"
               label="Dual received"
-              fullWidth
-              inputProps={{ step: "0.1", min: "0" }}
               defaultValue={initial("dual_received_time")}
             />
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <TextField
-              type="number"
+            <LabeledNumber
               name="simulator_time"
               label="Simulator / FTD / ATD"
-              fullWidth
-              inputProps={{ step: "0.1", min: "0" }}
               defaultValue={initial("simulator_time")}
             />
+            <Flex direction="column" gap="1">
+              <Text as="label" htmlFor={deviceId} size="1" color="gray">
+                Device type
+              </Text>
+              <Select.Root value={simulatorDeviceType} onValueChange={setSimulatorDeviceType}>
+                <Select.Trigger id={deviceId} aria-label="Device type" />
+                <Select.Content>
+                  {SIMULATOR_DEVICES.map((option) => (
+                    <Select.Item key={option.value} value={option.value}>
+                      {option.label}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+              <input
+                type="hidden"
+                name="simulator_device_type"
+                value={simulatorDeviceType === NONE ? "" : simulatorDeviceType}
+              />
+              <Text size="1" color="gray">
+                Required if sim time &gt; 0
+              </Text>
+            </Flex>
           </Grid>
-          <Grid item xs={6} md={2}>
-            <TextField
-              select
-              name="simulator_device_type"
-              label="Device type"
-              fullWidth
-              defaultValue={initial("simulator_device_type", "")}
-              helperText="Required if sim time > 0"
-            >
-              {SIMULATOR_DEVICES.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Grid>
-        </Grid>
 
-        <MDBox mt={4} mb={2}>
-          <MDTypography variant="h6">Landings, approaches, holds</MDTypography>
-        </MDBox>
-        <Grid container spacing={2}>
-          <Grid item xs={6} md={2}>
-            <TextField
-              type="number"
+          <Heading as="h2" size="4" mt="2">
+            Landings, approaches, holds
+          </Heading>
+          <Grid columns={{ initial: "2", md: "6" }} gap="3">
+            <LabeledNumber
               name="day_landings_full_stop"
               label="Day full-stop"
-              fullWidth
-              inputProps={{ step: "1", min: "0" }}
+              step="1"
               defaultValue={initial("day_landings_full_stop", "0")}
             />
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <TextField
-              type="number"
+            <LabeledNumber
               name="day_landings_touch_go"
               label="Day touch & go"
-              fullWidth
-              inputProps={{ step: "1", min: "0" }}
+              step="1"
               defaultValue={initial("day_landings_touch_go", "0")}
             />
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <TextField
-              type="number"
+            <LabeledNumber
               name="night_takeoffs"
               label="Night takeoffs"
-              fullWidth
-              inputProps={{ step: "1", min: "0" }}
+              step="1"
               defaultValue={initial("night_takeoffs", "0")}
             />
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <TextField
-              type="number"
+            <LabeledNumber
               name="night_landings_full_stop"
               label="Night full-stop"
-              fullWidth
-              inputProps={{ step: "1", min: "0" }}
+              step="1"
               defaultValue={initial("night_landings_full_stop", "0")}
-              helperText="Counts for 61.57(b)"
+              hint="Counts for 61.57(b)"
             />
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <TextField
-              type="number"
+            <LabeledNumber
               name="night_landings_touch_go"
               label="Night touch & go"
-              fullWidth
-              inputProps={{ step: "1", min: "0" }}
+              step="1"
               defaultValue={initial("night_landings_touch_go", "0")}
             />
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <TextField
-              type="number"
-              name="holds"
-              label="Holds"
-              fullWidth
-              inputProps={{ step: "1", min: "0" }}
-              defaultValue={initial("holds", "0")}
-            />
-          </Grid>
-          <Grid item xs={6} md={3}>
-            <TextField
-              type="number"
+            <LabeledNumber name="holds" label="Holds" step="1" defaultValue={initial("holds", "0")} />
+            <LabeledNumber
               name="approaches_count"
               label="Approaches"
-              fullWidth
-              inputProps={{ step: "1", min: "0" }}
+              step="1"
               defaultValue={initial("approaches_count", "0")}
-              helperText="Counts for 61.57(c)"
+              hint="Counts for 61.57(c)"
             />
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+              <Text as="label" htmlFor={approachId} size="1" color="gray">
+                Approach type
+              </Text>
+              <Select.Root value={approachType} onValueChange={setApproachType}>
+                <Select.Trigger id={approachId} aria-label="Approach type" />
+                <Select.Content>
+                  {APPROACH_TYPES.map((option) => (
+                    <Select.Item key={option.value} value={option.value}>
+                      {option.label}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+              <input type="hidden" name="approach_type" value={approachType === NONE ? "" : approachType} />
+              <Text size="1" color="gray">
+                If the source gives you one
+              </Text>
+            </Flex>
           </Grid>
-          <Grid item xs={12} md={4}>
-            <TextField
-              select
-              name="approach_type"
-              label="Approach type"
-              fullWidth
-              defaultValue={initial("approach_type", "")}
-              helperText="If the source gives you one"
-            >
-              {APPROACH_TYPES.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Grid>
-        </Grid>
 
-        <MDBox mt={4} mb={2}>
-          <TextField
-            name="remarks"
-            label="Remarks"
-            fullWidth
-            multiline
-            rows={2}
-            defaultValue={initial("remarks")}
-          />
-        </MDBox>
+          <Flex direction="column" gap="1">
+            <Text as="label" htmlFor="remarks" size="1" color="gray">
+              Remarks
+            </Text>
+            <TextArea id="remarks" name="remarks" rows={2} defaultValue={initial("remarks")} />
+          </Flex>
 
-        {/* role="alert" so a screen reader hears the rejection; the form
-            resets on every dispatch and nothing else announces it. */}
-        <MDBox mt={1} role="alert" aria-live="polite">
-          {state.error ? (
-            <MDTypography variant="caption" color="error">
-              {state.error}
-            </MDTypography>
-          ) : null}
-        </MDBox>
+          {/* role="alert" so a screen reader hears the rejection; the form
+              resets on every dispatch and nothing else announces it. */}
+          <div role="alert" aria-live="polite">
+            {state.error ? (
+              <Text size="1" color="red">
+                {state.error}
+              </Text>
+            ) : null}
+          </div>
 
-        <MDBox mt={3} display="flex" gap={1.5}>
-          <MDButton type="submit" variant="gradient" color="info" disabled={pending}>
-            {pending ? "Saving…" : submitLabel}
-          </MDButton>
-          <MDButton component={NextLink} href="/logbook" variant="outlined" color="info">
-            Cancel
-          </MDButton>
-        </MDBox>
-      </MDBox>
+          <Flex gap="3">
+            <Button type="submit" disabled={pending}>
+              {pending ? "Saving…" : submitLabel}
+            </Button>
+            <Button asChild variant="outline">
+              <NextLink href="/logbook">Cancel</NextLink>
+            </Button>
+          </Flex>
+        </Flex>
+      </form>
     </Card>
+  );
+}
+
+function LabeledField({
+  label,
+  htmlFor,
+  style,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+}) {
+  return (
+    <Flex direction="column" gap="1" style={style}>
+      <Text as="label" htmlFor={htmlFor} size="1" color="gray">
+        {label}
+      </Text>
+      {children}
+    </Flex>
+  );
+}
+
+function LabeledNumber({
+  name,
+  label,
+  defaultValue,
+  required,
+  step = "0.1",
+  hint,
+}: {
+  name: string;
+  label: string;
+  defaultValue: string;
+  required?: boolean;
+  step?: string;
+  hint?: string;
+}) {
+  return (
+    <Flex direction="column" gap="1">
+      <Text as="label" htmlFor={name} size="1" color="gray">
+        {label}
+      </Text>
+      <TextField.Root
+        id={name}
+        type="number"
+        name={name}
+        required={required}
+        min="0"
+        step={step}
+        defaultValue={defaultValue}
+        className="tnum"
+      />
+      {hint ? (
+        <Text size="1" color="gray">
+          {hint}
+        </Text>
+      ) : null}
+    </Flex>
   );
 }

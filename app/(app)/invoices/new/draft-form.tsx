@@ -3,21 +3,17 @@
 import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
 import NextLink from "next/link";
-import Card from "@mui/material/Card";
-import Grid from "@mui/material/Grid";
-import TextField from "@mui/material/TextField";
-import MenuItem from "@mui/material/MenuItem";
-import Checkbox from "@mui/material/Checkbox";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
-
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
+import {
+  Button,
+  Card,
+  Checkbox,
+  Flex,
+  Grid,
+  Table,
+  Text,
+  TextField,
+  Select,
+} from "@radix-ui/themes";
 import { formatCents, formatDateRange } from "@/lib/format";
 import type { InvoiceFormState } from "../actions";
 
@@ -50,6 +46,11 @@ export type TripOption = {
 
 const initialState: InvoiceFormState = { error: null };
 
+// Radix Select forbids an empty-string item value, so the "no client
+// chosen" state is represented in the URL/component state as "" as
+// before, but the picker itself is only rendered once a client list
+// exists — the placeholder ("Choose a client") stands in for the blank
+// option instead of a sentinel item.
 export default function DraftForm({
   action,
   clients,
@@ -94,197 +95,185 @@ export default function DraftForm({
     .reduce((sum, t) => sum + t.estimated_value_cents, 0);
 
   return (
-    <Card>
-      <MDBox p={3} component="form" action={formAction}>
+    <Card size="3">
+      <form action={formAction}>
         <input type="hidden" name="client_id" value={selectedClientId} />
         {[...selectedTrips].map((id) => (
           <input key={id} type="hidden" name="trip_ids" value={id} />
         ))}
 
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
-            <TextField
-              select
-              label="Client"
-              fullWidth
-              value={selectedClientId}
-              onChange={(event) => pickClient(event.target.value)}
-              helperText={
-                clients.length === 0
-                  ? "No active clients yet — add one before drafting an invoice."
-                  : "Who this invoice bills"
-              }
+        <Grid columns={{ initial: "1", md: "3" }} gap="4">
+          <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+            <Text as="label" size="2" weight="medium">
+              Client
+            </Text>
+            <Select.Root
+              value={selectedClientId || undefined}
+              onValueChange={(value) => pickClient(value)}
             >
-              <MenuItem value="">Choose a client</MenuItem>
-              {clients.map((client) => (
-                <MenuItem key={client.id} value={client.id}>
-                  {client.name}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <TextField
+              <Select.Trigger placeholder="Choose a client" />
+              <Select.Content>
+                {clients.map((client) => (
+                  <Select.Item key={client.id} value={client.id}>
+                    {client.name}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+            <Text size="1" color="gray">
+              {clients.length === 0
+                ? "No active clients yet — add one before drafting an invoice."
+                : "Who this invoice bills"}
+            </Text>
+          </Flex>
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" htmlFor="tax_rate_percent">
+              Tax rate (%)
+            </Text>
+            <TextField.Root
+              id="tax_rate_percent"
               name="tax_rate_percent"
-              label="Tax rate (%)"
-              fullWidth
               inputMode="decimal"
               defaultValue={state.values?.tax_rate_percent ?? ""}
-              helperText="State sales/service tax, if any"
             />
-          </Grid>
+            <Text size="1" color="gray">
+              State sales/service tax, if any
+            </Text>
+          </Flex>
         </Grid>
 
         {selectedClientId ? (
-          <MDBox mt={4}>
-            <MDBox mb={1.5} display="flex" justifyContent="space-between" alignItems="center">
-              <MDTypography variant="h6">Unbilled trips</MDTypography>
+          <Flex direction="column" gap="3" mt="6">
+            <Flex justify="between" align="center">
+              <Text size="4" weight="bold">
+                Unbilled trips
+              </Text>
               {selectedTrips.size > 0 ? (
-                <MDTypography variant="button" color="text" fontWeight="regular">
+                <Text size="2" color="gray">
                   {selectedTrips.size} selected · est. {formatCents(selectedValueCents)}
-                </MDTypography>
+                </Text>
               ) : null}
-            </MDBox>
+            </Flex>
 
             {tripsError ? (
-              <MDTypography variant="button" color="error" role="alert">
+              <Text size="2" color="red" role="alert">
                 {tripsError}
-              </MDTypography>
+              </Text>
             ) : trips.length === 0 ? (
-              <MDTypography variant="button" color="text" fontWeight="regular">
+              <Text size="2" color="gray">
                 No completed, unbilled trips for this client yet.
-              </MDTypography>
+              </Text>
             ) : (
-              <TableContainer sx={{ boxShadow: "none" }}>
-                <Table>
-                  <TableHead sx={{ display: "table-header-group" }}>
-                    <TableRow>
-                      <TableCell />
-                      {["Dates", "Aircraft", "Flight days", "Travel days", "Rebill", "Est. value"].map(
-                        (heading, index) => (
-                          <TableCell key={heading} align={index >= 2 ? "right" : "left"}>
-                            <MDTypography variant="caption" fontWeight="bold" textTransform="uppercase">
-                              {heading}
-                            </MDTypography>
-                          </TableCell>
-                        )
-                      )}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {trips.map((trip) => {
-                      const disabled = trip.committed_invoice_label !== null;
-                      return (
-                        <TableRow key={trip.id} sx={disabled ? { opacity: 0.55 } : undefined}>
-                          <TableCell padding="checkbox">
-                            <Checkbox
-                              checked={selectedTrips.has(trip.id)}
-                              onChange={() => toggleTrip(trip)}
-                              disabled={disabled}
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <MDTypography variant="button" fontWeight="regular">
-                              {formatDateRange(trip.starts_on, trip.ends_on)}
-                            </MDTypography>
-                            {disabled ? (
-                              <MDTypography variant="caption" color="warning" display="block">
-                                Already on {trip.committed_invoice_label}
-                              </MDTypography>
-                            ) : null}
-                          </TableCell>
-                          <TableCell>
-                            <MDTypography variant="button" color="text" fontWeight="regular">
-                              {trip.aircraft_ident ?? "—"}
-                            </MDTypography>
-                          </TableCell>
-                          <TableCell align="right">
-                            {trip.has_day_rows ? (
-                              <MDTypography variant="button" color="text" fontWeight="regular">
-                                From day grid
-                              </MDTypography>
-                            ) : (
-                              <MDTypography variant="button" fontWeight="regular">
-                                {trip.day_count} × {formatCents(trip.day_rate_cents)}
-                              </MDTypography>
-                            )}
-                          </TableCell>
-                          <TableCell align="right">
-                            {trip.has_day_rows ? (
-                              <MDTypography variant="button" color="text" fontWeight="regular">
-                                —
-                              </MDTypography>
-                            ) : (
-                              <MDTypography
-                                variant="button"
-                                fontWeight="regular"
-                                color={trip.missing_travel_rate ? "warning" : "text"}
-                              >
-                                {trip.travel_day_count > 0
-                                  ? trip.missing_travel_rate
-                                    ? `${trip.travel_day_count} × no rate set`
-                                    : `${trip.travel_day_count} × ${formatCents(
-                                        trip.travel_day_rate_cents
-                                      )}`
-                                  : "—"}
-                              </MDTypography>
-                            )}
-                          </TableCell>
-                          <TableCell align="right">
-                            <MDTypography variant="button" color="text" fontWeight="regular">
-                              {trip.rebillable_expense_cents > 0
-                                ? formatCents(trip.rebillable_expense_cents)
+              <Table.Root variant="ghost">
+                <Table.Header>
+                  <Table.Row>
+                    <Table.ColumnHeaderCell />
+                    <Table.ColumnHeaderCell>Dates</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell>Aircraft</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell justify="end">Flight days</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell justify="end">Travel days</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell justify="end">Rebill</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell justify="end">Est. value</Table.ColumnHeaderCell>
+                  </Table.Row>
+                </Table.Header>
+                <Table.Body>
+                  {trips.map((trip) => {
+                    const disabled = trip.committed_invoice_label !== null;
+                    return (
+                      <Table.Row key={trip.id} style={disabled ? { opacity: 0.55 } : undefined}>
+                        <Table.Cell>
+                          <Checkbox
+                            checked={selectedTrips.has(trip.id)}
+                            onCheckedChange={() => toggleTrip(trip)}
+                            disabled={disabled}
+                          />
+                        </Table.Cell>
+                        <Table.Cell>
+                          <Text>{formatDateRange(trip.starts_on, trip.ends_on)}</Text>
+                          {disabled ? (
+                            <Text as="div" size="1" color="amber">
+                              Already on {trip.committed_invoice_label}
+                            </Text>
+                          ) : null}
+                        </Table.Cell>
+                        <Table.Cell>
+                          <Text color="gray">{trip.aircraft_ident ?? "—"}</Text>
+                        </Table.Cell>
+                        <Table.Cell justify="end">
+                          {trip.has_day_rows ? (
+                            <Text color="gray">From day grid</Text>
+                          ) : (
+                            <Text className="tnum">
+                              {trip.day_count} × {formatCents(trip.day_rate_cents)}
+                            </Text>
+                          )}
+                        </Table.Cell>
+                        <Table.Cell justify="end">
+                          {trip.has_day_rows ? (
+                            <Text color="gray">—</Text>
+                          ) : (
+                            <Text
+                              className="tnum"
+                              color={trip.missing_travel_rate ? "amber" : "gray"}
+                            >
+                              {trip.travel_day_count > 0
+                                ? trip.missing_travel_rate
+                                  ? `${trip.travel_day_count} × no rate set`
+                                  : `${trip.travel_day_count} × ${formatCents(
+                                      trip.travel_day_rate_cents
+                                    )}`
                                 : "—"}
-                            </MDTypography>
-                          </TableCell>
-                          <TableCell align="right">
-                            <MDTypography variant="button" fontWeight="medium">
-                              {formatCents(trip.estimated_value_cents)}
-                            </MDTypography>
-                            {trip.has_day_rows ? (
-                              <MDTypography
-                                variant="caption"
-                                color="text"
-                                fontWeight="regular"
-                                display="block"
-                                title="Priced from this trip's day-by-day grid (quantity × rate for each billable day), not the trip's flat day count/rate."
-                              >
-                                from day grid
-                              </MDTypography>
-                            ) : null}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+                            </Text>
+                          )}
+                        </Table.Cell>
+                        <Table.Cell justify="end">
+                          <Text color="gray" className="tnum">
+                            {trip.rebillable_expense_cents > 0
+                              ? formatCents(trip.rebillable_expense_cents)
+                              : "—"}
+                          </Text>
+                        </Table.Cell>
+                        <Table.Cell justify="end">
+                          <Text weight="medium" className="tnum">
+                            {formatCents(trip.estimated_value_cents)}
+                          </Text>
+                          {trip.has_day_rows ? (
+                            <Text
+                              as="div"
+                              size="1"
+                              color="gray"
+                              title="Priced from this trip's day-by-day grid (quantity × rate for each billable day), not the trip's flat day count/rate."
+                            >
+                              from day grid
+                            </Text>
+                          ) : null}
+                        </Table.Cell>
+                      </Table.Row>
+                    );
+                  })}
+                </Table.Body>
+              </Table.Root>
             )}
-          </MDBox>
+          </Flex>
         ) : null}
 
-        <MDBox mt={3} role="alert" aria-live="polite">
+        <Flex mt="4" role="alert" aria-live="polite">
           {state.error ? (
-            <MDTypography variant="caption" color="error">
+            <Text size="1" color="red">
               {state.error}
-            </MDTypography>
+            </Text>
           ) : null}
-        </MDBox>
+        </Flex>
 
-        <MDBox mt={3} display="flex" gap={1.5}>
-          <MDButton
-            type="submit"
-            variant="gradient"
-            color="info"
-            disabled={pending || !selectedClientId}
-          >
+        <Flex mt="4" gap="3">
+          <Button type="submit" disabled={pending || !selectedClientId}>
             {pending ? "Drafting…" : "Draft invoice"}
-          </MDButton>
-          <MDButton component={NextLink} href="/invoices" variant="outlined" color="info">
-            Cancel
-          </MDButton>
-        </MDBox>
-      </MDBox>
+          </Button>
+          <Button asChild variant="outline">
+            <NextLink href="/invoices">Cancel</NextLink>
+          </Button>
+        </Flex>
+      </form>
     </Card>
   );
 }

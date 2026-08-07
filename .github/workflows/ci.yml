@@ -8,6 +8,14 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Manual re-run. Added because PR #15 opened with no CI run at all — the
+  # pull_request event produced nothing, while the identical flow on #14
+  # had produced one minutes earlier. A PR whose checks never register
+  # looks the same at a glance as a PR that passed: one green Vercel
+  # deployment and no red. Without this, the only way to get CI onto such
+  # a commit is to push another one, which means the recovery for "CI did
+  # not run" is to dirty the history.
+  workflow_dispatch:
 
 jobs:
   build:

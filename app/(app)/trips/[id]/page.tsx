@@ -1,13 +1,10 @@
 import { notFound } from "next/navigation";
-import Card from "@mui/material/Card";
-import Grid from "@mui/material/Grid";
-
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
+import { Box, Card, Grid, Heading, Text } from "@radix-ui/themes";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDateRange } from "@/lib/format";
+import { tripValueCents } from "@/lib/trip-value";
 import PageShell from "../../page-shell";
 import TripForm, { type ClientOption, type TripFormValues } from "../trip-form";
 import LegEditor, { type LegRow } from "../leg-editor";
@@ -140,29 +137,17 @@ export default async function TripPage({
     0
   );
 
-  // F3: once day rows exist, createInvoiceDraft prices the trip from
-  // THEM — grouping billable rows by (day_type_id, rate_cents) — and
-  // ignores day_rate_cents/day_count/travel_day_rate_cents/
-  // travel_day_count entirely. Showing the scalar total here once rows
-  // exist is exactly the "two sources for one number" defect this
-  // screen's comment warned about: it would show a figure the invoice
-  // will not bill. Mirrored below on trips/page.tsx.
+  // F3/H6: the same day-rows-aware pricing every list/detail screen now
+  // shares (lib/trip-value.ts) — once day rows exist, createInvoiceDraft
+  // prices the trip from THEM, grouping billable rows by (day_type_id,
+  // rate_cents), and ignores day_rate_cents/day_count/
+  // travel_day_rate_cents/travel_day_count entirely. Showing the scalar
+  // total here once rows exist would be exactly the "two sources for one
+  // number" defect this screen's comment used to warn about: a figure the
+  // invoice will not bill.
   const hasDayRows = tripDays.length > 0;
   const billableByDayType = new Map(dayTypes.map((t) => [t.id, t.billable]));
-  const dayRowsValueCents = tripDays.reduce((sum, day) => {
-    if (!billableByDayType.get(day.day_type_id)) return sum;
-    return sum + Math.round(Number(day.quantity) * day.rate_cents);
-  }, 0);
-
-  // Flight days AND travel days. Leaving travel days out here while
-  // Phase 5 drafts them as their own invoice line would make the trip
-  // screen and the invoice disagree about what the job is worth.
-  const flightValue = Math.round(trip.day_rate_cents * Number(trip.day_count));
-  const travelValue = Math.round(
-    (trip.travel_day_rate_cents ?? 0) * Number(trip.travel_day_count ?? 0)
-  );
-  const scalarValue = flightValue + travelValue;
-  const value = hasDayRows ? dayRowsValueCents : scalarValue;
+  const value = tripValueCents(trip, tripDays, billableByDayType);
 
   // F5: keyed on the trip's id and dates only — NOT on the persisted day
   // rows' content anymore. That extra component used to force a remount
@@ -191,22 +176,18 @@ export default async function TripPage({
       action={<DeleteTripButton id={trip.id} disabled={locked} />}
     >
       {locked ? (
-        <MDBox mb={3}>
-          <Card>
-            <MDBox p={3}>
-              <MDTypography variant="button" color="text" fontWeight="regular">
-                This trip is billed on {billedOn}. Its dates and amounts are
-                frozen here — correcting them would leave the trip and that
-                invoice disagreeing about what was flown. Remove it from the
-                invoice first.
-              </MDTypography>
-            </MDBox>
-          </Card>
-        </MDBox>
+        <Card mb="4">
+          <Text size="2" color="gray">
+            This trip is billed on {billedOn}. Its dates and amounts are
+            frozen here — correcting them would leave the trip and that
+            invoice disagreeing about what was flown. Remove it from the
+            invoice first.
+          </Text>
+        </Card>
       ) : null}
 
-      <Grid container spacing={3}>
-        <Grid item xs={12} lg={7}>
+      <Grid columns={{ initial: "1", lg: "12" }} gap="4">
+        <Box gridColumn={{ lg: "span 7" }}>
           <TripForm
             action={updateTrip}
             clients={clients}
@@ -216,59 +197,47 @@ export default async function TripPage({
             locked={locked}
             hasDayRows={hasDayRows}
           />
-        </Grid>
-        <Grid item xs={12} lg={5}>
-          <Card>
-            <MDBox p={3} pb={0} lineHeight={1.25}>
-              <MDTypography variant="h6">Legs</MDTypography>
-              <MDTypography variant="button" color="text" fontWeight="regular">
-                {blockTotal.toFixed(1)} block hours ·{" "}
-                {nightFullStop} night full-stop landing
-                {nightFullStop === 1 ? "" : "s"}
-              </MDTypography>
-            </MDBox>
-            <MDBox p={3} pt={2}>
-              <LegEditor
-                tripId={trip.id}
-                legs={legs}
-                defaultDate={trip.starts_on}
-              />
-            </MDBox>
+        </Box>
+        <Box gridColumn={{ lg: "span 5" }}>
+          <Card size="3">
+            <Heading as="h3" size="4">Legs</Heading>
+            <Text as="p" size="2" color="gray" className="tnum">
+              {blockTotal.toFixed(1)} block hours ·{" "}
+              {nightFullStop} night full-stop landing
+              {nightFullStop === 1 ? "" : "s"}
+            </Text>
+            <LegEditor tripId={trip.id} legs={legs} defaultDate={trip.starts_on} />
           </Card>
-        </Grid>
+        </Box>
 
-        <Grid item xs={12}>
-          <Card>
-            <MDBox p={3} pb={0} lineHeight={1.25}>
-              <MDTypography variant="h6">Day grid</MDTypography>
-              <MDTypography variant="button" color="text" fontWeight="regular">
-                One row per calendar day of the trip — this is what feeds
-                invoicing and per diem, and once it has rows it is what
-                sets the headline value above, not the flight/travel
-                totals below.
-              </MDTypography>
-            </MDBox>
-            <MDBox p={3} pt={2}>
-              <DayGrid
-                key={dayGridKey}
-                tripId={trip.id}
-                startsOn={trip.starts_on}
-                endsOn={trip.ends_on}
-                locked={locked}
-                billedOn={billedOn}
-                dayTypes={dayTypes}
-                existingDays={tripDays}
-                clientRates={clientRates}
-                scalars={{
-                  dayRateCents: trip.day_rate_cents,
-                  dayCount: Number(trip.day_count),
-                  travelDayRateCents: trip.travel_day_rate_cents,
-                  travelDayCount: Number(trip.travel_day_count ?? 0),
-                }}
-              />
-            </MDBox>
+        <Box gridColumn={{ lg: "span 12" }}>
+          <Card size="3">
+            <Heading as="h3" size="4">Day grid</Heading>
+            <Text as="p" size="2" color="gray" mb="3">
+              One row per calendar day of the trip — this is what feeds
+              invoicing and per diem, and once it has rows it is what
+              sets the headline value above, not the flight/travel
+              totals below.
+            </Text>
+            <DayGrid
+              key={dayGridKey}
+              tripId={trip.id}
+              startsOn={trip.starts_on}
+              endsOn={trip.ends_on}
+              locked={locked}
+              billedOn={billedOn}
+              dayTypes={dayTypes}
+              existingDays={tripDays}
+              clientRates={clientRates}
+              scalars={{
+                dayRateCents: trip.day_rate_cents,
+                dayCount: Number(trip.day_count),
+                travelDayRateCents: trip.travel_day_rate_cents,
+                travelDayCount: Number(trip.travel_day_count ?? 0),
+              }}
+            />
           </Card>
-        </Grid>
+        </Box>
       </Grid>
     </PageShell>
   );

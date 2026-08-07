@@ -1,7 +1,5 @@
 import { notFound } from "next/navigation";
-import Card from "@mui/material/Card";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
+import { Card, Flex, Text } from "@radix-ui/themes";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
@@ -54,23 +52,15 @@ export default async function DocumentPage({
       action={<DeleteDocumentButton id={doc.id} />}
     >
       {doc.file_path ? (
-        <MDBox mb={3}>
-          <Card>
-            <MDBox
-              p={3}
-              display="flex"
-              justifyContent="space-between"
-              alignItems="center"
-              gap={2}
-            >
-              <MDTypography variant="button" color="text" fontWeight="regular">
-                A file is attached. It&rsquo;s stored privately — the link
-                below works for one minute.
-              </MDTypography>
-              <DocumentLink path={doc.file_path} />
-            </MDBox>
-          </Card>
-        </MDBox>
+        <Card>
+          <Flex justify="between" align="center" gap="3" p="1">
+            <Text size="2" color="gray">
+              A file is attached. It&rsquo;s stored privately — the link below works for one
+              minute.
+            </Text>
+            <DocumentLink path={doc.file_path} />
+          </Flex>
+        </Card>
       ) : null}
 
       <DocumentForm

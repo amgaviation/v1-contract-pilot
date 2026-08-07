@@ -1,24 +1,13 @@
 import NextLink from "next/link";
-import Grid from "@mui/material/Grid";
-import Card from "@mui/material/Card";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
-
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
-import MDBadge from "@/components/mdpro/MDBadge";
-import ComplexStatisticsCard from "@/components/mdpro/examples/Cards/StatisticsCards/ComplexStatisticsCard";
+import { Badge, Button, Callout, Card, Flex, Grid, Table, Text } from "@radix-ui/themes";
+import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
-import { EXPIRY_LADDER_BADGE } from "./documents/expiry-badge";
+import { tripValueCents, type TripDayValueRow } from "@/lib/trip-value";
+import { EXPIRY_LADDER_BADGE, type ExpiryBadge } from "./documents/expiry-badge";
 import PageShell from "./page-shell";
 
 export const metadata = { title: "Overview" };
@@ -100,25 +89,6 @@ type ExpirationRow = {
   ladder_stage: "overdue" | "t_minus_1" | "t_minus_7" | "t_minus_14" | "t_minus_30" | "ok";
 };
 
-/**
- * Flight days AND travel days — same rule as app/(app)/trips/page.tsx's
- * tripValueCents. Omitting travel days here would make the Overview screen
- * and the invoice it drafts disagree about what a trip is worth.
- */
-function tripValueCents(trip: {
-  day_rate_cents: number;
-  day_count: number;
-  travel_day_rate_cents: number | null;
-  travel_day_count: number | null;
-}): number {
-  return (
-    Math.round(trip.day_rate_cents * Number(trip.day_count)) +
-    Math.round(
-      (trip.travel_day_rate_cents ?? 0) * Number(trip.travel_day_count ?? 0)
-    )
-  );
-}
-
 /** Ordered ICAO chain from a trip's legs, e.g. "KFXE → KTEB → KFXE". */
 function buildRoute(legs: LegRow[]): string | null {
   const points: string[] = [];
@@ -133,33 +103,11 @@ function buildRoute(legs: LegRow[]): string | null {
   return points.length ? points.join(" → ") : null;
 }
 
-type Badge = { tone: string; label: string };
-
-const LADDER_FALLBACK: Badge = { tone: "secondary", label: "—" };
-
-type KpiCardStyle = { tone: "dark" | "info" | "success" | "primary"; icon: string };
-const KPI_CARD_STYLE: Record<string, KpiCardStyle> = {
-  unbilled: { tone: "dark", icon: "flight_takeoff" },
-  awaiting: { tone: "info", icon: "receipt_long" },
-  paid: { tone: "success", icon: "payments" },
-  deductible: { tone: "primary", icon: "savings" },
-};
-const KPI_CARD_FALLBACK: KpiCardStyle = { tone: "info", icon: "insights" };
-
-/**
- * Visually-hidden-but-readable table caption — structural, not a visual
- * token, so it's exempt from the token layer.
- */
-const visuallyHiddenSx = {
-  position: "absolute",
-  width: "1px",
-  height: "1px",
-  margin: "-1px",
-  padding: 0,
-  overflow: "hidden",
-  clipPath: "inset(50%)",
-  whiteSpace: "nowrap",
-} as const;
+// The ladder vocabulary is shared with the documents screen and lives in
+// app/(app)/documents/expiry-badge.ts, whose tones ARE Radix Badge colours
+// — so there is nothing to translate here. That file's header explains why
+// it must stay the only definition.
+const LADDER_FALLBACK: ExpiryBadge = { tone: "gray", label: "—" };
 
 const READY_TO_INVOICE_LIMIT = 6;
 const NEEDS_ATTENTION_LIMIT = 8;
@@ -282,7 +230,7 @@ export default async function OverviewPage() {
   // liveInvoices — one balance-due lookup covers both.
   const balanceIds = liveInvoices.map((i) => i.id);
 
-  const [legsRes, totalsRes] = await Promise.all([
+  const [legsRes, totalsRes, dayRowsRes, dayTypesRes] = await Promise.all([
     tripIds.length
       ? supabase
           .from("trip_legs")
@@ -296,6 +244,17 @@ export default async function OverviewPage() {
           balanceIds
         )
       : Promise.resolve({ data: [] as InvoiceTotalRow[], error: null }),
+    // H6: the same F3 day-rows-aware pricing trips/page.tsx uses — pulled
+    // in here too so this screen's "Ready to invoice" figures can never
+    // disagree with Trips' or with what createInvoiceDraft actually bills.
+    // See lib/trip-value.ts's own comment for the shared contract.
+    tripIds.length
+      ? supabase
+          .from("trip_days")
+          .select("trip_id, day_type_id, rate_cents, quantity")
+          .in("trip_id", tripIds)
+      : Promise.resolve({ data: [] as (TripDayValueRow & { trip_id: string })[], error: null }),
+    supabase.from("day_types").select("id, billable"),
   ]);
 
   const legs = (legsRes.data ?? []) as LegRow[];
@@ -314,6 +273,8 @@ export default async function OverviewPage() {
     { context: "trip routes", error: legsRes.error },
     { context: "invoice balances", error: totalsRes.error },
     { context: "voided invoices", error: voidInvoicesRes.error },
+    { context: "trip day grids", error: dayRowsRes.error },
+    { context: "day types", error: dayTypesRes.error },
   ].filter((e) => e.error);
 
   // -----------------------------------------------------------------------
@@ -333,6 +294,18 @@ export default async function OverviewPage() {
     list.push(leg);
     legsByTrip.set(leg.trip_id, list);
   }
+  const dayRowsByTrip = new Map<string, TripDayValueRow[]>();
+  for (const row of (dayRowsRes.data ?? []) as (TripDayValueRow & { trip_id: string })[]) {
+    const forTrip = dayRowsByTrip.get(row.trip_id) ?? [];
+    forTrip.push(row);
+    dayRowsByTrip.set(row.trip_id, forTrip);
+  }
+  const billableByDayType = new Map<string, boolean>(
+    ((dayTypesRes.data ?? []) as { id: string; billable: boolean }[]).map((t) => [
+      t.id,
+      t.billable,
+    ])
+  );
 
   // KPI 1 — unbilled work. Day-rate + travel-day value PLUS the rebillable
   // expenses attached to those trips, because that is what the invoice
@@ -345,7 +318,10 @@ export default async function OverviewPage() {
   // the KPI was the one that disagreed with the money the pilot bills.
   // Three figures on one screen, two definitions.
   const unbilledCents = trips.reduce(
-    (sum, t) => sum + tripValueCents(t) + (rebillByTrip.get(t.id) ?? 0),
+    (sum, t) =>
+      sum +
+      tripValueCents(t, dayRowsByTrip.get(t.id), billableByDayType) +
+      (rebillByTrip.get(t.id) ?? 0),
     0
   );
   // "Oldest" is the MAX elapsed time since any unbilled trip ended, not
@@ -424,7 +400,7 @@ export default async function OverviewPage() {
   // rate-plus-expenses split, so the figure on this card is traceable to
   // the same two numbers the eventual invoice line items will show.
   const readyTrips = trips.slice(0, READY_TO_INVOICE_LIMIT).map((trip) => {
-    const rateCents = tripValueCents(trip);
+    const rateCents = tripValueCents(trip, dayRowsByTrip.get(trip.id), billableByDayType);
     const expenseCents = rebillByTrip.get(trip.id) ?? 0;
     const days =
       Number(trip.day_count) +
@@ -524,278 +500,230 @@ export default async function OverviewPage() {
             }`
       }
       action={
-        <MDBox display="flex" gap={1.5}>
-          <MDButton component={NextLink} href="/trips/new" variant="outlined" color="info">
-            Log a trip
-          </MDButton>
-          <MDButton component={NextLink} href="/invoices/new" variant="gradient" color="info">
-            Create invoice
-          </MDButton>
-        </MDBox>
+        <Flex gap="3">
+          <Button asChild variant="outline">
+            <NextLink href="/trips/new">Log a trip</NextLink>
+          </Button>
+          <Button asChild>
+            <NextLink href="/invoices/new">Create invoice</NextLink>
+          </Button>
+        </Flex>
       }
     >
       {errors.length > 0 ? (
-        <MDBox mb={3}>
-          <Card>
-            <MDBox p={3}>
-              <MDTypography variant="button" color="error">
-                {`Couldn't load: ${errors.map((e) => e.context).join(", ")}. `}
-                {friendlyDbError(errors[0]?.error, "overview")}
-              </MDTypography>
-            </MDBox>
-          </Card>
-        </MDBox>
+        <Callout.Root color="red">
+          <Callout.Icon>
+            <ExclamationTriangleIcon />
+          </Callout.Icon>
+          <Callout.Text>
+            {`Couldn't load: ${errors.map((e) => e.context).join(", ")}. `}
+            {friendlyDbError(errors[0]?.error, "overview")}
+          </Callout.Text>
+        </Callout.Root>
       ) : null}
 
       {truncatedAggregates.length > 0 ? (
-        <MDBox mb={3}>
-          <Card>
-            <MDBox p={3}>
-              <MDTypography variant="button" color="warning">
-                {`Figures using ${truncatedAggregates.join(
-                  ", "
-                )} may be partial — there are more than ${AGGREGATE_LIMIT} rows and only the first ${AGGREGATE_LIMIT} were totaled.`}
-              </MDTypography>
-            </MDBox>
-          </Card>
-        </MDBox>
+        <Callout.Root color="amber">
+          <Callout.Icon>
+            <ExclamationTriangleIcon />
+          </Callout.Icon>
+          <Callout.Text>
+            {`Figures using ${truncatedAggregates.join(
+              ", "
+            )} may be partial — there are more than ${AGGREGATE_LIMIT} rows and only the first ${AGGREGATE_LIMIT} were totaled.`}
+          </Callout.Text>
+        </Callout.Root>
       ) : null}
 
       {/* Row 1 — KPI statistics cards. */}
-      <Grid container spacing={3}>
-        {KPIS.map((kpi) => {
-          const style = KPI_CARD_STYLE[kpi.id] ?? KPI_CARD_FALLBACK;
-          return (
-            <Grid item xs={12} sm={6} lg={3} key={kpi.id}>
-              <MDBox mb={1.5}>
-                <ComplexStatisticsCard
-                  color={style.tone}
-                  icon={style.icon}
-                  title={kpi.label}
-                  count={kpi.value}
-                  percentage={{ color: "secondary", amount: "", label: kpi.sub }}
-                />
-              </MDBox>
-            </Grid>
-          );
-        })}
+      <Grid columns={{ initial: "1", sm: "2", lg: "4" }} gap="4">
+        {KPIS.map((kpi) => (
+          <Card key={kpi.id}>
+            <Flex direction="column" gap="1">
+              <Text size="1" color="gray">
+                {kpi.label}
+              </Text>
+              <Text size="6" weight="bold" className="tnum">
+                {kpi.value}
+              </Text>
+              <Text size="1" color="gray">
+                {kpi.sub}
+              </Text>
+            </Flex>
+          </Card>
+        ))}
       </Grid>
 
       {/* Row 2 — document expirations. NOT a currency determination — see
           the query comment above on why this deliberately excludes
           day/night/instrument recency. */}
-      <MDBox mt={3}>
-        <Card>
-          <MDBox p={3} pb={0} lineHeight={1.25}>
-            <MDTypography variant="h6">Document expirations</MDTypography>
-            <MDTypography variant="button" color="text" fontWeight="regular">
-              Medical, flight review, and passport dates from your documents
-            </MDTypography>
-          </MDBox>
-          <MDBox p={3} pt={1}>
-            {expirationRows.length === 0 ? (
-              <MDBox py={3} textAlign="center">
-                <MDTypography variant="button" color="text" fontWeight="regular">
-                  No document dates on file yet.
-                </MDTypography>
-                <MDBox mt={2}>
-                  <MDButton component={NextLink} href="/documents" variant="outlined" color="info">
-                    Add your documents
-                  </MDButton>
-                </MDBox>
-              </MDBox>
-            ) : (
-              <TableContainer sx={{ boxShadow: "none" }}>
-                <Table>
-                  <MDBox component="caption" sx={visuallyHiddenSx}>
-                    Document expirations
-                  </MDBox>
-                  <TableHead sx={{ display: "table-header-group" }}>
-                    <TableRow>
-                      <TableCell>
-                        <MDTypography variant="caption" fontWeight="bold" textTransform="uppercase">
-                          Document
-                        </MDTypography>
-                      </TableCell>
-                      <TableCell>
-                        <MDTypography variant="caption" fontWeight="bold" textTransform="uppercase">
-                          Expires
-                        </MDTypography>
-                      </TableCell>
-                      <TableCell align="right">
-                        <MDTypography variant="caption" fontWeight="bold" textTransform="uppercase">
-                          Status
-                        </MDTypography>
-                      </TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {expirationRows.map((row) => {
-                      const badge = EXPIRY_LADDER_BADGE[row.ladder_stage] ?? LADDER_FALLBACK;
-                      return (
-                        <TableRow key={row.source_id}>
-                          <TableCell component="th" scope="row">
-                            <MDTypography variant="button" fontWeight="medium">
-                              {row.item_label}
-                            </MDTypography>
-                          </TableCell>
-                          <TableCell>
-                            <MDTypography variant="button" color="text" fontWeight="regular">
-                              {formatDate(row.expires_on)}
-                            </MDTypography>
-                          </TableCell>
-                          <TableCell align="right">
-                            <MDBadge
-                              variant="gradient"
-                              color={badge.tone}
-                              badgeContent={badge.label}
-                              size="sm"
-                              container
-                            />
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-            <MDBox mt={2}>
-              {/* Deliberately NOT the currency disclaimer. That copy opens
-                  "Currency is calculated from the entries you logged",
-                  which asserts a calculation this product does not yet
-                  perform — the currency engine is Phase 7 and ships only
-                  after an owner spec review and counsel sign-off on the
-                  wording. Showing it here is merely inaccurate today, but
-                  it also spends the disclaimer early: when the real engine
-                  lands, CURRENCY_DISCLAIMER travels with IT, verbatim from
-                  lib/brand.ts. This panel claims only what it is — dates
-                  the pilot typed off their own documents. */}
-              <MDTypography variant="caption" color="text">
-                These are the expiry dates you recorded on your own
-                documents. Keeping them current is your responsibility.
-              </MDTypography>
-            </MDBox>
-          </MDBox>
-        </Card>
-      </MDBox>
+      <Card>
+        <Flex direction="column" gap="1" mb="3">
+          <Text size="4" weight="medium">
+            Document expirations
+          </Text>
+          <Text size="2" color="gray">
+            Medical, flight review, and passport dates from your documents
+          </Text>
+        </Flex>
+
+        {expirationRows.length === 0 ? (
+          <Flex direction="column" align="center" gap="3" py="5">
+            <Text size="2" color="gray">
+              No document dates on file yet.
+            </Text>
+            <Button asChild variant="outline">
+              <NextLink href="/documents">Add your documents</NextLink>
+            </Button>
+          </Flex>
+        ) : (
+          <Table.Root variant="surface">
+            <caption className="rt-VisuallyHidden">Document expirations</caption>
+            <Table.Header>
+              <Table.Row>
+                <Table.ColumnHeaderCell>Document</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>Expires</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell justify="end">Status</Table.ColumnHeaderCell>
+              </Table.Row>
+            </Table.Header>
+            <Table.Body>
+              {expirationRows.map((row) => {
+                const badge = EXPIRY_LADDER_BADGE[row.ladder_stage] ?? LADDER_FALLBACK;
+                return (
+                  <Table.Row key={row.source_id}>
+                    <Table.Cell>
+                      <Text weight="medium">{row.item_label}</Text>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Text color="gray">{formatDate(row.expires_on)}</Text>
+                    </Table.Cell>
+                    <Table.Cell justify="end">
+                      <Badge color={badge.tone}>{badge.label}</Badge>
+                    </Table.Cell>
+                  </Table.Row>
+                );
+              })}
+            </Table.Body>
+          </Table.Root>
+        )}
+
+        <Flex mt="3">
+          {/* Deliberately NOT the currency disclaimer. That copy opens
+              "Currency is calculated from the entries you logged", which
+              asserts a calculation this product does not yet perform —
+              the currency engine is Phase 7 and ships only after an owner
+              spec review and counsel sign-off on the wording. Showing it
+              here is merely inaccurate today, but it also spends the
+              disclaimer early: when the real engine lands,
+              CURRENCY_DISCLAIMER travels with IT, verbatim from
+              lib/brand.ts. This panel claims only what it is — dates the
+              pilot typed off their own documents. */}
+          <Text size="1" color="gray">
+            These are the expiry dates you recorded on your own documents.
+            Keeping them current is your responsibility.
+          </Text>
+        </Flex>
+      </Card>
 
       {/* Row 3 — ready to invoice / needs attention. */}
-      <MDBox mt={3}>
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <Card sx={{ height: "100%" }}>
-              <MDBox p={3} pb={0} lineHeight={1.25}>
-                <MDTypography variant="h6">Ready to invoice</MDTypography>
-                <MDTypography variant="button" color="text" fontWeight="regular">
-                  {pluralize(readyCount, "trip")}
-                </MDTypography>
-              </MDBox>
-              <MDBox p={3} pt={2}>
-                {readyTrips.length === 0 ? (
-                  <MDBox py={3} textAlign="center">
-                    <MDTypography variant="button" color="text" fontWeight="regular">
-                      No completed trips are waiting to be billed.
-                    </MDTypography>
-                  </MDBox>
-                ) : (
-                  <>
-                    {readyTrips.map((trip) => (
-                      <MDBox
-                        key={trip.id}
-                        display="flex"
-                        justifyContent="space-between"
-                        alignItems="flex-start"
-                        py={1.5}
-                      >
-                        <MDBox lineHeight={1.4}>
-                          <MDTypography display="block" variant="button" fontWeight="medium">
-                            {trip.client}
-                          </MDTypography>
-                          <MDTypography display="block" variant="caption" color="text">
-                            {[trip.route, trip.tail, `${pluralize(trip.days, "day")}`, trip.dates]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </MDTypography>
-                          <MDTypography display="block" variant="caption" color="text">
-                            {trip.detail}
-                          </MDTypography>
-                        </MDBox>
-                        <MDTypography variant="button" fontWeight="bold">
-                          {formatCents(trip.amountCents)}
-                        </MDTypography>
-                      </MDBox>
-                    ))}
-                    {readyCount > readyTrips.length ? (
-                      <MDTypography variant="caption" color="text">
-                        {`+${readyCount - readyTrips.length} more`}
-                      </MDTypography>
-                    ) : null}
-                    <MDBox mt={2}>
-                      <MDButton component={NextLink} href="/invoices/new" variant="gradient" color="info">
-                        {`Invoice ${pluralize(readyCount, "trip")}`}
-                      </MDButton>
-                    </MDBox>
-                  </>
-                )}
-              </MDBox>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Card sx={{ height: "100%" }}>
-              <MDBox p={3} pb={0} lineHeight={1.25}>
-                <MDTypography variant="h6">Needs attention</MDTypography>
-                <MDTypography variant="button" color="text" fontWeight="regular">
-                  {pluralize(attentionCount, "item")}
-                </MDTypography>
-              </MDBox>
-              <MDBox p={3} pt={2}>
-                {NEEDS_ATTENTION.length === 0 ? (
-                  <MDBox py={3} textAlign="center">
-                    <MDTypography variant="button" color="text" fontWeight="regular">
-                      Nothing needs attention right now.
-                    </MDTypography>
-                  </MDBox>
-                ) : (
-                  NEEDS_ATTENTION.map((item) => (
-                    <MDBox
-                      key={item.id}
-                      display="flex"
-                      justifyContent="space-between"
-                      alignItems="center"
-                      py={1.5}
-                    >
-                      <MDBox lineHeight={1.4}>
-                        <MDTypography display="block" variant="button" fontWeight="medium">
-                          {item.label}
-                        </MDTypography>
-                        <MDTypography display="block" variant="caption" color="text">
-                          {item.detail}
-                        </MDTypography>
-                      </MDBox>
-                      <MDButton
-                        component={NextLink}
-                        href={item.href}
-                        variant="outlined"
-                        color="info"
-                        size="small"
-                        aria-label={`${item.action} — ${item.label}`}
-                      >
-                        {item.action}
-                      </MDButton>
-                    </MDBox>
-                  ))
-                )}
-                {attentionMoreCount > 0 ? (
-                  <MDTypography variant="caption" color="text">
-                    {`+${attentionMoreCount} more`}
-                  </MDTypography>
-                ) : null}
-              </MDBox>
-            </Card>
-          </Grid>
-        </Grid>
-      </MDBox>
+      <Grid columns={{ initial: "1", md: "2" }} gap="4">
+        <Card>
+          <Flex direction="column" gap="1" mb="3">
+            <Text size="4" weight="medium">
+              Ready to invoice
+            </Text>
+            <Text size="2" color="gray">
+              {pluralize(readyCount, "trip")}
+            </Text>
+          </Flex>
+
+          {readyTrips.length === 0 ? (
+            <Flex align="center" justify="center" py="5">
+              <Text size="2" color="gray">
+                No completed trips are waiting to be billed.
+              </Text>
+            </Flex>
+          ) : (
+            <>
+              <Flex direction="column">
+                {readyTrips.map((trip) => (
+                  <Flex key={trip.id} justify="between" align="start" py="2">
+                    <Flex direction="column">
+                      <Text weight="medium">{trip.client}</Text>
+                      <Text size="1" color="gray">
+                        {[trip.route, trip.tail, `${pluralize(trip.days, "day")}`, trip.dates]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </Text>
+                      <Text size="1" color="gray">
+                        {trip.detail}
+                      </Text>
+                    </Flex>
+                    <Text weight="bold" className="tnum">
+                      {formatCents(trip.amountCents)}
+                    </Text>
+                  </Flex>
+                ))}
+              </Flex>
+              {readyCount > readyTrips.length ? (
+                <Text size="1" color="gray">
+                  {`+${readyCount - readyTrips.length} more`}
+                </Text>
+              ) : null}
+              <Flex mt="3">
+                <Button asChild>
+                  <NextLink href="/invoices/new">{`Invoice ${pluralize(readyCount, "trip")}`}</NextLink>
+                </Button>
+              </Flex>
+            </>
+          )}
+        </Card>
+
+        <Card>
+          <Flex direction="column" gap="1" mb="3">
+            <Text size="4" weight="medium">
+              Needs attention
+            </Text>
+            <Text size="2" color="gray">
+              {pluralize(attentionCount, "item")}
+            </Text>
+          </Flex>
+
+          {NEEDS_ATTENTION.length === 0 ? (
+            <Flex align="center" justify="center" py="5">
+              <Text size="2" color="gray">
+                Nothing needs attention right now.
+              </Text>
+            </Flex>
+          ) : (
+            <Flex direction="column">
+              {NEEDS_ATTENTION.map((item) => (
+                <Flex key={item.id} justify="between" align="center" py="2">
+                  <Flex direction="column">
+                    <Text weight="medium">{item.label}</Text>
+                    <Text size="1" color="gray">
+                      {item.detail}
+                    </Text>
+                  </Flex>
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="1"
+                    aria-label={`${item.action} — ${item.label}`}
+                  >
+                    <NextLink href={item.href}>{item.action}</NextLink>
+                  </Button>
+                </Flex>
+              ))}
+            </Flex>
+          )}
+          {attentionMoreCount > 0 ? (
+            <Text size="1" color="gray">
+              {`+${attentionMoreCount} more`}
+            </Text>
+          ) : null}
+        </Card>
+      </Grid>
     </PageShell>
   );
 }

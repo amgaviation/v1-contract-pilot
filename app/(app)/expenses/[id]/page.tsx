@@ -1,7 +1,5 @@
 import { notFound } from "next/navigation";
-import Card from "@mui/material/Card";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
+import { Box, Card, Flex, Text } from "@radix-ui/themes";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
@@ -53,23 +51,17 @@ export default async function ExpensePage({
       action={<DeleteExpenseButton id={expense.id} />}
     >
       {expense.receipt_path ? (
-        <MDBox mb={3}>
-          <Card>
-            <MDBox
-              p={3}
-              display="flex"
-              justifyContent="space-between"
-              alignItems="center"
-              gap={2}
-            >
-              <MDTypography variant="button" color="text" fontWeight="regular">
+        <Box mb="4">
+          <Card size="3">
+            <Flex justify="between" align="center" gap="4">
+              <Text color="gray">
                 A receipt is attached. It&rsquo;s stored privately — the link
                 below works for one minute.
-              </MDTypography>
+              </Text>
               <ReceiptLink path={expense.receipt_path} />
-            </MDBox>
+            </Flex>
           </Card>
-        </MDBox>
+        </Box>
       ) : null}
 
       <ExpenseForm

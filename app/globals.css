@@ -1,12 +1,38 @@
-/* The visual system now lives in lib/mdpro (the ported Material Dashboard
-   3 PRO React theme, applied via components/mdpro/AppShell) — this file no
-   longer carries a design system. It exists only for the V1 logo mark
-   (components/ui/logo.tsx), whose fills are brand-identity constants from
-   the logo kit, not UI tokens: the wordmark is literal black, the bug is
-   literal #036BFC on every ground (see that component's header). The
-   sizing rules below are carried over verbatim from the retired
-   app/components.css; --v1-logo-size holds what used to be
-   --v1-text-mark (20px, "wordmark") from the retired token layer. */
+/* This file is deliberately almost empty, and should stay that way.
+
+   Radix Themes owns the design system. Colour, radius, spacing, shadow and
+   the type ramp all come from @radix-ui/themes/styles.css and are
+   configured by the <Theme> props in app/layout.tsx — not from here.
+   Anything you are tempted to add below is almost certainly a Theme prop,
+   a Radix component prop, or a sign that a component is reaching for a
+   value it should be asking the theme for.
+
+   The two things that legitimately live here:
+
+   1. The type family. Radix Themes ships a system font stack; this points
+      it at the self-hosted Inter loaded in lib/fonts.ts, so there is no
+      runtime request to a font CDN and no silent fallback.
+
+   2. The V1 mark. The wordmark is literal black and the bug is literal
+      #036BFC on every ground — the logo kit frames these as brand-identity
+      constants, not UI tokens. They are deliberately NOT wired to the
+      accent scale: re-pointing the mark at the theme would mean a future
+      accent change silently retints the trademark artwork. */
+
+.radix-themes {
+  --default-font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --heading-font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Every figure in this product is money or decimal hours read down a
+   column, and proportional digits make those columns ragged. Radix has no
+   prop for this, so it is a class: put it on any cell or figure that is a
+   number. It is the one utility class this product has, and it earns its
+   place because getting it wrong is a legibility bug, not a style
+   preference. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
 
 :root {
   --v1-logo-mark: #000000;
@@ -14,5 +40,23 @@
   --v1-logo-size: 20px;
 }
 
-.v1-logo { display: inline-block; line-height: 0; }
-.v1-logo svg { height: var(--v1-logo-size); width: auto; display: block; }
+/* On a dark ground the wordmark inverts and the bug does not. That is the
+   logo kit's own rule, not a UI decision: it fixes the mark at literal
+   black on light and literal white on dark, and specifies "one blue,
+   everywhere" for the bug precisely so there is no light-ground substitute
+   to remember. Without this the mark would render black-on-near-black and
+   simply disappear the moment the OS is in dark mode. */
+:root.dark {
+  --v1-logo-mark: #ffffff;
+}
+
+.v1-logo {
+  display: inline-block;
+  line-height: 0;
+}
+
+.v1-logo svg {
+  height: var(--v1-logo-size);
+  width: auto;
+  display: block;
+}

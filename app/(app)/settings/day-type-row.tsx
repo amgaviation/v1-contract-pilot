@@ -1,14 +1,7 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
-import Card from "@mui/material/Card";
-import Grid from "@mui/material/Grid";
-import TextField from "@mui/material/TextField";
-import MenuItem from "@mui/material/MenuItem";
-import Switch from "@mui/material/Switch";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
+import { useActionState, useEffect, useState, useTransition } from "react";
+import { Button, Card, Flex, Grid, Select, Switch, Text, TextField } from "@radix-ui/themes";
 import { centsToInput } from "@/lib/format";
 import type { Database } from "@/lib/supabase/database.types";
 import {
@@ -70,191 +63,215 @@ export default function DayTypeRow({
 
   const archived = Boolean(dayType.archived_at);
 
+  // Radix's Select.Root always renders its posting <select> with
+  // `defaultValue`, never `value` (@radix-ui/react-select's
+  // SelectBubbleInput) — so it is uncontrolled from React's point of view
+  // regardless of what Select.Root is given, and it's what the browser
+  // actually posts as long as `name` stays on it. React 19's post-action
+  // form.reset() restores it to its mount-time option even on a rejected
+  // submit — silently changing a day type's invoice line type to whatever
+  // it was when the row mounted. Fixed by dropping `name` and posting the
+  // real value from a controlled hidden input instead.
+  const [invoiceLineType, setInvoiceLineType] = useState(() =>
+    initial("invoice_line_type", dayType.invoice_line_type)
+  );
+  useEffect(() => {
+    if (submitted?.invoice_line_type !== undefined) {
+      setInvoiceLineType(String(submitted.invoice_line_type));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitted]);
+
   return (
     <Card>
-      <MDBox p={3} component="form" action={formAction}>
-        <input type="hidden" name="id" value={dayType.id} />
-        <input type="hidden" name="confirm_reprice" value={awaitingConfirm ? "1" : ""} />
+      <form action={formAction}>
+        <Flex direction="column" gap="3" p="1">
+          <input type="hidden" name="id" value={dayType.id} />
+          <input type="hidden" name="confirm_reprice" value={awaitingConfirm ? "1" : ""} />
 
-        <MDBox
-          mb={2}
-          display="flex"
-          justifyContent="space-between"
-          alignItems="center"
-          flexWrap="wrap"
-          gap={1}
-        >
-          <MDTypography variant="caption" color="text" textTransform="uppercase" fontWeight="bold">
-            {dayType.is_builtin ? "Starting day type" : "Custom day type"}
-          </MDTypography>
-          {archived ? (
-            <MDTypography variant="caption" color="text">
-              Archived — hidden from pickers, still used on past trips
-            </MDTypography>
-          ) : null}
-        </MDBox>
+          <Flex justify="between" align="center" wrap="wrap" gap="2">
+            <Text size="1" color="gray" weight="bold" style={{ textTransform: "uppercase" }}>
+              {dayType.is_builtin ? "Starting day type" : "Custom day type"}
+            </Text>
+            {archived ? (
+              <Text size="1" color="gray">
+                Archived — hidden from pickers, still used on past trips
+              </Text>
+            ) : null}
+          </Flex>
 
-        <Grid container spacing={2} alignItems="flex-start">
-          <Grid item xs={12} md={3}>
-            <TextField
-              name="label"
-              label="Label"
-              fullWidth
-              required
-              disabled={!canEdit}
-              defaultValue={initial("label", dayType.label)}
-            />
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <MDBox display="flex" alignItems="center" gap={1} pt={1}>
-              <Switch
-                name="billable"
+          <Grid columns={{ initial: "2", md: "12" }} gap="3" align="start">
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 3" }}>
+              <Text size="1" color="gray">
+                Label
+              </Text>
+              <TextField.Root
+                name="label"
+                required
                 disabled={!canEdit}
-                defaultChecked={checked("billable", dayType.billable)}
-                inputProps={{ "aria-label": "Billable" }}
+                defaultValue={initial("label", dayType.label)}
               />
-              <MDTypography variant="caption" color="text">
-                Billable
-              </MDTypography>
-            </MDBox>
-          </Grid>
-          <Grid item xs={6} md={3}>
-            <MDBox display="flex" alignItems="center" gap={1} pt={1}>
-              <Switch
-                name="counts_for_per_diem"
+            </Flex>
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }} justify="center">
+              <Text as="label" size="2" color="gray">
+                <Flex gap="2" align="center" mt="4">
+                  <Switch
+                    name="billable"
+                    value="on"
+                    disabled={!canEdit}
+                    defaultChecked={checked("billable", dayType.billable)}
+                    aria-label="Billable"
+                  />
+                  Billable
+                </Flex>
+              </Text>
+            </Flex>
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 3" }} justify="center">
+              <Text as="label" size="2" color="gray">
+                <Flex gap="2" align="center" mt="4">
+                  <Switch
+                    name="counts_for_per_diem"
+                    value="on"
+                    disabled={!canEdit}
+                    defaultChecked={checked("counts_for_per_diem", dayType.counts_for_per_diem)}
+                    aria-label="Counts for per diem"
+                  />
+                  Counts for per diem
+                </Flex>
+              </Text>
+            </Flex>
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+              <Text size="1" color="gray">
+                Default rate (USD)
+              </Text>
+              <TextField.Root
+                name="default_rate"
+                inputMode="decimal"
                 disabled={!canEdit}
-                defaultChecked={checked("counts_for_per_diem", dayType.counts_for_per_diem)}
-                inputProps={{ "aria-label": "Counts for per diem" }}
+                defaultValue={initial("default_rate", centsToInput(dayType.default_rate_cents))}
               />
-              <MDTypography variant="caption" color="text">
-                Counts for per diem
-              </MDTypography>
-            </MDBox>
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <TextField
-              name="default_rate"
-              label="Default rate (USD)"
-              fullWidth
-              inputMode="decimal"
-              disabled={!canEdit}
-              defaultValue={initial("default_rate", centsToInput(dayType.default_rate_cents))}
-              helperText="Blank = no rate agreed"
-            />
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <TextField
-              type="number"
-              name="sort_order"
-              label="Order"
-              fullWidth
-              disabled={!canEdit}
-              defaultValue={initial("sort_order", dayType.sort_order)}
-              helperText="Lower shows first"
-            />
+              <Text size="1" color="gray">
+                Blank = no rate agreed
+              </Text>
+            </Flex>
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+              <Text size="1" color="gray">
+                Order
+              </Text>
+              <TextField.Root
+                type="number"
+                name="sort_order"
+                disabled={!canEdit}
+                defaultValue={initial("sort_order", dayType.sort_order)}
+              />
+              <Text size="1" color="gray">
+                Lower shows first
+              </Text>
+            </Flex>
+
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 5" }}>
+              <Text as="label" size="1" color="gray" id={`bills-as-label-${dayType.id}`}>
+                Bills as
+              </Text>
+              <Select.Root
+                disabled={!canEdit}
+                value={invoiceLineType}
+                onValueChange={setInvoiceLineType}
+              >
+                <Select.Trigger aria-labelledby={`bills-as-label-${dayType.id}`} />
+                <Select.Content>
+                  {LINE_TYPE_OPTIONS.map((option) => (
+                    <Select.Item key={option.value} value={option.value}>
+                      {option.label}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+              <input type="hidden" name="invoice_line_type" value={invoiceLineType} />
+            </Flex>
+            <Flex direction="column" justify="center" style={{ gridColumn: "span 7" }}>
+              <Text size="1" color="gray">
+                The name is yours to change. Which invoice line it bills as is fixed, because the
+                invoice&rsquo;s own billing rules depend on it.
+              </Text>
+            </Flex>
           </Grid>
 
-          <Grid item xs={12} md={5}>
-            <TextField
-              select
-              name="invoice_line_type"
-              label="Bills as"
-              fullWidth
-              disabled={!canEdit}
-              defaultValue={initial("invoice_line_type", dayType.invoice_line_type)}
-            >
-              {LINE_TYPE_OPTIONS.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Grid>
-          <Grid item xs={12} md={7}>
-            <MDBox pt={{ xs: 0, md: 2 }}>
-              <MDTypography variant="caption" color="text">
-                The name is yours to change. Which invoice line it bills as
-                is fixed, because the invoice&rsquo;s own billing rules
-                depend on it.
-              </MDTypography>
-            </MDBox>
-          </Grid>
-        </Grid>
+          <div role="alert" aria-live="polite">
+            {state.error ? (
+              <Text size="1" color="red">
+                {state.error}
+              </Text>
+            ) : awaitingConfirm ? (
+              // F7: not saved yet — naming the consequence rather than
+              // blocking it. Save again (the hidden confirm_reprice field is
+              // now "1") to apply the change anyway.
+              <Text size="1" color="amber">
+                Changing Billable or Bills as will change how already-recorded days bill on{" "}
+                {state.affectedTripCount}{" "}
+                {state.affectedTripCount === 1 ? "trip that hasn't" : "trips that haven't"} been
+                invoiced yet. Save again to apply it anyway.
+              </Text>
+            ) : state.saved ? (
+              <Text size="1" color="green">
+                Saved.
+              </Text>
+            ) : null}
+            {rowError ? (
+              <Text as="div" size="1" color="red">
+                {rowError}
+              </Text>
+            ) : null}
+          </div>
 
-        <MDBox mt={2} role="alert" aria-live="polite">
-          {state.error ? (
-            <MDTypography variant="caption" color="error">
-              {state.error}
-            </MDTypography>
-          ) : awaitingConfirm ? (
-            // F7: not saved yet — naming the consequence rather than
-            // blocking it. Save again (the hidden confirm_reprice field is
-            // now "1") to apply the change anyway.
-            <MDTypography variant="caption" color="warning">
-              Changing Billable or Bills as will change how already-recorded
-              days bill on {state.affectedTripCount}{" "}
-              {state.affectedTripCount === 1 ? "trip that hasn't" : "trips that haven't"}{" "}
-              been invoiced yet. Save again to apply it anyway.
-            </MDTypography>
-          ) : state.saved ? (
-            <MDTypography variant="caption" color="success">
-              Saved.
-            </MDTypography>
-          ) : null}
-          {rowError ? (
-            <MDTypography display="block" variant="caption" color="error">
-              {rowError}
-            </MDTypography>
-          ) : null}
-        </MDBox>
-
-        {canEdit ? (
-          <MDBox mt={2} display="flex" gap={1.5} flexWrap="wrap">
-            <MDButton type="submit" variant="gradient" color="info" size="small" disabled={pending}>
-              {pending ? "Saving…" : awaitingConfirm ? "Save anyway" : "Save"}
-            </MDButton>
-            <MDButton
-              type="button"
-              variant="outlined"
-              color={archived ? "info" : "warning"}
-              size="small"
-              disabled={archiving}
-              onClick={() =>
-                startArchive(async () => {
-                  setRowError(null);
-                  const result = await setDayTypeArchived(dayType.id, !archived);
-                  setRowError(result.error);
-                })
-              }
-            >
-              {archiving ? "Working…" : archived ? "Restore" : "Archive"}
-            </MDButton>
-            {/* F1: never offer Delete on a built-in row — Archive/Restore
-                already do everything a pilot actually wants here, and
-                unlike delete it's reversible. The database rejects a
-                built-in delete outright (23514), but the control shouldn't
-                exist to invite trying. */}
-            {dayType.is_builtin ? null : (
-              <MDButton
+          {canEdit ? (
+            <Flex gap="3" wrap="wrap">
+              <Button type="submit" size="1" disabled={pending}>
+                {pending ? "Saving…" : awaitingConfirm ? "Save anyway" : "Save"}
+              </Button>
+              <Button
                 type="button"
-                variant="text"
-                color="error"
-                size="small"
-                disabled={deleting}
+                variant="outline"
+                color={archived ? undefined : "amber"}
+                size="1"
+                disabled={archiving}
                 onClick={() =>
-                  startDelete(async () => {
+                  startArchive(async () => {
                     setRowError(null);
-                    const result = await deleteDayType(dayType.id);
+                    const result = await setDayTypeArchived(dayType.id, !archived);
                     setRowError(result.error);
                   })
                 }
               >
-                {deleting ? "Deleting…" : "Delete"}
-              </MDButton>
-            )}
-          </MDBox>
-        ) : null}
-      </MDBox>
+                {archiving ? "Working…" : archived ? "Restore" : "Archive"}
+              </Button>
+              {/* F1: never offer Delete on a built-in row — Archive/Restore
+                  already do everything a pilot actually wants here, and
+                  unlike delete it's reversible. The database rejects a
+                  built-in delete outright (23514), but the control shouldn't
+                  exist to invite trying. */}
+              {dayType.is_builtin ? null : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  color="red"
+                  size="1"
+                  disabled={deleting}
+                  onClick={() =>
+                    startDelete(async () => {
+                      setRowError(null);
+                      const result = await deleteDayType(dayType.id);
+                      setRowError(result.error);
+                    })
+                  }
+                >
+                  {deleting ? "Deleting…" : "Delete"}
+                </Button>
+              )}
+            </Flex>
+          ) : null}
+        </Flex>
+      </form>
     </Card>
   );
 }

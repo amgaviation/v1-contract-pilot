@@ -6,17 +6,19 @@
  * own, going to the pilot's OWN client, so it renders only the account's
  * legal_name/address, never the product name.
  *
- * Colours come from lib/mdpro/pdf-palette.ts, which re-derives them from
- * the same theme the screens render from. react-pdf has its own styling
- * engine and cannot reach the MUI theme, so the palette module is the
- * bridge: restyle the theme and the invoice follows, which is what
- * docs/PLAN.md decision #20 requires of every visual value. Note that
- * scripts/verify-tokens.mjs only catches hex and rgb()/hsl() literals, so
- * plain named colours ("black", "grey") would have passed CI here while
- * still hardcoding the look of the one artifact a customer keeps.
+ * Colours come from lib/pdf-palette.ts, which re-derives them from the
+ * same Radix scales the screens render from (@radix-ui/colors, the plain
+ * JS publication of Radix Themes' own palette). react-pdf has its own
+ * styling engine and cannot reach CSS custom properties, so the palette
+ * module is the bridge: restyle the <Theme> in app/layout.tsx and the
+ * invoice follows, which is what docs/PLAN.md decision #20 requires of
+ * every visual value. Note that scripts/verify-tokens.mjs only catches
+ * hex and rgb()/hsl() literals, so plain named colours ("black", "grey")
+ * would have passed CI here while still hardcoding the look of the one
+ * artifact a customer keeps.
  */
 import { Document, Image, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
-import { PDF_PALETTE } from "@/lib/mdpro/pdf-palette";
+import { PDF_PALETTE } from "@/lib/pdf-palette";
 import { formatCents, formatDate } from "@/lib/format";
 
 export type InvoicePdfLine = {

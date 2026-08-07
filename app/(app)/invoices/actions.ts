@@ -24,7 +24,42 @@ export type InvoiceFormState = {
   saved?: boolean;
   values?: Record<string, string>;
 };
-export type LineFormState = { error: string | null };
+/**
+ * A rejected line edit used to re-render the STORED values, which silently
+ * discarded whatever the pilot had just typed — the same error-path data
+ * loss the other forms in this product guard against. `values` echoes the
+ * submission back so the row shows what was actually entered.
+ *
+ * Optional so both call sites can keep returning a bare `{ error }` on the
+ * paths where there is nothing worth echoing (a missing invoice id means
+ * the form was not the source of the problem).
+ */
+export type LineFormValues = {
+  line_type?: string;
+  description?: string;
+  quantity?: string;
+  unit_amount?: string;
+  taxable?: string;
+  trip_id?: string;
+};
+
+export type LineFormState = { error: string | null; values?: LineFormValues };
+
+/** Every field the line form posts, as submitted, for the error path. */
+function lineFormValues(formData: FormData): LineFormValues {
+  const str = (k: string) => {
+    const v = formData.get(k);
+    return v === null ? undefined : String(v);
+  };
+  return {
+    line_type: str("line_type"),
+    description: str("description"),
+    quantity: str("quantity"),
+    unit_amount: str("unit_amount"),
+    taxable: str("taxable"),
+    trip_id: str("trip_id"),
+  };
+}
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -963,6 +998,7 @@ export async function addInvoiceLine(
   const invoiceId = String(formData.get("invoice_id") ?? "");
   if (!UUID_RE.test(invoiceId)) return { error: "Missing invoice id." };
 
+  const values = lineFormValues(formData);
   const { account } = await requireAccount(`/invoices/${invoiceId}`);
 
   const lineType = String(formData.get("line_type") ?? "");
@@ -971,28 +1007,28 @@ export async function addInvoiceLine(
     // migration's own CHECK ties that line_type to an actual expense_id;
     // use the "add a rebillable expense" list instead, which sets both
     // together.
-    return { error: "Choose a line type." };
+    return { error: "Choose a line type.", values };
   }
 
   const description = String(formData.get("description") ?? "").trim();
-  if (!description) return { error: "Give the line a description." };
+  if (!description) return { error: "Give the line a description.", values };
 
   const quantity = parseQuantity(String(formData.get("quantity") ?? ""));
   if (quantity === undefined) {
-    return { error: "Quantity must be a positive number, like 1 or 2.5." };
+    return { error: "Quantity must be a positive number, like 1 or 2.5.", values };
   }
 
   const unitAmountCents = parseDollarsToCents(
     String(formData.get("unit_amount") ?? "")
   );
   if (unitAmountCents === undefined || unitAmountCents === null || unitAmountCents < 0) {
-    return { error: "Unit amount must be an amount like 150 or 150.00." };
+    return { error: "Unit amount must be an amount like 150 or 150.00.", values };
   }
 
   const taxable = formData.get("taxable") === "on";
   const tripId = optional(formData, "trip_id");
   if (tripId !== null && !UUID_RE.test(tripId)) {
-    return { error: "That trip isn't valid." };
+    return { error: "That trip isn't valid.", values };
   }
 
   const supabase = await createClient();
@@ -1079,21 +1115,22 @@ export async function updateInvoiceLine(
     return { error: "Missing line id." };
   }
 
+  const values = lineFormValues(formData);
   const { account } = await requireAccount(`/invoices/${invoiceId}`);
 
   const description = String(formData.get("description") ?? "").trim();
-  if (!description) return { error: "Give the line a description." };
+  if (!description) return { error: "Give the line a description.", values };
 
   const quantity = parseQuantity(String(formData.get("quantity") ?? ""));
   if (quantity === undefined) {
-    return { error: "Quantity must be a positive number, like 1 or 2.5." };
+    return { error: "Quantity must be a positive number, like 1 or 2.5.", values };
   }
 
   const unitAmountCents = parseDollarsToCents(
     String(formData.get("unit_amount") ?? "")
   );
   if (unitAmountCents === undefined || unitAmountCents === null || unitAmountCents < 0) {
-    return { error: "Unit amount must be an amount like 150 or 150.00." };
+    return { error: "Unit amount must be an amount like 150 or 150.00.", values };
   }
 
   const taxable = formData.get("taxable") === "on";
@@ -1113,7 +1150,7 @@ export async function updateInvoiceLine(
     .eq("account_id", account.id); // defence in depth alongside RLS
 
   if (error) return { error: friendlyDbError(error, "invoice_lines.update") };
-  if (!count) return { error: "That line no longer exists." };
+  if (!count) return { error: "That line no longer exists.", values };
 
   revalidatePath(`/invoices/${invoiceId}`);
   return { error: null };

@@ -1,43 +1,38 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import MDBox from "@/components/mdpro/MDBox";
-import MDButton from "@/components/mdpro/MDButton";
+import { useState } from "react";
+import { Box, Tabs } from "@radix-ui/themes";
+import type { ReactNode } from "react";
 
 type TabKey = "business" | "day-types";
-
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "business", label: "Your business" },
-  { key: "day-types", label: "Day types" },
-];
 
 function isTabKey(value: string | undefined): value is TabKey {
   return value === "business" || value === "day-types";
 }
 
 /**
- * Client-side tab switch over server-rendered panel content. Both panels
- * are passed in already rendered (data fetched server-side, same as
- * PageShell composing client children) and swapped with CSS display
- * rather than unmounted, so a pilot mid-edit on one tab doesn't lose
- * their draft by glancing at the other.
+ * Radix `Tabs` over server-rendered panel content. Both panels are passed
+ * in already rendered (data fetched server-side, same as PageShell
+ * composing client children).
  *
- * F10: two fixes on top of the original client-state-only version.
+ * Deep link: `initialTab` comes from page.tsx reading `?tab=` server-side,
+ * seeding this component's initial state. Switching tabs updates the URL
+ * via `history.pushState` — a plain browser call, not a Next navigation —
+ * so it costs no RSC round trip, the day-types tab stays bookmarkable,
+ * reloadable, and linkable, and browser Back can step back through tab
+ * switches instead of leaving the page entirely.
  *
- *   1. Deep-linkable. `initialTab` comes from page.tsx reading `?tab=`
- *      server-side (Settings has no other server-rendered content that
- *      would make a client redirect necessary). Switching tabs updates
- *      the URL via `history.replaceState` — a plain browser call, not a
- *      Next navigation — so it costs no RSC round trip and the day-types
- *      tab can be bookmarked, reloaded into, or linked from elsewhere.
- *   2. Correct ARIA. `role="tab"` alone (no `aria-controls`, no roving
- *      `tabIndex`) left a screen reader with no way to associate a tab
- *      with its panel and left every tab in the Tab order at once. Now:
- *      each tab has `aria-controls` pointing at its panel's `id`, each
- *      panel has `aria-labelledby` pointing back, only the active tab is
- *      keyboard-tabbable (roving `tabIndex`), and Left/Right/Home/End move
- *      AND activate — the WAI-ARIA APG "automatic activation" tabs
- *      pattern (https://www.w3.org/WAI/ARIA/apg/patterns/tabs/).
+ * Mounted panels: `Tabs.Content` unmounts its inactive panel by default,
+ * which would drop a mid-edit day-type row when a pilot glances at the
+ * other tab. Both `Tabs.Content`s below use `forceMount` to stay mounted
+ * always; `Tabs.Root` is kept controlled (rather than Radix's own
+ * uncontrolled `defaultValue`) purely so this component knows which one
+ * to hide, since `forceMount` also disables Radix's own
+ * hidden-when-inactive behaviour.
+ *
+ * `Tabs.List`/`Tabs.Trigger` still give the roving tabindex and the
+ * Left/Right/Home/End activation + `aria-controls` wiring that the
+ * hand-rolled version had to build by hand.
  */
 export default function SettingsTabs({
   business,
@@ -49,74 +44,31 @@ export default function SettingsTabs({
   initialTab?: string;
 }) {
   const [tab, setTab] = useState<TabKey>(isTabKey(initialTab) ? initialTab : "business");
-  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-  function selectTab(key: TabKey) {
-    setTab(key);
+  function handleValueChange(value: string) {
+    if (!isTabKey(value)) return;
+    setTab(value);
     const url = new URL(window.location.href);
-    if (key === "business") url.searchParams.delete("tab");
-    else url.searchParams.set("tab", key);
-    window.history.replaceState(null, "", url);
-  }
-
-  function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
-    let nextIndex: number | null = null;
-    if (event.key === "ArrowRight") nextIndex = (index + 1) % TABS.length;
-    else if (event.key === "ArrowLeft") nextIndex = (index - 1 + TABS.length) % TABS.length;
-    else if (event.key === "Home") nextIndex = 0;
-    else if (event.key === "End") nextIndex = TABS.length - 1;
-    if (nextIndex === null) return;
-
-    event.preventDefault();
-    const next = TABS[nextIndex];
-    if (!next) return;
-    selectTab(next.key);
-    tabRefs.current[nextIndex]?.focus();
+    if (value === "business") url.searchParams.delete("tab");
+    else url.searchParams.set("tab", value);
+    window.history.pushState(null, "", url);
   }
 
   return (
-    <MDBox>
-      <MDBox mb={3} display="flex" gap={1.5} flexWrap="wrap" role="tablist" aria-label="Settings sections">
-        {TABS.map((option, index) => (
-          <MDButton
-            key={option.key}
-            ref={(node: HTMLButtonElement | null) => {
-              tabRefs.current[index] = node;
-            }}
-            type="button"
-            variant={tab === option.key ? "gradient" : "outlined"}
-            color="info"
-            role="tab"
-            id={`settings-tab-${option.key}`}
-            aria-selected={tab === option.key}
-            aria-controls={`settings-panel-${option.key}`}
-            tabIndex={tab === option.key ? 0 : -1}
-            onClick={() => selectTab(option.key)}
-            onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => handleKeyDown(event, index)}
-          >
-            {option.label}
-          </MDButton>
-        ))}
-      </MDBox>
+    <Tabs.Root value={tab} onValueChange={handleValueChange}>
+      <Tabs.List aria-label="Settings sections">
+        <Tabs.Trigger value="business">Your business</Tabs.Trigger>
+        <Tabs.Trigger value="day-types">Day types</Tabs.Trigger>
+      </Tabs.List>
 
-      <MDBox
-        role="tabpanel"
-        id="settings-panel-business"
-        aria-labelledby="settings-tab-business"
-        hidden={tab !== "business"}
-        sx={{ display: tab === "business" ? "block" : "none" }}
-      >
-        {business}
-      </MDBox>
-      <MDBox
-        role="tabpanel"
-        id="settings-panel-day-types"
-        aria-labelledby="settings-tab-day-types"
-        hidden={tab !== "day-types"}
-        sx={{ display: tab === "day-types" ? "block" : "none" }}
-      >
-        {dayTypes}
-      </MDBox>
-    </MDBox>
+      <Box pt="4">
+        <Tabs.Content value="business" forceMount style={{ display: tab === "business" ? "block" : "none" }}>
+          {business}
+        </Tabs.Content>
+        <Tabs.Content value="day-types" forceMount style={{ display: tab === "day-types" ? "block" : "none" }}>
+          {dayTypes}
+        </Tabs.Content>
+      </Box>
+    </Tabs.Root>
   );
 }

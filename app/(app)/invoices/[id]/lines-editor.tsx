@@ -1,18 +1,17 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
-import TextField from "@mui/material/TextField";
-import MenuItem from "@mui/material/MenuItem";
-import Checkbox from "@mui/material/Checkbox";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
+import { useActionState, useEffect, useState, useTransition } from "react";
+import {
+  AlertDialog,
+  Box,
+  Button,
+  Checkbox,
+  Flex,
+  Table,
+  Text,
+  TextField,
+  Select,
+} from "@radix-ui/themes";
 import { formatCents, centsToInput } from "@/lib/format";
 import {
   addInvoiceLine,
@@ -20,6 +19,7 @@ import {
   deleteInvoiceLine,
   updateInvoiceLine,
   type LineFormState,
+  type LineFormValues,
 } from "../actions";
 
 export type LineRow = {
@@ -75,104 +75,82 @@ export default function LinesEditor({
   rebillable: RebillableExpense[];
 }) {
   if (lines.length === 0 && !editable) {
-    return (
-      <MDTypography variant="button" color="text" fontWeight="regular">
-        No line items.
-      </MDTypography>
-    );
+    return <Text color="gray">No line items.</Text>;
   }
 
   return (
-    <MDBox>
-      <TableContainer sx={{ boxShadow: "none" }}>
-        <Table>
-          <TableHead sx={{ display: "table-header-group" }}>
-            <TableRow>
-              {["Type", "Description", "Qty", "Unit", "Amount", "Taxable", ""].map(
-                (heading, index) => (
-                  <TableCell key={heading || index} align={index >= 2 && index <= 4 ? "right" : "left"}>
-                    <MDTypography variant="caption" fontWeight="bold" textTransform="uppercase">
-                      {heading}
-                    </MDTypography>
-                  </TableCell>
-                )
-              )}
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {lines.map((line) =>
-              editable ? (
-                <EditableRow key={line.id} invoiceId={invoiceId} line={line} />
-              ) : (
-                <ReadOnlyRow key={line.id} line={line} />
-              )
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+    <Box>
+      <Table.Root variant="ghost">
+        <Table.Header>
+          <Table.Row>
+            <Table.ColumnHeaderCell>Type</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell>Description</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell justify="end">Qty</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell justify="end">Unit</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell justify="end">Amount</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell>Taxable</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell />
+          </Table.Row>
+        </Table.Header>
+        <Table.Body>
+          {lines.map((line) =>
+            editable ? (
+              <EditableRow key={line.id} invoiceId={invoiceId} line={line} />
+            ) : (
+              <ReadOnlyRow key={line.id} line={line} />
+            )
+          )}
+        </Table.Body>
+      </Table.Root>
 
       {editable ? (
         <>
           {rebillable.length > 0 ? (
-            <MDBox mt={3}>
-              <MDTypography variant="button" fontWeight="bold">
-                Rebillable expenses
-              </MDTypography>
-              <MDBox mt={1} display="flex" flexDirection="column" gap={1}>
+            <Box mt="5">
+              <Text weight="bold">Rebillable expenses</Text>
+              <Flex direction="column" gap="2" mt="2">
                 {rebillable.map((expense) => (
                   <RebillRow key={expense.id} invoiceId={invoiceId} expense={expense} />
                 ))}
-              </MDBox>
-            </MDBox>
+              </Flex>
+            </Box>
           ) : null}
 
-          <MDBox mt={3}>
-            <MDTypography variant="button" fontWeight="bold">
-              Add a line
-            </MDTypography>
+          <Box mt="5">
+            <Text weight="bold">Add a line</Text>
             <AddLineForm invoiceId={invoiceId} />
-          </MDBox>
+          </Box>
         </>
       ) : null}
-    </MDBox>
+    </Box>
   );
 }
 
 function ReadOnlyRow({ line }: { line: LineRow }) {
   return (
-    <TableRow>
-      <TableCell>
-        <MDTypography variant="button" color="text" fontWeight="regular">
-          {LINE_TYPE_LABEL[line.line_type]}
-        </MDTypography>
-      </TableCell>
-      <TableCell>
-        <MDTypography variant="button" fontWeight="regular">
-          {line.description}
-        </MDTypography>
-      </TableCell>
-      <TableCell align="right">
-        <MDTypography variant="button" fontWeight="regular">
-          {line.quantity}
-        </MDTypography>
-      </TableCell>
-      <TableCell align="right">
-        <MDTypography variant="button" fontWeight="regular">
-          {formatCents(line.unit_amount_cents)}
-        </MDTypography>
-      </TableCell>
-      <TableCell align="right">
-        <MDTypography variant="button" fontWeight="medium">
+    <Table.Row>
+      <Table.Cell>
+        <Text color="gray">{LINE_TYPE_LABEL[line.line_type]}</Text>
+      </Table.Cell>
+      <Table.Cell>
+        <Text>{line.description}</Text>
+      </Table.Cell>
+      <Table.Cell justify="end">
+        <Text className="tnum">{line.quantity}</Text>
+      </Table.Cell>
+      <Table.Cell justify="end">
+        <Text className="tnum">{formatCents(line.unit_amount_cents)}</Text>
+      </Table.Cell>
+      <Table.Cell justify="end">
+        <Text weight="medium" className="tnum">
           {formatCents(line.amount_cents)}
-        </MDTypography>
-      </TableCell>
-      <TableCell>
-        <MDTypography variant="button" color="text" fontWeight="regular">
-          {line.taxable ? "Yes" : "No"}
-        </MDTypography>
-      </TableCell>
-      <TableCell />
-    </TableRow>
+        </Text>
+      </Table.Cell>
+      <Table.Cell>
+        <Text color="gray">{line.taxable ? "Yes" : "No"}</Text>
+      </Table.Cell>
+      <Table.Cell />
+    </Table.Row>
   );
 }
 
@@ -184,156 +162,266 @@ function EditableRow({ invoiceId, line }: { invoiceId: string; line: LineRow }) 
 
   if (!editing) {
     return (
-      <TableRow>
-        <TableCell>
-          <MDTypography variant="button" color="text" fontWeight="regular">
-            {LINE_TYPE_LABEL[line.line_type]}
-          </MDTypography>
-        </TableCell>
-        <TableCell>
-          <MDTypography variant="button" fontWeight="regular">
-            {line.description}
-          </MDTypography>
-        </TableCell>
-        <TableCell align="right">{line.quantity}</TableCell>
-        <TableCell align="right">{formatCents(line.unit_amount_cents)}</TableCell>
-        <TableCell align="right">
-          <MDTypography variant="button" fontWeight="medium">
+      <Table.Row>
+        <Table.Cell>
+          <Text color="gray">{LINE_TYPE_LABEL[line.line_type]}</Text>
+        </Table.Cell>
+        <Table.Cell>
+          <Text>{line.description}</Text>
+        </Table.Cell>
+        <Table.Cell justify="end">
+          <Text className="tnum">{line.quantity}</Text>
+        </Table.Cell>
+        <Table.Cell justify="end">
+          <Text className="tnum">{formatCents(line.unit_amount_cents)}</Text>
+        </Table.Cell>
+        <Table.Cell justify="end">
+          <Text weight="medium" className="tnum">
             {formatCents(line.amount_cents)}
-          </MDTypography>
-        </TableCell>
-        <TableCell>{line.taxable ? "Yes" : "No"}</TableCell>
-        <TableCell align="right">
-          <MDBox display="flex" gap={1} justifyContent="flex-end">
-            <MDButton
-              variant="text"
-              color="info"
-              size="small"
+          </Text>
+        </Table.Cell>
+        <Table.Cell>
+          <Text color="gray">{line.taxable ? "Yes" : "No"}</Text>
+        </Table.Cell>
+        <Table.Cell justify="end">
+          <Flex gap="3" justify="end">
+            <Button
+              variant="ghost"
+              size="1"
               aria-label={`Edit — ${line.description}`}
               onClick={() => setEditing(true)}
             >
               Edit
-            </MDButton>
-            <MDButton
-              variant="text"
-              color="error"
-              size="small"
-              disabled={deletePending}
-              aria-label={`Remove — ${line.description}`}
-              onClick={() => {
-                if (!window.confirm("Remove this line?")) return;
-                startDelete(async () => {
-                  const result = await deleteInvoiceLine(line.id, invoiceId);
-                  setDeleteError(result?.error ?? null);
-                });
-              }}
-            >
-              {deletePending ? "Removing…" : "Remove"}
-            </MDButton>
-          </MDBox>
+            </Button>
+            <AlertDialog.Root>
+              <AlertDialog.Trigger>
+                <Button
+                  variant="ghost"
+                  color="red"
+                  size="1"
+                  disabled={deletePending}
+                  aria-label={`Remove — ${line.description}`}
+                >
+                  {deletePending ? "Removing…" : "Remove"}
+                </Button>
+              </AlertDialog.Trigger>
+              <AlertDialog.Content maxWidth="420px">
+                <AlertDialog.Title>Remove this line?</AlertDialog.Title>
+                <AlertDialog.Description size="2">
+                  This removes the line from the invoice. This can&rsquo;t be undone.
+                </AlertDialog.Description>
+                <Flex gap="3" mt="4" justify="end">
+                  <AlertDialog.Cancel>
+                    <Button variant="soft" color="gray">
+                      Cancel
+                    </Button>
+                  </AlertDialog.Cancel>
+                  <AlertDialog.Action>
+                    <Button
+                      variant="solid"
+                      color="red"
+                      onClick={() => {
+                        startDelete(async () => {
+                          const result = await deleteInvoiceLine(line.id, invoiceId);
+                          setDeleteError(result?.error ?? null);
+                        });
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  </AlertDialog.Action>
+                </Flex>
+              </AlertDialog.Content>
+            </AlertDialog.Root>
+          </Flex>
           {deleteError ? (
-            <MDTypography variant="caption" color="error" display="block" role="alert">
+            <Text as="div" size="1" color="red" role="alert">
               {deleteError}
-            </MDTypography>
+            </Text>
           ) : null}
-        </TableCell>
-      </TableRow>
+        </Table.Cell>
+      </Table.Row>
     );
   }
 
+  // A rejected submit must show and re-post what the pilot typed, not the
+  // line's stored (pre-edit) values — React 19 resets an uncontrolled form
+  // on every action dispatch, error path included, so the echo has to come
+  // from the action's returned `state.values`, falling back to the stored
+  // row only when there's no submission to echo yet.
+  // A rejected edit must show what the pilot typed, not the stored row.
+  // React 19 resets an uncontrolled form on every dispatch including the
+  // error path, so the values are re-seeded from the action's echo and fall
+  // back to the stored line only on first render.
+  const submitted = state.values;
+  // Keyed on LineFormValues rather than `string`, so a typo in a field
+  // name is a compile error instead of a silently-undefined echo.
+  const echoed = (key: keyof LineFormValues, fallback: string) =>
+    submitted?.[key] ?? fallback;
+
   return (
-    <TableRow sx={{ "& td": { verticalAlign: "top" } }}>
-      <TableCell colSpan={7}>
-        <MDBox component="form" action={formAction} display="flex" gap={1.5} alignItems="flex-start" flexWrap="wrap">
-          <input type="hidden" name="id" value={line.id} />
-          <input type="hidden" name="invoice_id" value={invoiceId} />
-          <TextField
-            name="description"
-            label="Description"
-            defaultValue={line.description}
-            size="small"
-            sx={{ flex: "1 1 220px" }}
-          />
-          <TextField
-            name="quantity"
-            label="Qty"
-            defaultValue={String(line.quantity)}
-            size="small"
-            sx={{ width: 90 }}
-          />
-          <TextField
-            name="unit_amount"
-            label="Unit (USD)"
-            defaultValue={centsToInput(line.unit_amount_cents)}
-            size="small"
-            sx={{ width: 120 }}
-          />
-          <MDBox display="flex" alignItems="center">
-            <Checkbox name="taxable" defaultChecked={line.taxable} size="small" />
-            <MDTypography variant="caption">Taxable</MDTypography>
-          </MDBox>
-          <MDBox display="flex" gap={1}>
-            <MDButton type="submit" variant="gradient" color="info" size="small" disabled={pending}>
-              {pending ? "Saving…" : "Save"}
-            </MDButton>
-            <MDButton
-              type="button"
-              variant="outlined"
-              color="secondary"
-              size="small"
-              onClick={() => setEditing(false)}
-            >
-              Cancel
-            </MDButton>
-          </MDBox>
-          {state.error ? (
-            <MDTypography variant="caption" color="error" sx={{ width: "100%" }} role="alert">
-              {state.error}
-            </MDTypography>
-          ) : null}
-        </MDBox>
-      </TableCell>
-    </TableRow>
+    <Table.Row>
+      <Table.Cell colSpan={7}>
+        <form action={formAction}>
+          <Flex gap="3" align="start" wrap="wrap">
+            <input type="hidden" name="id" value={line.id} />
+            <input type="hidden" name="invoice_id" value={invoiceId} />
+            <Box style={{ flex: "1 1 220px" }}>
+              <Text as="label" size="1" color="gray" htmlFor={`description-${line.id}`}>
+                Description
+              </Text>
+              <TextField.Root
+                id={`description-${line.id}`}
+                name="description"
+                placeholder="Description"
+                defaultValue={echoed("description", line.description)}
+                size="2"
+              />
+            </Box>
+            <Box style={{ width: "90px" }}>
+              <Text as="label" size="1" color="gray" htmlFor={`quantity-${line.id}`}>
+                Qty
+              </Text>
+              <TextField.Root
+                id={`quantity-${line.id}`}
+                name="quantity"
+                placeholder="Qty"
+                defaultValue={echoed("quantity", String(line.quantity))}
+                size="2"
+              />
+            </Box>
+            <Box style={{ width: "120px" }}>
+              <Text as="label" size="1" color="gray" htmlFor={`unit_amount-${line.id}`}>
+                Unit (USD)
+              </Text>
+              <TextField.Root
+                id={`unit_amount-${line.id}`}
+                name="unit_amount"
+                placeholder="Unit (USD)"
+                defaultValue={echoed("unit_amount", centsToInput(line.unit_amount_cents))}
+                size="2"
+              />
+            </Box>
+            <Flex align="center" gap="2" asChild>
+              <label>
+                <Checkbox name="taxable" defaultChecked={line.taxable} />
+                <Text size="1">Taxable</Text>
+              </label>
+            </Flex>
+            <Flex gap="2">
+              <Button type="submit" size="2" disabled={pending}>
+                {pending ? "Saving…" : "Save"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                color="gray"
+                size="2"
+                onClick={() => setEditing(false)}
+              >
+                Cancel
+              </Button>
+            </Flex>
+            {state.error ? (
+              <Text size="1" color="red" style={{ width: "100%" }} role="alert">
+                {state.error}
+              </Text>
+            ) : null}
+          </Flex>
+        </form>
+      </Table.Cell>
+    </Table.Row>
   );
 }
 
 function AddLineForm({ invoiceId }: { invoiceId: string }) {
   const [state, formAction, pending] = useActionState(addInvoiceLine, initialLineState);
+  // Same echo as above: the action returns what was submitted so a
+  // rejected add re-renders the pilot's entry rather than an empty form.
+  const submitted = state.values;
+  // Same Select.Root uncontrolled-bubble-input issue as elsewhere: `name`
+  // dropped, real value posted from a controlled hidden input so a
+  // rejected add doesn't silently revert the line type to "Other".
+  const [lineType, setLineType] = useState(() =>
+    submitted?.line_type !== undefined ? String(submitted.line_type) : "other"
+  );
+  useEffect(() => {
+    if (submitted?.line_type !== undefined) setLineType(String(submitted.line_type));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitted]);
 
   return (
-    <MDBox
-      component="form"
-      action={formAction}
-      mt={1}
-      display="flex"
-      gap={1.5}
-      alignItems="flex-start"
-      flexWrap="wrap"
-    >
-      <input type="hidden" name="invoice_id" value={invoiceId} />
-      <TextField select name="line_type" label="Type" size="small" defaultValue="other" sx={{ width: 160 }}>
-        {MANUAL_LINE_TYPES.map((option) => (
-          <MenuItem key={option.value} value={option.value}>
-            {option.label}
-          </MenuItem>
-        ))}
-      </TextField>
-      <TextField name="description" label="Description" size="small" sx={{ flex: "1 1 220px" }} />
-      <TextField name="quantity" label="Qty" size="small" defaultValue="1" sx={{ width: 90 }} />
-      <TextField name="unit_amount" label="Unit (USD)" size="small" sx={{ width: 120 }} />
-      <MDBox display="flex" alignItems="center">
-        <Checkbox name="taxable" defaultChecked size="small" />
-        <MDTypography variant="caption">Taxable</MDTypography>
-      </MDBox>
-      <MDButton type="submit" variant="gradient" color="info" size="small" disabled={pending}>
-        {pending ? "Adding…" : "Add line"}
-      </MDButton>
-      {state.error ? (
-        <MDTypography variant="caption" color="error" sx={{ width: "100%" }} role="alert">
-          {state.error}
-        </MDTypography>
-      ) : null}
-    </MDBox>
+    <form action={formAction}>
+      <Flex mt="2" gap="3" align="start" wrap="wrap">
+        <input type="hidden" name="invoice_id" value={invoiceId} />
+        <Box style={{ width: "160px" }}>
+          <Text as="label" size="1" color="gray" id="add-line-type-label">
+            Type
+          </Text>
+          <Select.Root value={lineType} onValueChange={setLineType}>
+            <Select.Trigger aria-labelledby="add-line-type-label" />
+            <Select.Content>
+              {MANUAL_LINE_TYPES.map((option) => (
+                <Select.Item key={option.value} value={option.value}>
+                  {option.label}
+                </Select.Item>
+              ))}
+            </Select.Content>
+          </Select.Root>
+          <input type="hidden" name="line_type" value={lineType} />
+        </Box>
+        <Box style={{ flex: "1 1 220px" }}>
+          <Text as="label" size="1" color="gray" htmlFor="add-line-description">
+            Description
+          </Text>
+          <TextField.Root
+            id="add-line-description"
+            name="description"
+            placeholder="Description"
+            defaultValue={submitted?.description !== undefined ? String(submitted.description) : ""}
+            size="2"
+          />
+        </Box>
+        <Box style={{ width: "90px" }}>
+          <Text as="label" size="1" color="gray" htmlFor="add-line-quantity">
+            Qty
+          </Text>
+          <TextField.Root
+            id="add-line-quantity"
+            name="quantity"
+            placeholder="Qty"
+            defaultValue={submitted?.quantity !== undefined ? String(submitted.quantity) : "1"}
+            size="2"
+          />
+        </Box>
+        <Box style={{ width: "120px" }}>
+          <Text as="label" size="1" color="gray" htmlFor="add-line-unit-amount">
+            Unit (USD)
+          </Text>
+          <TextField.Root
+            id="add-line-unit-amount"
+            name="unit_amount"
+            placeholder="Unit (USD)"
+            defaultValue={submitted?.unit_amount !== undefined ? String(submitted.unit_amount) : ""}
+            size="2"
+          />
+        </Box>
+        <Flex align="center" gap="2" asChild>
+          <label>
+            <Checkbox name="taxable" defaultChecked />
+            <Text size="1">Taxable</Text>
+          </label>
+        </Flex>
+        <Button type="submit" size="2" disabled={pending}>
+          {pending ? "Adding…" : "Add line"}
+        </Button>
+        {state.error ? (
+          <Text size="1" color="red" style={{ width: "100%" }} role="alert">
+            {state.error}
+          </Text>
+        ) : null}
+      </Flex>
+    </form>
   );
 }
 
@@ -349,15 +437,14 @@ function RebillRow({
   const [added, setAdded] = useState(false);
 
   return (
-    <MDBox display="flex" alignItems="center" gap={2}>
-      <MDTypography variant="button" color="text" fontWeight="regular" sx={{ flex: 1 }}>
+    <Flex align="center" gap="4">
+      <Text color="gray" style={{ flex: 1 }}>
         {expense.category} {expense.vendor ? `— ${expense.vendor}` : ""} ({expense.incurred_on}) ·{" "}
-        {formatCents(expense.amount_cents)}
-      </MDTypography>
-      <MDButton
-        variant="outlined"
-        color="info"
-        size="small"
+        <span className="tnum">{formatCents(expense.amount_cents)}</span>
+      </Text>
+      <Button
+        variant="outline"
+        size="2"
         disabled={pending || added}
         aria-label={`Add to invoice — ${expense.category}${
           expense.vendor ? ` — ${expense.vendor}` : ""
@@ -371,12 +458,12 @@ function RebillRow({
         }}
       >
         {added ? "Added" : pending ? "Adding…" : "Add to invoice"}
-      </MDButton>
+      </Button>
       {error ? (
-        <MDTypography variant="caption" color="error" role="alert">
+        <Text size="1" color="red" role="alert">
           {error}
-        </MDTypography>
+        </Text>
       ) : null}
-    </MDBox>
+    </Flex>
   );
 }

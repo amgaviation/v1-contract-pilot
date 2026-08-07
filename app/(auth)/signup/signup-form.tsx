@@ -1,12 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import NextLink from "next/link";
-import Card from "@mui/material/Card";
-import TextField from "@mui/material/TextField";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
+import { Box, Button, Card, Flex, Text, TextField } from "@radix-ui/themes";
 import { BRAND } from "@/lib/brand";
 import { signUp, type SignUpState } from "./actions";
 
@@ -15,102 +11,94 @@ const initialState: SignUpState = { error: null };
 export default function SignUpForm() {
   const [state, formAction, pending] = useActionState(signUp, initialState);
 
+  // React 19 resets an uncontrolled form on every action dispatch,
+  // including the error path — a rejected submit would otherwise blank
+  // the email field too. Keep email controlled so it survives; the
+  // password is intentionally never echoed back.
+  const [email, setEmail] = useState("");
+
   if (state.needsConfirmation) {
     return (
-      <Card sx={{ width: "100%", maxWidth: "22rem" }}>
-        <MDBox p={4} textAlign="center" lineHeight={1.5}>
-          <MDTypography variant="h5" fontWeight="bold" mb={1}>
+      <Card size="4" style={{ width: "100%", maxWidth: "22rem" }}>
+        <Flex direction="column" align="center" gap="3" style={{ textAlign: "center" }}>
+          <Text size="5" weight="bold">
             Check your email
-          </MDTypography>
-          <MDTypography variant="body2" color="text">
+          </Text>
+          <Text size="2" color="gray">
             Click the confirmation link we just sent, then sign in to start
             your trial.
-          </MDTypography>
-          <MDBox mt={3}>
-            <MDButton
-              component={NextLink}
-              href="/login"
-              variant="gradient"
-              color="info"
-              fullWidth
-            >
-              Go to sign in
-            </MDButton>
-          </MDBox>
-        </MDBox>
+          </Text>
+          <Button asChild mt="2">
+            <NextLink href="/login">Go to sign in</NextLink>
+          </Button>
+        </Flex>
       </Card>
     );
   }
 
   return (
-    <Card sx={{ width: "100%", maxWidth: "22rem" }}>
-      <MDBox p={4} component="form" action={formAction}>
-        <MDBox mb={3} textAlign="center">
-          <MDTypography variant="h4" fontWeight="bold">
-            Start your trial
-          </MDTypography>
-          <MDTypography variant="button" color="text" fontWeight="regular">
-            {BRAND.name} — {BRAND.descriptor}
-          </MDTypography>
-        </MDBox>
+    <Card size="4" style={{ width: "100%", maxWidth: "22rem" }}>
+      <form action={formAction}>
+        <Flex direction="column" gap="3">
+          <Flex direction="column" align="center" gap="1" mb="1">
+            <Text size="6" weight="bold">
+              Start your trial
+            </Text>
+            <Text size="2" color="gray">
+              {BRAND.name} — {BRAND.descriptor}
+            </Text>
+          </Flex>
 
-        <MDBox mb={2}>
-          <TextField
-            type="email"
-            name="email"
-            label="Email"
-            fullWidth
-            autoComplete="email"
-            required
-          />
-        </MDBox>
-        <MDBox mb={2}>
-          <TextField
-            type="password"
-            name="password"
-            label="Password"
-            fullWidth
-            autoComplete="new-password"
-            required
-            helperText="At least 8 characters"
-          />
-        </MDBox>
+          <Box>
+            <Text as="label" size="2" weight="medium" htmlFor="email">
+              Email
+            </Text>
+            <TextField.Root
+              id="email"
+              type="email"
+              name="email"
+              autoComplete="email"
+              required
+              mt="1"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </Box>
+          <Box>
+            <Text as="label" size="2" weight="medium" htmlFor="password">
+              Password
+            </Text>
+            <TextField.Root
+              id="password"
+              type="password"
+              name="password"
+              autoComplete="new-password"
+              required
+              mt="1"
+            />
+            <Text as="div" size="1" color="gray" mt="1">
+              At least 8 characters
+            </Text>
+          </Box>
 
-        {state.error ? (
-          <MDBox mb={2}>
-            <MDTypography variant="caption" color="error">
+          {state.error ? (
+            <Text size="1" color="red" role="alert" aria-live="polite">
               {state.error}
-            </MDTypography>
-          </MDBox>
-        ) : null}
+            </Text>
+          ) : null}
 
-        <MDBox mt={2}>
-          <MDButton
-            type="submit"
-            variant="gradient"
-            color="info"
-            fullWidth
-            disabled={pending}
-          >
+          <Button type="submit" disabled={pending} mt="1">
             {pending ? "Creating account…" : "Create account"}
-          </MDButton>
-        </MDBox>
+          </Button>
 
-        <MDBox mt={2} textAlign="center">
-          <MDTypography variant="caption" color="text">
+          <Text size="1" color="gray" align="center">
             Already have an account?{" "}
-            <MDTypography
-              component={NextLink}
-              href="/login"
-              variant="caption"
-              color="info"
-              fontWeight="medium"
-            >
-              Sign in
-            </MDTypography>
-          </MDTypography>
-        </MDBox>
-      </MDBox>
+            <Text asChild size="1">
+              <NextLink href="/login">Sign in</NextLink>
+            </Text>
+          </Text>
+        </Flex>
+      </form>
     </Card>
   );
 }

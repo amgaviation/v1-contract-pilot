@@ -1,12 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
-import Card from "@mui/material/Card";
-import TextField from "@mui/material/TextField";
-import MenuItem from "@mui/material/MenuItem";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
+import { useActionState, useEffect, useState } from "react";
+import { Button, Card, Flex, Select, Text, TextField } from "@radix-ui/themes";
 import { formatCents, formatDate } from "@/lib/format";
 import { recordPayment, type InvoiceFormState } from "../actions";
 
@@ -18,8 +13,13 @@ export type PaymentRow = {
   notes: string | null;
 };
 
+// Radix Select forbids an item with value="" — "Unspecified" instead uses
+// this sentinel, translated back to "" (the value the `method` FormData
+// field must carry for actions.ts's optional() to read it as unset) via
+// formData.set("method", …) in the <form action> closure below, rather
+// than by renaming the field.
+const UNSPECIFIED = "unspecified";
 const METHODS = [
-  { value: "", label: "Unspecified" },
   { value: "ach", label: "ACH" },
   { value: "check", label: "Check" },
   { value: "wire", label: "Wire" },
@@ -40,6 +40,20 @@ export default function PaymentPanel({
   payments: PaymentRow[];
 }) {
   const [state, formAction, pending] = useActionState(recordPayment, initialState);
+  // H5: a rejected payment used to blank amount/notes/date entirely — it
+  // never read state.values at all. Echo the submission the same way
+  // settings-form.tsx does, falling back to sensible defaults only when
+  // there's nothing to echo yet.
+  const submitted = state.values;
+  const echoed = (key: string, fallback: string) =>
+    submitted?.[key] !== undefined ? String(submitted[key]) : fallback;
+  const [method, setMethod] = useState(() =>
+    submitted?.method !== undefined ? String(submitted.method || UNSPECIFIED) : UNSPECIFIED
+  );
+  useEffect(() => {
+    if (submitted?.method !== undefined) setMethod(String(submitted.method || UNSPECIFIED));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitted]);
   // invoice_payments_validate only accepts a payment against 'sent' or
   // 'partial' — matching that here so the form isn't offered where the
   // database would refuse it (draft has nothing committed to pay yet,
@@ -47,73 +61,97 @@ export default function PaymentPanel({
   const canRecordPayment = status === "sent" || status === "partial";
 
   return (
-    <Card>
-      <MDBox p={3}>
-        <MDTypography variant="h6" mb={1.5}>
-          Payments
-        </MDTypography>
+    <Card size="3">
+      <Text as="div" size="4" weight="bold" mb="2">
+        Payments
+      </Text>
 
-        {payments.length === 0 ? (
-          <MDTypography variant="button" color="text" fontWeight="regular">
-            No payments recorded yet.
-          </MDTypography>
-        ) : (
-          <MDBox display="flex" flexDirection="column" gap={1} mb={canRecordPayment ? 2 : 0}>
-            {payments.map((payment) => (
-              <MDBox key={payment.id} display="flex" justifyContent="space-between">
-                <MDTypography variant="button" color="text" fontWeight="regular">
-                  {formatDate(payment.paid_on)}
-                  {payment.method ? ` · ${payment.method}` : ""}
-                </MDTypography>
-                <MDTypography variant="button" fontWeight="medium">
-                  {formatCents(payment.amount_cents)}
-                </MDTypography>
-              </MDBox>
-            ))}
-          </MDBox>
-        )}
+      {payments.length === 0 ? (
+        <Text color="gray">No payments recorded yet.</Text>
+      ) : (
+        <Flex direction="column" gap="2" mb={canRecordPayment ? "4" : "0"}>
+          {payments.map((payment) => (
+            <Flex key={payment.id} justify="between">
+              <Text color="gray">
+                {formatDate(payment.paid_on)}
+                {payment.method ? ` · ${payment.method}` : ""}
+              </Text>
+              <Text weight="medium" className="tnum">
+                {formatCents(payment.amount_cents)}
+              </Text>
+            </Flex>
+          ))}
+        </Flex>
+      )}
 
-        {canRecordPayment ? (
-          <MDBox component="form" action={formAction} mt={2}>
-            <input type="hidden" name="invoice_id" value={invoiceId} />
-            <MDBox display="flex" flexDirection="column" gap={1.5}>
-              <TextField
-                type="date"
-                name="paid_on"
-                label="Date received"
-                size="small"
-                InputLabelProps={{ shrink: true }}
-                defaultValue={new Date().toISOString().slice(0, 10)}
-              />
-              <TextField name="amount" label="Amount (USD)" size="small" inputMode="decimal" />
-              <TextField select name="method" label="Method" size="small" defaultValue="">
+      {canRecordPayment ? (
+        <form
+          action={(formData) => {
+            // Translate the sentinel back to "" before it reaches the
+            // FormData field the action reads — the field name (`method`)
+            // never changes.
+            formData.set("method", method === UNSPECIFIED ? "" : method);
+            return formAction(formData);
+          }}
+        >
+          <input type="hidden" name="invoice_id" value={invoiceId} />
+          <Flex direction="column" gap="3" mt="3">
+            <Text as="label" size="1" color="gray" htmlFor="payment-paid-on">
+              Date paid
+            </Text>
+            <TextField.Root
+              id="payment-paid-on"
+              type="date"
+              name="paid_on"
+              defaultValue={echoed("paid_on", new Date().toISOString().slice(0, 10))}
+            />
+            <Text as="label" size="1" color="gray" htmlFor="payment-amount">
+              Amount (USD)
+            </Text>
+            <TextField.Root
+              id="payment-amount"
+              name="amount"
+              placeholder="Amount (USD)"
+              inputMode="decimal"
+              defaultValue={echoed("amount", "")}
+            />
+            <Text as="label" size="1" color="gray" id="payment-method-label">
+              Method
+            </Text>
+            <Select.Root value={method} onValueChange={setMethod}>
+              <Select.Trigger placeholder="Method" aria-labelledby="payment-method-label" />
+              <Select.Content>
+                <Select.Item value={UNSPECIFIED}>Unspecified</Select.Item>
                 {METHODS.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
+                  <Select.Item key={option.value} value={option.value}>
                     {option.label}
-                  </MenuItem>
+                  </Select.Item>
                 ))}
-              </TextField>
-              <TextField name="notes" label="Notes" size="small" />
-            </MDBox>
-            <MDBox mt={1.5} role="alert" aria-live="polite">
-              {state.error ? (
-                <MDTypography variant="caption" color="error">
-                  {state.error}
-                </MDTypography>
-              ) : state.saved ? (
-                <MDTypography variant="caption" color="success">
-                  Payment recorded.
-                </MDTypography>
-              ) : null}
-            </MDBox>
-            <MDBox mt={1.5}>
-              <MDButton type="submit" variant="gradient" color="info" fullWidth disabled={pending}>
-                {pending ? "Recording…" : "Record payment"}
-              </MDButton>
-            </MDBox>
-          </MDBox>
-        ) : null}
-      </MDBox>
+              </Select.Content>
+            </Select.Root>
+            <Text as="label" size="1" color="gray" htmlFor="payment-notes">
+              Notes
+            </Text>
+            <TextField.Root id="payment-notes" name="notes" placeholder="Notes" defaultValue={echoed("notes", "")} />
+          </Flex>
+          <Flex mt="3" role="alert" aria-live="polite">
+            {state.error ? (
+              <Text size="1" color="red">
+                {state.error}
+              </Text>
+            ) : state.saved ? (
+              <Text size="1" color="green">
+                Payment recorded.
+              </Text>
+            ) : null}
+          </Flex>
+          <Flex mt="3">
+            <Button type="submit" disabled={pending} style={{ width: "100%" }}>
+              {pending ? "Recording…" : "Record payment"}
+            </Button>
+          </Flex>
+        </form>
+      ) : null}
     </Card>
   );
 }

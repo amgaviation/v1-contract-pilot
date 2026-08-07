@@ -1,8 +1,5 @@
 import { redirect } from "next/navigation";
-import Card from "@mui/material/Card";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
+import { Button, Card, Flex, Text } from "@radix-ui/themes";
 import { getSessionContext } from "@/lib/supabase/account";
 import { signOut } from "./actions";
 import { StartTrialButton } from "./welcome-actions";
@@ -37,59 +34,51 @@ export default async function WelcomePage({
   // pitch again to someone who just paid, which would read as a failure.
   if (checkout === "complete") {
     return (
-      <Card sx={{ width: "100%", maxWidth: "28rem" }}>
-        <MDBox p={4} textAlign="center" lineHeight={1.5}>
-          <MDTypography variant="h4" fontWeight="bold" mb={1}>
+      <Card size="4" style={{ width: "100%", maxWidth: "28rem" }}>
+        <Flex direction="column" align="center" gap="3" style={{ textAlign: "center" }}>
+          <Text size="6" weight="bold">
             Setting up your workspace
-          </MDTypography>
-          <MDTypography variant="body2" color="text">
+          </Text>
+          <Text size="2" color="gray">
             Payment confirmed. We&rsquo;re provisioning your account now —
             this usually takes a few seconds.
-          </MDTypography>
-          <MDBox mt={3}>
-            {/* A plain link, not a client poller: one deliberate refresh is
-                honest about the state and avoids a spinner that could hide
-                a genuine webhook failure forever. */}
-            <MDButton href="/welcome" variant="gradient" color="info">
-              Refresh
-            </MDButton>
-          </MDBox>
-        </MDBox>
+          </Text>
+          {/* A plain link, not a client poller: one deliberate refresh is
+              honest about the state and avoids a spinner that could hide
+              a genuine webhook failure forever. */}
+          <Button asChild mt="2">
+            <a href="/welcome">Refresh</a>
+          </Button>
+        </Flex>
       </Card>
     );
   }
 
   return (
-    <Card sx={{ width: "100%", maxWidth: "28rem" }}>
-      <MDBox p={4} textAlign="center" lineHeight={1.5}>
-        <MDTypography variant="h4" fontWeight="bold" mb={1}>
+    <Card size="4" style={{ width: "100%", maxWidth: "28rem" }}>
+      <Flex direction="column" align="center" gap="3" style={{ textAlign: "center" }}>
+        <Text size="6" weight="bold">
           You&rsquo;re signed in
-        </MDTypography>
-        <MDTypography variant="body2" color="text">
+        </Text>
+        <Text size="2" color="gray">
           Log the trip once — your logbook entry, invoice, and expenses all
           post from it. Start your trial to set up your workspace.
-        </MDTypography>
+        </Text>
 
         {checkout === "cancelled" ? (
-          <MDBox mt={2}>
-            <MDTypography variant="caption" color="text">
-              Checkout cancelled — nothing was charged.
-            </MDTypography>
-          </MDBox>
+          <Text size="1" color="gray">
+            Checkout cancelled — nothing was charged.
+          </Text>
         ) : null}
 
-        <MDBox mt={3}>
-          <StartTrialButton priceLabel={PRICE_LABEL} />
-        </MDBox>
+        <StartTrialButton priceLabel={PRICE_LABEL} />
 
-        <MDBox mt={3}>
-          <form action={signOut}>
-            <MDButton type="submit" variant="text" color="dark" size="small">
-              Sign out
-            </MDButton>
-          </form>
-        </MDBox>
-      </MDBox>
+        <form action={signOut}>
+          <Button type="submit" variant="ghost" color="gray" size="1">
+            Sign out
+          </Button>
+        </form>
+      </Flex>
     </Card>
   );
 }

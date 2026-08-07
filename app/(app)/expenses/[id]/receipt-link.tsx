@@ -1,9 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
+import { Box, Button, Text } from "@radix-ui/themes";
 import { receiptUrl } from "../actions";
 
 /**
@@ -21,11 +19,10 @@ export default function ReceiptLink({ path }: { path: string }) {
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <MDBox>
-      <MDButton
-        variant="outlined"
-        color="info"
-        size="small"
+    <Box>
+      <Button
+        variant="outline"
+        size="2"
         disabled={pending}
         onClick={() =>
           startTransition(async () => {
@@ -43,14 +40,14 @@ export default function ReceiptLink({ path }: { path: string }) {
         }
       >
         {pending ? "Opening…" : "View receipt"}
-      </MDButton>
+      </Button>
       {error ? (
-        <MDBox mt={1} role="alert">
-          <MDTypography variant="caption" color="error">
+        <Box mt="2" role="alert">
+          <Text size="1" color="red">
             {error}
-          </MDTypography>
-        </MDBox>
+          </Text>
+        </Box>
       ) : null}
-    </MDBox>
+    </Box>
   );
 }

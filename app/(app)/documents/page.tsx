@@ -1,16 +1,16 @@
 import NextLink from "next/link";
-import Card from "@mui/material/Card";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
-
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
-import MDBadge from "@/components/mdpro/MDBadge";
+import {
+  Badge,
+  Button,
+  Callout,
+  Card,
+  Flex,
+  Heading,
+  Link as RadixLink,
+  Table,
+  Text,
+} from "@radix-ui/themes";
+import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
@@ -31,6 +31,17 @@ function daysRemainingLabel(days: number): string {
   if (days === 0) return "Expires today";
   return `${days} day${days === 1 ? "" : "s"} left`;
 }
+
+// D3: 61.23 medical duration and 61.56's 24-calendar-month flight review
+// both run through the LAST DAY OF THE EXPIRING MONTH, not the exam-date
+// anniversary — but pilot.documents stores whatever date the pilot typed
+// (kinds.ts is deliberate about that; no duration is computed here). A
+// day-precision "Expired 3 days ago" / "Expires today" on THESE two kinds
+// tells a pilot who entered the anniversary date, not the month end, that
+// they're expired up to ~30 days before they actually are. Rather than
+// inventing a month-end derivation the schema doesn't support, this just
+// says plainly what the countdown is actually measuring for these kinds.
+const MONTH_SEMANTICS_KINDS = new Set(["medical", "flight_review"]);
 
 export default async function DocumentsPage() {
   const { account } = await requireAccount("/documents");
@@ -90,136 +101,92 @@ export default async function DocumentsPage() {
               : `${documents.length} document${documents.length === 1 ? "" : "s"} on file`
       }
       action={
-        <MDButton
-          component={NextLink}
-          href="/documents/new"
-          variant="gradient"
-          color="info"
-        >
-          Add document
-        </MDButton>
+        <Button asChild>
+          <NextLink href="/documents/new">Add document</NextLink>
+        </Button>
       }
     >
       {anyError ? (
-        <Card>
-          <MDBox p={3}>
-            <MDTypography variant="button" color="error">
-              {friendlyDbError(error ?? expirationError, "documents.select")}
-            </MDTypography>
-          </MDBox>
-        </Card>
+        <Callout.Root color="red">
+          <Callout.Icon>
+            <ExclamationTriangleIcon />
+          </Callout.Icon>
+          <Callout.Text>{friendlyDbError(error ?? expirationError, "documents.select")}</Callout.Text>
+        </Callout.Root>
       ) : (
         <Card>
-          <MDBox p={3}>
-            {sorted.length === 0 ? (
-              <MDBox py={4} textAlign="center">
-                <MDTypography variant="h6">No documents yet</MDTypography>
-                <MDTypography variant="button" color="text" fontWeight="regular">
-                  Medicals, flight reviews, passports, certificates,
-                  insurance and W-9s — anything with a date that matters.
-                </MDTypography>
-                <MDBox mt={3}>
-                  <MDButton
-                    component={NextLink}
-                    href="/documents/new"
-                    variant="gradient"
-                    color="info"
-                  >
-                    Add your first document
-                  </MDButton>
-                </MDBox>
-              </MDBox>
-            ) : (
-              <TableContainer sx={{ boxShadow: "none" }}>
-                <Table>
-                  <TableHead sx={{ display: "table-header-group" }}>
-                    <TableRow>
-                      {["Document", "Kind", "Expires", "Status", "File"].map(
-                        (heading) => (
-                          <TableCell key={heading}>
-                            <MDTypography
-                              variant="caption"
-                              fontWeight="bold"
-                              textTransform="uppercase"
-                            >
-                              {heading}
-                            </MDTypography>
-                          </TableCell>
-                        )
-                      )}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {sorted.map((doc) => {
-                      const expiration = expirationByDocId.get(doc.id);
-                      const badge = expiration
-                        ? EXPIRY_LADDER_BADGE[expiration.ladder_stage] ?? EXPIRY_NO_DATE_BADGE
-                        : EXPIRY_NO_DATE_BADGE;
-                      return (
-                        <TableRow key={doc.id}>
-                          <TableCell component="th" scope="row">
-                            <MDTypography
-                              component={NextLink}
-                              href={`/documents/${doc.id}`}
-                              variant="button"
-                              fontWeight="medium"
-                            >
-                              {doc.label}
-                            </MDTypography>
-                          </TableCell>
-                          <TableCell>
-                            <MDTypography
-                              variant="button"
-                              color="text"
-                              fontWeight="regular"
-                            >
-                              {DOCUMENT_KIND_LABEL[doc.kind] ?? "Other"}
-                            </MDTypography>
-                          </TableCell>
-                          <TableCell>
-                            <MDTypography
-                              display="block"
-                              variant="button"
-                              color="text"
-                              fontWeight="regular"
-                            >
-                              {formatDate(doc.expires_on)}
-                            </MDTypography>
-                            {expiration ? (
-                              <MDTypography
-                                display="block"
-                                variant="caption"
-                                color="text"
-                              >
-                                {daysRemainingLabel(expiration.days_remaining)}
-                              </MDTypography>
-                            ) : null}
-                          </TableCell>
-                          <TableCell>
-                            <MDBadge
-                              variant="gradient"
-                              color={badge.tone}
-                              badgeContent={badge.label}
-                              size="sm"
-                              container
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <MDTypography
-                              variant="caption"
-                              color={doc.file_path ? "text" : "secondary"}
-                            >
-                              {doc.file_path ? "Attached" : "None"}
-                            </MDTypography>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-          </MDBox>
+          {sorted.length === 0 ? (
+            <Flex direction="column" align="center" gap="3" py="6">
+              <Heading as="h3" size="4">No documents yet</Heading>
+              <Text size="2" color="gray" align="center">
+                Medicals, flight reviews, passports, certificates, insurance and W-9s — anything
+                with a date that matters.
+              </Text>
+              <Button asChild mt="2">
+                <NextLink href="/documents/new">Add your first document</NextLink>
+              </Button>
+            </Flex>
+          ) : (
+            <Table.Root variant="ghost">
+              <Table.Header>
+                <Table.Row>
+                  <Table.ColumnHeaderCell>Document</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Kind</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Expires</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>File</Table.ColumnHeaderCell>
+                </Table.Row>
+              </Table.Header>
+              <Table.Body>
+                {sorted.map((doc) => {
+                  const expiration = expirationByDocId.get(doc.id);
+                  const badge = expiration
+                    ? EXPIRY_LADDER_BADGE[expiration.ladder_stage] ?? EXPIRY_NO_DATE_BADGE
+                    : EXPIRY_NO_DATE_BADGE;
+                  return (
+                    <Table.Row key={doc.id}>
+                      <Table.RowHeaderCell>
+                        <RadixLink asChild weight="medium">
+                          <NextLink href={`/documents/${doc.id}`}>{doc.label}</NextLink>
+                        </RadixLink>
+                      </Table.RowHeaderCell>
+                      <Table.Cell>
+                        <Text size="2" color="gray">
+                          {DOCUMENT_KIND_LABEL[doc.kind] ?? "Other"}
+                        </Text>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Flex direction="column">
+                          <Text size="2" color="gray">
+                            {formatDate(doc.expires_on)}
+                          </Text>
+                          {expiration ? (
+                            <Text size="1" color="gray">
+                              {daysRemainingLabel(expiration.days_remaining)}
+                            </Text>
+                          ) : null}
+                          {expiration && MONTH_SEMANTICS_KINDS.has(doc.kind) ? (
+                            <Text size="1" color="gray">
+                              Counted against the date you entered — 61.23/61.56
+                              actually run through the end of that month.
+                            </Text>
+                          ) : null}
+                        </Flex>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Badge color={badge.tone}>{badge.label}</Badge>
+                      </Table.Cell>
+                      <Table.Cell>
+                        <Text size="1" color={doc.file_path ? "gray" : "red"}>
+                          {doc.file_path ? "Attached" : "None"}
+                        </Text>
+                      </Table.Cell>
+                    </Table.Row>
+                  );
+                })}
+              </Table.Body>
+            </Table.Root>
+          )}
         </Card>
       )}
     </PageShell>

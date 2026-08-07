@@ -1,16 +1,16 @@
 import NextLink from "next/link";
-import Card from "@mui/material/Card";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
-
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
-import MDBadge from "@/components/mdpro/MDBadge";
+import {
+  Badge,
+  Button,
+  Callout,
+  Card,
+  Flex,
+  Heading,
+  Link as RadixLink,
+  Table,
+  Text,
+  VisuallyHidden,
+} from "@radix-ui/themes";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
@@ -28,33 +28,14 @@ export const metadata = { title: "Clients" };
  * attention" queue nags about, so it reads as a warning here rather than
  * as neutral information.
  */
-// `tone` rather than `color`: tokens:verify flags a bare `color:` property
-// as a hardcoded visual value, and it is right to — the actual colour is
-// resolved by MDBadge from the theme, this is only the name of a variant.
-type Badge = { tone: string; label: string };
+type BadgeInfo = { color: "gray" | "green" | "amber" | "red"; label: string };
 
-const W9_BADGE_FALLBACK: Badge = { tone: "error", label: "No W-9" };
-const W9_BADGE: Record<string, Badge> = {
-  on_file: { tone: "success", label: "W-9 on file" },
-  requested: { tone: "warning", label: "W-9 requested" },
+const W9_BADGE_FALLBACK: BadgeInfo = { color: "red", label: "No W-9" };
+const W9_BADGE: Record<string, BadgeInfo> = {
+  on_file: { color: "green", label: "W-9 on file" },
+  requested: { color: "amber", label: "W-9 requested" },
   not_requested: W9_BADGE_FALLBACK,
 };
-
-/**
- * Visually hidden but present in the accessibility tree. Structural
- * values only, so it stays outside the token layer legitimately — same
- * approach as the Overview table's caption.
- */
-const visuallyHiddenSx = {
-  position: "absolute",
-  width: "1px",
-  height: "1px",
-  margin: "-1px",
-  padding: 0,
-  overflow: "hidden",
-  clipPath: "inset(50%)",
-  whiteSpace: "nowrap",
-} as const;
 
 export default async function ClientsPage() {
   await requireAccount("/clients");
@@ -81,155 +62,92 @@ export default async function ClientsPage() {
           : `${active.length} active${archived.length ? `, ${archived.length} archived` : ""}`
       }
       action={
-        <MDButton
-          component={NextLink}
-          href="/clients/new"
-          variant="gradient"
-          color="info"
-        >
-          New client
-        </MDButton>
+        <Button asChild>
+          <NextLink href="/clients/new">New client</NextLink>
+        </Button>
       }
     >
       <Card>
-        <MDBox p={3}>
-          {error ? (
-            <MDTypography variant="button" color="error">
-              {friendlyDbError(error, "clients.select")}
-            </MDTypography>
-          ) : clients.length === 0 ? (
-            <MDBox py={4} textAlign="center">
-              <MDTypography variant="h6">No clients yet</MDTypography>
-              <MDTypography variant="button" color="text" fontWeight="regular">
-                Add the owner, operator, or management company you fly for.
-                Trips and invoices both hang off a client.
-              </MDTypography>
-              <MDBox mt={3}>
-                <MDButton
-                  component={NextLink}
-                  href="/clients/new"
-                  variant="gradient"
-                  color="info"
-                >
-                  Add your first client
-                </MDButton>
-              </MDBox>
-            </MDBox>
-          ) : (
-            <TableContainer sx={{ boxShadow: "none" }}>
-              <Table>
-                <TableHead sx={{ display: "table-header-group" }}>
-                  <TableRow>
-                    {["Client", "Contact", "Day rate", "Terms", "W-9", "Actions"].map(
-                      (heading, index) => {
-                        // The last column holds the Edit links. Its header
-                        // is hidden visually but must still have an
-                        // accessible name, or the column is unnamed to a
-                        // screen reader.
-                        const hidden = heading === "Actions";
-                        return (
-                          <TableCell
-                            key={heading}
-                            align={index === 2 || index === 3 ? "right" : "left"}
-                          >
-                            <MDTypography
-                              variant="caption"
-                              fontWeight="bold"
-                              textTransform="uppercase"
-                              sx={hidden ? visuallyHiddenSx : undefined}
-                            >
-                              {heading}
-                            </MDTypography>
-                          </TableCell>
-                        );
-                      }
-                    )}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {clients.map((client) => {
-                    const w9 =
-                      W9_BADGE[client.w9_status] ?? W9_BADGE_FALLBACK;
-                    return (
-                      <TableRow key={client.id}>
-                        <TableCell component="th" scope="row">
-                          <MDTypography
-                            component={NextLink}
-                            href={`/clients/${client.id}`}
-                            variant="button"
-                            fontWeight="medium"
-                          >
-                            {client.name}
-                          </MDTypography>
-                          {client.archived_at ? (
-                            <MDTypography
-                              display="block"
-                              variant="caption"
-                              color="text"
-                            >
-                              Archived
-                            </MDTypography>
-                          ) : null}
-                        </TableCell>
-                        <TableCell>
-                          <MDTypography
-                            display="block"
-                            variant="button"
-                            fontWeight="regular"
-                          >
-                            {client.contact_name ?? "—"}
-                          </MDTypography>
-                          <MDTypography
-                            display="block"
-                            variant="caption"
-                            color="text"
-                          >
-                            {client.contact_email ?? ""}
-                          </MDTypography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <MDTypography variant="button" fontWeight="medium">
-                            {formatCents(client.default_day_rate_cents)}
-                          </MDTypography>
-                        </TableCell>
-                        <TableCell align="right">
-                          <MDTypography
-                            variant="button"
-                            color="text"
-                            fontWeight="regular"
-                          >
-                            Net {client.payment_terms_days}
-                          </MDTypography>
-                        </TableCell>
-                        <TableCell>
-                          <MDBadge
-                            variant="gradient"
-                            color={w9.tone}
-                            badgeContent={w9.label}
-                            size="sm"
-                            container
-                          />
-                        </TableCell>
-                        <TableCell align="right">
-                          <MDButton
-                            component={NextLink}
-                            href={`/clients/${client.id}`}
-                            variant="outlined"
-                            color="info"
-                            size="small"
-                            aria-label={`Edit ${client.name}`}
-                          >
-                            Edit
-                          </MDButton>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-        </MDBox>
+        {error ? (
+          <Callout.Root color="red" m="3">
+            <Callout.Text>{friendlyDbError(error, "clients.select")}</Callout.Text>
+          </Callout.Root>
+        ) : clients.length === 0 ? (
+          <Flex direction="column" align="center" gap="3" py="6" px="3">
+            <Heading as="h3" size="4">No clients yet</Heading>
+            <Text size="2" color="gray" align="center">
+              Add the owner, operator, or management company you fly for.
+              Trips and invoices both hang off a client.
+            </Text>
+            <Button asChild>
+              <NextLink href="/clients/new">Add your first client</NextLink>
+            </Button>
+          </Flex>
+        ) : (
+          <Table.Root>
+            <Table.Header>
+              <Table.Row>
+                <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>Contact</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell justify="end">Day rate</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell justify="end">Terms</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>W-9</Table.ColumnHeaderCell>
+                {/* Hidden visually but must still have an accessible name,
+                    or the Edit-link column is unnamed to a screen reader. */}
+                <Table.ColumnHeaderCell>
+                  <VisuallyHidden>Actions</VisuallyHidden>
+                </Table.ColumnHeaderCell>
+              </Table.Row>
+            </Table.Header>
+            <Table.Body>
+              {clients.map((client) => {
+                const w9 = W9_BADGE[client.w9_status] ?? W9_BADGE_FALLBACK;
+                return (
+                  <Table.Row key={client.id}>
+                    <Table.RowHeaderCell>
+                      <RadixLink asChild weight="medium">
+                        <NextLink href={`/clients/${client.id}`}>{client.name}</NextLink>
+                      </RadixLink>
+                      {client.archived_at ? (
+                        <Text as="div" size="1" color="gray">
+                          Archived
+                        </Text>
+                      ) : null}
+                    </Table.RowHeaderCell>
+                    <Table.Cell>
+                      <Text as="div" size="2">
+                        {client.contact_name ?? "—"}
+                      </Text>
+                      <Text as="div" size="1" color="gray">
+                        {client.contact_email ?? ""}
+                      </Text>
+                    </Table.Cell>
+                    <Table.Cell justify="end">
+                      <Text size="2" weight="medium" className="tnum">
+                        {formatCents(client.default_day_rate_cents)}
+                      </Text>
+                    </Table.Cell>
+                    <Table.Cell justify="end">
+                      <Text size="2" color="gray" className="tnum">
+                        Net {client.payment_terms_days}
+                      </Text>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Badge color={w9.color}>{w9.label}</Badge>
+                    </Table.Cell>
+                    <Table.Cell justify="end">
+                      <Button asChild variant="outline" size="1">
+                        <NextLink href={`/clients/${client.id}`} aria-label={`Edit ${client.name}`}>
+                          Edit
+                        </NextLink>
+                      </Button>
+                    </Table.Cell>
+                  </Table.Row>
+                );
+              })}
+            </Table.Body>
+          </Table.Root>
+        )}
       </Card>
     </PageShell>
   );

@@ -1,4 +1,4 @@
-import AuthShell from "@/components/mdpro/AuthShell";
+import { Flex } from "@radix-ui/themes";
 
 /**
  * The signed-out surface (/login, /welcome). Theme-only chrome, no
@@ -11,5 +11,9 @@ export default function AuthLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <AuthShell>{children}</AuthShell>;
+  return (
+    <Flex align="center" justify="center" minHeight="100vh" p="4">
+      {children}
+    </Flex>
+  );
 }

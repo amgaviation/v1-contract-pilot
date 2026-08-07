@@ -1,17 +1,15 @@
 "use client";
 
-import { Fragment, useActionState, useMemo, useState } from "react";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
-import TextField from "@mui/material/TextField";
-import MenuItem from "@mui/material/MenuItem";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
+import { Fragment, useActionState, useEffect, useMemo, useState } from "react";
+import {
+  Box,
+  Button,
+  Callout,
+  Select,
+  Table,
+  Text,
+  TextField,
+} from "@radix-ui/themes";
 import { formatDateWithWeekday, formatCents, centsToInput } from "@/lib/format";
 import { saveTripDays, type TripDaysFormState } from "./actions";
 import {
@@ -50,6 +48,13 @@ export type ClientRateOption = {
   day_type_id: string;
   rate_cents: number;
 };
+
+/** Radix forbids an empty-string Select.Item value. "— not counted —" is a
+ * real, postable choice (day_type_id is optional per row), so it gets a
+ * sentinel that never leaves this component — a hidden input per row
+ * always posts the real day_type_id, translating the sentinel back to ""
+ * before it reaches the field name the server action reads. */
+const NOT_COUNTED = "__none__";
 
 /** Full day / Half day cover the common cases; a stored value that isn't
  * either (any other 0.1-step quantity, from a prior edit or a future
@@ -98,6 +103,27 @@ export default function DayGrid({
   scalars: SeedScalars;
 }) {
   const [state, formAction, pending] = useActionState(saveTripDays, initialState);
+
+  // Radix's Select.Root always renders its posting <select> with
+  // `defaultValue`, never `value` (see @radix-ui/react-select's
+  // SelectBubbleInput) — so it is uncontrolled from React's point of view
+  // no matter what we pass to Select.Root. React 19's post-action
+  // form.reset() restores that <select> to its mount-time option, which
+  // fires a change event Radix forwards straight into onValueChange —
+  // calling handleDayTypeChange with the STALE, mount-time day type and
+  // silently overwriting whatever rate the pilot had typed since.
+  //
+  // Rather than try to detect and ignore that spurious callback, we make
+  // the stale defaultValue impossible: every dispatch (success or reject)
+  // remounts every row's Selects via a generation-keyed `key`. The remount
+  // happens during the same commit's DOM-mutation phase, before React's
+  // effect-scheduled form.reset() runs — so by the time the browser resets
+  // the (now-replaced) <select>, its fresh defaultValue already reflects
+  // the pilot's latest state, and the reset is a no-op.
+  const [formGen, setFormGen] = useState(0);
+  useEffect(() => {
+    setFormGen((g) => g + 1);
+  }, [state]);
 
   const dates = useMemo(() => enumerateDates(startsOn, endsOn), [startsOn, endsOn]);
 
@@ -152,8 +178,8 @@ export default function DayGrid({
       return activeDayTypes;
     }
     // The row's saved choice has since been archived. It still has to
-    // appear as a selectable option, or MUI's Select warns about an
-    // out-of-range value and the pilot's already-captured day type
+    // appear as a selectable option, or the Select would carry a value
+    // with no matching Item and the pilot's already-captured day type
     // silently disappears from view.
     const archived = dayTypeById.get(dayTypeId);
     return archived
@@ -177,26 +203,28 @@ export default function DayGrid({
 
   if (locked) {
     return (
-      <MDBox>
-        <MDBox mb={2}>
-          <MDTypography variant="caption" color="text" fontWeight="regular">
+      <Box>
+        <Box mb="3">
+          <Text size="1" color="gray">
             {billedOn
               ? `This trip is billed on ${billedOn}. Its day rows are frozen here — correcting them would leave the trip and that invoice disagreeing about what was flown. Remove it from the invoice first.`
               : "This trip is on an invoice. Its day rows are frozen here — correcting them would leave the trip and the invoice that has already gone out disagreeing about what was flown."}
-          </MDTypography>
-        </MDBox>
+          </Text>
+        </Box>
         <ReadOnlyGrid dates={dates} existingByDate={existingByDate} dayTypeById={dayTypeById} allDayTypes={dayTypes} />
-      </MDBox>
+      </Box>
     );
   }
 
+  const failingDates = state.fieldErrors ? Object.keys(state.fieldErrors) : [];
+
   return (
-    <MDBox component="form" action={formAction}>
+    <form action={formAction}>
       <input type="hidden" name="trip_id" value={tripId} />
 
       {existingDays.length === 0 && seed.seeded ? (
-        <MDBox mb={2}>
-          <MDTypography variant="caption" color="text" fontWeight="regular">
+        <Box mb="3">
+          <Text size="1" color="gray">
             Seeded from this trip&apos;s day counts — check it before saving.
             Which dates are travel versus flight days (travel first and
             last, flight in between), and where a half day lands, is a
@@ -205,158 +233,177 @@ export default function DayGrid({
             {seed.approximate
               ? " Some days didn't fit the trip's dates and were left blank."
               : ""}
-          </MDTypography>
-        </MDBox>
+          </Text>
+        </Box>
       ) : null}
 
-      <TableContainer sx={{ boxShadow: "none" }}>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>
-                <MDTypography variant="caption" fontWeight="bold" textTransform="uppercase">
-                  Date
-                </MDTypography>
-              </TableCell>
-              <TableCell>
-                <MDTypography variant="caption" fontWeight="bold" textTransform="uppercase">
-                  Day type
-                </MDTypography>
-              </TableCell>
-              <TableCell sx={{ minWidth: 130 }}>
-                <MDTypography variant="caption" fontWeight="bold" textTransform="uppercase">
-                  Quantity
-                </MDTypography>
-              </TableCell>
-              <TableCell align="right">
-                <MDTypography variant="caption" fontWeight="bold" textTransform="uppercase">
-                  Rate (USD)
-                </MDTypography>
-              </TableCell>
-              <TableCell>
-                <MDTypography variant="caption" fontWeight="bold" textTransform="uppercase">
-                  Notes
-                </MDTypography>
-              </TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
+      <Box overflowX="auto">
+        <Table.Root size="1">
+          <Table.Header>
+            <Table.Row>
+              <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
+              <Table.ColumnHeaderCell>Day type</Table.ColumnHeaderCell>
+              <Table.ColumnHeaderCell minWidth="130px">Quantity</Table.ColumnHeaderCell>
+              <Table.ColumnHeaderCell justify="end">Rate (USD)</Table.ColumnHeaderCell>
+              <Table.ColumnHeaderCell>Notes</Table.ColumnHeaderCell>
+            </Table.Row>
+          </Table.Header>
+          <Table.Body>
             {dates.map((date) => {
               const row = rows[date] ?? { dayTypeId: "", rate: "", notes: "", quantity: "1" };
               const selectedType = row.dayTypeId ? dayTypeById.get(row.dayTypeId) : undefined;
               const nonBillable = selectedType ? selectedType.billable === false : false;
               const fieldError = state.fieldErrors?.[date];
+              const errorId = `day-error-${date}`;
+              const dayTypeCtlId = `day-type-${date}`;
+              const quantityCtlId = `quantity-${date}`;
+              const rateCtlId = `rate-${date}`;
+              const notesCtlId = `notes-${date}`;
               return (
                 <Fragment key={date}>
-                  <TableRow>
-                    <TableCell sx={{ whiteSpace: "nowrap" }}>
-                      <MDTypography variant="button" fontWeight="regular">
-                        {formatDateWithWeekday(date)}
-                      </MDTypography>
-                    </TableCell>
-                    <TableCell sx={{ minWidth: 180 }}>
-                      <TextField
-                        select
-                        size="small"
-                        fullWidth
-                        name={dayTypeFieldName(date)}
-                        value={row.dayTypeId}
-                        onChange={(event) => handleDayTypeChange(date, event.target.value)}
+                  <Table.Row>
+                    <Table.Cell style={{ whiteSpace: "nowrap" }}>
+                      <Text size="2">{formatDateWithWeekday(date)}</Text>
+                    </Table.Cell>
+                    <Table.Cell minWidth="180px">
+                      {/* The real day_type_id, always in sync with row.dayTypeId
+                          — see NOT_COUNTED above for why the Select itself
+                          can't post this directly. */}
+                      <input type="hidden" name={dayTypeFieldName(date)} value={row.dayTypeId} />
+                      <Select.Root
+                        key={`day-type-${date}-${formGen}`}
+                        size="1"
+                        value={row.dayTypeId === "" ? NOT_COUNTED : row.dayTypeId}
+                        onValueChange={(next) =>
+                          handleDayTypeChange(date, next === NOT_COUNTED ? "" : next)
+                        }
                       >
-                        <MenuItem value="">— not counted —</MenuItem>
-                        {optionsFor(row.dayTypeId).map((t) => (
-                          <MenuItem key={t.id} value={t.id}>
-                            {t.archived_at ? `${t.label} (archived)` : t.label}
-                          </MenuItem>
-                        ))}
-                      </TextField>
-                    </TableCell>
-                    <TableCell sx={{ minWidth: 130 }}>
-                      <TextField
-                        select
-                        size="small"
-                        fullWidth
-                        name={quantityFieldName(date)}
+                        <Select.Trigger
+                          id={dayTypeCtlId}
+                          aria-label={`Day type for ${formatDateWithWeekday(date)}`}
+                          aria-invalid={fieldError ? true : undefined}
+                          aria-describedby={fieldError ? errorId : undefined}
+                          style={{ width: "100%" }}
+                        />
+                        <Select.Content>
+                          <Select.Item value={NOT_COUNTED}>— not counted —</Select.Item>
+                          {optionsFor(row.dayTypeId).map((t) => (
+                            <Select.Item key={t.id} value={t.id}>
+                              {t.archived_at ? `${t.label} (archived)` : t.label}
+                            </Select.Item>
+                          ))}
+                        </Select.Content>
+                      </Select.Root>
+                    </Table.Cell>
+                    <Table.Cell minWidth="130px">
+                      {/* Quantity is never blank, so the field name can go
+                          directly on the Select — no sentinel needed. */}
+                      <input type="hidden" name={quantityFieldName(date)} value={row.quantity} />
+                      <Select.Root
+                        key={`quantity-${date}-${formGen}`}
+                        size="1"
                         value={row.quantity}
                         disabled={!row.dayTypeId}
-                        onChange={(event) => setRow(date, { quantity: event.target.value })}
+                        onValueChange={(next) => setRow(date, { quantity: next })}
                       >
-                        {quantityOptionsFor(row.quantity).map((o) => (
-                          <MenuItem key={o.value} value={o.value}>
-                            {o.label}
-                          </MenuItem>
-                        ))}
-                      </TextField>
-                    </TableCell>
-                    <TableCell align="right" sx={{ minWidth: 140 }}>
+                        <Select.Trigger
+                          id={quantityCtlId}
+                          aria-label={`Quantity for ${formatDateWithWeekday(date)}`}
+                          aria-invalid={fieldError ? true : undefined}
+                          aria-describedby={fieldError ? errorId : undefined}
+                          style={{ width: "100%" }}
+                        />
+                        <Select.Content>
+                          {quantityOptionsFor(row.quantity).map((o) => (
+                            <Select.Item key={o.value} value={o.value}>
+                              {o.label}
+                            </Select.Item>
+                          ))}
+                        </Select.Content>
+                      </Select.Root>
+                    </Table.Cell>
+                    <Table.Cell justify="end" minWidth="140px">
                       {row.dayTypeId && nonBillable ? (
                         <>
                           <input type="hidden" name={rateFieldName(date)} value="0" />
-                          <MDTypography variant="caption" color="text" fontWeight="regular">
+                          <Text size="1" color="gray">
                             Doesn&apos;t bill
-                          </MDTypography>
+                          </Text>
                         </>
                       ) : (
-                        <TextField
-                          size="small"
-                          fullWidth
-                          inputMode="decimal"
-                          name={rateFieldName(date)}
-                          value={row.rate}
-                          disabled={!row.dayTypeId}
-                          onChange={(event) => setRow(date, { rate: event.target.value })}
-                        />
+                        <>
+                          <Text as="label" htmlFor={rateCtlId} style={{ display: "none" }}>
+                            {`Rate for ${formatDateWithWeekday(date)}`}
+                          </Text>
+                          <TextField.Root
+                            id={rateCtlId}
+                            size="1"
+                            inputMode="decimal"
+                            name={rateFieldName(date)}
+                            value={row.rate}
+                            disabled={!row.dayTypeId}
+                            aria-label={`Rate for ${formatDateWithWeekday(date)}`}
+                            aria-invalid={fieldError ? true : undefined}
+                            aria-describedby={fieldError ? errorId : undefined}
+                            onChange={(event) => setRow(date, { rate: event.target.value })}
+                          />
+                        </>
                       )}
-                    </TableCell>
-                    <TableCell sx={{ minWidth: 180 }}>
-                      <TextField
-                        size="small"
-                        fullWidth
+                    </Table.Cell>
+                    <Table.Cell minWidth="180px">
+                      <TextField.Root
+                        id={notesCtlId}
+                        size="1"
                         name={notesFieldName(date)}
                         value={row.notes}
+                        aria-label={`Notes for ${formatDateWithWeekday(date)}`}
+                        aria-invalid={fieldError ? true : undefined}
+                        aria-describedby={fieldError ? errorId : undefined}
                         onChange={(event) => setRow(date, { notes: event.target.value })}
                       />
-                    </TableCell>
-                  </TableRow>
+                    </Table.Cell>
+                  </Table.Row>
                   {fieldError ? (
-                    <TableRow>
-                      <TableCell colSpan={5} sx={{ pt: 0 }}>
-                        <MDTypography variant="caption" color="error">
+                    <Table.Row>
+                      <Table.Cell colSpan={5} pt="0">
+                        <Text id={errorId} size="1" color="red">
                           {fieldError}
-                        </MDTypography>
-                      </TableCell>
-                    </TableRow>
+                        </Text>
+                      </Table.Cell>
+                    </Table.Row>
                   ) : null}
                 </Fragment>
               );
             })}
-          </TableBody>
-        </Table>
-      </TableContainer>
+          </Table.Body>
+        </Table.Root>
+      </Box>
 
-      <MDBox mt={2} role="alert" aria-live="polite">
+      <Box mt="3" role="alert" aria-live="polite">
         {state.error ? (
-          <MDTypography variant="caption" color="error">
-            {state.error}
-          </MDTypography>
-        ) : state.fieldErrors && Object.keys(state.fieldErrors).length > 0 ? (
-          <MDTypography variant="caption" color="error">
-            Fix the {Object.keys(state.fieldErrors).length === 1 ? "row" : "rows"} highlighted
-            above before saving.
-          </MDTypography>
+          <Callout.Root color="red" size="1">
+            <Callout.Text>{state.error}</Callout.Text>
+          </Callout.Root>
+        ) : failingDates.length > 0 ? (
+          <Callout.Root color="red" size="1">
+            <Callout.Text>
+              Fix {failingDates.length === 1 ? "this date" : "these dates"} before saving:{" "}
+              {failingDates.map((d) => formatDateWithWeekday(d)).join(", ")}.
+            </Callout.Text>
+          </Callout.Root>
         ) : state.saved ? (
-          <MDTypography variant="caption" color="success">
-            Day grid saved.
-          </MDTypography>
+          <Callout.Root color="green" size="1">
+            <Callout.Text>Day grid saved.</Callout.Text>
+          </Callout.Root>
         ) : null}
-      </MDBox>
+      </Box>
 
-      <MDBox mt={3}>
-        <MDButton type="submit" variant="gradient" color="info" disabled={pending}>
+      <Box mt="4">
+        <Button type="submit" disabled={pending}>
           {pending ? "Saving…" : "Save day grid"}
-        </MDButton>
-      </MDBox>
-    </MDBox>
+        </Button>
+      </Box>
+    </form>
   );
 }
 
@@ -376,38 +423,18 @@ function ReadOnlyGrid({
   allDayTypes: DayTypeOption[];
 }) {
   return (
-    <TableContainer sx={{ boxShadow: "none" }}>
-      <Table size="small">
-        <TableHead>
-          <TableRow>
-            <TableCell>
-              <MDTypography variant="caption" fontWeight="bold" textTransform="uppercase">
-                Date
-              </MDTypography>
-            </TableCell>
-            <TableCell>
-              <MDTypography variant="caption" fontWeight="bold" textTransform="uppercase">
-                Day type
-              </MDTypography>
-            </TableCell>
-            <TableCell>
-              <MDTypography variant="caption" fontWeight="bold" textTransform="uppercase">
-                Quantity
-              </MDTypography>
-            </TableCell>
-            <TableCell align="right">
-              <MDTypography variant="caption" fontWeight="bold" textTransform="uppercase">
-                Rate
-              </MDTypography>
-            </TableCell>
-            <TableCell>
-              <MDTypography variant="caption" fontWeight="bold" textTransform="uppercase">
-                Notes
-              </MDTypography>
-            </TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
+    <Box overflowX="auto">
+      <Table.Root size="1">
+        <Table.Header>
+          <Table.Row>
+            <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell>Day type</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell>Quantity</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell justify="end">Rate</Table.ColumnHeaderCell>
+            <Table.ColumnHeaderCell>Notes</Table.ColumnHeaderCell>
+          </Table.Row>
+        </Table.Header>
+        <Table.Body>
           {dates.map((date) => {
             const existing = existingByDate.get(date);
             const label = existing
@@ -423,37 +450,35 @@ function ReadOnlyGrid({
                 )
               : "— not counted —";
             return (
-              <TableRow key={date}>
-                <TableCell sx={{ whiteSpace: "nowrap" }}>
-                  <MDTypography variant="button" fontWeight="regular">
-                    {formatDateWithWeekday(date)}
-                  </MDTypography>
-                </TableCell>
-                <TableCell>
-                  <MDTypography variant="button" color="text" fontWeight="regular">
+              <Table.Row key={date}>
+                <Table.Cell style={{ whiteSpace: "nowrap" }}>
+                  <Text size="2">{formatDateWithWeekday(date)}</Text>
+                </Table.Cell>
+                <Table.Cell>
+                  <Text size="2" color="gray">
                     {label}
-                  </MDTypography>
-                </TableCell>
-                <TableCell>
-                  <MDTypography variant="button" color="text" fontWeight="regular">
+                  </Text>
+                </Table.Cell>
+                <Table.Cell>
+                  <Text size="2" color="gray" className="tnum">
                     {existing ? quantityToInput(existing.quantity) : "—"}
-                  </MDTypography>
-                </TableCell>
-                <TableCell align="right">
-                  <MDTypography variant="button" fontWeight="regular">
+                  </Text>
+                </Table.Cell>
+                <Table.Cell justify="end">
+                  <Text size="2" className="tnum">
                     {existing ? formatCents(existing.rate_cents) : "—"}
-                  </MDTypography>
-                </TableCell>
-                <TableCell>
-                  <MDTypography variant="button" color="text" fontWeight="regular">
+                  </Text>
+                </Table.Cell>
+                <Table.Cell>
+                  <Text size="2" color="gray">
                     {existing?.notes ?? ""}
-                  </MDTypography>
-                </TableCell>
-              </TableRow>
+                  </Text>
+                </Table.Cell>
+              </Table.Row>
             );
           })}
-        </TableBody>
-      </Table>
-    </TableContainer>
+        </Table.Body>
+      </Table.Root>
+    </Box>
   );
 }

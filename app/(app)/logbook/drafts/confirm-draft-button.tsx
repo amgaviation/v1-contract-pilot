@@ -1,9 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { Button, Flex, Text } from "@radix-ui/themes";
 import { confirmLegDraft, confirmTripDrafts } from "../actions";
 
 /**
@@ -16,21 +14,27 @@ export function ConfirmLegButton({ tripLegId, label }: { tripLegId: string; labe
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const doneRef = useRef<HTMLSpanElement>(null);
+
+  // The button unmounts once confirmed, which would otherwise drop
+  // keyboard focus to <body>. Move it to the confirmation message instead.
+  useEffect(() => {
+    if (done) doneRef.current?.focus();
+  }, [done]);
 
   if (done) {
     return (
-      <MDTypography variant="caption" color="success" fontWeight="bold">
+      <Text ref={doneRef} tabIndex={-1} size="1" color="green" weight="bold">
         Confirmed
-      </MDTypography>
+      </Text>
     );
   }
 
   return (
-    <MDBox textAlign="right">
-      <MDButton
-        variant="outlined"
-        color="info"
-        size="small"
+    <Flex direction="column" align="end" gap="1">
+      <Button
+        variant="outline"
+        size="1"
         disabled={pending}
         aria-label={`Confirm leg ${label}`}
         onClick={() =>
@@ -42,13 +46,13 @@ export function ConfirmLegButton({ tripLegId, label }: { tripLegId: string; labe
         }
       >
         {pending ? "Confirming…" : "Confirm"}
-      </MDButton>
+      </Button>
       {error ? (
-        <MDTypography display="block" variant="caption" color="error" role="alert">
+        <Text size="1" color="red" role="alert">
           {error}
-        </MDTypography>
+        </Text>
       ) : null}
-    </MDBox>
+    </Flex>
   );
 }
 
@@ -56,21 +60,26 @@ export function ConfirmTripButton({ tripId, legCount }: { tripId: string; legCou
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const doneRef = useRef<HTMLSpanElement>(null);
+
+  // The button unmounts once confirmed, which would otherwise drop
+  // keyboard focus to <body>. Move it to the confirmation message instead.
+  useEffect(() => {
+    if (done) doneRef.current?.focus();
+  }, [done]);
 
   if (done) {
     return (
-      <MDTypography variant="caption" color="success" fontWeight="bold">
+      <Text ref={doneRef} tabIndex={-1} size="1" color="green" weight="bold">
         All confirmed
-      </MDTypography>
+      </Text>
     );
   }
 
   return (
-    <MDBox>
-      <MDButton
-        variant="gradient"
-        color="info"
-        size="small"
+    <Flex direction="column" gap="1">
+      <Button
+        size="1"
         disabled={pending}
         aria-label={`Confirm all ${legCount} leg${legCount === 1 ? "" : "s"}`}
         onClick={() =>
@@ -82,14 +91,12 @@ export function ConfirmTripButton({ tripId, legCount }: { tripId: string; legCou
         }
       >
         {pending ? "Confirming…" : `Confirm all ${legCount} leg${legCount === 1 ? "" : "s"}`}
-      </MDButton>
+      </Button>
       {error ? (
-        <MDBox mt={1} role="alert">
-          <MDTypography variant="caption" color="error">
-            {error}
-          </MDTypography>
-        </MDBox>
+        <Text size="1" color="red" role="alert">
+          {error}
+        </Text>
       ) : null}
-    </MDBox>
+    </Flex>
   );
 }

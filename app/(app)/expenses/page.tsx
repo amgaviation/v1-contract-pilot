@@ -1,16 +1,16 @@
 import NextLink from "next/link";
-import Card from "@mui/material/Card";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
-
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
-import MDBadge from "@/components/mdpro/MDBadge";
+import {
+  Badge,
+  Box,
+  Button,
+  Callout,
+  Card,
+  Flex,
+  Link as RadixLink,
+  Table,
+  Text,
+} from "@radix-ui/themes";
+import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
@@ -50,12 +50,12 @@ const CATEGORY_LABEL: Record<string, string> = {
   other: "Other",
 };
 
-type Badge = { tone: string; label: string };
-const TREATMENT_FALLBACK: Badge = { tone: "warning", label: "Unassigned" };
+type Badge = { color: "amber" | "blue" | "green"; label: string };
+const TREATMENT_FALLBACK: Badge = { color: "amber", label: "Unassigned" };
 const TREATMENT_BADGE: Record<string, Badge> = {
   unassigned: TREATMENT_FALLBACK,
-  rebill: { tone: "info", label: "Rebill" },
-  deduct: { tone: "success", label: "Deduct" },
+  rebill: { color: "blue", label: "Rebill" },
+  deduct: { color: "green", label: "Deduct" },
 };
 
 export default async function ExpensesPage() {
@@ -121,162 +121,107 @@ export default async function ExpensesPage() {
             }`
       }
       action={
-        <MDButton
-          component={NextLink}
-          href="/expenses/new"
-          variant="gradient"
-          color="info"
-        >
-          Add expense
-        </MDButton>
+        <Button asChild>
+          <NextLink href="/expenses/new">Add expense</NextLink>
+        </Button>
       }
     >
       {error ? (
-        <Card>
-          <MDBox p={3}>
-            <MDTypography variant="button" color="error">
-              {friendlyDbError(error, "expenses.select")}
-            </MDTypography>
-          </MDBox>
+        <Card size="3">
+          <Callout.Root color="red">
+            <Callout.Icon>
+              <ExclamationTriangleIcon />
+            </Callout.Icon>
+            <Callout.Text>{friendlyDbError(error, "expenses.select")}</Callout.Text>
+          </Callout.Root>
         </Card>
       ) : (
         <>
           {queueRows.length > 0 ? (
-            <MDBox mb={3}>
-              <Card>
-                <MDBox p={3} pb={0} lineHeight={1.25}>
-                  <MDTypography variant="h6">Needs filing</MDTypography>
-                  <MDTypography variant="button" color="text" fontWeight="regular">
-                    {queueRows.length} receipt
-                    {queueRows.length === 1 ? "" : "s"} that are neither billed
-                    to a client nor claimed as a deduction.
-                  </MDTypography>
-                </MDBox>
-                <MDBox p={3} pt={2}>
-                  <UnassignedQueue rows={queueRows} trips={tripOptions} />
-                </MDBox>
+            <Box mb="4">
+              <Card size="3">
+                <Text as="div" size="4" weight="bold">
+                  Needs filing
+                </Text>
+                <Text as="div" color="gray" mb="3">
+                  {queueRows.length} receipt
+                  {queueRows.length === 1 ? "" : "s"} that are neither billed
+                  to a client nor claimed as a deduction.
+                </Text>
+                <UnassignedQueue rows={queueRows} trips={tripOptions} />
               </Card>
-            </MDBox>
+            </Box>
           ) : null}
 
-          <Card>
-            <MDBox p={3}>
-              {expenses.length === 0 ? (
-                <MDBox py={4} textAlign="center">
-                  <MDTypography variant="h6">No expenses yet</MDTypography>
-                  <MDTypography variant="button" color="text" fontWeight="regular">
-                    Capture the receipt once and tag it rebill or deduct. It
-                    files itself against the trip from there.
-                  </MDTypography>
-                  <MDBox mt={3}>
-                    <MDButton
-                      component={NextLink}
-                      href="/expenses/new"
-                      variant="gradient"
-                      color="info"
-                    >
-                      Add your first expense
-                    </MDButton>
-                  </MDBox>
-                </MDBox>
-              ) : (
-                <TableContainer sx={{ boxShadow: "none" }}>
-                  <Table>
-                    <TableHead sx={{ display: "table-header-group" }}>
-                      <TableRow>
-                        {["Date", "Category", "Vendor", "Trip", "Amount", "Treatment", "Receipt"].map(
-                          (heading, index) => (
-                            <TableCell
-                              key={heading}
-                              align={index === 4 ? "right" : "left"}
-                            >
-                              <MDTypography
-                                variant="caption"
-                                fontWeight="bold"
-                                textTransform="uppercase"
-                              >
-                                {heading}
-                              </MDTypography>
-                            </TableCell>
-                          )
-                        )}
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {expenses.map((expense) => {
-                        const badge =
-                          TREATMENT_BADGE[expense.treatment] ?? TREATMENT_FALLBACK;
-                        return (
-                          <TableRow key={expense.id}>
-                            <TableCell component="th" scope="row">
-                              <MDTypography
-                                component={NextLink}
-                                href={`/expenses/${expense.id}`}
-                                variant="button"
-                                fontWeight="medium"
-                              >
-                                {formatDate(expense.incurred_on)}
-                              </MDTypography>
-                            </TableCell>
-                            <TableCell>
-                              <MDTypography
-                                variant="button"
-                                color="text"
-                                fontWeight="regular"
-                              >
-                                {CATEGORY_LABEL[expense.category] ?? "Other"}
-                              </MDTypography>
-                            </TableCell>
-                            <TableCell>
-                              <MDTypography
-                                variant="button"
-                                color="text"
-                                fontWeight="regular"
-                              >
-                                {expense.vendor ?? "—"}
-                              </MDTypography>
-                            </TableCell>
-                            <TableCell>
-                              <MDTypography
-                                variant="button"
-                                color="text"
-                                fontWeight="regular"
-                              >
-                                {expense.trip_id
-                                  ? tripLabels.get(expense.trip_id) ?? "—"
-                                  : "—"}
-                              </MDTypography>
-                            </TableCell>
-                            <TableCell align="right">
-                              <MDTypography variant="button" fontWeight="medium">
-                                {formatCents(expense.amount_cents)}
-                              </MDTypography>
-                            </TableCell>
-                            <TableCell>
-                              <MDBadge
-                                variant="gradient"
-                                color={badge.tone}
-                                badgeContent={badge.label}
-                                size="sm"
-                                container
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <MDTypography
-                                variant="caption"
-                                color={expense.receipt_path ? "text" : "error"}
-                              >
-                                {expense.receipt_path ? "Attached" : "Missing"}
-                              </MDTypography>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              )}
-            </MDBox>
+          <Card size="3">
+            {expenses.length === 0 ? (
+              <Flex direction="column" align="center" gap="3" py="6">
+                <Text size="4" weight="bold">
+                  No expenses yet
+                </Text>
+                <Text size="2" color="gray" align="center">
+                  Capture the receipt once and tag it rebill or deduct. It
+                  files itself against the trip from there.
+                </Text>
+                <Button asChild>
+                  <NextLink href="/expenses/new">Add your first expense</NextLink>
+                </Button>
+              </Flex>
+            ) : (
+              <Table.Root variant="ghost">
+                <Table.Header>
+                  <Table.Row>
+                    <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell>Category</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell>Vendor</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell>Trip</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell justify="end">Amount</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell>Treatment</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell>Receipt</Table.ColumnHeaderCell>
+                  </Table.Row>
+                </Table.Header>
+                <Table.Body>
+                  {expenses.map((expense) => {
+                    const badge = TREATMENT_BADGE[expense.treatment] ?? TREATMENT_FALLBACK;
+                    return (
+                      <Table.Row key={expense.id}>
+                        <Table.RowHeaderCell>
+                          <RadixLink asChild weight="medium">
+                            <NextLink href={`/expenses/${expense.id}`}>
+                              {formatDate(expense.incurred_on)}
+                            </NextLink>
+                          </RadixLink>
+                        </Table.RowHeaderCell>
+                        <Table.Cell>
+                          <Text color="gray">{CATEGORY_LABEL[expense.category] ?? "Other"}</Text>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <Text color="gray">{expense.vendor ?? "—"}</Text>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <Text color="gray">
+                            {expense.trip_id ? tripLabels.get(expense.trip_id) ?? "—" : "—"}
+                          </Text>
+                        </Table.Cell>
+                        <Table.Cell justify="end">
+                          <Text weight="medium" className="tnum">
+                            {formatCents(expense.amount_cents)}
+                          </Text>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <Badge color={badge.color}>{badge.label}</Badge>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <Text size="1" color={expense.receipt_path ? "gray" : "red"}>
+                            {expense.receipt_path ? "Attached" : "Missing"}
+                          </Text>
+                        </Table.Cell>
+                      </Table.Row>
+                    );
+                  })}
+                </Table.Body>
+              </Table.Root>
+            )}
           </Card>
         </>
       )}

@@ -1,7 +1,5 @@
 import { notFound } from "next/navigation";
-import Card from "@mui/material/Card";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
+import { Box, Callout, Card, Text } from "@radix-ui/themes";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
@@ -71,17 +69,13 @@ export default async function EditClientPage({
       action={<ArchiveButton id={client.id} archived={Boolean(client.archived_at)} />}
     >
       {client.archived_at ? (
-        <MDBox mb={3}>
-          <Card>
-            <MDBox p={3}>
-              <MDTypography variant="button" color="text" fontWeight="regular">
-                This client is archived. Their trips and invoices are
-                untouched — they just won&rsquo;t appear when you pick a client
-                for new work.
-              </MDTypography>
-            </MDBox>
-          </Card>
-        </MDBox>
+        <Card mb="4">
+          <Text size="2" color="gray">
+            This client is archived. Their trips and invoices are
+            untouched — they just won&rsquo;t appear when you pick a client
+            for new work.
+          </Text>
+        </Card>
       ) : null}
 
       <ClientForm
@@ -97,44 +91,38 @@ export default async function EditClientPage({
           overrides, the other per-client terms the product records but
           doesn't act on by itself, and labeled the same way. */}
       {client.cancellation_policy_note ? (
-        <MDBox mt={3}>
-          <Card>
-            <MDBox p={3}>
-              <MDTypography variant="button" color="text" fontWeight="regular">
-                <MDTypography component="span" variant="button" fontWeight="bold">
-                  Cancellation terms on file:
-                </MDTypography>{" "}
-                {client.cancellation_policy_note}
-              </MDTypography>
-              <MDBox mt={0.5}>
-                <MDTypography variant="caption" color="text">
-                  Recorded for reference only — never applied automatically.
-                  Add a cancellation fee line on the invoice yourself if this
-                  client owes one.
-                </MDTypography>
-              </MDBox>
-            </MDBox>
-          </Card>
-        </MDBox>
+        <Card mt="4">
+          <Text size="2" color="gray">
+            <Text as="span" size="2" weight="bold">
+              Cancellation terms on file:
+            </Text>{" "}
+            {client.cancellation_policy_note}
+          </Text>
+          <Text as="p" size="1" color="gray" mt="1">
+            Recorded for reference only — never applied automatically.
+            Add a cancellation fee line on the invoice yourself if this
+            client owes one.
+          </Text>
+        </Card>
       ) : null}
 
-      <MDBox mt={3}>
-        {ratesLoadError ? (
-          <Card>
-            <MDBox p={3}>
-              <MDTypography variant="button" color="error">
-                Couldn&rsquo;t load rate overrides. Try reloading the page.
-              </MDTypography>
-            </MDBox>
-          </Card>
-        ) : (
+      {ratesLoadError ? (
+        <Card mt="4">
+          <Callout.Root color="red">
+            <Callout.Text>
+              Couldn&rsquo;t load rate overrides. Try reloading the page.
+            </Callout.Text>
+          </Callout.Root>
+        </Card>
+      ) : (
+        <Box mt="4">
           <RateOverridesPanel
             clientId={client.id}
             dayTypes={dayTypes}
             overrides={rateOverrides}
           />
-        )}
-      </MDBox>
+        </Box>
+      )}
     </PageShell>
   );
 }

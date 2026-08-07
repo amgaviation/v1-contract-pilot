@@ -2,13 +2,7 @@
 
 import { useActionState, useState } from "react";
 import NextLink from "next/link";
-import Card from "@mui/material/Card";
-import Grid from "@mui/material/Grid";
-import TextField from "@mui/material/TextField";
-import MenuItem from "@mui/material/MenuItem";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
+import { Box, Button, Card, Flex, Grid, Text, TextField, Select, TextArea } from "@radix-ui/themes";
 import { centsToInput } from "@/lib/format";
 import type { ExpenseFormState } from "./actions";
 
@@ -47,6 +41,12 @@ const TREATMENTS = [
   { value: "deduct", label: "Keep as a deduction" },
 ];
 
+// Radix Select forbids an item with value="" — "No trip" uses this
+// sentinel and is translated back to "" on submit, so the FormData field
+// name (`trip_id`) never changes and actions.ts's optionalUuid() still
+// reads a blank trip exactly as before.
+const NO_TRIP = "none";
+
 const initialState: ExpenseFormState = { error: null };
 
 export default function ExpenseForm({
@@ -76,63 +76,86 @@ export default function ExpenseForm({
   // meaningful with a trip attached (the database refuses the pair), so
   // the trip field becomes required in front of the pilot rather than
   // after a round trip.
+  //
+  // Radix's Select.Root always renders its posting <select> with
+  // `defaultValue`, never `value` (@radix-ui/react-select's
+  // SelectBubbleInput) — so it's uncontrolled from React's point of view
+  // regardless of what Select.Root gets passed, and React 19's post-action
+  // form.reset() restores it to its mount-time option even on a rejected
+  // submit. The wrapped submit handler below (already relied on for
+  // tripId) sidesteps this for every Select value by overwriting the
+  // FormData entry from React state at dispatch time, so the state the
+  // pilot actually sees is what's actually posted, regardless of what the
+  // native <select> reverted to.
+  const [category, setCategory] = useState(() => initial("category", values.category, "other"));
   const [treatment, setTreatment] = useState(() =>
     submitted?.treatment ?? (values.treatment ?? "unassigned")
   );
-  const [tripId, setTripId] = useState(() =>
-    submitted?.trip_id ?? (values.trip_id ?? "")
-  );
+  const [tripId, setTripId] = useState(() => {
+    const stored = submitted?.trip_id ?? values.trip_id ?? "";
+    return stored === "" ? NO_TRIP : stored;
+  });
   const rebilling = treatment === "rebill";
 
   return (
-    <Card>
-      <MDBox p={3} component="form" action={formAction}>
+    <Card size="3">
+      <form
+        action={(formData) => {
+          formData.set("trip_id", tripId === NO_TRIP ? "" : tripId);
+          formData.set("category", category);
+          formData.set("treatment", treatment);
+          return formAction(formData);
+        }}
+      >
         {values.id ? <input type="hidden" name="id" value={values.id} /> : null}
 
-        <MDBox mb={2}>
-          <MDTypography variant="h6">The receipt</MDTypography>
-        </MDBox>
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={3}>
-            <TextField
+        <Text as="div" size="4" weight="bold" mb="3">
+          The receipt
+        </Text>
+        <Grid columns={{ initial: "1", md: "4" }} gap="3">
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" htmlFor="incurred_on">
+              Date
+            </Text>
+            <TextField.Root
+              id="incurred_on"
               type="date"
               name="incurred_on"
-              label="Date"
-              fullWidth
               required
-              InputLabelProps={{ shrink: true }}
               defaultValue={initial("incurred_on", values.incurred_on)}
             />
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <TextField
-              select
-              name="category"
-              label="Category"
-              fullWidth
-              defaultValue={initial("category", values.category, "other")}
-            >
-              {CATEGORIES.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <TextField
-              name="vendor"
-              label="Vendor"
-              fullWidth
-              defaultValue={initial("vendor", values.vendor)}
-              helperText="Who you paid"
-            />
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <TextField
+          </Flex>
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" id="category-label">
+              Category
+            </Text>
+            <Select.Root value={category} onValueChange={setCategory}>
+              <Select.Trigger aria-labelledby="category-label" />
+              <Select.Content>
+                {CATEGORIES.map((option) => (
+                  <Select.Item key={option.value} value={option.value}>
+                    {option.label}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+          </Flex>
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" htmlFor="vendor">
+              Vendor
+            </Text>
+            <TextField.Root id="vendor" name="vendor" defaultValue={initial("vendor", values.vendor)} />
+            <Text size="1" color="gray">
+              Who you paid
+            </Text>
+          </Flex>
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" htmlFor="amount">
+              Amount (USD)
+            </Text>
+            <TextField.Root
+              id="amount"
               name="amount"
-              label="Amount (USD)"
-              fullWidth
               required
               inputMode="decimal"
               defaultValue={initial(
@@ -142,71 +165,70 @@ export default function ExpenseForm({
                   : centsToInput(values.amount_cents)
               )}
             />
-          </Grid>
+          </Flex>
         </Grid>
 
-        <MDBox mt={4} mb={2}>
-          <MDTypography variant="h6">How it's treated</MDTypography>
-          <MDTypography variant="button" color="text" fontWeight="regular">
+        <Box mt="6" mb="3">
+          <Text as="div" size="4" weight="bold">
+            How it&rsquo;s treated
+          </Text>
+          <Text as="div" size="2" color="gray">
             Set once, here. Nothing downstream asks again.
-          </MDTypography>
-        </MDBox>
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
-            <TextField
-              select
-              name="treatment"
-              label="Treatment"
-              fullWidth
-              value={treatment}
-              onChange={(event) => setTreatment(event.target.value)}
-            >
-              {TREATMENTS.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <TextField
-              select
-              name="trip_id"
-              label="Trip"
-              fullWidth
-              required={rebilling}
-              value={tripId}
-              onChange={(event) => setTripId(event.target.value)}
-              helperText={
-                rebilling
-                  ? "Required — a rebilled expense has to land on an invoice"
-                  : "Optional. Leave blank and it waits in the unassigned queue."
-              }
-            >
-              <MenuItem value="">No trip</MenuItem>
-              {trips.map((trip) => (
-                <MenuItem key={trip.id} value={trip.id}>
-                  {trip.label}
-                </MenuItem>
-              ))}
-            </TextField>
-          </Grid>
-          <Grid item xs={12}>
-            <TextField
-              name="notes"
-              label="Notes"
-              fullWidth
-              multiline
-              rows={2}
-              defaultValue={initial("notes", values.notes)}
-            />
-          </Grid>
+          </Text>
+        </Box>
+        <Grid columns={{ initial: "1", md: "2" }} gap="3">
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" id="treatment-label">
+              Treatment
+            </Text>
+            <Select.Root value={treatment} onValueChange={setTreatment}>
+              <Select.Trigger aria-labelledby="treatment-label" />
+              <Select.Content>
+                {TREATMENTS.map((option) => (
+                  <Select.Item key={option.value} value={option.value}>
+                    {option.label}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+          </Flex>
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" id="trip-label">
+              Trip
+            </Text>
+            <Select.Root value={tripId} onValueChange={setTripId}>
+              <Select.Trigger aria-labelledby="trip-label" />
+              <Select.Content>
+                <Select.Item value={NO_TRIP}>No trip</Select.Item>
+                {trips.map((trip) => (
+                  <Select.Item key={trip.id} value={trip.id}>
+                    {trip.label}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+            <Text size="1" color={rebilling ? "amber" : "gray"}>
+              {rebilling
+                ? "Required — a rebilled expense has to land on an invoice"
+                : "Optional. Leave blank and it waits in the unassigned queue."}
+            </Text>
+          </Flex>
+          <Box style={{ gridColumn: "1 / -1" }}>
+            <Flex direction="column" gap="1">
+              <Text as="label" size="2" weight="medium" htmlFor="notes">
+                Notes
+              </Text>
+              <TextArea id="notes" name="notes" rows={2} defaultValue={initial("notes", values.notes)} />
+            </Flex>
+          </Box>
         </Grid>
 
-        <MDBox mt={4} mb={2}>
-          <MDTypography variant="h6">Receipt image</MDTypography>
-        </MDBox>
-        <MDBox>
+        <Box mt="6" mb="3">
+          <Text as="div" size="4" weight="bold">
+            Receipt image
+          </Text>
+        </Box>
+        <Box>
           {/* A plain file input: the receipt is stored privately and read
               back through a short-lived signed URL, never a public URL. */}
           <input
@@ -215,42 +237,30 @@ export default function ExpenseForm({
             accept="image/jpeg,image/png,image/heic,image/webp,application/pdf"
             aria-label="Receipt image or PDF"
           />
-          <MDBox mt={1}>
-            <MDTypography variant="caption" color="text">
-              {values.receipt_path
-                ? "A receipt is already attached. Choosing a file replaces it."
-                : "JPEG, PNG, HEIC, WebP or PDF, up to 10 MB. Optional."}
-            </MDTypography>
-          </MDBox>
-        </MDBox>
+          <Text as="div" size="1" color="gray" mt="2">
+            {values.receipt_path
+              ? "A receipt is already attached. Choosing a file replaces it."
+              : "JPEG, PNG, HEIC, WebP or PDF, up to 10 MB. Optional."}
+          </Text>
+        </Box>
 
-        <MDBox mt={3} role="alert" aria-live="polite">
+        <Flex mt="4" role="alert" aria-live="polite">
           {state.error ? (
-            <MDTypography variant="caption" color="error">
+            <Text size="1" color="red">
               {state.error}
-            </MDTypography>
+            </Text>
           ) : null}
-        </MDBox>
+        </Flex>
 
-        <MDBox mt={3} display="flex" gap={1.5}>
-          <MDButton
-            type="submit"
-            variant="gradient"
-            color="info"
-            disabled={pending}
-          >
+        <Flex mt="4" gap="3">
+          <Button type="submit" disabled={pending}>
             {pending ? "Saving…" : submitLabel}
-          </MDButton>
-          <MDButton
-            component={NextLink}
-            href="/expenses"
-            variant="outlined"
-            color="info"
-          >
-            Cancel
-          </MDButton>
-        </MDBox>
-      </MDBox>
+          </Button>
+          <Button asChild variant="outline">
+            <NextLink href="/expenses">Cancel</NextLink>
+          </Button>
+        </Flex>
+      </form>
     </Card>
   );
 }

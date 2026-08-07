@@ -38,8 +38,8 @@ about what's a database-engineering guarantee versus an operational commitment.
 
 ### What this is not
 - Not an AMG operational system. The pilot's clients are not AMG clients.
-- Not the crew-facing surface of AMG Connect (`app/portal/crew/*` in `amgaviation/amg1`),
-  which exists so a crew member can transact **with AMG**.
+- Not the crew-facing surface of AMG Connect, which exists so a crew member can transact
+  **with AMG**.
 - Not a marketplace, job board, or crew-sourcing product. That model was evaluated and
   rejected — do not reintroduce it through a side door.
 - Nothing here changes AMG's Part 91 coordination boundary.
@@ -52,7 +52,7 @@ about what's a database-engineering guarantee versus an operational commitment.
 |---|---|---|
 | 1 | Data custody | **New Supabase "master" project**, separate from AMG's `vsynqnqlouvphiniqaiy`. Hosts multiple future SaaS products, one Postgres schema per product, no cross-product links. |
 | 2 | Isolation | **One schema per product** (`pilot`). All tenants live in that one schema, isolated by RLS on a tenant key. A new customer is a row insert — never a schema build. |
-| 3 | Codebase | **New repo, new Vercel project.** Not a route inside `amg1`. |
+| 3 | Codebase | **New repo, new Vercel project.** Not a route inside AMG's existing app. |
 | 4 | Branding | Own product identity. **"Powered by AMG Aviation"** is the only AMG reference. Not AMG-branded chrome. |
 | 5 | Name | **LOCKED — "v1".** Lockup: **v1 — powered by AMG Aviation**. Final, not a codename. Set lowercase `v` + `1` per the wordmark rule below. All brand strings still live in `lib/brand.ts`. |
 | 6 | Signup | **Free trial, card required.** Stripe trial; the webhook is the only thing that provisions a tenant. |
@@ -66,10 +66,10 @@ about what's a database-engineering guarantee versus an operational commitment.
 | 14 | Trip → logbook | **A draft the pilot confirms.** Never a silent trigger write. |
 | 15 | Currency | **Build behind a feature flag, ship dark.** Enable only after Tony reviews the written spec. |
 | 16 | Invoice delivery | **Both** — send from the platform, or download and send manually. Pilot chooses. |
-| 17 | Design system | **Entirely new, from scratch.** No AMG colors, type, or tokens. The v2 mockup is a content inventory only — layout, hierarchy, and interaction patterns are designed fresh. |
+| 17 | Design system | **Radix Themes** (`@radix-ui/themes`). Chosen 2026-08-06 after three attempts at a hand-authored system each drifted from its own spec. There is no token file and no design document: the entire visual system is the five `<Theme>` props in `app/layout.tsx`. Restyling the product is changing those props. |
 | 18 | Brand placement | AMG appears **only** as the words "Powered by AMG Aviation" in the footer and about page. Nowhere else. |
-| 19 | Palette and wordmark | ~~LOCKED — "Approach Plate"~~ — **SUPERSEDED 2026-08-05 by "V1 Design"**; see `docs/DESIGN-SYSTEM.md`. The overhaul anticipated in #20 happened. The shipping system is white-heavy glass: Inter, commanded blue `#2768F5`, the aviation annunciator scale for status, 14px/8px radius, a two-step shadow scale, 34px rows, a 216px glass rail. The "Design system — built from scratch" section below describes the RETIRED direction and is kept only as the record of what was replaced — do not build to it. |
-| 20 | Design longevity | Tony **intended to overhaul the design later** — and did, in the V1 Design sync. The rule that made that cheap held: it was a token-layer change, not a component rewrite. Every visual value still lives in the token layer (`app/tokens/*.css`, `app/base.css`, `app/components.css`) plus `lib/brand.ts`. A hex code, radius, font, shadow or blur in any component is a defect, enforced by `npm run tokens:verify`. |
+| 19 | Palette and wordmark | Radix's `blue` accent on a `slate` grey, the nearest scale to the logo's Signal Blue `#036BFC`. The mark itself is **not** wired to the accent — the wordmark is literal black and the bug literal `#036BFC` on every ground, brand-identity constants rather than UI tokens, so a future accent change can never retint trademark artwork. |
+| 20 | Design longevity | The problem this decision existed to solve is now solved by construction rather than by discipline. A component cannot drift from the token layer when there is no token layer to drift from. `npm run tokens:verify` remains, with a narrower job: stop components reaching *around* the theme with a literal the theme can never reach. |
 
 ### Standing gates (unchanged)
 - Aviation counsel reviews the currency disclaimer wording before the flag is enabled.
@@ -83,8 +83,8 @@ about what's a database-engineering guarantee versus an operational commitment.
 
 ## Verified ground truth
 
-Checked directly against `amgaviation/amg1` @ `63823c2` and live Supabase `vsynqnqlouvphiniqaiy`
-on 2026-08-02. These correct the planning brief:
+Checked directly against AMG's existing schema and its live Supabase project on 2026-08-02.
+These correct the planning brief:
 
 - **The logbook is schema-only.** All six `logbook_*` tables exist with **0 rows**. No app code
   (`find app components lib -ipath "*logbook*"` → nothing), no Postgres functions matching
@@ -107,20 +107,6 @@ on 2026-08-02. These correct the planning brief:
   - `logbook_currency_snapshots.status` → `estimated_current, estimated_not_current,
     insufficient_data` (deliberately hedged — keep it)
   - `logbook_audit_findings.severity` → `hard_error, review_warning`
-
-### Stack to mirror (from `amg1/package.json`)
-Next.js `^16.2.11` · React `^19.2.4` · **Tailwind v4 CSS-first** (no `tailwind.config`, uses
-`@tailwindcss/postcss`) · `@supabase/ssr ^0.12.0` + `@supabase/supabase-js ^2.108.1` ·
-Radix UI + shadcn-style (`class-variance-authority`, `clsx`, `tailwind-merge`, `lucide-react`,
-`sonner`) · `@react-pdf/renderer ^4.5.1` (invoice PDFs) · `stripe ^22.3.0` · SheetJS `xlsx`
-(logbook import) · TypeScript `^5.7.2`.
-
-**No test framework exists.** The house convention is executable verify scripts:
-`scripts/verify-*.mjs|ts` wired to `npm run <thing>:verify`. Follow it.
-Migrations: `supabase/migrations/YYYYMMDDHHMMSS_name.sql` (78 exist). Never DDL against production.
-Supabase clients: `lib/supabase/{client,server,middleware}.ts` + generated `database.types.ts`.
-
----
 
 ## Architecture
 
@@ -218,139 +204,15 @@ Recompute on entry write and on relevant document-expiry change; snapshot the re
 
 ---
 
-## Design system — built from scratch
-
-**This product gets an entirely new design system and brand identity.** No AMG values appear
-anywhere in the visual language. AMG appears in exactly one place: the words
-**"Powered by AMG Aviation"** in the footer and about page.
-
-Specifically forbidden as design inputs:
-- AMG's Manifest/Horizon system (`.amg-portal` in `amg1/app/globals.css` — Barlow Condensed,
-  999px pills, `--radius: 0.75rem`). Do not port it, do not reference it.
-- AMG Navy `#050B14` and AMG Blue `#1D4ED8`. These are AMG's brand colors and appear in the
-  v2 mockup — **they do not carry over.**
-- The `--deck-*` token namespace. This product defines its own.
-
-### The mockup is a content inventory, not a design reference
-`pilotportalmockupv2.pdf` is authoritative for **what exists and what data it holds**, and for
-nothing else. Layout, hierarchy, typography, color, density, and interaction patterns are all
-designed fresh.
-
-What it establishes:
-
-Nav — **Overview · Trips · Invoices · Expenses · Logbook · Clients · Documents**
-
-Overview holds: four KPI figures (Unbilled Work, Awaiting Payment, Paid This Year,
-Deductible Expenses); a **Currency & Expirations** board with six rows (day passenger, night
-passenger, instrument, medical, flight review, passport); a **Ready to Invoice** list carrying
-route, tail number, day count, dates, and a rate-plus-expenses split; and a **Needs Attention**
-queue covering past-due invoices, unassigned receipts, and outstanding W-9s.
-
-### LOCKED DIRECTION — "Approach Plate"
-
-> ⚠️ **RETIRED 2026-08-05 — HISTORICAL RECORD ONLY.** Everything in this section was
-> superseded by the "V1 Design" system (see `docs/DESIGN-SYSTEM.md` and decision #19 above).
-> None of the values below ship. They are kept so the reasoning behind what was replaced
-> survives, and because the *discipline* described here — one accent with one meaning, three
-> status levels and no more, a fixed rail, tables dense enough to review a quarter of work in
-> one screen, every value in the token layer — carried over even though the values did not.
-> **Do not build to this section.**
-
-Chosen by Tony. Built from the instrument approach chart: hard rules, boxed panels, zero radius,
-a fixed dark left rail, and high information density. Nothing decorative — every rule separates
-something.
-
-**Tony intends to overhaul this later.** That makes centralisation a hard requirement, not a nicety:
-every value below lives in exactly two files — `lib/brand.ts` (brand strings, wordmark) and
-`app/tokens.css` (the custom properties). **No component may hardcode a colour, radius, font, or
-spacing value.** A future overhaul must be a change to those two files and nothing else. Treat any
-hex code appearing in a component as a defect.
-
-```css
-/* app/tokens.css — the entire visual system */
-:root{
-  --v1-ink:      #0E1215;  /* chart ink: text, rail, 2px section rules */
-  --v1-paper:    #FFFFFF;  /* panel surface */
-  --v1-bg:       #EDEFF0;  /* app ground */
-  --v1-field:    #F5F7F7;  /* table headers, inset blocks, disclaimer ground */
-  --v1-line:     #B9C0C4;  /* panel border, 1px */
-  --v1-hair:     #DFE3E5;  /* row divider, 1px */
-  --v1-mute:     #5A646B;  /* secondary text */
-  --v1-accent:   #0E5F68;  /* plate teal: primary action, active nav */
-  --v1-ok:       #1C6F45;  /* current */
-  --v1-bad:      #A32B18;  /* not current, past due */
-  --v1-warn:     #8A5A00;  /* needs attention, expiring, draft */
-  --v1-radius:   0;        /* everywhere, no exceptions */
-  --v1-row:      28px;     /* table row height */
-  --v1-rail:     172px;    /* left nav width */
-}
-```
-
-**Type.** Display and UI: **Roboto Condensed**, uppercase, `.12em` tracking, 700 weight for labels.
-Body: **Roboto**, 12.5px base, 1.4 line-height. Data: **Roboto Mono**, `font-variant-numeric:
-tabular-nums` on every figure without exception. All three are free and must be **self-hosted**
-(`next/font/local`) — no CDN link, no silent fallback.
-
-**Component rules.**
-- **Left rail** — fixed, 172px, `--v1-ink` ground. Nav items 11.5px uppercase `.12em`. Active item
-  gets a 3px `--v1-accent` left border and a lighter ground. Account name pinned at the bottom.
-- **Panel** — 1px `--v1-line` border on `--v1-paper`. Header bar is `--v1-ink` ground, white text,
-  9.5px uppercase `.14em`, with optional muted right-aligned context text. No shadow, ever.
-- **Table** — header row on `--v1-field` with a 1px `--v1-line` bottom; body rows divided by 1px
-  `--v1-hair`; last row no divider. Totals sit below a **2px `--v1-ink`** rule.
-- **Status tag** — 10px uppercase `.08em`, 700, with a 1px border in `currentColor`. Colour comes
-  from `--v1-ok` / `--v1-bad` / `--v1-warn` / `--v1-mute`. Never a filled pill.
-- **Buttons** — 1px `--v1-ink` border on `--v1-paper`, 10.5px uppercase `.10em` 700. Primary fills
-  with `--v1-accent` and goes white.
-- **Disclaimer** — `--v1-field` ground, 1px `--v1-hair` top border, 10.5px `--v1-mute`.
-- **Elevation** — none. Structure is carried entirely by borders and rules.
-- **Wordmark** — `V1` set in Roboto Condensed 700, **uppercase V, numeral 1**, `.20em` tracking,
-  white on the `--v1-ink` rail. Directly beneath it, `CONTRACT PILOT` at 9.5px uppercase `.13em`
-  in `--v1-mute`. No symbol, no logotype, no icon — the name is the mark.
-  **Why uppercase:** V1 is the takeoff decision speed — the point on the roll where the pilot is
-  committed. Uppercase renders it as the aviation callout every pilot already knows; lowercase
-  `v1` reads as a software version string, which is the one meaning the brand should not carry.
-  If Tony prefers lowercase, it is a one-line change in `lib/brand.ts`.
-- **AMG lockup** — the string `powered by AMG Aviation` appears **only** in the application footer
-  and on the marketing about page. Never in the rail, never in the header, never on an invoice PDF,
-  never in transactional email. It is set in `--v1-mute` at body size with no logo and no link
-  styling beyond a standard text link.
-
-**Brand strings — `lib/brand.ts` is the only source:**
-```ts
-export const BRAND = {
-  name:        'V1',
-  wordmark:    'V1',
-  descriptor:  'Contract Pilot',
-  lockup:      'V1 — powered by AMG Aviation',
-  attribution: 'powered by AMG Aviation',
-} as const
-```
-Nothing may render a literal `'V1'` or `'AMG'` string outside this file.
-
-**Reference:** https://claude.ai/code/artifact/85f5aefa-30e2-40da-852d-944b3d4d2976 (Direction One).
-Four screens are already designed — Overview, Trips, Invoice, Logbook. Match them.
-
-**Disclaimer copy — verbatim, subject to counsel:**
-> Currency is calculated from the entries you logged and is a planning aid, not a determination
-> of regulatory compliance. You remain responsible for your own currency and airworthiness decisions.
-
----
-
 ## Build order
 
 Each phase must be independently demonstrable.
 
-**Phase D is done.** Approach Plate is locked (see Design system above), and Overview, Trips,
-Invoice, and Logbook are already designed. Nothing is blocked on design. The three remaining
-screens — **Expenses, Clients, Documents** — plus signup, settings, and the CSV import flow get
-built by applying the locked component rules; they do not need a separate design pass.
+**There is no design phase.** Radix Themes supplies the component set and the visual system; screens are built by composing it. What used to be a design pass is now a `<Theme>` prop.
 
 **Phase 0 — Foundations.**
 Create the new Supabase project and the new repo/Vercel project. Establish the `pilot` schema
-and migration naming. Write `lib/brand.ts` and `app/tokens.css` with the locked values **first**,
-before any component exists, so there is never a moment where hardcoding is the path of least
-resistance. Self-host Roboto Condensed, Roboto, and Roboto Mono via `next/font/local`.
+and migration naming. Write `lib/brand.ts` first so brand strings never leak into components. Mount `<Theme>` in `app/layout.tsx`; self-host the type via `next/font`.
 Port nothing else yet.
 
 **Phase 1 — Tenancy and identity.** Accounts, members, RLS on empty tables.
@@ -399,11 +261,7 @@ Follow the house pattern — executable scripts, not a checklist:
   by fingerprint, assert rejected rows surface, assert trip/manual entries bypass fingerprinting.
 - `npm run currency:verify` — table-driven fixtures per currency type, including the
   full-stop night landing rule, the 6-month instrument look-back, and `insufficient_data`.
-- `npm run tokens:verify` — **design-overhaul insurance.** Scan `app/` and `components/` and fail
-  on any hex colour, `rgb()`/`hsl()` literal, hardcoded `border-radius`, or `font-family` outside
-  `app/tokens.css` and `lib/brand.ts`. Also fail if a numeric figure renders without
-  `tabular-nums`. Wire into CI from the first commit — the whole point of the token discipline is
-  that Tony's later overhaul stays a two-file change.
+- `npm run tokens:verify` — **keeps components from reaching around Radix Themes.** Scans `app/`, `components/` and `lib/` and fails on a hardcoded colour, a camelCase style property carrying a literal, an `@mui`/`@emotion` import, or a literal brand string outside `lib/brand.ts`. Three files may spell a value out and each documents why. Runs in CI.
 - Manual: run the app, sign up with a Stripe test card, confirm the account is usable
   immediately with no manual step.
 
@@ -423,34 +281,29 @@ All fixtures synthetic. No live pilot data, ever.
 - **Product-boundary drift.** No path may surface pilot clients, rates, or revenue to AMG.
 - **Enum drift.** Port the exact string vocabularies listed above, or define new ones
   deliberately. Do not half-copy.
-- **Identity model drift.** `amg1` already carries `users` vs `profiles` duplication. This
+- **Identity model drift.** AMG's existing app already carries `users` vs `profiles` duplication. This
   product gets exactly one identity model: `auth.users` → `pilot.account_members` → `pilot.accounts`.
 
 ---
 
 ## Open items
 
-Nothing blocks the build. Name and design are locked and four screens are drawn.
+Nothing blocks the build. The name is locked and the design system is Radix Themes, so there
+is no design work sitting in front of any screen.
 
 **Non-blocking:**
 - Price points and trial length — env/config, not code.
 - Domain. "v1" is short and generic, so the exact-match domain is unlikely to be available;
   expect a compound (`v1pilot`, `flyv1`, `v1.aero`). A naming decision, not a build blocker.
-- A future design overhaul. Deliberately deferred by Tony; the token discipline above is what
-  keeps it cheap.
+- A future design overhaul. Cheap by construction now rather than by discipline: it is a change
+  to the five `<Theme>` props in `app/layout.tsx`. If it ever needs to go further than those
+  props allow, that is the moment to drop to Radix Primitives for the screens that need it —
+  Themes is built on them, so it is a supported path rather than a rewrite.
 - AMG's own portal restyle is **out of scope entirely.** The two products no longer share a
   design system, so there is nothing to converge.
 
 ---
 
-## Additional risk
-
-**Token discipline erodes under deadline.** Tony plans to overhaul the design later, and that
-only stays cheap if no component ever hardcodes a value. The failure mode is ordinary and
-predictable: a developer needs a slightly darker border at 2am and types a hex. Fifty of those
-turn a one-file overhaul into a two-week refactor. `npm run tokens:verify` exists to make that
-mechanically impossible rather than a matter of discipline — it must run in CI from the first
-commit, not be added once the problem appears.
 
 ---
 
@@ -532,13 +385,15 @@ freezes a trip's days once it is invoiced or paid — mirroring `invoices_protec
   seeded with today's built-ins so a pilot starts from the aviation-correct set. Those three
   columns move from a hardcoded `CHECK` to a composite FK. Archive, never delete.
 - **Their look.** `pilot.account_preferences` — `account_id` PK plus a `jsonb` blob.
-  **This does not violate decision #20.** The token layer keeps owning every default and every
-  relationship; a tenant may override only a small, enumerated set of *slots*, injected at
-  runtime as custom properties on the app shell. A redesign is still a token-layer change.
-  Accent colour is validated server-side against a **curated palette**, never a free hex field:
-  an arbitrary colour eventually fails contrast against white badge text, and a pilot cannot be
-  expected to debug that. Read `lib/mdpro/context` and the MD PRO Configurator first — most of
-  this may already exist unused. Persist to the database, not localStorage.
+  Radix Themes already does most of this: `appearance`, `accentColor`, `grayColor`, `radius`
+  and `scaling` are props, so a per-tenant look is a stored set of prop values rather than a
+  theming engine to build. The work is persisting them per account and reading them in
+  `app/layout.tsx` — not localStorage, so a pilot's setup follows them from their phone in the
+  FBO to their laptop at home.
+  Accent must stay a choice from Radix's own scales rather than a free hex field. That is not
+  a restriction we are imposing for tidiness: Radix's scales are built so step 9 fills, step 11
+  reads as text and step 12 is high-contrast ink, and an arbitrary hex has no such guarantees —
+  it eventually fails contrast against badge text, and a pilot cannot be expected to debug that.
 - **Their layout.** Nav order, hidden sections, Overview panel order. Hiding a section hides the
   **nav entry only** — the route still resolves, so a bookmark or a deep link from an invoice
   never 404s. `/settings` can never be hidden, or a pilot locks themselves out of the screen

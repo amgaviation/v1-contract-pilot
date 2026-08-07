@@ -1,12 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import Card from "@mui/material/Card";
-import Grid from "@mui/material/Grid";
-import TextField from "@mui/material/TextField";
-import MDBox from "@/components/mdpro/MDBox";
-import MDTypography from "@/components/mdpro/MDTypography";
-import MDButton from "@/components/mdpro/MDButton";
+import { Button, Card, Flex, Grid, Heading, Text, TextField } from "@radix-ui/themes";
 import { updateSettings, type SettingsFormState } from "./actions";
 
 export type SettingsValues = {
@@ -43,124 +38,129 @@ export default function SettingsForm({
 
   return (
     <Card>
-      <MDBox p={3} component="form" action={formAction}>
-        <MDBox mb={2} lineHeight={1.25}>
-          <MDTypography variant="h6">Your business</MDTypography>
-          <MDTypography variant="button" color="text" fontWeight="regular">
-            This is what prints on the invoices your clients receive.
-          </MDTypography>
-        </MDBox>
+      <form action={formAction}>
+        <Flex direction="column" gap="4" p="2">
+          <Flex direction="column" gap="1">
+            <Heading as="h2" size="4">Your business</Heading>
+            <Text size="2" color="gray">
+              This is what prints on the invoices your clients receive.
+            </Text>
+          </Flex>
 
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={8}>
-            <TextField
-              name="legal_name"
-              label="Business name"
-              fullWidth
-              required
-              disabled={!canEdit}
-              defaultValue={initial("legal_name")}
-              helperText="Appears as the payee on every invoice"
-            />
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <TextField
-              name="invoice_prefix"
-              label="Invoice prefix"
-              fullWidth
-              disabled={!canEdit}
-              defaultValue={initial("invoice_prefix", "INV")}
-              helperText="Numbers already issued keep their old prefix"
-            />
+          <Grid columns={{ initial: "1", md: "12" }} gap="3">
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 8" }}>
+              <Text as="label" size="1" weight="medium" htmlFor="legal_name">
+                Business name
+              </Text>
+              <TextField.Root
+                id="legal_name"
+                name="legal_name"
+                required
+                disabled={!canEdit}
+                defaultValue={initial("legal_name")}
+              />
+              <Text size="1" color="gray" style={{ fontStyle: "italic" }}>
+                Appears as the payee on every invoice
+              </Text>
+            </Flex>
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 4" }}>
+              <Text as="label" size="1" weight="medium" htmlFor="invoice_prefix">
+                Invoice prefix
+              </Text>
+              <TextField.Root
+                id="invoice_prefix"
+                name="invoice_prefix"
+                disabled={!canEdit}
+                defaultValue={initial("invoice_prefix", "INV")}
+              />
+              <Text size="1" color="gray" style={{ fontStyle: "italic" }}>
+                Numbers already issued keep their old prefix
+              </Text>
+            </Flex>
+
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 6" }}>
+              <Text as="label" size="1" weight="medium" htmlFor="address_line1">
+                Address
+              </Text>
+              <TextField.Root
+                id="address_line1"
+                name="address_line1"
+                disabled={!canEdit}
+                defaultValue={initial("address_line1")}
+              />
+            </Flex>
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 6" }}>
+              <Text as="label" size="1" weight="medium" htmlFor="address_line2">
+                Address line 2
+              </Text>
+              <TextField.Root
+                id="address_line2"
+                name="address_line2"
+                disabled={!canEdit}
+                defaultValue={initial("address_line2")}
+              />
+            </Flex>
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 4" }}>
+              <Text as="label" size="1" weight="medium" htmlFor="city">
+                City
+              </Text>
+              <TextField.Root id="city" name="city" disabled={!canEdit} defaultValue={initial("city")} />
+            </Flex>
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+              <Text as="label" size="1" weight="medium" htmlFor="state">
+                State
+              </Text>
+              <TextField.Root id="state" name="state" disabled={!canEdit} defaultValue={initial("state")} />
+            </Flex>
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 3" }}>
+              <Text as="label" size="1" weight="medium" htmlFor="postal_code">
+                Postal code
+              </Text>
+              <TextField.Root
+                id="postal_code"
+                name="postal_code"
+                disabled={!canEdit}
+                defaultValue={initial("postal_code")}
+              />
+            </Flex>
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 3" }}>
+              <Text as="label" size="1" weight="medium" htmlFor="country">
+                Country
+              </Text>
+              <TextField.Root
+                id="country"
+                name="country"
+                disabled={!canEdit}
+                defaultValue={initial("country")}
+              />
+            </Flex>
           </Grid>
 
-          <Grid item xs={12} md={6}>
-            <TextField
-              name="address_line1"
-              label="Address"
-              fullWidth
-              disabled={!canEdit}
-              defaultValue={initial("address_line1")}
-            />
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <TextField
-              name="address_line2"
-              label="Address line 2"
-              fullWidth
-              disabled={!canEdit}
-              defaultValue={initial("address_line2")}
-            />
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <TextField
-              name="city"
-              label="City"
-              fullWidth
-              disabled={!canEdit}
-              defaultValue={initial("city")}
-            />
-          </Grid>
-          <Grid item xs={6} md={2}>
-            <TextField
-              name="state"
-              label="State"
-              fullWidth
-              disabled={!canEdit}
-              defaultValue={initial("state")}
-            />
-          </Grid>
-          <Grid item xs={6} md={3}>
-            <TextField
-              name="postal_code"
-              label="Postal code"
-              fullWidth
-              disabled={!canEdit}
-              defaultValue={initial("postal_code")}
-            />
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <TextField
-              name="country"
-              label="Country"
-              fullWidth
-              disabled={!canEdit}
-              defaultValue={initial("country")}
-            />
-          </Grid>
-        </Grid>
+          <div role="alert" aria-live="polite">
+            {state.error ? (
+              <Text size="1" color="red">
+                {state.error}
+              </Text>
+            ) : state.saved ? (
+              <Text size="1" color="green">
+                Saved.
+              </Text>
+            ) : null}
+          </div>
 
-        <MDBox mt={3} role="alert" aria-live="polite">
-          {state.error ? (
-            <MDTypography variant="caption" color="error">
-              {state.error}
-            </MDTypography>
-          ) : state.saved ? (
-            <MDTypography variant="caption" color="success">
-              Saved.
-            </MDTypography>
-          ) : null}
-        </MDBox>
-
-        {canEdit ? (
-          <MDBox mt={3}>
-            <MDButton
-              type="submit"
-              variant="gradient"
-              color="info"
-              disabled={pending}
-            >
-              {pending ? "Saving…" : "Save changes"}
-            </MDButton>
-          </MDBox>
-        ) : (
-          <MDBox mt={3}>
-            <MDTypography variant="caption" color="text">
+          {canEdit ? (
+            <Flex>
+              <Button type="submit" disabled={pending}>
+                {pending ? "Saving…" : "Save changes"}
+              </Button>
+            </Flex>
+          ) : (
+            <Text size="1" color="gray">
               Only the account owner can change these.
-            </MDTypography>
-          </MDBox>
-        )}
-      </MDBox>
+            </Text>
+          )}
+        </Flex>
+      </form>
     </Card>
   );
 }
