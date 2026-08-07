@@ -36,6 +36,7 @@ export type ClientFormValues = {
   default_expense_treatment?: string | null;
   per_diem_mode?: string | null;
   minimum_days?: number | null;
+  minimum_basis?: string | null;
   cancellation_policy_note?: string | null;
   w9_status?: string | null;
   notes?: string | null;
@@ -50,6 +51,18 @@ const TREATMENTS = [
 const PER_DIEM_MODES = [
   { value: "receipts", label: "Itemised meal receipts" },
   { value: "per_diem", label: "Per diem" },
+];
+
+// Bug fix, not a style choice: the trip minimum used to apply per trip
+// unconditionally, because that was the only basis the product could
+// express. A pilot on a monthly guarantee ("10 days a month, whatever the
+// mix of trips") had no way to say so and got billed as if every short
+// trip individually carried the full minimum — see
+// supabase/migrations/20260807040000_client_minimum_basis.sql. Worded for
+// how a pilot describes the deal, not the column name.
+const MINIMUM_BASES = [
+  { value: "per_trip", label: "Per trip" },
+  { value: "per_month", label: "Per calendar month" },
 ];
 
 const W9_STATUSES = [
@@ -110,6 +123,9 @@ export default function ClientForm({
   const [perDiemMode, setPerDiemMode] = useState(() =>
     initial("per_diem_mode", values.per_diem_mode, "receipts")
   );
+  const [minimumBasis, setMinimumBasis] = useState(() =>
+    initial("minimum_basis", values.minimum_basis, "per_trip")
+  );
   useEffect(() => {
     if (submitted?.default_expense_treatment !== undefined) {
       setExpenseTreatment(String(submitted.default_expense_treatment || "unassigned"));
@@ -120,11 +136,15 @@ export default function ClientForm({
     if (submitted?.per_diem_mode !== undefined) {
       setPerDiemMode(String(submitted.per_diem_mode || "receipts"));
     }
+    if (submitted?.minimum_basis !== undefined) {
+      setMinimumBasis(String(submitted.minimum_basis || "per_trip"));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitted]);
   const expenseTreatmentId = useId();
   const w9StatusId = useId();
   const perDiemModeId = useId();
+  const minimumBasisId = useId();
 
   return (
     <Card size="3">
@@ -406,10 +426,10 @@ export default function ClientForm({
                 minimum this industry uses — a full day rate regardless of
                 hours flown — which this product already honors for free
                 by billing in whole days. What this field actually sets is
-                the other one: a floor on the total days a short TRIP
-                bills. "Trip minimum" is the unambiguous name for that. */}
+                the other one: a floor on the total days billed. Which
+                total it's a floor ON is minimum_basis, right below. */}
             <Text as="label" size="2" weight="medium" htmlFor="minimum_days">
-              Trip minimum (days)
+              Minimum (days)
             </Text>
             <TextField.Root
               id="minimum_days"
@@ -417,13 +437,45 @@ export default function ClientForm({
               inputMode="decimal"
               defaultValue={initial("minimum_days", values.minimum_days)}
             />
-            {/* F3 + F4: names the behavior in the same terms a pilot
-                reads their own invoice in, and states the gate — this
-                only bites once the trip's day grid has been filled in
-                and saved; a trip without one isn't held to it. */}
+          </Flex>
+          <Flex direction="column" gap="1">
+            {/* Bug fix (see MINIMUM_BASES above): this used to be an
+                unstated assumption, always "per trip" because that was
+                the only thing createInvoiceDraft could do with the number
+                above. Now it's an explicit choice, worded the way a pilot
+                describes their own deal rather than the schema's
+                vocabulary. */}
+            <Text as="label" size="2" weight="medium" htmlFor={minimumBasisId}>
+              Applies
+            </Text>
+            <Select.Root
+              key={`minimum_basis-${genTick}`}
+              value={minimumBasis}
+              onValueChange={setMinimumBasis}
+            >
+              <Select.Trigger id={minimumBasisId} />
+              <Select.Content>
+                {MINIMUM_BASES.map((o) => (
+                  <Select.Item key={o.value} value={o.value}>
+                    {o.label}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+            <input type="hidden" name="minimum_basis" value={minimumBasis} />
+            {/* F3 + F4, extended: names the behavior in the same terms a
+                pilot reads their own invoice in, and states the gate —
+                this only bites once a trip's day grid has been filled in
+                and saved; a trip without one isn't held to it. The two
+                readings genuinely differ: "per trip" tops up EVERY short
+                trip on the invoice; "per calendar month" tops up the
+                month at most once, across however many trips it took —
+                see the invoice draft's own line descriptions for exactly
+                which month got topped up and by how much. */}
             <Text size="1" color="gray">
-              A 1-day trip for a client with a 2-day minimum bills 2 days —
-              once the trip&rsquo;s day grid has been filled in.
+              {minimumBasis === "per_month"
+                ? "Four 3-day trips in a month for a client with a 10-day monthly guarantee bill one top-up line for the month, not four."
+                : "A 1-day trip for a client with a 2-day minimum bills 2 days, on every trip that falls short."}
             </Text>
           </Flex>
           <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>

@@ -48,6 +48,7 @@ const CLIENT_FIELDS = [
   "default_expense_treatment",
   "per_diem_mode",
   "minimum_days",
+  "minimum_basis",
   "cancellation_policy_note",
   "w9_status",
   "notes",
@@ -65,6 +66,16 @@ const UUID_RE =
 const EXPENSE_TREATMENTS = ["rebill", "deduct", "unassigned"] as const;
 const W9_STATUSES = ["not_requested", "requested", "on_file"] as const;
 const PER_DIEM_MODES = ["per_diem", "receipts"] as const;
+// Bug fix: minimum_days used to have exactly one meaning — a per-trip
+// floor — because that was the only basis createInvoiceDraft ever applied
+// it under. A pilot on a monthly guarantee had nowhere to say so, and
+// typed the guaranteed number into this same field, which produced one
+// top-up line per trip instead of one per month (see
+// supabase/migrations/20260807040000_client_minimum_basis.sql for the
+// full story). 'per_trip' stays the fallback here too — matches the
+// column's own DEFAULT, so a value this form can't recognize behaves the
+// same way an absent one already does.
+const MINIMUM_BASES = ["per_trip", "per_month"] as const;
 
 /** Trims, and turns an empty string into NULL rather than storing "". */
 function optional(formData: FormData, key: string): string | null {
@@ -176,6 +187,7 @@ function parseClientForm(formData: FormData): ParsedClient {
       ),
       per_diem_mode: oneOf(formData, "per_diem_mode", PER_DIEM_MODES, "receipts"),
       minimum_days: minimumDays,
+      minimum_basis: oneOf(formData, "minimum_basis", MINIMUM_BASES, "per_trip"),
       cancellation_policy_note: optional(formData, "cancellation_policy_note"),
       w9_status: oneOf(formData, "w9_status", W9_STATUSES, "not_requested"),
       notes: optional(formData, "notes"),

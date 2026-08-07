@@ -728,15 +728,39 @@ end $$;
 
 -- MEDIUM regression: the travel-day columns added by this migration are
 -- now UPDATE-writable, not just INSERT/SELECT-writable.
+--
+-- STALE-TEST FIX. This assertion used to reuse trip 7a01, which by this
+-- point in the run has been billed onto a live invoice by the block above.
+-- Phase 9's trips_protect_billed_facts then correctly refused the update
+-- ("This trip is billed on INV-... before changing its dates, rates or
+-- status"), the whole script aborted on it, and the ELEVEN assertions
+-- below this line had never once executed — the run reported 26 passes
+-- and silently skipped the rest.
+--
+-- The trigger was right and the test was wrong: a rate on a billed trip
+-- SHOULD be frozen. What this block actually means to prove is narrower —
+-- that the GRANT on the travel-day columns permits UPDATE at all — so it
+-- now proves it on a trip that is deliberately unbilled, leaving the
+-- freeze itself to the assertions that exist for it.
+-- No literal id: "authenticated" has no INSERT grant on trips.id (ids are
+-- generated), so this uses the file's _test_ids idiom like every other
+-- trip created after the seed block.
+with ins as (
+  insert into pilot.trips (account_id, client_id, starts_on, ends_on, day_rate_cents, day_count, status)
+  values ('${A}', '00000000-0000-0000-0000-00000000c0a1', current_date, current_date + 1, 100000, 2, 'completed')
+  returning id
+)
+insert into _test_ids (key, id) select 'tripGrant', id from ins;
+
 update pilot.trips set travel_day_rate_cents = 60000
-  where account_id = '${A}' and id = '00000000-0000-0000-0000-000000007a01';
+  where account_id = '${A}' and id = (select id from _test_ids where key = 'tripGrant');
 update pilot.clients set default_travel_day_rate_cents = 60000
   where account_id = '${A}' and id = '00000000-0000-0000-0000-00000000c0a1';
 do $$
 declare v bigint;
 begin
   select travel_day_rate_cents into v from pilot.trips
-    where account_id = '${A}' and id = '00000000-0000-0000-0000-000000007a01';
+    where account_id = '${A}' and id = (select id from _test_ids where key = 'tripGrant');
   if v <> 60000 then
     raise exception 'GRANT FAILURE: travel_day_rate_cents UPDATE did not take effect (got %)', v;
   end if;

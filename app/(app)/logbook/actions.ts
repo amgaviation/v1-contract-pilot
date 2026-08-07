@@ -256,7 +256,7 @@ export async function createLogbookEntry(
   _prev: LogbookFormState,
   formData: FormData
 ): Promise<LogbookFormState> {
-  const { account } = await requireAccount("/logbook/new");
+  const { account, user } = await requireAccount("/logbook/new");
   const { values, error } = parseEntryForm(formData);
   if (error || !values) {
     return { error: error ?? "Couldn't read that form.", values: echo(formData) };
@@ -273,6 +273,9 @@ export async function createLogbookEntry(
     source: "manual",
     trip_id: null,
     trip_leg_id: null,
+    // Whose logbook this is — the authenticated caller, never the form.
+    // See 20260807050000_logbook_airman_and_export.sql.
+    airman_user_id: user.id,
   };
   const { error: insertError } = await logbookFrom(supabase, "logbook_entries").insert(
     payload as never
@@ -378,7 +381,7 @@ export async function confirmLegDraft(
 ): Promise<{ error: string | null }> {
   if (!UUID_RE.test(tripLegId)) return { error: "That leg isn't valid." };
   if (!isRole(role)) return { error: "Pick PIC or SIC before confirming." };
-  const { account } = await requireAccount("/logbook/drafts");
+  const { account, user } = await requireAccount("/logbook/drafts");
 
   const supabase = await createClient();
   const { data: legData, error: legError } = await supabase
@@ -412,6 +415,9 @@ export async function confirmLegDraft(
     ...draftPayloadForLeg(trip, leg, role),
     account_id: account.id,
     source: "trip",
+    // The pilot confirming the draft, not whoever the leg happens to
+    // mention — see 20260807050000_logbook_airman_and_export.sql.
+    airman_user_id: user.id,
   };
 
   const { error: insertError } = await logbookFrom(supabase, "logbook_entries").insert(
@@ -454,7 +460,7 @@ export async function confirmTripDrafts(
 ): Promise<{ error: string | null }> {
   if (!UUID_RE.test(tripId)) return { error: "That trip isn't valid." };
   if (!isRole(role)) return { error: "Pick PIC or SIC before confirming." };
-  const { account } = await requireAccount("/logbook/drafts");
+  const { account, user } = await requireAccount("/logbook/drafts");
 
   const supabase = await createClient();
   const { data: tripData, error: tripError } = await supabase
@@ -508,6 +514,9 @@ export async function confirmTripDrafts(
     ...draftPayloadForLeg(trip, leg, role),
     account_id: account.id,
     source: "trip",
+    // Same as confirmLegDraft — the pilot confirming the batch, not
+    // guessed from the trip/leg.
+    airman_user_id: user.id,
   }));
 
   const { error: insertError } = await logbookFrom(supabase, "logbook_entries").insert(

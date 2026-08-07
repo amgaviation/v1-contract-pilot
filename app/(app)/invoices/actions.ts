@@ -406,6 +406,16 @@ export async function createInvoiceDraft(
     per_diem_mode: "per_diem" | "receipts";
     default_per_diem_cents: number | null;
     minimum_days: number | null;
+    // BUG FIX (supabase/migrations/20260807040000_client_minimum_basis.sql):
+    // minimum_days used to have exactly one meaning, a per-trip floor,
+    // because that was the only thing this function did with it. A client
+    // on a monthly guarantee had no field to say so, typed the guaranteed
+    // number in here anyway, and got a top-up line on EVERY short trip
+    // instead of one for the month. minimum_basis is the fix: 'per_trip'
+    // keeps today's behavior (and is what every row defaults to and every
+    // existing row already has), 'per_month' routes through the
+    // guarantee_periods settlement below instead.
+    minimum_basis: "per_trip" | "per_month";
     cancellation_policy_note: string | null;
   };
 
@@ -439,7 +449,7 @@ export async function createInvoiceDraft(
     supabase
       .from("clients")
       .select(
-        "per_diem_mode, default_per_diem_cents, minimum_days, cancellation_policy_note"
+        "per_diem_mode, default_per_diem_cents, minimum_days, minimum_basis, cancellation_policy_note"
       )
       .eq("account_id", account.id)
       .eq("id", clientId)
@@ -510,6 +520,32 @@ export async function createInvoiceDraft(
     clientBilling && clientBilling.per_diem_mode === "per_diem"
       ? clientBilling.default_per_diem_cents
       : null;
+  // Absent minimum_basis reads as 'per_trip' — matches the column's own
+  // DEFAULT (every row written before this feature existed has exactly
+  // that value), so a null client row (client somehow not found) or a
+  // stale cached read behaves the same as "no monthly guarantee".
+  const minimumBasis: "per_trip" | "per_month" =
+    clientBilling?.minimum_basis ?? "per_trip";
+
+  // ---------------------------------------------------------------------
+  // MONTHLY GUARANTEE accumulator — 'per_month' path only. Keyed by the
+  // first-of-month date ("YYYY-MM-01") of each BILLABLE, PRICED trip_days
+  // row's own day_on, not by the trip's start date. A trip spanning a
+  // month boundary (flown Jan 30 - Feb 2) must have its days split across
+  // both months' totals — trip_days is one row per calendar date
+  // specifically so that "which month did this day happen in" always has
+  // a per-day answer, and anything coarser (the trip's start month, its
+  // majority month) would move days between an owner's January and
+  // February invoices depending on where in the month the trip happened to
+  // fall, which is not something either month's true-up should depend on.
+  // Populated inside the per-trip loop below, alongside (never instead of)
+  // the existing per-day-type-and-rate grouping — this is a second view of
+  // the same rows, not a replacement for the first.
+  // ---------------------------------------------------------------------
+  const monthlyBillable = new Map<
+    string,
+    { qty: number; bestRateCents: number }
+  >();
   // Best-effort: a failed read here means "don't know", so it suppresses
   // the cancellation-note warning rather than blocking the draft — no
   // billing value depends on it, only a piece of review-time copy.
@@ -573,6 +609,23 @@ export async function createInvoiceDraft(
         // rows can be 2.0 days or 1.3, and counting rows always says 2.
         group.quantitySum += Number(row.quantity);
         groups.set(key, group);
+
+        // Monthly guarantee accumulation — see monthlyBillable's own
+        // comment above for why this buckets by the ROW's day_on rather
+        // than the trip's month. Only worth doing for a 'per_month'
+        // client; a 'per_trip' client's invoice must come out byte-for-
+        // byte identical to before this feature existed, so this branch
+        // must never run any code that could affect it.
+        if (minimumBasis === "per_month") {
+          const monthKey = `${row.day_on.slice(0, 7)}-01`;
+          const bucket = monthlyBillable.get(monthKey) ?? {
+            qty: 0,
+            bestRateCents: 0,
+          };
+          bucket.qty += Number(row.quantity);
+          if (rateCents > bucket.bestRateCents) bucket.bestRateCents = rateCents;
+          monthlyBillable.set(monthKey, bucket);
+        }
       }
 
       for (const [label, count] of unpriced) {
@@ -624,10 +677,19 @@ export async function createInvoiceDraft(
         });
       }
 
-      // Contract minimum — day-row path ONLY. A trip with no day rows
-      // never reaches this branch, so minimum_days can never change what
-      // a scalar-path trip bills.
-      if (clientBilling?.minimum_days != null) {
+      // Contract minimum, PER-TRIP basis — day-row path ONLY. A trip with
+      // no day rows never reaches this branch, so minimum_days can never
+      // change what a scalar-path trip bills.
+      //
+      // BUG FIX: this used to run unconditionally whenever minimum_days
+      // was set, which is what produced one top-up line per trip even for
+      // a client whose minimum_days actually meant a MONTHLY guarantee —
+      // see minimumBasis's own comment above. Gating on
+      // `minimumBasis === "per_trip"` is what makes the per_trip path
+      // byte-for-byte unchanged (it's every existing client's value, and
+      // the column's own DEFAULT) while routing a 'per_month' client to
+      // the once-per-invoice settlement block after this loop instead.
+      if (minimumBasis === "per_trip" && clientBilling?.minimum_days != null) {
         const minDays = Number(clientBilling.minimum_days);
         if (tripDayLines.length === 0) {
           warnings.push(
@@ -775,6 +837,161 @@ export async function createInvoiceDraft(
     }
   }
 
+  // ---------------------------------------------------------------------
+  // Monthly guarantee settlement — 'per_month' basis ONLY, applied ONCE
+  // PER COVERED MONTH ACROSS THE WHOLE INVOICE, never per trip. This is
+  // the actual fix: the old code's per-trip loop above would have emitted
+  // one top-up line for every short trip in a month; this emits at most
+  // one, sized against the month's TOTAL billable days across every trip
+  // selected on this draft.
+  //
+  // monthlyBillable is empty for every 'per_trip' client (the accumulator
+  // is only ever written when minimumBasis === "per_month") and for a
+  // 'per_month' client whose selected trips produced no billable day rows
+  // at all, so this block is a no-op in both of those cases — nothing
+  // below can affect a 'per_trip' client's invoice.
+  //
+  // KNOWN LIMITATION, stated rather than hidden: "worked" below is the sum
+  // ONLY across trips SELECTED ON THIS INVOICE, not every trip this client
+  // has ever had billed in that month. If a month's trips get split across
+  // two invoices (drafted separately), the FIRST invoice to touch that
+  // month settles it — sized against whatever it alone saw — and the
+  // second sees pilot.guarantee_periods already holds a settled row for
+  // that month and stops, warning instead of computing a second, possibly
+  // more informed, top-up. That is the conservative side of the tradeoff:
+  // it can under-apply a guarantee split across invoices, but it can never
+  // double-apply one, which is the failure this whole feature exists to
+  // close. A pilot who deliberately splits one month's trips across
+  // invoices should draft the smaller ones first if they want the
+  // guarantee sized off the fuller picture.
+  // ---------------------------------------------------------------------
+  if (
+    minimumBasis === "per_month" &&
+    clientBilling?.minimum_days != null &&
+    monthlyBillable.size > 0
+  ) {
+    const minDays = Number(clientBilling.minimum_days);
+    const monthKeys = [...monthlyBillable.keys()].sort();
+
+    const { data: periodRows, error: periodsError } = await supabase
+      .from("guarantee_periods")
+      .select("period_month, settled_invoice_id")
+      .eq("account_id", account.id)
+      .eq("client_id", clientId)
+      .in("period_month", monthKeys);
+
+    if (periodsError) {
+      // Can't safely tell which months are already settled without this
+      // read — guessing "none settled" on a fetch failure could top up a
+      // month a sibling invoice already topped up, which is precisely the
+      // double-bill this table exists to prevent. Fail loud, same
+      // reasoning as the dayRows/dayTypes/clientBilling fetch failures
+      // above.
+      redirect(
+        `/invoices/${invoiceId}?warning=${encodeURIComponent(
+          `Created the draft, but couldn't check this client's monthly guarantee history, so no monthly minimum was applied: ${friendlyDbError(
+            periodsError,
+            "guarantee_periods.select"
+          )}`
+        )}`
+      );
+    }
+
+    const settledInvoiceByMonth = new Map<string, string | null>(
+      (
+        (periodRows ?? []) as {
+          period_month: string;
+          settled_invoice_id: string | null;
+        }[]
+      ).map((r) => [r.period_month, r.settled_invoice_id])
+    );
+
+    type GuaranteePeriodUpsert =
+      Database["pilot"]["Tables"]["guarantee_periods"]["Insert"];
+    const periodsToUpsert: GuaranteePeriodUpsert[] = [];
+
+    for (const monthKey of monthKeys) {
+      const bucket = monthlyBillable.get(monthKey)!;
+      const monthLabel = formatMonthLabel(monthKey);
+      const alreadySettled = settledInvoiceByMonth.get(monthKey);
+
+      if (alreadySettled) {
+        // IDEMPOTENCY: a different invoice already settled this month —
+        // the common shape being a second invoice for the same client,
+        // drafted later, that happens to also cover a trip inside an
+        // already-topped-up month. Warn, and add no second line.
+        warnings.push(
+          `${monthLabel}: this client's monthly guarantee for this month was already settled on invoice ${alreadySettled} — no second top-up line added.`
+        );
+        continue;
+      }
+
+      const worked = roundQuantity(bucket.qty);
+      if (worked < minDays) {
+        const shortfall = roundQuantity(minDays - worked);
+        // RATE CHOICE — same reasoning as the per-trip minimum's own
+        // comment above, extended to a month: the HIGHEST
+        // unit_amount_cents among this month's own billable day rows
+        // (tracked as monthlyBillable's bestRateCents while those rows
+        // were grouped, above), so the guarantee can never pay the pilot
+        // less than the day it is topping off would have.
+        lines.push({
+          account_id: account.id,
+          invoice_id: invoiceId,
+          line_type: "other",
+          // Names the month explicitly — an aircraft owner's AP
+          // department sees ONE line for a STATED month, backed by a
+          // stated worked-vs-guaranteed day count, not one line per trip.
+          description: `Monthly guarantee — ${monthLabel} — ${formatMinDays(
+            minDays
+          )}-day minimum, ${formatMinDays(worked)} ${
+            worked === 1 ? "day" : "days"
+          } worked`,
+          quantity: shortfall,
+          unit_amount_cents: bucket.bestRateCents,
+          taxable: true,
+          // No trip_id: this line is a monthly aggregate across however
+          // many trips contributed to the month, not one trip's own line
+          // — unlike every other line this function emits.
+          sort_order: sortOrder++,
+        });
+      }
+
+      // Recorded whether or not a line was emitted — "worked already met
+      // the guarantee" is a legitimate settlement outcome too, and
+      // recording it here is what stops a later invoice from re-deriving
+      // (and potentially double-counting) the same month.
+      periodsToUpsert.push({
+        account_id: account.id,
+        client_id: clientId,
+        period_month: monthKey,
+        guaranteed_days: minDays,
+        settled_invoice_id: invoiceId,
+      });
+    }
+
+    if (periodsToUpsert.length > 0) {
+      const { error: upsertError } = await supabase
+        .from("guarantee_periods")
+        .upsert(periodsToUpsert as never, {
+          onConflict: "account_id,client_id,period_month",
+        });
+
+      if (upsertError) {
+        // The invoice line(s) above already landed in `lines` and will
+        // still be inserted below — losing the settlement record is a
+        // "this month might get topped up again" risk, not a "this
+        // invoice is wrong" one, so it's a warning, not a hard failure.
+        warnings.push(
+          `Couldn't record this month's guarantee settlement (${friendlyDbError(
+            upsertError,
+            "guarantee_periods.upsert"
+          )}). A later invoice for this client may re-offer the same month.`
+        );
+      }
+    }
+  }
+
   // Cancellation — a note, once, if the client has one on file and any
   // SELECTED trip is canceled. Never a computed fee: see
   // pilot.clients.cancellation_policy_note's comment in the Phase 9
@@ -864,6 +1081,24 @@ export async function createInvoiceDraft(
 /** "2" for a whole number, "2.5" for a fractional one — minimum_days is numeric(5,1). */
 function formatMinDays(days: number): string {
   return Number.isInteger(days) ? String(days) : days.toFixed(1);
+}
+
+/**
+ * "YYYY-MM-01" (a guarantee_periods.period_month value) to "August 2026",
+ * for the monthly guarantee's own line description and warnings — the one
+ * place on the invoice a pilot or client sees WHICH month was settled.
+ * Parsed as UTC midnight, same rule as every other date in this file
+ * (lib/format.ts's parseCalendarDate comment explains why: a viewer west
+ * of Greenwich formatting a local Date sees the wrong calendar day/month).
+ */
+function formatMonthLabel(periodMonth: string): string {
+  const [y, m] = periodMonth.slice(0, 7).split("-").map(Number);
+  const date = new Date(Date.UTC(y!, (m ?? 1) - 1, 1));
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 // ---------------------------------------------------------------------------

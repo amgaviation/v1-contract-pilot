@@ -22,6 +22,8 @@
  *                                                      client_rates, +3 clients cols)
  *   20260807020000_phase9_review_fixes.sql            (trip_days.quantity,
  *                                                      pilot.trip_committed_invoice)
+ *   20260807040000_client_minimum_basis.sql           (clients.minimum_basis,
+ *                                                      guarantee_periods)
  */
 export type Json =
   | string
@@ -194,6 +196,12 @@ export type Database = {
           // already did — meals arrive as pilot.expenses rows.
           per_diem_mode: "per_diem" | "receipts";
           minimum_days: number | null;
+          // Added by 20260807040000_client_minimum_basis.sql. What
+          // minimum_days is a floor ON — 'per_trip' (the default, and the
+          // only behavior that existed before this column) or 'per_month'
+          // (settled via pilot.guarantee_periods). See that migration's
+          // header for why 'per_trip' had to stay the default.
+          minimum_basis: "per_trip" | "per_month";
           cancellation_policy_note: string | null;
           w9_status: "not_requested" | "requested" | "on_file";
           w9_sent_at: string | null;
@@ -223,6 +231,7 @@ export type Database = {
           default_expense_treatment?: "rebill" | "deduct" | "unassigned";
           per_diem_mode?: "per_diem" | "receipts";
           minimum_days?: number | null;
+          minimum_basis?: "per_trip" | "per_month";
           cancellation_policy_note?: string | null;
           w9_status?: "not_requested" | "requested" | "on_file";
           w9_sent_at?: string | null;
@@ -252,6 +261,7 @@ export type Database = {
           default_expense_treatment?: "rebill" | "deduct" | "unassigned";
           per_diem_mode?: "per_diem" | "receipts";
           minimum_days?: number | null;
+          minimum_basis?: "per_trip" | "per_month";
           cancellation_policy_note?: string | null;
           w9_status?: "not_requested" | "requested" | "on_file";
           w9_sent_at?: string | null;
@@ -978,6 +988,56 @@ export type Database = {
           {
             foreignKeyName: "invoice_payments_account_id_invoice_id_fkey";
             columns: ["account_id", "invoice_id"];
+            isOneToOne: false;
+            referencedRelation: "invoices";
+            referencedColumns: ["account_id", "id"];
+          },
+        ];
+      };
+      // Added by 20260807040000_client_minimum_basis.sql. One row per
+      // (client, calendar month) a 'per_month' minimum_basis client has
+      // been drafted against — settled_invoice_id is what stops
+      // createInvoiceDraft from topping up the same month twice across two
+      // different invoices. See the migration for the full mechanism.
+      guarantee_periods: {
+        Row: {
+          id: string;
+          account_id: string;
+          client_id: string;
+          period_month: string;
+          guaranteed_days: number;
+          settled_invoice_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          account_id: string;
+          client_id: string;
+          period_month: string;
+          guaranteed_days: number;
+          settled_invoice_id?: string | null;
+        };
+        // client_id/period_month are NOT updatable — together with
+        // account_id they identify the row (unique (account_id, client_id,
+        // period_month)); re-pointing either is a delete and an insert, the
+        // same discipline pilot.client_rates uses for its own identifying
+        // columns.
+        Update: {
+          guaranteed_days?: number;
+          settled_invoice_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "guarantee_periods_account_id_client_id_fkey";
+            columns: ["account_id", "client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["account_id", "id"];
+          },
+          {
+            foreignKeyName: "guarantee_periods_account_id_settled_invoice_id_fkey";
+            columns: ["account_id", "settled_invoice_id"];
             isOneToOne: false;
             referencedRelation: "invoices";
             referencedColumns: ["account_id", "id"];

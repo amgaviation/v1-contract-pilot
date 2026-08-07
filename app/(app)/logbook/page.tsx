@@ -90,6 +90,16 @@ export default async function LogbookPage() {
       }
       action={
         <>
+          {/* This product is never the only copy of a pilot's legal
+              record (61.51) — this is that pilot's own copy to keep,
+              regardless of what happens to this account. Plain <a>, not
+              a client-side link: it's a file download from
+              /logbook/export, same pattern as the invoice PDF link. */}
+          <Button asChild variant="outline">
+            <a href="/logbook/export" download>
+              Download your logbook (CSV)
+            </a>
+          </Button>
           <Button asChild variant="outline">
             <NextLink href="/logbook/drafts">Trip drafts</NextLink>
           </Button>

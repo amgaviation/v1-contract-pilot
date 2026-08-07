@@ -52,6 +52,13 @@ export type LogbookEntryRow = {
   id: string;
   account_id: string;
   source: LogbookSource;
+  // The account_members.user_id who flew this entry. Set server-side from
+  // the session on every insert path (see actions.ts); never
+  // client-supplied and never UPDATE-writable — see the
+  // 20260807050000_logbook_airman_and_export.sql header. NULL only on a
+  // pre-existing row that predates this column on a multi-member account
+  // (see that migration's backfill note).
+  airman_user_id: string | null;
   trip_id: string | null;
   trip_leg_id: string | null;
   import_batch_id: string | null;
@@ -126,6 +133,10 @@ export type LogbookEntryFlightFields = Pick<
 export type LogbookEntryInsert = LogbookEntryFlightFields & {
   account_id: string;
   source: LogbookSource;
+  // Required, not optional: every insert path must state whose logbook
+  // this is (from requireAccount()'s `user.id`) — there is no default
+  // that would be safe to guess. See the migration header for why.
+  airman_user_id: string;
   trip_id?: string | null;
   trip_leg_id?: string | null;
 };
