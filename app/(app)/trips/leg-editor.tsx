@@ -107,6 +107,9 @@ function LegFieldGrid({
           min="0"
           defaultValue={initial("night_hours")}
         />
+        <Text size="1" color="gray">
+          14 CFR 1.1: civil twilight to civil twilight — not the 61.57(b) takeoff/landing window below
+        </Text>
       </Flex>
       <Flex direction="column" gap="1">
         <Text as="label" size="2" weight="medium" htmlFor={id("instrument_hours")}>
@@ -147,6 +150,9 @@ function LegFieldGrid({
           min="0"
           defaultValue={initial("night_takeoffs", "0")}
         />
+        <Text size="1" color="gray">
+          61.57(b): 1 hr after sunset – 1 hr before sunrise
+        </Text>
       </Flex>
       <Flex direction="column" gap="1">
         <Text as="label" size="2" weight="medium" htmlFor={id("night_landings_full_stop")}>
@@ -161,7 +167,7 @@ function LegFieldGrid({
           defaultValue={initial("night_landings_full_stop", "0")}
         />
         <Text size="1" color="gray">
-          Counts for 61.57(b)
+          Counts for 61.57(b): 1 hr after sunset – 1 hr before sunrise (not the same window as Night above)
         </Text>
       </Flex>
       <Flex direction="column" gap="1">
