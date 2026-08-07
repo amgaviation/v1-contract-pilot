@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Box, Tabs } from "@radix-ui/themes";
+import { Box, Tabs } from "@/components/ui";
 import type { ReactNode } from "react";
 
 type TabKey = "business" | "day-types";

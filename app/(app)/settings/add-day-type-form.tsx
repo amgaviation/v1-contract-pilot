@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { Button, Card, Flex, Grid, Heading, Select, Switch, Text, TextField } from "@radix-ui/themes";
+import { Button, Card, Flex, Grid, Heading, Select, Switch, Text, TextField } from "@/components/ui";
 import { createDayType, type DayTypeFormState } from "./day-types-actions";
 
 const initialState: DayTypeFormState = { error: null };

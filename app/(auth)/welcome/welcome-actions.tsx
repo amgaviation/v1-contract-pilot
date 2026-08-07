@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { Box, Button, Flex, Text } from "@radix-ui/themes";
+import { Box, Button, Flex, Text } from "@/components/ui";
 import { startCheckout, type CheckoutState } from "./actions";
 
 const initialState: CheckoutState = { error: null };

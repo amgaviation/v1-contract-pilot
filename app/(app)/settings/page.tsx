@@ -1,4 +1,4 @@
-import { Card, Flex, Grid, Text } from "@radix-ui/themes";
+import { Card, Flex, Grid, Text } from "@/components/ui";
 
 import { requireAccount } from "@/lib/supabase/account";
 import { createClient } from "@/lib/supabase/server";

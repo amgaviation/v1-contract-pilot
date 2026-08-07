@@ -1,4 +1,4 @@
-import { Card, Flex, Heading, Text } from "@radix-ui/themes";
+import { Card, Flex, Heading, Text } from "@/components/ui";
 import type { Database } from "@/lib/supabase/database.types";
 import RateOverrideRow from "./rate-override-row";
 

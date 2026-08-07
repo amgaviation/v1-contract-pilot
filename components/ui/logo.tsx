@@ -5,12 +5,20 @@ import { BRAND } from "@/lib/brand";
  * inlined verbatim (Barlow 600 converted to outlines — no font dependency).
  *
  * One SVG, not two: both fills are CSS custom properties
- * (`--v1-logo-mark` / `--v1-logo-bug`, now defined in app/globals.css —
- * the retired token layer's only survivors). The kit fixes the wordmark
- * at literal black/white and the bug at one blue on every ground; with
- * the old `[data-theme="dark"]` switch gone (dark mode is now the MD
- * theme's Configurator toggle, which doesn't stamp a DOM attribute),
- * only the light-ground values are defined.
+ * (`--v1-logo-mark` / `--v1-logo-bug`, defined in app/globals.css — the
+ * retired token layer's only survivors). The kit fixes the wordmark at
+ * literal black/white and the bug at one blue on every ground: these are
+ * brand-identity constants, not theme tokens, which is why they live as
+ * plain CSS custom properties rather than being wired to the Radix
+ * accent scale (a future accent change must never retint the trademark
+ * artwork). The app's <Theme> in app/layout.tsx is currently pinned
+ * appearance="light", so only the light-ground value of
+ * --v1-logo-mark ever actually renders — but app/globals.css also
+ * carries the dark-ground value (`#ffffff`) for the day that pin comes
+ * off, under selectors matching every mechanism that could plausibly set
+ * dark mode (see that file's comment for which ones). There is no
+ * Material Dashboard "Configurator toggle" in this product; that kit was
+ * removed in the Radix rebuild.
  *
  * Per the kit's construction spec: don't recolor anything but the bug,
  * don't move it, don't add graduations below 80px, minimum size 16px.

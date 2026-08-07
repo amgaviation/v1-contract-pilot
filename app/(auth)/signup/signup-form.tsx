@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import NextLink from "next/link";
-import { Box, Button, Card, Flex, Text, TextField } from "@radix-ui/themes";
+import { Box, Button, Card, Flex, Text, TextField } from "@/components/ui";
 import { BRAND } from "@/lib/brand";
 import { signUp, type SignUpState } from "./actions";
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { AlertDialog, Button, Flex, Text } from "@radix-ui/themes";
+import { AlertDialog, Button, Flex, Text } from "@/components/ui";
 import { deleteLogbookEntry } from "../actions";
 
 export default function DeleteLogbookEntryButton({ id }: { id: string }) {

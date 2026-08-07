@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import NextLink from "next/link";
-import { Box, Button, Callout, Card, Flex, Text, TextField } from "@radix-ui/themes";
+import { Box, Button, Callout, Card, Flex, Text, TextField } from "@/components/ui";
 import { BRAND } from "@/lib/brand";
 import { requestPasswordReset, type ForgotPasswordState } from "./actions";
 

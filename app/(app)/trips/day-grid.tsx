@@ -9,7 +9,7 @@ import {
   Table,
   Text,
   TextField,
-} from "@radix-ui/themes";
+} from "@/components/ui";
 import { formatDateWithWeekday, formatCents, centsToInput } from "@/lib/format";
 import { saveTripDays, type TripDaysFormState } from "./actions";
 import {

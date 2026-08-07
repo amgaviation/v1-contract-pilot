@@ -1,4 +1,4 @@
-import { Flex, Heading, Text } from "@radix-ui/themes";
+import { Flex, Heading, Text } from "@/components/ui";
 import type { Database } from "@/lib/supabase/database.types";
 import DayTypeRow from "./day-type-row";
 import AddDayTypeForm from "./add-day-type-form";

@@ -66,9 +66,9 @@ about what's a database-engineering guarantee versus an operational commitment.
 | 14 | Trip → logbook | **A draft the pilot confirms.** Never a silent trigger write. |
 | 15 | Currency | **Build behind a feature flag, ship dark.** Enable only after Tony reviews the written spec. |
 | 16 | Invoice delivery | **Both** — send from the platform, or download and send manually. Pilot chooses. |
-| 17 | Design system | **Radix Themes** (`@radix-ui/themes`). Chosen 2026-08-06 after three attempts at a hand-authored system each drifted from its own spec. There is no token file and no design document: the entire visual system is the five `<Theme>` props in `app/layout.tsx`. Restyling the product is changing those props. |
+| 17 | Design system | **Radix Themes** (`@radix-ui/themes`). Chosen 2026-08-06 after three attempts at a hand-authored system each drifted from its own spec. There is no token file and no design document: the entire visual system is the six `<Theme>` props in `app/layout.tsx` plus the small component-defaults layer in `components/ui/index.tsx` (Card's variant, TextField/Select's size, etc.). Restyling the product is changing those. |
 | 18 | Brand placement | AMG appears **only** as the words "Powered by AMG Aviation" in the footer and about page. Nowhere else. |
-| 19 | Palette and wordmark | Radix's `blue` accent on a `slate` grey, the nearest scale to the logo's Signal Blue `#036BFC`. The mark itself is **not** wired to the accent — the wordmark is literal black and the bug literal `#036BFC` on every ground, brand-identity constants rather than UI tokens, so a future accent change can never retint trademark artwork. |
+| 19 | Palette and wordmark | Radix's `blue` accent with `grayColor="auto"`, which resolves to the `slate` grey scale for a blue accent — the nearest scale to the logo's Signal Blue `#036BFC`. `"auto"` rather than a hardcoded `"slate"` couples the grey to the accent, so a future accent change moves the grey with it instead of leaving it frozen. The mark itself is **not** wired to the accent — the wordmark is literal black and the bug literal `#036BFC` on every ground, brand-identity constants rather than UI tokens, so a future accent change can never retint trademark artwork. |
 | 20 | Design longevity | The problem this decision existed to solve is now solved by construction rather than by discipline. A component cannot drift from the token layer when there is no token layer to drift from. `npm run tokens:verify` remains, with a narrower job: stop components reaching *around* the theme with a literal the theme can never reach. |
 
 ### Standing gates (unchanged)
@@ -261,7 +261,7 @@ Follow the house pattern — executable scripts, not a checklist:
   by fingerprint, assert rejected rows surface, assert trip/manual entries bypass fingerprinting.
 - `npm run currency:verify` — table-driven fixtures per currency type, including the
   full-stop night landing rule, the 6-month instrument look-back, and `insufficient_data`.
-- `npm run tokens:verify` — **keeps components from reaching around Radix Themes.** Scans `app/`, `components/` and `lib/` and fails on a hardcoded colour, a camelCase style property carrying a literal, an `@mui`/`@emotion` import, or a literal brand string outside `lib/brand.ts`. Three files may spell a value out and each documents why. Runs in CI.
+- `npm run tokens:verify` — **keeps components from reaching around Radix Themes.** Scans `app/`, `components/` and `lib/` and fails on a hardcoded colour, a camelCase style property carrying a literal, an `@mui`/`@emotion` import, a raw `@radix-ui/themes` import outside `components/ui/index.tsx`, or a literal brand string outside `lib/brand.ts`. Four files may spell a value out and each documents why; the import-ban rules apply to all four regardless. Runs in CI.
 - Manual: run the app, sign up with a Stripe test card, confirm the account is usable
   immediately with no manual step.
 
@@ -296,8 +296,9 @@ is no design work sitting in front of any screen.
 - Domain. "v1" is short and generic, so the exact-match domain is unlikely to be available;
   expect a compound (`v1pilot`, `flyv1`, `v1.aero`). A naming decision, not a build blocker.
 - A future design overhaul. Cheap by construction now rather than by discipline: it is a change
-  to the five `<Theme>` props in `app/layout.tsx`. If it ever needs to go further than those
-  props allow, that is the moment to drop to Radix Primitives for the screens that need it —
+  to the six `<Theme>` props in `app/layout.tsx` (plus `components/ui/index.tsx`'s component
+  defaults). If it ever needs to go further than those props allow, that is the moment to drop
+  to Radix Primitives for the screens that need it —
   Themes is built on them, so it is a supported path rather than a rewrite.
 - AMG's own portal restyle is **out of scope entirely.** The two products no longer share a
   design system, so there is nothing to converge.

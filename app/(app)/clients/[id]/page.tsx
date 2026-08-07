@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { Box, Callout, Card, Text } from "@radix-ui/themes";
+import { Box, Callout, Card, Text } from "@/components/ui";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";

@@ -7,7 +7,7 @@
    a Radix component prop, or a sign that a component is reaching for a
    value it should be asking the theme for.
 
-   The two things that legitimately live here:
+   The three things that legitimately live here:
 
    1. The type family. Radix Themes ships a system font stack; this points
       it at the self-hosted Inter loaded in lib/fonts.ts, so there is no
@@ -17,7 +17,12 @@
       #036BFC on every ground — the logo kit frames these as brand-identity
       constants, not UI tokens. They are deliberately NOT wired to the
       accent scale: re-pointing the mark at the theme would mean a future
-      accent change silently retints the trademark artwork. */
+      accent change silently retints the trademark artwork.
+
+   3. The ghost-Card outdent cancellation below. This is not a visual
+      value — it is a correction of a Radix layout behaviour whose
+      container contract this product does not meet. See the comment
+      above that rule for the full explanation. */
 
 .radix-themes {
   --default-font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
@@ -34,6 +39,44 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Cancel the ghost-Card outdent. Radix's ghost Card variant
+   (styles.css, .rt-Card:where(.rt-variant-ghost)) is not simply "surface
+   minus background" — it also sets
+     --margin-*-override: calc(var(--margin-*) - var(--card-padding))
+   and applies that to margin-*. With no mb/mt/etc. prop, --margin-* is
+   0px, so the override becomes a negative margin equal to the card's own
+   padding on all four sides. That behaviour has a real justification in
+   Radix's own docs: a ghost Card is meant to be used as the sole child of
+   an already-padded container, and the negative margin pulls the card's
+   padding back out so its content lines up flush with the container's
+   edge instead of being padded twice.
+
+   This product's ghost Cards do not live in that shape. All 51 of them
+   are siblings inside gapped Flex/Grid stacks (Overview's KPI row, every
+   settings panel, the auth/404/error shells), not lone children of a
+   padded wrapper — so the "surface minus background" mental model is
+   the only one that holds here, and the outdent is pure liability:
+   measured before this rule, adjacent size-1 ghost Cards in a gap="4"
+   column overlapped by 7.2px, a size-4 ghost Card inside a p="4" Flex
+   bled 28.8px past its parent's content box on every edge, and an
+   explicit mb="4" on a ghost Card rendered as 3.6px of visual gap
+   instead of the 14.4px --space-4 asks for (verified in a headless
+   Chromium render against the real styles.css cascade before/after this
+   rule; see PR description for the numbers).
+
+   The fix: re-point margin-*-override at the plain, un-decremented
+   margin-* value, so a ghost Card's margin behaves like every other
+   Card's margin (0 by default, exactly what mb/mt/mx/my/m ask for
+   otherwise) and only the background/border are "ghosted". This must
+   load after @radix-ui/themes/styles.css to win the cascade — see the
+   import order in app/layout.tsx. */
+.rt-Card:where(.rt-variant-ghost) {
+  --margin-top-override: var(--margin-top);
+  --margin-right-override: var(--margin-right);
+  --margin-bottom-override: var(--margin-bottom);
+  --margin-left-override: var(--margin-left);
+}
+
 :root {
   --v1-logo-mark: #000000;
   --v1-logo-bug: #036bfc;
@@ -45,8 +88,41 @@
    black on light and literal white on dark, and specifies "one blue,
    everywhere" for the bug precisely so there is no light-ground substitute
    to remember. Without this the mark would render black-on-near-black and
-   simply disappear the moment the OS is in dark mode. */
-:root.dark {
+   simply disappear the moment dark mode is switched on.
+
+   Selectors, and why there are three: Radix Themes stamps its appearance
+   class on the <Theme> element itself, not on <html> — a real render
+   produces class="radix-themes light" (or "dark") on that div. Radix
+   also recognises a caller-supplied ".dark-theme" class as an appearance
+   override on any element. Neither of those is ".dark" on <html>: this
+   product used to stamp ".dark" on <html> itself via an inline <head>
+   script reading matchMedia, but that script was deleted along with
+   appearance="light" being pinned (see app/layout.tsx). So all three
+   selectors are listed to cover every mechanism that could plausibly set
+   dark mode here:
+     - .radix-themes.dark   the actual class Radix puts on <Theme> when
+                             appearance="dark" is passed — the mechanism
+                             that exists today
+     - .dark-theme          Radix's documented override class, for the
+                             day dark mode is offered as a toggle rather
+                             than a fixed prop
+     - :root.dark            kept for an html-level class, in case a
+                             future implementation goes back to stamping
+                             <html> the old way
+
+   DORMANT: the <Theme> in app/layout.tsx is pinned appearance="light",
+   so none of these three selectors matches anything on the tree today.
+   The rule stays anyway — the wordmark is still literal black, so
+   deleting this would silently reintroduce the exact bug described above
+   the moment any of the three mechanisms is switched on, and no
+   tokens:verify-style check would catch a rule that simply isn't there.
+   Verified: temporarily setting appearance="dark" in app/layout.tsx
+   causes Radix to render class="radix-themes dark" on the Theme element,
+   which matches .radix-themes.dark below and computes --v1-logo-mark to
+   #ffffff. */
+:root.dark,
+.radix-themes.dark,
+.dark-theme {
   --v1-logo-mark: #ffffff;
 }
 

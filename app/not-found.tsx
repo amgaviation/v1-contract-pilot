@@ -1,5 +1,5 @@
 import NextLink from "next/link";
-import { Button, Card, Flex, Text } from "@radix-ui/themes";
+import { Button, Card, Flex, Text } from "@/components/ui";
 
 /**
  * Root 404 — reached for any unmatched path, signed in or out. It renders

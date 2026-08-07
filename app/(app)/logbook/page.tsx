@@ -10,7 +10,7 @@ import {
   Link,
   Table,
   Text,
-} from "@radix-ui/themes";
+} from "@/components/ui";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";

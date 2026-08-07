@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Button, Flex, Text } from "@radix-ui/themes";
+import { Button, Flex, Text } from "@/components/ui";
 import { documentUrl } from "../actions";
 
 /**

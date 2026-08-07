@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Box, Button, Flex, Select, Text } from "@radix-ui/themes";
+import { Box, Button, Flex, Select, Text } from "@/components/ui";
 import { fileExpense } from "./actions";
 
 export type QueueRow = {
