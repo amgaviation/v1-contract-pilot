@@ -1,10 +1,44 @@
-import { redirect } from "next/navigation";
+import NextLink from "next/link";
+import { Card, Flex, Heading, Link as RadixLink, Text } from "@/components/ui";
 import { requireAccount } from "@/lib/supabase/account";
+import PageShell from "../page-shell";
 
-// The only report today is the year-end packet. Redirecting here (rather
-// than making /reports/year-end itself the nav target) leaves room for a
-// future reports index without moving the nav entry or breaking this URL.
+export const metadata = { title: "Reports" };
+
+// An index of the product's reports. Previously this redirected straight
+// to /reports/year-end, the only report that existed; now that
+// /reports/quarterly exists too, /reports has to actually list both
+// rather than pick one for the pilot.
 export default async function ReportsIndexPage() {
   await requireAccount("/reports");
-  redirect("/reports/year-end");
+
+  return (
+    <PageShell title="Reports">
+      <Flex direction="column" gap="3">
+        <Card size="3">
+          <Heading as="h2" size="4" mb="1">
+            <RadixLink asChild>
+              <NextLink href="/reports/year-end">Year-end report</NextLink>
+            </RadixLink>
+          </Heading>
+          <Text as="div" size="2" color="gray">
+            Income, deductions, and 1099 reconciliation for a full tax year.
+          </Text>
+        </Card>
+        <Card size="3">
+          <Heading as="h2" size="4" mb="1">
+            <RadixLink asChild>
+              <NextLink href="/reports/quarterly">
+                Quarterly estimated tax
+              </NextLink>
+            </RadixLink>
+          </Heading>
+          <Text as="div" size="2" color="gray">
+            Cash-basis profit for each IRS estimated-tax period, with a
+            set-aside planner.
+          </Text>
+        </Card>
+      </Flex>
+    </PageShell>
+  );
 }
