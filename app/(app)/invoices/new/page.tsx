@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { friendlyDbError } from "@/lib/db-errors";
+import { tripValueCents, type TripDayValueRow } from "@/lib/trip-value";
 import PageShell from "../../page-shell";
 import { createInvoiceDraft } from "../actions";
 import DraftForm, { type ClientOption, type TripOption } from "./draft-form";
@@ -179,30 +180,24 @@ export default async function NewInvoicePage({
       const tripDayRows = dayRowsByTrip.get(trip.id) ?? [];
       const hasDayRows = tripDayRows.length > 0;
 
-      // Sum of quantity × the row's own snapshotted rate, billable day
-      // types only — the same rows and the same filter createInvoiceDraft
-      // uses, just not grouped by (day_type, rate) since this only needs
-      // a total. Rounded once at the end, not per row, the same way
-      // Postgres rounds invoice_lines.amount_cents
-      // (`round(quantity * unit_amount_cents)`), rather than compounding
-      // per-row rounding noise.
-      const dayRowValueCents = Math.round(
-        tripDayRows
-          .filter((row) => dayTypeBillable.get(row.day_type_id) === true)
-          .reduce((sum, row) => sum + Number(row.quantity) * Number(row.rate_cents), 0)
-      );
-
-      const flightValue = Math.round(trip.day_rate_cents * Number(trip.day_count));
-      const travelValue = Math.round(
-        (trip.travel_day_rate_cents ?? 0) * Number(trip.travel_day_count)
+      // lib/trip-value.ts's tripValueCents — NOT a hand-rolled sum. It
+      // groups by (day_type_id, rate_cents) and rounds PER GROUP, exactly
+      // the way createInvoiceDraft emits one invoice line per group and
+      // pilot.invoice_lines.amount_cents rounds per line. Rounding once
+      // over the whole trip instead (the previous approach here) can
+      // disagree with the invoice by a cent whenever two groups' summed
+      // quantity × rate isn't itself a whole number of cents — see the
+      // file's own header for the worked example.
+      const value = tripValueCents(
+        trip,
+        tripDayRows as TripDayValueRow[],
+        dayTypeBillable
       );
 
       return {
         ...trip,
         rebillable_expense_cents: rebillByTrip.get(trip.id) ?? 0,
-        estimated_value_cents:
-          (hasDayRows ? dayRowValueCents : flightValue + travelValue) +
-          (rebillByTrip.get(trip.id) ?? 0),
+        estimated_value_cents: value + (rebillByTrip.get(trip.id) ?? 0),
         // The scalar travel-rate gap only means anything for a trip
         // actually billing off the scalar pair — once day rows exist
         // they supersede it entirely, the same way createInvoiceDraft

@@ -419,6 +419,16 @@ export default async function OverviewPage() {
     };
   });
 
+  // M12: the invoice draft flow is single-client by construction
+  // (/invoices/new drafts against exactly one client's trips), so "Invoice
+  // N trips" can only be honest when every one of those N unbilled trips
+  // shares a client. When they don't, the button must stop promising a
+  // multi-client batch it cannot perform.
+  const unbilledClientIds = new Set(
+    trips.map((t) => t.client_id).filter((id): id is string => Boolean(id))
+  );
+  const soleClientId = unbilledClientIds.size === 1 ? [...unbilledClientIds][0] : null;
+
   // Needs attention — past-due invoices, unassigned receipts, and clients
   // missing a W-9. Built as the FULL, unsliced list first and counted from
   // THAT — the previous version sliced overdue to 8 and W-9s to 3 but
@@ -437,8 +447,13 @@ export default async function OverviewPage() {
         row.days_overdue,
         "day"
       )}`,
-      action: "Remind",
-      href: "/invoices",
+      // M11: "Remind" named an action this product cannot perform —
+      // nothing here sends mail. This only opens the invoice record, so
+      // it's labeled for that, matching the fix already applied to the
+      // W-9 button below. Deep-linked to the invoice itself, not the
+      // list, now that invoice.invoice_id is in scope here.
+      action: "Open invoice",
+      href: `/invoices/${row.invoice_id}`,
     };
   });
 
@@ -464,10 +479,12 @@ export default async function OverviewPage() {
         ? `Requested ${formatDate(c.w9_sent_at)}`
         : "Not yet requested",
     // "Open client", not "Request"/"Resend" — this button only navigates
-    // to /clients, it doesn't send anything. A verb that performs no
-    // action is a defect; label it for what it actually does.
+    // to the client record, it doesn't send anything. A verb that
+    // performs no action is a defect; label it for what it actually does.
+    // Deep-linked to the client itself, not the list — c.id is in scope
+    // here.
     action: "Open client",
-    href: "/clients",
+    href: `/clients/${c.id}`,
   }));
 
   const attentionItemsAll = [...overdueItemsAll, ...unassignedItem, ...w9ItemsAll];
@@ -647,22 +664,28 @@ export default async function OverviewPage() {
             <>
               <Flex direction="column">
                 {readyTrips.map((trip) => (
-                  <Flex key={trip.id} justify="between" align="start" py="2">
-                    <Flex direction="column">
-                      <Text weight="medium">{trip.client}</Text>
-                      <Text size="1" color="gray">
-                        {[trip.route, trip.tail, `${pluralize(trip.days, "day")}`, trip.dates]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </Text>
-                      <Text size="1" color="gray">
-                        {trip.detail}
+                  <NextLink
+                    key={trip.id}
+                    href={`/trips/${trip.id}`}
+                    style={{ textDecoration: "none", color: "inherit" }}
+                  >
+                    <Flex justify="between" align="start" py="2">
+                      <Flex direction="column">
+                        <Text weight="medium">{trip.client}</Text>
+                        <Text size="1" color="gray">
+                          {[trip.route, trip.tail, `${pluralize(trip.days, "day")}`, trip.dates]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </Text>
+                        <Text size="1" color="gray">
+                          {trip.detail}
+                        </Text>
+                      </Flex>
+                      <Text weight="bold" className="tnum">
+                        {formatCents(trip.amountCents)}
                       </Text>
                     </Flex>
-                    <Text weight="bold" className="tnum">
-                      {formatCents(trip.amountCents)}
-                    </Text>
-                  </Flex>
+                  </NextLink>
                 ))}
               </Flex>
               {readyCount > readyTrips.length ? (
@@ -671,9 +694,24 @@ export default async function OverviewPage() {
                 </Text>
               ) : null}
               <Flex mt="3">
-                <Button asChild>
-                  <NextLink href="/invoices/new">{`Invoice ${pluralize(readyCount, "trip")}`}</NextLink>
-                </Button>
+                {soleClientId ? (
+                  <Button asChild>
+                    <NextLink href={`/invoices/new?client=${soleClientId}`}>
+                      {`Invoice ${pluralize(readyCount, "trip")}`}
+                    </NextLink>
+                  </Button>
+                ) : (
+                  // M12: /invoices/new drafts against exactly one client's
+                  // trips, so a button offering to "Invoice N trips" here
+                  // cannot keep that promise once those N trips span more
+                  // than one client — it would have to silently drop most
+                  // of them. Relabeled to what it can actually do: open
+                  // the drafting flow and let the pilot pick which
+                  // client's batch to start.
+                  <Button asChild variant="outline">
+                    <NextLink href="/invoices/new">Start an invoice</NextLink>
+                  </Button>
+                )}
               </Flex>
             </>
           )}

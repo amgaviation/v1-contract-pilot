@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState, useTransition } from "react";
-import { Button, Card, Flex, Grid, Select, Switch, Text, TextField } from "@/components/ui";
+import { AlertDialog, Box, Button, Card, Flex, Grid, Select, Switch, Text, TextField } from "@/components/ui";
 import { centsToInput } from "@/lib/format";
 import type { Database } from "@/lib/supabase/database.types";
 import {
@@ -38,6 +38,22 @@ export default function DayTypeRow({
   const [archiving, startArchive] = useTransition();
   const [deleting, startDelete] = useTransition();
   const [rowError, setRowError] = useState<string | null>(null);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleteDialogError, setDeleteDialogError] = useState<string | null>(null);
+
+  function handleDelete() {
+    startDelete(async () => {
+      setDeleteDialogError(null);
+      setRowError(null);
+      const result = await deleteDayType(dayType.id);
+      if (result.error) {
+        setDeleteDialogError(result.error);
+        setRowError(result.error);
+      } else {
+        setConfirmDeleteOpen(false);
+      }
+    });
+  }
 
   // F7: the action returns `requiresConfirm` instead of saving when
   // billable/invoice_line_type changed and un-invoiced trips already use
@@ -251,22 +267,38 @@ export default function DayTypeRow({
                   built-in delete outright (23514), but the control shouldn't
                   exist to invite trying. */}
               {dayType.is_builtin ? null : (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  color="red"
-                  size="1"
-                  disabled={deleting}
-                  onClick={() =>
-                    startDelete(async () => {
-                      setRowError(null);
-                      const result = await deleteDayType(dayType.id);
-                      setRowError(result.error);
-                    })
-                  }
-                >
-                  {deleting ? "Deleting…" : "Delete"}
-                </Button>
+                <AlertDialog.Root open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+                  <AlertDialog.Trigger>
+                    <Button type="button" variant="ghost" color="red" size="1" disabled={deleting}>
+                      {deleting ? "Deleting…" : "Delete"}
+                    </Button>
+                  </AlertDialog.Trigger>
+                  <AlertDialog.Content maxWidth="440px">
+                    <AlertDialog.Title>Delete &ldquo;{dayType.label}&rdquo;?</AlertDialog.Title>
+                    <AlertDialog.Description size="2">
+                      This deletes the day type. Any client rate overrides set for it go too.
+                      This can&rsquo;t be undone. (A day type in use on a trip, or a built-in
+                      type, can&rsquo;t be deleted — archive it instead.)
+                    </AlertDialog.Description>
+                    {deleteDialogError ? (
+                      <Box mt="2">
+                        <Text size="1" color="red" role="alert">
+                          {deleteDialogError}
+                        </Text>
+                      </Box>
+                    ) : null}
+                    <Flex gap="3" mt="4" justify="end">
+                      <AlertDialog.Cancel>
+                        <Button variant="soft" color="gray" disabled={deleting}>
+                          Cancel
+                        </Button>
+                      </AlertDialog.Cancel>
+                      <Button variant="solid" color="red" disabled={deleting} onClick={handleDelete}>
+                        {deleting ? "Deleting…" : "Delete day type"}
+                      </Button>
+                    </Flex>
+                  </AlertDialog.Content>
+                </AlertDialog.Root>
               )}
             </Flex>
           ) : null}

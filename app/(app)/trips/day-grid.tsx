@@ -10,7 +10,8 @@ import {
   Text,
   TextField,
 } from "@/components/ui";
-import { formatDateWithWeekday, formatCents, centsToInput } from "@/lib/format";
+import { formatDateWithWeekday, formatCents, centsToInput, parseDollarsToCents } from "@/lib/format";
+import { tripValueCents, type TripDayValueRow, type TripValueScalar } from "@/lib/trip-value";
 import { saveTripDays, type TripDaysFormState } from "./actions";
 import {
   enumerateDates,
@@ -172,6 +173,52 @@ export default function DayGrid({
     }
     return initial;
   });
+
+  // MEDIUM 22: a pilot edits up to 31 rows on this exact screen to set
+  // what they get paid, and previously had no total until the save
+  // round-tripped and the server-rendered headline value updated. This
+  // mirrors that headline number's own definition instead of re-deriving
+  // it: lib/trip-value.ts's tripValueCents is the SAME function
+  // trips/[id]/page.tsx calls for the persisted figure, called here
+  // against the grid's live, unsaved `rows` state — so the two can never
+  // disagree, and rounding happens exactly where tripValueCents' header
+  // says it must: once per (day_type_id, rate_cents) group, on the
+  // group's summed quantity, not once per row.
+  const billableByDayType = useMemo(
+    () => new Map(dayTypes.map((t): [string, boolean] => [t.id, t.billable])),
+    [dayTypes]
+  );
+  const scalarValue: TripValueScalar = {
+    day_rate_cents: scalars.dayRateCents,
+    day_count: scalars.dayCount,
+    travel_day_rate_cents: scalars.travelDayRateCents,
+    travel_day_count: scalars.travelDayCount,
+  };
+  const liveTotalCents = useMemo(() => {
+    const liveDayRows: TripDayValueRow[] = [];
+    for (const date of dates) {
+      const row = rows[date];
+      if (!row || !row.dayTypeId) continue;
+      liveDayRows.push({
+        day_type_id: row.dayTypeId,
+        // Blank/unparseable rate reads as 0 here, same as an empty rate
+        // reaching the server would — this total previews what Save
+        // would produce, it does not itself validate the form.
+        rate_cents: parseDollarsToCents(row.rate) ?? 0,
+        quantity: Number(row.quantity) || 0,
+      });
+    }
+    // Mirrors saveTripDays: a row with no day type chosen is never
+    // written, so an all-blank grid has zero day rows after saving and
+    // this falls back to the trip's scalar value exactly as the
+    // server-rendered headline does for a trip with no day rows yet.
+    return tripValueCents(
+      scalarValue,
+      liveDayRows.length > 0 ? liveDayRows : undefined,
+      billableByDayType
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dates, rows, billableByDayType, scalarValue]);
 
   function optionsFor(dayTypeId: string) {
     if (!dayTypeId || activeDayTypes.some((t) => t.id === dayTypeId)) {
@@ -377,6 +424,17 @@ export default function DayGrid({
             })}
           </Table.Body>
         </Table.Root>
+      </Box>
+
+      <Box mt="3">
+        <Text size="2" weight="medium" className="tnum">
+          Running total: {formatCents(liveTotalCents)}
+        </Text>
+        <Text as="div" size="1" color="gray">
+          Updates as you edit below, before you save. Day rows only — per
+          diem, the contract minimum and rebilled expenses aren&rsquo;t
+          included, so this won&rsquo;t match the invoice total.
+        </Text>
       </Box>
 
       <Box mt="3" role="alert" aria-live="polite">

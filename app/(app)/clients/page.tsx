@@ -1,6 +1,7 @@
 import NextLink from "next/link";
 import {
   Badge,
+  Box,
   Button,
   Callout,
   Card,
@@ -11,6 +12,7 @@ import {
   Text,
   VisuallyHidden,
 } from "@/components/ui";
+import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
@@ -22,6 +24,13 @@ import PageShell from "../page-shell";
 type ClientRow = Database["pilot"]["Tables"]["clients"]["Row"];
 
 export const metadata = { title: "Clients" };
+
+// Supabase's Data API caps rows (commonly 1000) and TRUNCATES SILENTLY on
+// a plain select — no error, just a shorter array. An explicit .limit
+// makes that boundary visible instead of invisible. Same pattern as
+// logbook/page.tsx's ENTRIES_LIMIT and page.tsx's AGGREGATE_LIMIT —
+// copied, not reinvented.
+const CLIENTS_LIMIT = 1000;
 
 /**
  * W-9 status → badge colour. A missing W-9 is what the Overview "needs
@@ -47,9 +56,11 @@ export default async function ClientsPage() {
     .from("clients")
     .select("*")
     .order("archived_at", { ascending: true, nullsFirst: true })
-    .order("name", { ascending: true });
+    .order("name", { ascending: true })
+    .limit(CLIENTS_LIMIT);
 
   const clients = (data ?? []) as ClientRow[];
+  const truncatedClients = clients.length === CLIENTS_LIMIT;
   const active = clients.filter((c) => !c.archived_at);
   const archived = clients.filter((c) => c.archived_at);
 
@@ -67,6 +78,19 @@ export default async function ClientsPage() {
         </Button>
       }
     >
+      {truncatedClients ? (
+        <Box mb="4">
+          <Callout.Root color="amber">
+            <Callout.Icon>
+              <ExclamationTriangleIcon />
+            </Callout.Icon>
+            <Callout.Text>
+              {`This list may be partial — there are more than ${CLIENTS_LIMIT} clients and only the first ${CLIENTS_LIMIT} are shown.`}
+            </Callout.Text>
+          </Callout.Root>
+        </Box>
+      ) : null}
+
       <Card>
         {error ? (
           <Callout.Root color="red" m="3">
@@ -129,7 +153,9 @@ export default async function ClientsPage() {
                     </Table.Cell>
                     <Table.Cell justify="end">
                       <Text size="2" color="gray" className="tnum">
-                        Net {client.payment_terms_days}
+                        {client.payment_terms_days === null
+                          ? "—"
+                          : `Net ${client.payment_terms_days}`}
                       </Text>
                     </Table.Cell>
                     <Table.Cell>

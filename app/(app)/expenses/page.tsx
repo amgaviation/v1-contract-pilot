@@ -58,6 +58,14 @@ const TREATMENT_BADGE: Record<string, Badge> = {
   deduct: { color: "green", label: "Deduct" },
 };
 
+// Supabase's Data API caps rows (commonly 1000) and TRUNCATES SILENTLY on
+// a plain select — no error, just a shorter array. An explicit .limit
+// makes that boundary visible (rows.length === the limit) instead of
+// invisible, and the callout below turns it into a caveat rather than a
+// quietly wrong "unfiled" total. Same pattern as logbook/page.tsx's
+// ENTRIES_LIMIT and page.tsx's AGGREGATE_LIMIT — copied, not reinvented.
+const EXPENSES_LIMIT = 1000;
+
 export default async function ExpensesPage() {
   await requireAccount("/expenses");
 
@@ -68,7 +76,8 @@ export default async function ExpensesPage() {
       .select(
         "id, incurred_on, category, vendor, amount_cents, treatment, trip_id, receipt_path"
       )
-      .order("incurred_on", { ascending: false }),
+      .order("incurred_on", { ascending: false })
+      .limit(EXPENSES_LIMIT),
     supabase
       .from("trips")
       .select("id, starts_on, ends_on, aircraft_ident")
@@ -77,6 +86,7 @@ export default async function ExpensesPage() {
 
   const expenses = (expenseData ?? []) as ExpenseRow[];
   const trips = (tripData ?? []) as TripRow[];
+  const truncatedExpenses = expenses.length === EXPENSES_LIMIT;
 
   const tripLabel = (trip: TripRow) =>
     `${formatDateRange(trip.starts_on, trip.ends_on)}${
@@ -137,6 +147,19 @@ export default async function ExpensesPage() {
         </Card>
       ) : (
         <>
+          {truncatedExpenses ? (
+            <Box mb="4">
+              <Callout.Root color="amber">
+                <Callout.Icon>
+                  <ExclamationTriangleIcon />
+                </Callout.Icon>
+                <Callout.Text>
+                  {`Totals above may be partial — there are more than ${EXPENSES_LIMIT} expenses and only the first ${EXPENSES_LIMIT} were totaled.`}
+                </Callout.Text>
+              </Callout.Root>
+            </Box>
+          ) : null}
+
           {queueRows.length > 0 ? (
             <Box mb="4">
               <Card size="3">
@@ -199,9 +222,15 @@ export default async function ExpensesPage() {
                           <Text color="gray">{expense.vendor ?? "—"}</Text>
                         </Table.Cell>
                         <Table.Cell>
-                          <Text color="gray">
-                            {expense.trip_id ? tripLabels.get(expense.trip_id) ?? "—" : "—"}
-                          </Text>
+                          {expense.trip_id ? (
+                            <RadixLink asChild color="gray">
+                              <NextLink href={`/trips/${expense.trip_id}`}>
+                                {tripLabels.get(expense.trip_id) ?? "View trip"}
+                              </NextLink>
+                            </RadixLink>
+                          ) : (
+                            <Text color="gray">—</Text>
+                          )}
                         </Table.Cell>
                         <Table.Cell justify="end">
                           <Text weight="medium" className="tnum">

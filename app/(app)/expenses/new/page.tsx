@@ -6,8 +6,13 @@ import { loadTripOptions } from "../trip-options";
 
 export const metadata = { title: "Add expense" };
 
-export default async function NewExpensePage() {
+export default async function NewExpensePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ trip?: string }>;
+}) {
   await requireAccount("/expenses/new");
+  const { trip: tripParam } = await searchParams;
 
   const { trips, error } = await loadTripOptions();
   // A failed query would otherwise render an empty trip picker, which
@@ -15,12 +20,26 @@ export default async function NewExpensePage() {
   // receipt unfiled.
   if (error) throw new Error(`Couldn't load your trips: ${error}`);
 
+  // H8a: a pilot arriving from a just-finished trip shouldn't have to
+  // re-pick it out of every trip they've ever flown. `trips` is already
+  // scoped to the caller's account by RLS, so a match in that list IS the
+  // membership check — an id for someone else's trip, or plain garbage,
+  // simply isn't found here and is ignored rather than surfaced as an
+  // error.
+  const preselectedTripId =
+    tripParam && trips.some((t) => t.id === tripParam) ? tripParam : undefined;
+
   return (
     <PageShell
       title="Add expense"
       subtitle="Tag it once — rebill or deduct — and it files itself against the trip."
     >
-      <ExpenseForm action={createExpense} trips={trips} submitLabel="Save expense" />
+      <ExpenseForm
+        action={createExpense}
+        trips={trips}
+        values={preselectedTripId ? { trip_id: preselectedTripId } : {}}
+        submitLabel="Save expense"
+      />
     </PageShell>
   );
 }

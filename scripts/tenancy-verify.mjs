@@ -170,6 +170,74 @@ begin
 end $$;
 
 -- =====================================================================
+-- SECURITY REVIEW FINDING (F1). Every pilot.* TABLE must have RLS enabled.
+--
+-- This is not belt-and-braces, it is the load-bearing check. The Phase 1
+-- migration sets
+--     alter default privileges in schema pilot grant select on tables to authenticated
+-- so EVERY table created in this schema from now on is readable by any
+-- authenticated session the instant it exists. RLS is the only thing
+-- standing between a new table and a cross-tenant read, and RLS has to be
+-- remembered per table, by hand, in every future migration.
+--
+-- It has already been forgotten once: pilot.stripe_events picked up that
+-- default SELECT and had to be revoked in a later migration
+-- (20260805210000_phase4_receipts_storage.sql). That one was caught. The
+-- next one is caught by this block or not at all.
+--
+-- The view sweep above and this table sweep are deliberately separate:
+-- a view's leak mode is losing security_invoker, a table's is losing RLS,
+-- and neither check sees the other's objects (relkind 'r'/'p' here vs
+-- 'v'/'m' above).
+--
+-- FORCE ROW LEVEL SECURITY is deliberately NOT required — pilot.accounts
+-- is owned by a role that would then be locked out of its own recursion
+-- through current_account_ids(). That absence is a decision, not a gap.
+-- =====================================================================
+do $$
+declare unprotected text[];
+begin
+  select array_agg(c.relname order by c.relname)
+    into unprotected
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'pilot'
+      -- 'r' ordinary table, 'p' partitioned table. A partitioned parent
+      -- with RLS off is a hole even when every partition has it on.
+      and c.relkind in ('r', 'p')
+      and not c.relrowsecurity;
+  if unprotected is not null then
+    raise exception 'F1 FAILURE: pilot tables with row level security DISABLED (readable cross-tenant via the schema default SELECT grant): %', unprotected;
+  end if;
+  raise notice 'PASS F1: every table in schema pilot has row level security enabled';
+end $$;
+
+-- A table with RLS on and NO policy is closed to "authenticated" (deny by
+-- default), which is safe but almost always unintentional — it usually
+-- means a policy was meant to exist. pilot.stripe_events is the one place
+-- it IS intentional, so it is named here rather than silently tolerated.
+do $$
+declare policyless text[];
+begin
+  select array_agg(c.relname order by c.relname)
+    into policyless
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'pilot'
+      and c.relkind in ('r', 'p')
+      and c.relrowsecurity
+      and c.relname <> 'stripe_events'
+      and not exists (
+        select 1 from pg_policies p
+        where p.schemaname = 'pilot' and p.tablename = c.relname
+      );
+  if policyless is not null then
+    raise exception 'F1b FAILURE: pilot tables with RLS on but no policy at all (unreachable by any pilot — a missing policy, not a deliberate lockout): %', policyless;
+  end if;
+  raise notice 'PASS F1b: every RLS-enabled pilot table has at least one policy (stripe_events deliberately excepted)';
+end $$;
+
+-- =====================================================================
 -- File-header invariant: no federal excise tax support may ever exist in
 -- this schema (FET is the OPERATOR's issue on a charter sale, never a
 -- contract pilot's personal-services invoice — see the Phase 5 migration's

@@ -28,7 +28,29 @@ const METHODS = [
   { value: "other", label: "Other" },
 ];
 
+const METHOD_LABEL: Record<string, string> = Object.fromEntries(
+  METHODS.map((m) => [m.value, m.label])
+);
+
 const initialState: InvoiceFormState = { error: null };
+
+/**
+ * Today as "YYYY-MM-DD" in the PILOT'S OWN local calendar, not
+ * `new Date().toISOString().slice(0, 10)` — toISOString() converts to UTC
+ * first, so a pilot west of UTC recording a payment in the evening (e.g.
+ * 5pm Pacific) gets TOMORROW's date pre-filled on a money record. This is
+ * a client component, so the browser's local clock/timezone is available;
+ * lib/format.ts's "a date is a calendar fact, not an instant" rule applies
+ * here too — the default has to match the calendar the pilot is standing
+ * in, not an instant translated through UTC.
+ */
+function todayLocalIso(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 export default function PaymentPanel({
   invoiceId,
@@ -74,7 +96,7 @@ export default function PaymentPanel({
             <Flex key={payment.id} justify="between">
               <Text color="gray">
                 {formatDate(payment.paid_on)}
-                {payment.method ? ` · ${payment.method}` : ""}
+                {payment.method ? ` · ${METHOD_LABEL[payment.method] ?? payment.method}` : ""}
               </Text>
               <Text weight="medium" className="tnum">
                 {formatCents(payment.amount_cents)}
@@ -103,7 +125,7 @@ export default function PaymentPanel({
               id="payment-paid-on"
               type="date"
               name="paid_on"
-              defaultValue={echoed("paid_on", new Date().toISOString().slice(0, 10))}
+              defaultValue={echoed("paid_on", todayLocalIso())}
             />
             <Text as="label" size="1" color="gray" htmlFor="payment-amount">
               Amount (USD)

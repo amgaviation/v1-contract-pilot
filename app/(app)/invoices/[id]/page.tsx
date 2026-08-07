@@ -158,13 +158,11 @@ export default async function InvoicePage({
         </Flex>
       }
       action={
-        invoice.status !== "draft" ? (
-          <Button asChild variant="outline">
-            <a href={`/invoices/${invoice.id}/pdf`} target="_blank" rel="noopener noreferrer">
-              Download PDF
-            </a>
-          </Button>
-        ) : undefined
+        <Button asChild variant="outline">
+          <a href={`/invoices/${invoice.id}/pdf`} target="_blank" rel="noopener noreferrer">
+            {draft ? "Preview PDF" : "Download PDF"}
+          </a>
+        </Button>
       }
     >
       {warning ? (

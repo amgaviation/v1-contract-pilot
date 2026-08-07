@@ -12,7 +12,7 @@ import {
   TextField,
   Select,
 } from "@/components/ui";
-import { formatCents, centsToInput } from "@/lib/format";
+import { formatCents, centsToInput, formatDate } from "@/lib/format";
 import {
   addInvoiceLine,
   addRebillExpenseLine,
@@ -21,6 +21,7 @@ import {
   type LineFormState,
   type LineFormValues,
 } from "../actions";
+import { categoryLabel } from "../labels";
 
 export type LineRow = {
   id: string;
@@ -258,6 +259,17 @@ function EditableRow({ invoiceId, line }: { invoiceId: string; line: LineRow }) 
   // name is a compile error instead of a silently-undefined echo.
   const echoed = (key: keyof LineFormValues, fallback: string) =>
     submitted?.[key] ?? fallback;
+  // The checkbox needs its own echo, not `echoed()`: an UNCHECKED checkbox
+  // posts no `taxable` field at all, so `submitted.taxable` is `undefined`
+  // for two different reasons — "no submission yet" (first render) and
+  // "submitted, but unchecked" (rejected resubmit). Those must not
+  // collapse to the same fallback, or a pilot who unchecks Taxable and
+  // then hits a validation error on another field watches it silently
+  // re-check on the error render. `submitted` itself (the object) is only
+  // present once a submission has happened, so its presence disambiguates:
+  // present + no "taxable" key -> unchecked; absent -> nothing submitted
+  // yet, fall back to the stored row.
+  const taxableChecked = submitted ? submitted.taxable === "on" : line.taxable;
 
   return (
     <Table.Row>
@@ -304,7 +316,7 @@ function EditableRow({ invoiceId, line }: { invoiceId: string; line: LineRow }) 
             </Box>
             <Flex align="center" gap="2" asChild>
               <label>
-                <Checkbox name="taxable" defaultChecked={line.taxable} />
+                <Checkbox name="taxable" defaultChecked={taxableChecked} />
                 <Text size="1">Taxable</Text>
               </label>
             </Flex>
@@ -339,6 +351,12 @@ function AddLineForm({ invoiceId }: { invoiceId: string }) {
   // Same echo as above: the action returns what was submitted so a
   // rejected add re-renders the pilot's entry rather than an empty form.
   const submitted = state.values;
+  // Same disambiguation as EditableRow's taxableChecked: `submitted`
+  // present but no "taxable" key means "submitted, box was unchecked",
+  // not "no submission yet" — the two must not collapse to the same
+  // default (true) or an unchecked box silently re-checks itself on a
+  // rejected add.
+  const taxableChecked = submitted ? submitted.taxable === "on" : true;
   // Same Select.Root uncontrolled-bubble-input issue as elsewhere: `name`
   // dropped, real value posted from a controlled hidden input so a
   // rejected add doesn't silently revert the line type to "Other".
@@ -408,7 +426,7 @@ function AddLineForm({ invoiceId }: { invoiceId: string }) {
         </Box>
         <Flex align="center" gap="2" asChild>
           <label>
-            <Checkbox name="taxable" defaultChecked />
+            <Checkbox name="taxable" defaultChecked={taxableChecked} />
             <Text size="1">Taxable</Text>
           </label>
         </Flex>
@@ -439,16 +457,17 @@ function RebillRow({
   return (
     <Flex align="center" gap="4">
       <Text color="gray" style={{ flex: 1 }}>
-        {expense.category} {expense.vendor ? `— ${expense.vendor}` : ""} ({expense.incurred_on}) ·{" "}
+        {categoryLabel(expense.category)} {expense.vendor ? `— ${expense.vendor}` : ""} (
+        {formatDate(expense.incurred_on)}) ·{" "}
         <span className="tnum">{formatCents(expense.amount_cents)}</span>
       </Text>
       <Button
         variant="outline"
         size="2"
         disabled={pending || added}
-        aria-label={`Add to invoice — ${expense.category}${
+        aria-label={`Add to invoice — ${categoryLabel(expense.category)}${
           expense.vendor ? ` — ${expense.vendor}` : ""
-        } (${expense.incurred_on})`}
+        } (${formatDate(expense.incurred_on)})`}
         onClick={() => {
           startTransition(async () => {
             const result = await addRebillExpenseLine(invoiceId, expense.id);

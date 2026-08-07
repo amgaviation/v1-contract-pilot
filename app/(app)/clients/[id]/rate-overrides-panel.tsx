@@ -1,4 +1,5 @@
-import { Card, Flex, Heading, Text } from "@/components/ui";
+import NextLink from "next/link";
+import { Card, Flex, Heading, Link as RadixLink, Text } from "@/components/ui";
 import type { Database } from "@/lib/supabase/database.types";
 import RateOverrideRow from "./rate-override-row";
 
@@ -40,7 +41,11 @@ export default function RateOverridesPanel({
 
       {visibleDayTypes.length === 0 ? (
         <Text size="2" color="gray">
-          No active day types yet. Add some under Settings → Day types.
+          No active day types yet. Add some under{" "}
+          <RadixLink asChild>
+            <NextLink href="/settings?tab=day-types">Settings → Day types</NextLink>
+          </RadixLink>
+          .
         </Text>
       ) : (
         <Flex direction="column">

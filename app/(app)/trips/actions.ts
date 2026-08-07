@@ -47,7 +47,14 @@ export type TripFormState = {
    */
   daysRemoved?: number;
 };
-export type LegFormState = { error: string | null };
+/**
+ * `values` echoes the submitted leg fields on a validation failure — same
+ * reason as TripFormState above: React 19 resets an uncontrolled form on
+ * every action dispatch, including the rejected one, so without this a
+ * single bad field (say, a non-numeric block time) would wipe every other
+ * field the pilot had already typed for this leg.
+ */
+export type LegFormState = { error: string | null; values?: Record<string, string> };
 /**
  * `fieldErrors` is keyed by date ("2026-03-04") and holds every row's
  * validation problem at once — F2's fix for a 12-row grid that used to be
@@ -474,18 +481,39 @@ export async function deleteTrip(id: string): Promise<{ error: string | null }> 
 // Legs
 // ---------------------------------------------------------------------------
 
-export async function addLeg(
-  _prev: LegFormState,
-  formData: FormData
-): Promise<LegFormState> {
-  const tripId = String(formData.get("trip_id") ?? "");
-  if (!tripId || !UUID_RE.test(tripId)) return { error: "Missing trip id." };
+/** Fields whose submitted text is echoed back on a failed leg submit. */
+const LEG_FIELDS = [
+  "leg_date",
+  "from_icao",
+  "to_icao",
+  "block_hours",
+  "night_hours",
+  "instrument_hours",
+  "day_landings",
+  "night_takeoffs",
+  "night_landings_full_stop",
+  "night_landings_touch_go",
+  "approaches",
+  "holds",
+] as const;
 
-  const { account } = await requireAccount(`/trips/${tripId}`);
+function echoLeg(formData: FormData): Record<string, string> {
+  return echo(formData, LEG_FIELDS);
+}
 
+type ParsedLeg = { values: Omit<LegInsert, "account_id" | "trip_id"> | null; error: string | null };
+
+/**
+ * Shared by addLeg and updateLeg so the two can never validate a leg
+ * differently — the currency-relevant counts (night takeoffs, full-stop
+ * vs touch-and-go night landings, approaches, holds) this file's header
+ * calls out are the same facts whether they're being typed for the first
+ * time or corrected.
+ */
+function parseLegForm(formData: FormData): ParsedLeg {
   const legDate = String(formData.get("leg_date") ?? "").trim();
-  if (!legDate) return { error: "Give the leg a date." };
-  if (!isDate(legDate)) return { error: "That leg date isn't valid." };
+  if (!legDate) return { values: null, error: "Give the leg a date." };
+  if (!isDate(legDate)) return { values: null, error: "That leg date isn't valid." };
 
   // numeric(4,1) — see parseTenth on why one decimal place is checked
   // here rather than left to Postgres to round away.
@@ -507,6 +535,7 @@ export async function addLeg(
     instrumentHours === undefined
   ) {
     return {
+      values: null,
       error: "Times must be hours with at most one decimal place, like 1.4.",
     };
   }
@@ -524,10 +553,44 @@ export async function addLeg(
     const value = raw === "" ? 0 : Number(raw);
     if (!Number.isInteger(value) || value < 0 || value > 999) {
       return {
+        values: null,
         error: "Landings, takeoffs, approaches and holds must be whole numbers.",
       };
     }
     counts[field] = value;
+  }
+
+  return {
+    error: null,
+    values: {
+      leg_date: legDate,
+      from_icao: icao(formData, "from_icao"),
+      to_icao: icao(formData, "to_icao"),
+      block_hours: blockHours,
+      night_hours: nightHours,
+      instrument_hours: instrumentHours,
+      day_landings: counts.day_landings,
+      night_takeoffs: counts.night_takeoffs,
+      night_landings_full_stop: counts.night_landings_full_stop,
+      night_landings_touch_go: counts.night_landings_touch_go,
+      approaches: counts.approaches,
+      holds: counts.holds,
+    },
+  };
+}
+
+export async function addLeg(
+  _prev: LegFormState,
+  formData: FormData
+): Promise<LegFormState> {
+  const tripId = String(formData.get("trip_id") ?? "");
+  if (!tripId || !UUID_RE.test(tripId)) return { error: "Missing trip id." };
+
+  const { account } = await requireAccount(`/trips/${tripId}`);
+
+  const { values, error: parseError } = parseLegForm(formData);
+  if (parseError || !values) {
+    return { error: parseError ?? "Couldn't read that leg.", values: echoLeg(formData) };
   }
 
   const supabase = await createClient();
@@ -538,23 +601,65 @@ export async function addLeg(
     // trip_legs alone only checks the LEG's account_id, which the
     // migration's own header calls out as the trap here.
     trip_id: tripId,
-    leg_date: legDate,
-    from_icao: icao(formData, "from_icao"),
-    to_icao: icao(formData, "to_icao"),
-    block_hours: blockHours,
-    night_hours: nightHours,
-    instrument_hours: instrumentHours,
-    day_landings: counts.day_landings,
-    night_takeoffs: counts.night_takeoffs,
-    night_landings_full_stop: counts.night_landings_full_stop,
-    night_landings_touch_go: counts.night_landings_touch_go,
-    approaches: counts.approaches,
-    holds: counts.holds,
+    ...values,
   };
 
   const { error } = await supabase.from("trip_legs").insert(payload as never);
 
-  if (error) return { error: friendlyDbError(error, "trip_legs.insert") };
+  if (error) {
+    return { error: friendlyDbError(error, "trip_legs.insert"), values: echoLeg(formData) };
+  }
+
+  revalidatePath(`/trips/${tripId}`);
+  return { error: null };
+}
+
+/**
+ * Corrects a leg in place. Added alongside the delete confirm dialog
+ * (HIGH 4) so a typo'd block time — or any of the FAR 61.57 currency
+ * counts this file's header calls out — no longer requires deleting the
+ * leg and losing them to retype from scratch.
+ *
+ * Same shape as updateTrip: id validated with UUID_RE, account re-derived
+ * server-side (never trusted from the form), values echoed back on every
+ * validation or database failure so a rejected save doesn't blank the
+ * rest of what was typed, and the update checked for both `error` and
+ * `count` — PostgREST returns 200 with no error for a write that matched
+ * no rows (another tab's delete, or a crafted id), and silently reporting
+ * success there would tell a pilot their correction landed when it didn't.
+ */
+export async function updateLeg(
+  _prev: LegFormState,
+  formData: FormData
+): Promise<LegFormState> {
+  const id = String(formData.get("id") ?? "");
+  if (!id || !UUID_RE.test(id)) return { error: "That leg isn't valid." };
+
+  const tripId = String(formData.get("trip_id") ?? "");
+  if (!tripId || !UUID_RE.test(tripId)) return { error: "Missing trip id." };
+
+  const { account } = await requireAccount(`/trips/${tripId}`);
+
+  const { values, error: parseError } = parseLegForm(formData);
+  if (parseError || !values) {
+    return { error: parseError ?? "Couldn't read that leg.", values: echoLeg(formData) };
+  }
+
+  const supabase = await createClient();
+  const { error, count: rowCount } = await supabase
+    .from("trip_legs")
+    .update(values as never, { count: "exact" })
+    .eq("id", id)
+    .eq("trip_id", tripId)
+    .eq("account_id", account.id);
+
+  if (error) {
+    return { error: friendlyDbError(error, "trip_legs.update"), values: echoLeg(formData) };
+  }
+  // PostgREST returns 200 with no error for a write that matched no rows.
+  if (rowCount === 0) {
+    return { error: "That leg no longer exists.", values: echoLeg(formData) };
+  }
 
   revalidatePath(`/trips/${tripId}`);
   return { error: null };
@@ -567,13 +672,14 @@ export async function deleteLeg(
   const { account } = await requireAccount(`/trips/${tripId}`);
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { error, count: rowCount } = await supabase
     .from("trip_legs")
-    .delete()
+    .delete({ count: "exact" })
     .eq("id", id)
     .eq("account_id", account.id);
 
   if (error) return { error: friendlyDbError(error, "trip_legs.delete") };
+  if (rowCount === 0) return { error: "That leg no longer exists." };
 
   revalidatePath(`/trips/${tripId}`);
   return { error: null };

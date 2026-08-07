@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { parseDollarsToCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+import { categoryLabel } from "./labels";
 import type { Database } from "@/lib/supabase/database.types";
 
 type InvoiceInsert = Database["pilot"]["Tables"]["invoices"]["Insert"];
@@ -312,9 +313,52 @@ export async function createInvoiceDraft(
     travel_day_rate_cents: number | null;
     billing_state: string;
   };
-  const trips = ((tripRows ?? []) as TripRow[]).filter(
+  const billingStateUnbilled = ((tripRows ?? []) as TripRow[]).filter(
     (t) => t.billing_state === "unbilled"
   );
+
+  // F8 (mirrored from trips/actions.ts): billing_state only advances on an
+  // invoice STATUS change, never when a line is added to a draft, so a
+  // trip already sitting on someone else's still-DRAFT invoice still
+  // reads 'unbilled' here and would otherwise be billed a second time.
+  // pilot.trip_committed_invoice answers "is a LIVE invoice line already
+  // referencing this trip" directly — the same definition the database's
+  // own double-bill trigger (invoice_lines_validate_trip) enforces — so
+  // checking it here lets a partially-bad submission still draft the
+  // trips that ARE clean, with a warning naming the ones that aren't,
+  // instead of the whole batched insert failing opaquely on whichever
+  // trip the trigger happens to hit first.
+  //
+  // Best-effort per trip, same as the picker (invoices/new/page.tsx) and
+  // trips/actions.ts: an individual RPC failure reads as "not known to be
+  // committed elsewhere" rather than blocking the draft — the trigger is
+  // still the real enforcement either way, this only makes the common
+  // case (one stale trip among several clean ones) fail nicer.
+  const committedResults = await Promise.all(
+    billingStateUnbilled.map((t) =>
+      supabase.rpc("trip_committed_invoice", {
+        p_account_id: account.id,
+        p_trip_id: t.id,
+      } as never)
+    )
+  );
+  const committedByTrip = new Map<string, string | null>(
+    billingStateUnbilled.map((t, index) => [
+      t.id,
+      (committedResults[index]?.data as string | null | undefined) ?? null,
+    ])
+  );
+  const preselectionWarnings: string[] = [];
+  const trips = billingStateUnbilled.filter((t) => {
+    const committedLabel = committedByTrip.get(t.id);
+    if (committedLabel) {
+      preselectionWarnings.push(
+        `${formatDateRange(t.starts_on, t.ends_on)}: already billed on ${committedLabel} — not added to this invoice.`
+      );
+      return false;
+    }
+    return true;
+  });
   const tripIdsToBill = trips.map((t) => t.id);
 
   // ---------------------------------------------------------------------
@@ -476,7 +520,7 @@ export async function createInvoiceDraft(
   const lines: LineInsert[] = [];
   let sortOrder = 0;
   let skippedTravelDays = false;
-  const warnings: string[] = [];
+  const warnings: string[] = [...preselectionWarnings];
 
   for (const trip of trips) {
     const tripDayRows = dayRowsByTrip.get(trip.id) ?? [];
@@ -538,7 +582,7 @@ export async function createInvoiceDraft(
         // word "day" at all (a tenant can rename it), so it's named
         // explicitly instead of concatenated into a plural.
         warnings.push(
-          `${trip.starts_on} to ${trip.ends_on}: ${count} day(s) of type "${label}" had no rate set and weren't billed.`
+          `${formatDateRange(trip.starts_on, trip.ends_on)}: ${count} day(s) of type "${label}" had no rate set and weren't billed.`
         );
       }
 
@@ -587,7 +631,7 @@ export async function createInvoiceDraft(
         const minDays = Number(clientBilling.minimum_days);
         if (tripDayLines.length === 0) {
           warnings.push(
-            `${trip.starts_on} to ${trip.ends_on}: this client has a ${formatMinDays(minDays)}-day contract minimum, but the trip has no billable day line to apply it to.`
+            `${formatDateRange(trip.starts_on, trip.ends_on)}: this client has a ${formatMinDays(minDays)}-day contract minimum, but the trip has no billable day line to apply it to.`
           );
         } else {
           const totalBillableQty = roundQuantity(
@@ -655,7 +699,7 @@ export async function createInvoiceDraft(
           account_id: account.id,
           invoice_id: invoiceId,
           line_type: "flight_day",
-          description: `Flight days — ${trip.starts_on} to ${trip.ends_on}`,
+          description: `Flight days — ${formatDateRange(trip.starts_on, trip.ends_on)}`,
           quantity: trip.day_count,
           unit_amount_cents: trip.day_rate_cents,
           taxable: true,
@@ -673,7 +717,7 @@ export async function createInvoiceDraft(
             account_id: account.id,
             invoice_id: invoiceId,
             line_type: "travel_day",
-            description: `Travel days — ${trip.starts_on} to ${trip.ends_on}`,
+            description: `Travel days — ${formatDateRange(trip.starts_on, trip.ends_on)}`,
             quantity: trip.travel_day_count,
             unit_amount_cents: trip.travel_day_rate_cents,
             taxable: true,
@@ -700,7 +744,7 @@ export async function createInvoiceDraft(
             account_id: account.id,
             invoice_id: invoiceId,
             line_type: "per_diem",
-            description: `Per diem — ${trip.starts_on} to ${trip.ends_on}`,
+            description: `Per diem — ${formatDateRange(trip.starts_on, trip.ends_on)}`,
             quantity: perDiemCount,
             unit_amount_cents: perDiemRateCents,
             // C10: a straight expense reimbursement is commonly not
@@ -720,12 +764,12 @@ export async function createInvoiceDraft(
           // but a tenant can still turn it off on a custom day type), or
           // this trip is made up entirely of day types that don't count.
           warnings.push(
-            `${trip.starts_on} to ${trip.ends_on}: this client is on per diem, but none of this trip's day types count toward it, so no per-diem line was added.`
+            `${formatDateRange(trip.starts_on, trip.ends_on)}: this client is on per diem, but none of this trip's day types count toward it, so no per-diem line was added.`
           );
         }
       } else {
         warnings.push(
-          `${trip.starts_on} to ${trip.ends_on}: this client is on per diem, but the trip has no day rows to count, so no per-diem line was added.`
+          `${formatDateRange(trip.starts_on, trip.ends_on)}: this client is on per diem, but the trip has no day rows to count, so no per-diem line was added.`
         );
       }
     }
@@ -750,7 +794,7 @@ export async function createInvoiceDraft(
       line_type: "reimbursable_expense",
       description: `${categoryLabel(expense.category)}${
         expense.vendor ? ` — ${expense.vendor}` : ""
-      } (${expense.incurred_on})`,
+      } (${formatDate(expense.incurred_on)})`,
       quantity: 1,
       unit_amount_cents: expense.amount_cents,
       // C10: a straight expense reimbursement is commonly not taxable —
@@ -820,20 +864,6 @@ export async function createInvoiceDraft(
 /** "2" for a whole number, "2.5" for a fractional one — minimum_days is numeric(5,1). */
 function formatMinDays(days: number): string {
   return Number.isInteger(days) ? String(days) : days.toFixed(1);
-}
-
-function categoryLabel(category: string): string {
-  const labels: Record<string, string> = {
-    airline: "Airline",
-    hotel: "Hotel",
-    rental_car: "Rental car",
-    rideshare: "Rideshare",
-    fuel: "Fuel",
-    meals: "Meals",
-    parking: "Parking",
-    other: "Expense",
-  };
-  return labels[category] ?? "Expense";
 }
 
 // ---------------------------------------------------------------------------
@@ -1047,7 +1077,7 @@ export async function addInvoiceLine(
   // tripId, so it goes through the same invoice_lines_validate_trip
   // double-bill guard createInvoiceDraft's batched insert does.
   const { error } = await supabase.from("invoice_lines").insert(payload as never);
-  if (error) return { error: linesDbError(error, "invoice_lines.insert") };
+  if (error) return { error: linesDbError(error, "invoice_lines.insert"), values };
 
   revalidatePath(`/invoices/${invoiceId}`);
   return { error: null };
@@ -1087,7 +1117,7 @@ export async function addRebillExpenseLine(
     line_type: "reimbursable_expense",
     description: `${categoryLabel(expense.category)}${
       expense.vendor ? ` — ${expense.vendor}` : ""
-    } (${expense.incurred_on})`,
+    } (${formatDate(expense.incurred_on)})`,
     quantity: 1,
     unit_amount_cents: expense.amount_cents,
     taxable: false,
@@ -1149,7 +1179,7 @@ export async function updateInvoiceLine(
     .eq("id", id)
     .eq("account_id", account.id); // defence in depth alongside RLS
 
-  if (error) return { error: friendlyDbError(error, "invoice_lines.update") };
+  if (error) return { error: friendlyDbError(error, "invoice_lines.update"), values };
   if (!count) return { error: "That line no longer exists.", values };
 
   revalidatePath(`/invoices/${invoiceId}`);
@@ -1189,6 +1219,24 @@ export async function deleteInvoiceLine(
 // insert-only by construction; there is nothing to build a delete/edit path
 // for on this surface.
 // ---------------------------------------------------------------------------
+/**
+ * Every field the payment form posts, as submitted — mirrors echo() /
+ * lineFormValues() above. Payment-panel.tsx's `echoed()` reads
+ * `state.values` on a rejected submit; without this, `values` never gets
+ * set on any validation-failure return, so the echo was dead code and a
+ * rejected payment blanked date/amount/method/notes on a money ledger.
+ */
+function paymentFormValues(formData: FormData): Record<string, string> {
+  const str = (k: string) => String(formData.get(k) ?? "");
+  return {
+    invoice_id: str("invoice_id"),
+    paid_on: str("paid_on"),
+    amount: str("amount"),
+    method: str("method"),
+    notes: str("notes"),
+  };
+}
+
 export async function recordPayment(
   _prev: InvoiceFormState,
   formData: FormData
@@ -1199,11 +1247,16 @@ export async function recordPayment(
   const { account } = await requireAccount(`/invoices/${invoiceId}`);
 
   const paidOn = String(formData.get("paid_on") ?? "").trim();
-  if (!paidOn || !isDate(paidOn)) return { error: "Give the payment a valid date." };
+  if (!paidOn || !isDate(paidOn)) {
+    return { error: "Give the payment a valid date.", values: paymentFormValues(formData) };
+  }
 
   const amountCents = parseDollarsToCents(String(formData.get("amount") ?? ""));
   if (amountCents === undefined || amountCents === null || amountCents <= 0) {
-    return { error: "Amount must be a positive amount like 1500 or 1500.00." };
+    return {
+      error: "Amount must be a positive amount like 1500 or 1500.00.",
+      values: paymentFormValues(formData),
+    };
   }
 
   const methodRaw = optional(formData, "method");
@@ -1227,7 +1280,10 @@ export async function recordPayment(
     .insert(payload as never);
 
   if (paymentError) {
-    return { error: friendlyDbError(paymentError, "invoice_payments.insert") };
+    return {
+      error: friendlyDbError(paymentError, "invoice_payments.insert"),
+      values: paymentFormValues(formData),
+    };
   }
 
   // Advance status to match the ledger — pilot.invoice_totals is the one

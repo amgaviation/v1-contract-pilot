@@ -143,7 +143,7 @@ export default async function LogbookPage() {
           <Card>
             {entries.length === 0 ? (
               <Flex direction="column" align="center" gap="3" py="6">
-                <Heading as="h3" size="4">No logbook entries yet</Heading>
+                <Heading as="h2" size="4">No logbook entries yet</Heading>
                 <Text size="2" color="gray" align="center">
                   Log a flight by hand, or confirm the entries a completed trip proposes.
                 </Text>

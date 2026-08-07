@@ -200,7 +200,7 @@ export default async function TripPage({
         </Box>
         <Box gridColumn={{ lg: "span 5" }}>
           <Card size="3">
-            <Heading as="h3" size="4">Legs</Heading>
+            <Heading as="h2" size="4">Legs</Heading>
             <Text as="p" size="2" color="gray" className="tnum">
               {blockTotal.toFixed(1)} block hours ·{" "}
               {nightFullStop} night full-stop landing
@@ -212,7 +212,7 @@ export default async function TripPage({
 
         <Box gridColumn={{ lg: "span 12" }}>
           <Card size="3">
-            <Heading as="h3" size="4">Day grid</Heading>
+            <Heading as="h2" size="4">Day grid</Heading>
             <Text as="p" size="2" color="gray" mb="3">
               One row per calendar day of the trip — this is what feeds
               invoicing and per diem, and once it has rows it is what

@@ -289,11 +289,28 @@ export async function createExpense(
       };
     }
     if (path) {
-      await supabase
+      const { error: linkError, count: linkCount } = await supabase
         .from("expenses")
-        .update({ receipt_path: path } satisfies ExpenseUpdate as never)
+        .update({ receipt_path: path } satisfies ExpenseUpdate as never, {
+          count: "exact",
+        })
         .eq("id", expenseId)
         .eq("account_id", account.id);
+      // The file is already in the bucket at this point. If the row
+      // update fails or matches nothing, nothing points at that object —
+      // orphaned in storage forever, and the pilot sees a receipt-less
+      // expense despite having uploaded successfully. Match
+      // updateExpense's own write below (and documents/actions.ts's
+      // linkError/linkCount pattern): check both, and say so.
+      if (linkError || !linkCount) {
+        revalidatePath("/expenses");
+        return {
+          error: linkError
+            ? `${friendlyDbError(linkError, "expenses.update")} The receipt uploaded but wasn't linked — try attaching it again from the edit screen.`
+            : "The expense was saved without the receipt link — try attaching it again from the edit screen.",
+          values: echo(formData),
+        };
+      }
     }
   }
 

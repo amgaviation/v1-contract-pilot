@@ -87,7 +87,9 @@ export default function StatusActions({
               <AlertDialog.Content maxWidth="420px">
                 <AlertDialog.Title>Mark this invoice as sent?</AlertDialog.Title>
                 <AlertDialog.Description size="2">
-                  It becomes read-only except for status, notes, and delivery.
+                  It becomes read-only except for status, notes, and delivery, and gets its
+                  permanent invoice number. This can&rsquo;t be undone — use &ldquo;Preview
+                  PDF&rdquo; above to see exactly what the client will get before you send it.
                 </AlertDialog.Description>
                 <Flex gap="3" mt="4" justify="end">
                   <AlertDialog.Cancel>
