@@ -50,6 +50,16 @@ export type ApproachType =
   | "ndb"
   | "visual"
   | "other";
+// 61.57(c)(1): the condition an approach was flown under, distinct from
+// approach_type (the procedure flown). 'actual' = actual instrument/IMC
+// weather conditions; 'simulated' = under a view-limiting device (hood,
+// foggles, or a qualifying simulator per 61.57(c)(2)); 'neither' = flown in
+// neither condition (e.g. a visual approach in VMC) — a real, asserted,
+// DISQUALIFYING fact, not the same as null. null/undefined means unknown —
+// every row from before this column existed (20260807140000) reads this
+// way and must not be treated as either qualifying or disqualifying. See
+// that migration's column comment for the full reasoning.
+export type ApproachCondition = "actual" | "simulated" | "neither";
 
 /** Mirrors pilot.logbook_entries exactly — keep in lockstep with the migration. */
 export type LogbookEntryRow = {
@@ -97,6 +107,9 @@ export type LogbookEntryRow = {
   night_landings_touch_go: number;
   approaches_count: number;
   approach_type: ApproachType | null;
+  // See ApproachCondition's comment above. Nullable — unknown is the honest
+  // default, not a value on the reg's own scale.
+  approach_condition: ApproachCondition | null;
   // 61.57(c)(1)(iii): "Intercepting and tracking courses through the use
   // of navigational electronic systems" — a required instrument-currency
   // task with no prior field. Boolean, not a count: the reg states it as
@@ -142,6 +155,7 @@ export type LogbookEntryFlightFields = Pick<
   | "night_landings_touch_go"
   | "approaches_count"
   | "approach_type"
+  | "approach_condition"
   | "courses_intercepted_tracked"
   | "holds"
   | "view_limiting_pilot_name"
@@ -285,6 +299,11 @@ export function draftPayloadForLeg(
     night_landings_touch_go: leg.night_landings_touch_go ?? 0,
     approaches_count: leg.approaches ?? 0,
     approach_type: null,
+    // trip_legs has no field for 61.57(c)(1) condition either (actual vs.
+    // simulated vs. neither) — left null (unknown), not guessed, same
+    // "the draft-confirm boundary is where a human resolves this" posture
+    // as approach_type and everything else below.
+    approach_condition: null,
     // trip_legs has no field for 61.57(c)(1)(iii)'s intercept/track task
     // either — false, not guessed true, same reasoning as day_takeoffs.
     courses_intercepted_tracked: false,

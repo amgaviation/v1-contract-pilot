@@ -779,9 +779,29 @@ inputs," and shipping any of them would trade the product's credibility for a nu
   airworthiness, weather, fuel, duty, medical, operator authorisation, and insurance. The engine
   sees one.
 - **61.23 medical duration** — §2.8.
-- **61.58** PIC proficiency checks for aircraft requiring more than one pilot. Not modelled at
-  all, not recorded anywhere, and directly applicable to this product's users. Named here so its
-  absence is deliberate rather than overlooked.
+- **61.58 compliance determination.** Fetched
+  `https://www.ecfr.gov/api/versioner/v1/full/2026-08-05/title-14.xml?section=61.58` (paraphrased
+  below — the fetch tool used could not return long exact quotes; cross-checked across two
+  independent fetches of the same URL that agreed on every point, but re-fetch directly before
+  citing it verbatim). 61.58(a) binds a PIC of an aircraft type certificated for more than one
+  required pilot flight crewmember, or of a turbojet airplane, to TWO distinct periods — a check
+  within the preceding 12 calendar months in any qualifying aircraft, and within the preceding 24
+  calendar months in the specific type. 61.58(b) exempts a pilot operating under 14 CFR part 91
+  subpart K, or parts 121, 125, 133, 135, or 137, entirely — which means most of this product's
+  users are outside 61.58 for their Part 135 flying specifically (the operator's own training/
+  check program governs instead, the same posture 61.57(e)(3)/135.247 already take in §2.5) and
+  inside it mainly for non-135 flying (owner flights, repositioning legs not under a certificate)
+  in a qualifying aircraft — this narrows, but does not eliminate, the audit's framing that 61.58
+  reaches "essentially every aircraft this product's users fly." **`pilot.documents` now records
+  it** (`supabase/migrations/20260807140000_approach_conditions.sql` adds the
+  `pic_proficiency_check` kind) — a pilot-typed completion/expiry date, the same shape as
+  `flight_review`, with no computed expiry and no cross-credit asserted from
+  `operator_qualifications`. What remains undone, and stays undone deliberately: no 12-month/
+  24-month expiry is derived from the date entered, and no code anywhere decides whether a
+  specific check satisfied 61.58 or whether a Part 135 check exempted the pilot under (b) for a
+  given flight — that determination needs the operating-rule fact per flight this spec's §5
+  already declines to guess, plus the same "was this check conducted in a way that satisfies a
+  different reg" question §2.4/§2.7 already leave to the pilot for 61.56/61.57(d).
 - **61.31 type-rating and endorsement requirements**, **61.55** SIC qualification,
   **61.51** logging sufficiency. The product stores the logbook; it does not audit it.
 - **Whether a 135.293/.297/.299 check satisfies 61.56 or 61.57(d)** — §2.4, §2.7.
@@ -821,7 +841,7 @@ this spec is signed off.
 | Column | Needed by |
 |---|---|
 | `sole_manipulator boolean not null default false` | 61.57(a)(1)(i), (b)(1)(i), (e)(4)(B)(D); 135.247(a). `role` is not a substitute. |
-| `approach_condition text check (… in ('actual','simulated','neither'))` per entry | 61.57(c)(1) — "in actual weather conditions, or under simulated conditions using a view-limiting device." **The live blocker on 61.57(c).** |
+| ~~`approach_condition text check (… in ('actual','simulated','neither'))` per entry~~ **Shipped** by `supabase/migrations/20260807140000_approach_conditions.sql` — nullable, NULL means unknown, every pre-existing row reads that way (never coerced to a qualifying or disqualifying value), and a CHECK forbids pairing `approach_type = 'visual'` with `'actual'`/`'simulated'` so the two axes can't contradict each other in the row itself. | 61.57(c)(1) — "in actual weather conditions, or under simulated conditions using a view-limiting device." **Was the live blocker on 61.57(c); the input gap is now closed. §2.3's `insufficient_data` still applies when this is NULL or category is unknown — an engine is not built by this migration.** |
 | `aircraft_category`, `aircraft_class`, `type_designator` (structured) | 61.57(a)(1)(ii), (b)(1)(ii), (c)(1)/(c)(2), (e)(4)(B)(C); 135.247(a) |
 | `simulator_device_approved_for_landings boolean` | 61.57(a)(3)(i), (b)(2)(i); 61.56(i)(2) |
 | `simulator_part_142_course boolean` | 61.57(a)(3)(ii), (b)(2)(ii), (e)(4)(ii)(D); 61.56(i)(1) |

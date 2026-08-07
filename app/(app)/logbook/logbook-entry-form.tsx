@@ -33,6 +33,7 @@ export type LogbookEntryFormValues = {
   night_landings_touch_go?: number | null;
   approaches_count?: number | null;
   approach_type?: string | null;
+  approach_condition?: string | null;
   courses_intercepted_tracked?: boolean | null;
   holds?: number | null;
   view_limiting_pilot_name?: string | null;
@@ -69,6 +70,17 @@ const APPROACH_TYPES = [
   { value: "other", label: "Other" },
 ];
 
+// 61.57(c)(1) condition — a different axis from APPROACH_TYPES above (the
+// procedure flown vs. the weather/device it was flown under). Kept as its
+// own Select so the two are never conflated in the UI, per the migration's
+// column comment.
+const APPROACH_CONDITIONS = [
+  { value: NONE, label: "Unknown / not recorded" },
+  { value: "actual", label: "Actual instrument conditions" },
+  { value: "simulated", label: "Simulated — view-limiting device" },
+  { value: "neither", label: "Neither (e.g. flown visually)" },
+];
+
 const initialState: LogbookFormState = { error: null };
 
 /**
@@ -97,7 +109,7 @@ export default function LogbookEntryForm({
   // emitting that bubble input, and post the value from our own controlled
   // hidden input instead, which React re-asserts after a reset.
   async function wrappedAction(prevState: LogbookFormState, formData: FormData) {
-    for (const key of ["simulator_device_type", "approach_type"]) {
+    for (const key of ["simulator_device_type", "approach_type", "approach_condition"]) {
       if (formData.get(key) === NONE) formData.set(key, "");
     }
     return action(prevState, formData);
@@ -121,6 +133,7 @@ export default function LogbookEntryForm({
   const [role, setRole] = useState(() => initial("role", "PIC"));
   const [simulatorDeviceType, setSimulatorDeviceType] = useState(() => initialSelect("simulator_device_type"));
   const [approachType, setApproachType] = useState(() => initialSelect("approach_type"));
+  const [approachCondition, setApproachCondition] = useState(() => initialSelect("approach_condition"));
   // Drives whether the safety-pilot-name prompt shows (61.51(b)(1)(v) is
   // only relevant when instrument_simulated_time > 0 — see the field's
   // note below). Not validated as a hard requirement — the schema and
@@ -143,6 +156,9 @@ export default function LogbookEntryForm({
     if (submitted?.approach_type !== undefined) {
       setApproachType(submitted.approach_type ? String(submitted.approach_type) : NONE);
     }
+    if (submitted?.approach_condition !== undefined) {
+      setApproachCondition(submitted.approach_condition ? String(submitted.approach_condition) : NONE);
+    }
     if (submitted?.instrument_simulated_time !== undefined) {
       setInstrumentSimulatedTime(Number(submitted.instrument_simulated_time) || 0);
     }
@@ -155,6 +171,7 @@ export default function LogbookEntryForm({
   const roleId = useId();
   const deviceId = useId();
   const approachId = useId();
+  const approachConditionId = useId();
   const interceptTrackId = useId();
 
   return (
@@ -375,6 +392,30 @@ export default function LogbookEntryForm({
               <input type="hidden" name="approach_type" value={approachType === NONE ? "" : approachType} />
               <Text size="1" color="gray">
                 If the source gives you one. Visual does not count for 61.57(c).
+              </Text>
+            </Flex>
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+              <Text as="label" htmlFor={approachConditionId} size="1" color="gray">
+                Approach condition
+              </Text>
+              <Select.Root value={approachCondition} onValueChange={setApproachCondition}>
+                <Select.Trigger id={approachConditionId} aria-label="Approach condition" />
+                <Select.Content>
+                  {APPROACH_CONDITIONS.map((option) => (
+                    <Select.Item key={option.value} value={option.value}>
+                      {option.label}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+              <input
+                type="hidden"
+                name="approach_condition"
+                value={approachCondition === NONE ? "" : approachCondition}
+              />
+              <Text size="1" color="gray">
+                61.57(c)(1): actual instrument conditions or a view-limiting device — a different question from
+                approach TYPE above. Leave unknown rather than guessing.
               </Text>
             </Flex>
             <Flex direction="column" gap="1" justify="end" style={{ gridColumn: "span 2" }}>

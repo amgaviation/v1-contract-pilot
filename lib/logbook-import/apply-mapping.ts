@@ -25,6 +25,9 @@ const APPROACH_TYPES = [
   "visual",
   "other",
 ] as const;
+// 61.57(c)(1) condition — a different axis from APPROACH_TYPES; see
+// db.ts's ApproachCondition comment.
+const APPROACH_CONDITIONS = ["actual", "simulated", "neither"] as const;
 
 /**
  * The one parser every import path shares. ForeFlight and LogTen supply a
@@ -370,6 +373,32 @@ export function applyMapping(params: {
       }
     }
 
+    // approach_condition: 61.57(c)(1)'s actual/simulated/neither axis,
+    // separate from approach_type. Same "only meaningful alongside a
+    // non-zero approach count" rule as approach_type, and — since a
+    // 'visual' approach_type can never legitimately pair with 'actual' or
+    // 'simulated' (see the migration's CHECK) — a mapped condition that
+    // contradicts a 'visual' approach_type is dropped rather than
+    // imported, and both facts are preserved in remarks so nothing is
+    // silently lost or silently asserted.
+    let approachCondition: (typeof APPROACH_CONDITIONS)[number] | null = null;
+    let droppedApproachCondition: string | null = null;
+    if (isMapped("approach_condition")) {
+      const raw = cellFor(fields, "approach_condition");
+      const parsed = normalizeEnum(raw, APPROACH_CONDITIONS);
+      if (parsed) {
+        if (approachesCount === 0) {
+          droppedApproachCondition = raw.trim();
+        } else if (approachType === "visual" && (parsed === "actual" || parsed === "simulated")) {
+          droppedApproachCondition = raw.trim();
+        } else {
+          approachCondition = parsed;
+        }
+      } else if (raw.trim()) {
+        droppedApproachCondition = raw.trim();
+      }
+    }
+
     // courses_intercepted_tracked: 61.57(c)(1)(iii)'s intercept/track task
     // is a boolean fact, not a count — mapped column parses to true/false
     // (case-insensitive), same normalizeEnum discipline as role/device
@@ -458,6 +487,11 @@ export function applyMapping(params: {
     if (droppedApproachType) {
       notes.push(`Approach type "${droppedApproachType}" noted in source with no approach count — not applied`);
     }
+    if (droppedApproachCondition) {
+      notes.push(
+        `Approach condition "${droppedApproachCondition}" noted in source but not applied (no approach count, or contradicts a visual approach type)`
+      );
+    }
     if (aircraftTypeAlternates.length) {
       notes.push(
         `Aircraft type: source also had ${aircraftTypeAlternates
@@ -502,6 +536,7 @@ export function applyMapping(params: {
       night_landings_touch_go: nightTouchGo,
       approaches_count: approachesCount,
       approach_type: approachType,
+      approach_condition: approachCondition,
       courses_intercepted_tracked: coursesInterceptedTracked,
       holds,
       view_limiting_pilot_name: safetyPilotName,
