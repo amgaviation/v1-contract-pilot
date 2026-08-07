@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { AlertDialog, Box, Button, Card, Flex, Select, Text } from "@radix-ui/themes";
+import { AlertDialog, Box, Button, Card, Flex, Select, Text } from "@/components/ui";
 import { sendInvoice, voidInvoice } from "../actions";
 
 type InvoiceForActions = {

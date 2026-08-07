@@ -32,42 +32,64 @@ Supabase (`@supabase/ssr`) · Stripe (platform billing) + Stripe Connect
 No Tailwind, no CSS-in-JS, no component library beyond Radix. Ten runtime
 dependencies.
 
-## The design system is five props
+## The design system is six props, plus one small defaults file
 
 The entire visual system is the `<Theme>` element in `app/layout.tsx`:
 
 ```tsx
-<Theme accentColor="blue" grayColor="slate" radius="small"
-       scaling="95%" panelBackground="solid">
+<Theme accentColor="blue" grayColor="auto" radius="none" scaling="90%"
+       panelBackground="solid" appearance="light">
 ```
 
-There is no token file, no theme object, and no design document. Restyling the
-product means changing those props. That is deliberate: the look was specified
-in prose three times before this — an "Approach Plate" spec, a white-heavy
-glass system, then a ported Material Dashboard kit — and each time the code
-drifted away from the document describing it. A component cannot drift from a
-token layer that does not exist.
+There is no token file and no design document. Restyling the product means
+changing those props. That is deliberate: the look was specified in prose
+three times before this — an "Approach Plate" spec, a white-heavy glass
+system, then a ported Material Dashboard kit — and each time the code drifted
+away from the document describing it.
 
-`panelBackground="solid"` is the one non-default choice worth knowing: Radix
-defaults panels to translucent, and a pilot comparing a column of decimal
-hours should not read it over a blur.
+There is one small exception to "no theme object": `components/ui/index.tsx`,
+which re-exports every Radix Themes component and gives a handful of them a
+chosen default prop (Card ships `variant="ghost"`, Badge ships `variant="solid"
+color="red"`, and so on — the file's header lists all of them and why). Every
+call site imports from `"@/components/ui"`, never `"@radix-ui/themes"`
+directly, and `npm run tokens:verify` enforces that split mechanically — a
+component reaching around it is exactly how this kind of drift starts. Every
+default is a starting point, not a rule: an explicit prop at the call site
+always wins.
 
-Dark mode follows the operating system, stamped onto `<html>` by a small
-inline script before first paint — Radix's dark tokens are class-scoped and
-its stylesheet has no `prefers-color-scheme` queries, so the prop alone does
-not do it.
+Ghost Cards get one small correction on top of Radix's own CSS:
+`app/globals.css` cancels the negative margin Radix's ghost Card variant
+applies by default (it assumes a ghost Card is the sole child of an
+already-padded container, which is not the shape any of this product's 51
+ghost Cards are in — see that file's comment for the measured before/after
+numbers).
+
+`panelBackground="solid"` is the one non-default `<Theme>` choice worth
+knowing: Radix defaults panels to translucent, and a pilot comparing a column
+of decimal hours should not read it over a blur.
+
+The app is pinned to `appearance="light"` and does not follow the operating
+system. It used to: an earlier version stamped `.light`/`.dark` onto `<html>`
+from an inline script reading `matchMedia` before first paint. That script,
+and the second (dark) `theme-color` it existed to support, are both gone now
+that the theme no longer varies with the OS.
 
 ### The four files allowed to spell a visual value out
 
 Everything else must reach the theme through a component prop, or through
 `style={{ ... var(--gray-a5) ... }}` for the cases Radix has no prop for.
 `npm run tokens:verify` enforces this in CI and each of these documents its
-own exemption at the top of the file:
+own exemption at the top of the file. The exemption is scoped to *values*
+only — none of the four files is exempt from the import-ban rules
+(`@mui`/`@emotion`, or a raw `@radix-ui/themes` import outside
+`components/ui/index.tsx`). `lib/invoice-pdf.tsx` in particular is a real
+`.tsx` component file and must still be caught if it ever imports a Radix
+component directly.
 
 | File | Why |
 |---|---|
 | `app/globals.css` | The V1 mark's brand constants. The wordmark is literal black (white on dark), the bug literal `#036BFC` on every ground — trademark artwork, not UI tokens, so a future accent change can never retint it. |
-| `lib/brand.ts` | The two `theme-color` values. Next's metadata layer cannot read CSS. |
+| `lib/brand.ts` | The one `theme-color` value. Next's metadata layer cannot read CSS. (Previously two values, light and dark; now one, since `appearance` is pinned light.) |
 | `lib/pdf-palette.ts` | The invoice PDF's colours, from `@radix-ui/colors` — the same scales Radix Themes is built on, published as JS, because `@react-pdf/renderer` cannot read CSS. |
 | `lib/invoice-pdf.tsx` | react-pdf's `StyleSheet.create()` cannot take a `var()` at all. Its colours still come from `pdf-palette`. |
 

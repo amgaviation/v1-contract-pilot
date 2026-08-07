@@ -1,4 +1,4 @@
-import { Card, Flex, Spinner, Text } from "@radix-ui/themes";
+import { Card, Flex, Spinner, Text } from "@/components/ui";
 
 /**
  * Segment-level fallback. Each of these screens blocks on a round trip to

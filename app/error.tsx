@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Card, Flex, Text } from "@radix-ui/themes";
+import { Button, Card, Flex, Text } from "@/components/ui";
 
 /**
  * Root error boundary. An unhandled throw anywhere below the root layout

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Flex, Heading, Text } from "@radix-ui/themes";
+import { Flex, Heading, Text } from "@/components/ui";
 
 /**
  * The standard heading block for a feature page: a title, optional

@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { Button, Card, Flex, Grid, Heading, Text, TextField } from "@radix-ui/themes";
+import { Button, Card, Flex, Grid, Heading, Text, TextField } from "@/components/ui";
 import { updateSettings, type SettingsFormState } from "./actions";
 
 export type SettingsValues = {

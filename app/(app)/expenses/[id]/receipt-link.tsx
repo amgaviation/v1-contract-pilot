@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Box, Button, Text } from "@radix-ui/themes";
+import { Box, Button, Text } from "@/components/ui";
 import { receiptUrl } from "../actions";
 
 /**

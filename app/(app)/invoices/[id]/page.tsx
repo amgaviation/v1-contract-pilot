@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { Badge, Button, Callout, Card, Flex, Grid, Separator, Text } from "@radix-ui/themes";
+import { Badge, Button, Callout, Card, Flex, Grid, Separator, Text } from "@/components/ui";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";

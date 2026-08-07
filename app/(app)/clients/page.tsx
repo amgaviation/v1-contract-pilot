@@ -10,7 +10,7 @@ import {
   Table,
   Text,
   VisuallyHidden,
-} from "@radix-ui/themes";
+} from "@/components/ui";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";

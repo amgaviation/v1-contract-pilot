@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { Box, Button, Card, Flex, Text, TextField } from "@radix-ui/themes";
+import { Box, Button, Card, Flex, Text, TextField } from "@/components/ui";
 import { BRAND } from "@/lib/brand";
 import { setNewPassword, type ResetPasswordState } from "./actions";
 

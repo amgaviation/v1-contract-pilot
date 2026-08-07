@@ -1,5 +1,5 @@
 import NextLink from "next/link";
-import { Badge, Button, Callout, Card, Flex, Grid, Table, Text } from "@radix-ui/themes";
+import { Badge, Button, Callout, Card, Flex, Grid, Table, Text } from "@/components/ui";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";

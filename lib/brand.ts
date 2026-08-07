@@ -25,27 +25,26 @@ export type Brand = typeof BRAND;
  * has to continue the surface the reader is looking at, so it is the page
  * GROUND, not the ink.
  *
- * Duplicated as literals only because Next's `viewport.themeColor` export
+ * Duplicated as a literal only because Next's `viewport.themeColor` export
  * is evaluated at the metadata layer, which cannot read a CSS custom
  * property — so it cannot ask Radix Themes for `--color-background` the
  * way every component does.
  *
- * These are Radix's slate scale step 1, light and dark, matching
- * `grayColor="slate"` on the <Theme> in app/layout.tsx. Change that prop
- * and these must change with it; that coupling is why they live here with
- * an explanation rather than as bare literals in layout.tsx.
+ * A single value because the <Theme> in app/layout.tsx is pinned
+ * `appearance="light"` — the app no longer follows the reader's OS
+ * preference, so there is no dark browser chrome to match.
  *
- * Two values rather than one because the <Theme> sets no `appearance`,
- * which means it inherits the reader's own light/dark preference. A single
- * theme-color would be wrong for half the users.
+ * The literal tracks Radix's slate scale step 1 (light), because
+ * `grayColor="auto"` on that same <Theme> resolves to slate for a blue
+ * accent (Radix's getMatchingGrayColor). Change the accent colour and this
+ * value must be re-checked — it is asserted to match, not derived from it.
  *
  * (The previous value, #eef1f6, was the ground of a design system that was
  * deleted in 6ed0e46 — it referred to an app/tokens/colors.css that no
  * longer existed, so it had been tinting browser chrome to match nothing
  * at all.)
  */
-export const THEME_COLOR_LIGHT = "#fcfcfd";
-export const THEME_COLOR_DARK = "#111113";
+export const THEME_COLOR = "#fcfcfd";
 
 /**
  * COUNSEL-REVIEWED COPY — verbatim, docs/PLAN.md Design system. This is

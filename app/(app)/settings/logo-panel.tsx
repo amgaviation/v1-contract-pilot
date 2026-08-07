@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { Button, Card, Flex, Heading, Text } from "@radix-ui/themes";
+import { Button, Card, Flex, Heading, Text } from "@/components/ui";
 import {
   uploadLogo,
   removeLogo,

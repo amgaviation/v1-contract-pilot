@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Button, Flex, Text } from "@radix-ui/themes";
+import { Button, Flex, Text } from "@/components/ui";
 import { confirmLegDraft, confirmTripDrafts } from "../actions";
 
 /**

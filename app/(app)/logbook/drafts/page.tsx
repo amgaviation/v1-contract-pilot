@@ -1,4 +1,4 @@
-import { Callout, Card, Flex, Heading, Table, Text } from "@radix-ui/themes";
+import { Callout, Card, Flex, Heading, Table, Text } from "@/components/ui";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";

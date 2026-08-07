@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { AlertDialog, Box, Button, Flex, Text } from "@radix-ui/themes";
+import { AlertDialog, Box, Button, Flex, Text } from "@/components/ui";
 import { deleteExpense } from "../actions";
 
 export default function DeleteExpenseButton({ id }: { id: string }) {

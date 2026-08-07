@@ -3,8 +3,10 @@
  * Keeps components from reaching around Radix Themes.
  *
  * The product's entire visual system is the <Theme> element in
- * app/layout.tsx — five props, no token file, no theme object, no
- * component stylesheet. That arrangement is only true for as long as no
+ * app/layout.tsx — six props — plus one small defaults file,
+ * components/ui/index.tsx, that sets component-level defaults (Card's
+ * variant, TextField/Select's size, etc.). No token file, no theme
+ * object, no component stylesheet. That arrangement is only true for as long as no
  * component hardcodes a value the theme cannot reach, and this script is
  * what makes that mechanical rather than a matter of discipline.
  *
@@ -31,9 +33,15 @@
  *     CSS-shaped regex
  *   - `@mui/*` and `@emotion/*` imports, which this rebuild removed
  *   - the literal brand strings "V1" / "AMG" outside lib/brand.ts
+ *   - `@radix-ui/themes` imports outside components/ui/index.tsx, the one
+ *     place component defaults may be set (styles.css is exempted)
  *
- * The three files allowed to spell a value out are listed at EXEMPT_FILES
- * below, each with the reason it earns the exemption.
+ * The four files allowed to spell a value out are listed at EXEMPT_FILES
+ * below, each with the reason it earns the exemption. That exemption is
+ * scoped to the VALUE rules only (hex/color-function/named-color/radius/
+ * font-family/box-shadow/backdrop-filter/inline-style-literal) — it does
+ * NOT extend to the import-ban rules (@mui/@emotion, @radix-ui/themes).
+ * See the note above EXEMPT_FILES for why that distinction matters.
  *
  * REWRITE NOTE, retained because it is still the reason several of these
  * patterns look the way they do: an adversarial review of the first
@@ -69,7 +77,7 @@ const SCAN_DIRS = ["app", "components", "lib"];
  * it is a value the theme cannot reach at all, which is worse, because no
  * amount of re-theming will ever move it.
  *
- * Only three files may spell a visual value out:
+ * Only four files may spell a visual value out:
  *
  *   app/globals.css     the V1 mark's brand-identity constants. The
  *                       wordmark is literal black and the bug literal
@@ -99,7 +107,45 @@ const EXEMPT_FILES = new Set([
   join(ROOT, "lib", "invoice-pdf.tsx"),
 ]);
 const EXEMPT_DIRS = [];
-const SCAN_EXTENSIONS = new Set([".ts", ".tsx", ".css"]);
+
+// EXEMPT_FILES/isExempt() below governs the VALUE rules only (category
+// "value" on RULES) — hex, color functions, named colors, radius,
+// font-family, box-shadow, backdrop-filter, inline-style literals. It
+// must NEVER be consulted for the import-ban rules (category
+// "import-ban": @mui/@emotion, @radix-ui/themes) — isExempt() used to be
+// checked before ANY rule ran, which meant app/globals.css, lib/brand.ts,
+// lib/pdf-palette.ts and lib/invoice-pdf.tsx were silently exempt from
+// the @radix-ui/themes import ban too. lib/invoice-pdf.tsx is a real
+// .tsx component file — the one place in the exemption list a Radix
+// component could actually be imported directly with no signal anywhere
+// that it happened. scanFile() below now applies EXEMPT_FILES only to
+// rules whose category is "value"; import-ban rules run on every scanned
+// file regardless of EXEMPT_FILES, with only the narrower, explicit
+// RADIX_THEMES_IMPORT_EXEMPT_FILE carve-out below.
+//
+// Verified by temporarily adding `import { Card } from "@radix-ui/themes";`
+// to lib/invoice-pdf.tsx and confirming `node scripts/verify-tokens.mjs`
+// failed on it, then reverting.
+
+// The one file allowed — required, in fact — to import "@radix-ui/themes"
+// directly. It is not folded into EXEMPT_FILES above because that set
+// means "may spell a visual value out", a different and narrower promise
+// than "may import the raw package"; components/ui/index.tsx should
+// still be scanned by every other rule.
+const RADIX_THEMES_IMPORT_EXEMPT_FILE = join(
+  ROOT,
+  "components",
+  "ui",
+  "index.tsx"
+);
+// .js/.jsx included alongside .ts/.tsx/.css: Next.js compiles .jsx and
+// .js in app/ exactly the same as .tsx, so an import or a hardcoded
+// value written in one of those files would otherwise be invisible to
+// this scanner. Only app/, components/ and lib/ are scanned (SCAN_DIRS
+// above) and walk() already skips node_modules and .next, so widening
+// the extension set does not risk scanning build output or dependencies
+// — there is no .js/.jsx under those three directories today.
+const SCAN_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".css"]);
 
 function isExempt(file) {
   if (EXEMPT_FILES.has(file)) return true;
@@ -111,23 +157,36 @@ const NAMED_COLOR_ALLOWLIST = new Set([
 ]);
 
 /**
- * Each rule: { name, pattern, appliesTo: 'css' | 'code' | 'both' }.
+ * Each rule: { id, category, name, pattern, appliesTo: 'css' | 'code' | 'both' }.
+ * `id` is the stable key scanFile() uses to special-case a rule (e.g. the
+ * components/ui/index.tsx import carve-out below) — NEVER `name`. `name`
+ * is prose meant to read well in the failure output and is expected to
+ * change; keying behaviour off it means editing an error message for
+ * clarity silently changes which file is exempt from what. `category` is
+ * "value" (governed by EXEMPT_FILES) or "import-ban" (never governed by
+ * EXEMPT_FILES — see the note above EXEMPT_FILES for why).
  * Patterns run against the WHOLE file (not per line) with the `g` flag so
  * a value split across lines is still caught, and every match is
  * reported (matchAll), not just the first per pattern.
  */
 const RULES = [
   {
+    id: "hex-color",
+    category: "value",
     name: "hardcoded hex color",
     appliesTo: "both",
     pattern: /#[0-9a-fA-F]{3,8}\b/g,
   },
   {
+    id: "color-function",
+    category: "value",
     name: "hardcoded color function (rgb/hsl/oklch/lab/color-mix/...)",
     appliesTo: "both",
     pattern: /\b(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb|color-mix|color)\s*\(/g,
   },
   {
+    id: "named-color",
+    category: "value",
     name: "bare named color on a color-bearing CSS property",
     appliesTo: "both",
     pattern:
@@ -160,6 +219,8 @@ const RULES = [
    * this shape the same way — the failure is invisible on inspection.
    */
   {
+    id: "border-radius",
+    category: "value",
     name: "non-token border-radius",
     appliesTo: "css",
     // [^;]* rather than [^\n;]* so a value wrapped onto its own line is
@@ -167,6 +228,8 @@ const RULES = [
     pattern: /border-radius\s*:(?!\s*(?:0\b|var\())[^;]*;/g,
   },
   {
+    id: "font-family",
+    category: "value",
     name: "font-family outside the token file",
     appliesTo: "css",
     pattern: /font-family\s*:(?!\s*var\()[^;]*;/g,
@@ -179,6 +242,8 @@ const RULES = [
     // surface may take exactly one shadow" and "keep the two radii and do
     // not add a third" are only enforceable if every shadow and blur
     // resolves through the token layer.
+    id: "box-shadow",
+    category: "value",
     name: "non-token box-shadow (must resolve through a Radix --shadow-* var)",
     appliesTo: "css",
     // The var() lookahead spans the whole declaration rather than just its
@@ -188,6 +253,8 @@ const RULES = [
     pattern: /box-shadow\s*:(?!\s*none\b)(?![^;]*var\()[^;]*;/g,
   },
   {
+    id: "backdrop-filter",
+    category: "value",
     name: "non-token backdrop-filter",
     appliesTo: "css",
     pattern: /backdrop-filter\s*:(?!\s*(?:none\b|var\())[^;]*;/g,
@@ -218,6 +285,8 @@ const RULES = [
     // This is the second rule in this file to hit that trap; the note above
     // the border-radius rule describes the first. Both were found by
     // running the script, not by reading it. Probe the next one too.
+    id: "inline-style-literal",
+    category: "value",
     name: "camelCase style property with a literal value (must use var(--…))",
     appliesTo: "code",
     pattern:
@@ -245,14 +314,59 @@ const RULES = [
     // tokens:verify. A quoted module specifier is the thing that is
     // actually forbidden, so that is what this looks for, in any syntax
     // that can carry one.
+    id: "mui-emotion-import",
+    category: "import-ban",
     name: "@mui or @emotion import (this product is on Radix Themes)",
     appliesTo: "code",
     pattern: /["']@(?:mui|emotion)\/[^"']+["']/g,
   },
   {
+    id: "brand-string",
+    category: "value",
     name: 'literal brand string ("V1" / "AMG") outside lib/brand.ts',
     appliesTo: "code",
     pattern: /\b(V1|AMG)\b/g,
+  },
+  {
+    // THE RULE THAT KEEPS THE DEFAULTS LAYER FROM BEING BYPASSED.
+    //
+    // components/ui/index.tsx is the ONLY place a component default may live
+    // (variant, size, colour, weight — see its header). If a call site can
+    // still import a component straight from "@radix-ui/themes", it can
+    // silently skip every default that file sets, and the product splits
+    // into two looks with no signal anywhere that it happened.
+    //
+    // MATCH THE SPECIFIER, NOT THE `from` KEYWORD — the @mui/@emotion rule
+    // above already learned this lesson: anchoring on `from` misses
+    // `import "@radix-ui/themes/styles.css"` (side-effect, no `from`),
+    // `require("@radix-ui/themes")` (CJS), and `await import("@radix-ui/
+    // themes")` (dynamic). All three are checked by the quoted specifier
+    // instead, exactly like the @mui/@emotion rule.
+    //
+    // BACKTICKS COUNT. `import(`@radix-ui/themes`)` is legal and the first
+    // version of this rule, which allowed only " and ', sailed straight
+    // past it — while the comment above claimed to cover all three import
+    // forms. That is precisely the "reads correct and is not" failure the
+    // header records three times, so the delimiter class carries ` too.
+    //
+    // ONE DELIBERATE CARVE-OUT: "@radix-ui/themes/styles.css" must still
+    // be importable — app/layout.tsx needs Radix's stylesheet, and that
+    // import carries no components to bypass the defaults with. The
+    // pattern excludes only that one path via a negative lookahead sat
+    // right after the package name, with the whitespace-inside-lookahead
+    // discipline the two notes above this list both call out — there is
+    // no separate quantifier here to backtrack over, so the exclusion
+    // cannot slide the way theirs originally did.
+    //
+    // components/ui/index.tsx itself is exempt below
+    // (RADIX_THEMES_IMPORT_EXEMPT_FILE, keyed off `id` — see the note
+    // above the RULES array) — it is the one file allowed, in fact
+    // required, to import the raw package.
+    id: "radix-themes-import",
+    category: "import-ban",
+    name: '"@radix-ui/themes" import outside components/ui/index.tsx',
+    appliesTo: "code",
+    pattern: /["'`]@radix-ui\/themes(?!\/styles\.css["'`])(?:\/[^"'`]*)?["'`]/g,
   },
 ];
 
@@ -289,7 +403,15 @@ function lineNumberAt(content, index) {
 }
 
 function scanFile(file) {
-  if (isExempt(file)) return;
+  // isExempt() (EXEMPT_FILES) is consulted per-RULE below, not up front,
+  // and only for category "value" rules. Short-circuiting the whole file
+  // here — the original bug — would silently exempt app/globals.css,
+  // lib/brand.ts, lib/pdf-palette.ts and lib/invoice-pdf.tsx from the
+  // import-ban rules too, with lib/invoice-pdf.tsx (a real .tsx
+  // component file) the one place that actually matters: it is the one
+  // file in EXEMPT_FILES a raw `@radix-ui/themes` import could land in
+  // with no signal anywhere that it happened.
+  const fileIsValueExempt = isExempt(file);
   const ext = extname(file);
   const raw = readFileSync(file, "utf8");
   const content = stripComments(raw, ext);
@@ -297,6 +419,13 @@ function scanFile(file) {
 
   for (const rule of RULES) {
     if (rule.appliesTo !== "both" && rule.appliesTo !== kind) continue;
+    if (rule.category === "value" && fileIsValueExempt) continue;
+    if (
+      rule.id === "radix-themes-import" &&
+      file === RADIX_THEMES_IMPORT_EXEMPT_FILE
+    ) {
+      continue;
+    }
     for (const match of content.matchAll(rule.pattern)) {
       if (rule.filter && !rule.filter(match)) continue;
       const line = lineNumberAt(content, match.index);
@@ -341,8 +470,9 @@ if (violations.length > 0) {
       "                         <Badge color=\"amber\">, <Flex gap=\"3\">\n" +
       "  something with no prop  style={{ ... var(--gray-a5) ... }} — Radix's own idiom.\n" +
       "                         The scales are CSS custom properties; use them by name.\n" +
-      "  the whole product's look  the five <Theme> props in app/layout.tsx. That is the\n" +
-      "                         entire design system; there is no token file to edit.\n\n" +
+      "  the whole product's look  the six <Theme> props in app/layout.tsx plus\n" +
+      "                         components/ui/index.tsx's component defaults. That is\n" +
+      "                         the entire design system; there is no token file to edit.\n\n" +
       "Only app/globals.css, lib/brand.ts, lib/pdf-palette.ts and lib/invoice-pdf.tsx may\n" +
       "spell a value out, and each documents why at the top of the file.\n"
   );

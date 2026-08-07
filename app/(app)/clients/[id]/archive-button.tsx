@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { AlertDialog, Box, Button, Flex, Text } from "@radix-ui/themes";
+import { AlertDialog, Box, Button, Flex, Text } from "@/components/ui";
 import { setClientArchived } from "../actions";
 
 /**

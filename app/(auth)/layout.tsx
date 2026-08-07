@@ -1,4 +1,4 @@
-import { Flex } from "@radix-ui/themes";
+import { Flex } from "@/components/ui";
 
 /**
  * The signed-out surface (/login, /welcome). Theme-only chrome, no

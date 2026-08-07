@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Button, Card, Flex, Text } from "@radix-ui/themes";
+import { Button, Card, Flex, Text } from "@/components/ui";
 import { getSessionContext } from "@/lib/supabase/account";
 import { signOut } from "./actions";
 import { StartTrialButton } from "./welcome-actions";

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Box, Button, Container, Flex, Separator, Text } from "@radix-ui/themes";
+import { Box, Button, Container, Flex, Separator, Text } from "@/components/ui";
 import { Logo } from "@/components/ui/logo";
 import { BRAND } from "@/lib/brand";
 import { requireAccount } from "@/lib/supabase/account";

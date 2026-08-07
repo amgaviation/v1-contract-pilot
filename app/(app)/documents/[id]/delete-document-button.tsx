@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { AlertDialog, Button, Flex, Text } from "@radix-ui/themes";
+import { AlertDialog, Button, Flex, Text } from "@/components/ui";
 import { deleteDocument } from "../actions";
 
 export default function DeleteDocumentButton({ id }: { id: string }) {

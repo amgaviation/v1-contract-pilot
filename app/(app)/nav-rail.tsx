@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Box, Flex, Separator, Text } from "@radix-ui/themes";
+import { Box, Flex, Separator, Text } from "@/components/ui";
 import { NAV_SECTIONS, NAV_SETTINGS, isCurrentSection, type NavItem } from "@/lib/nav";
 
 /**
