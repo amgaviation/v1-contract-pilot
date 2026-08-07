@@ -56,7 +56,7 @@ export default async function TripPage({
     supabase
       .from("day_types")
       .select(
-        "id, key, label, billable, default_rate_cents, default_units, sort_order, archived_at"
+        "id, key, label, billable, counts_for_per_diem, default_rate_cents, default_units, sort_order, archived_at"
       )
       .order("sort_order", { ascending: true })
       .order("key", { ascending: true }),

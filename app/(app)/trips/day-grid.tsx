@@ -23,6 +23,7 @@ import {
   awayFieldName,
   notesFieldName,
   computeSeed,
+  resolveAway,
   resolveRate,
   resolveUnits,
   quantityToInput,
@@ -299,6 +300,13 @@ export default function DayGrid({
       dayTypeId,
       rate: dayTypeId ? resolveRate(dayTypeId, clientRateByType, dayTypeById) : "",
       units: dayTypeId ? resolveUnits(dayTypeId, dayTypeById) : "1.00",
+      // Pre-tick Away from the day type, exactly as rate and units resolve.
+      // Per diem needs counts_for_per_diem AND away, so leaving this false
+      // by default meant a pilot who never noticed the column silently
+      // billed no per diem — the same under-count the backfill fixed for
+      // history, reproduced on every new trip. This is a visible, editable
+      // default, not an assertion about where the pilot physically was.
+      away: dayTypeId ? resolveAway(dayTypeId, dayTypeById) : false,
     });
   }
 
