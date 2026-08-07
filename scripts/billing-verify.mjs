@@ -46,6 +46,28 @@ const db =
 
 let passed = 0;
 let failed = 0;
+let skipped = 0;
+
+/**
+ * A SKIPPED CHECK IS NOT A PASSING CHECK.
+ *
+ * Sections 4 and 5 need a service-role client. Without one they used to
+ * print SKIP and touch neither counter, so the run exited 0 having asserted
+ * six things instead of nine — and "billing:verify passed" meant something
+ * different depending on which environment variables happened to be set,
+ * with nothing in the output saying so.
+ *
+ * That is the same class of defect as a check that treats a discarded error
+ * as a pass, which this file's siblings already guard against: the failure
+ * mode is not a wrong answer, it is a confident answer to a question nobody
+ * asked. Skips are now counted and named, the summary states how many
+ * assertions actually ran, and a run that skipped anything cannot be
+ * mistaken for a full one.
+ */
+function skip(name, reason) {
+  skipped++;
+  console.log(`  SKIP  ${name} — ${reason}`);
+}
 
 function pass(name, detail = "") {
   passed++;
@@ -206,7 +228,7 @@ console.log("\nIdempotency (replayed event id)");
 // ---------------------------------------------------------------------------
 console.log("\nOut-of-order delivery");
 if (!db) {
-  console.log("  SKIP  needs NEXT_SUPABASE_URL + NEXT_SUPABASE_SECRET_KEY");
+  skip("out-of-order delivery", "needs NEXT_SUPABASE_URL + NEXT_SUPABASE_SECRET_KEY");
 } else {
   const subId = `sub_verify_order_${randomUUID().slice(0, 8)}`;
   const customerId = `cus_verify_order_${randomUUID().slice(0, 8)}`;
@@ -278,7 +300,7 @@ if (!db) {
 // ---------------------------------------------------------------------------
 console.log("\nRetry safety (unfinished handler is retryable)");
 if (!db) {
-  console.log("  SKIP  needs NEXT_SUPABASE_URL + NEXT_SUPABASE_SECRET_KEY");
+  skip("retry safety", "needs NEXT_SUPABASE_URL + NEXT_SUPABASE_SECRET_KEY");
 } else {
   const eventId = `evt_test_${randomUUID()}`;
   const subId = `sub_verify_retry_${randomUUID().slice(0, 8)}`;
@@ -321,5 +343,16 @@ console.log("\nProvisioning is webhook-only");
     : fail("checkout success URL alone provisions nothing", `got ${res.status}`);
 }
 
-console.log(`\n${passed} passed, ${failed} failed\n`);
+console.log(
+  `\n${passed} passed, ${failed} failed` +
+    (skipped ? `, ${skipped} SKIPPED (this run did NOT verify everything)` : "") +
+    "\n"
+);
+if (skipped && !failed) {
+  console.log(
+    "billing:verify did not run to completion — set NEXT_SUPABASE_URL and\n" +
+      "NEXT_SUPABASE_SECRET_KEY to exercise the out-of-order and retry-safety\n" +
+      "sections. Do not read this run as a green suite.\n"
+  );
+}
 process.exit(failed > 0 ? 1 : 0);
