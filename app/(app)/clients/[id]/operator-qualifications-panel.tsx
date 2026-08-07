@@ -3,6 +3,9 @@ import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import type { Database } from "@/lib/supabase/database.types";
 import {
   OPERATOR_QUALIFICATION_REQUIREMENTS,
+  TYPE_SPECIFIC_REQUIREMENTS,
+  COMPETENCY_CHECK_REQUIREMENT,
+  IPC_REQUIREMENT,
   LINE_CHECK_REQUIREMENT,
 } from "./operator-qualification-kinds";
 import OperatorQualificationRow from "./operator-qualification-row";
@@ -22,8 +25,21 @@ type QualificationRow = Database["pilot"]["Tables"]["operator_qualifications"]["
  * this panel matches that precedent rather than inventing a second one.
  *
  * COPY DISCIPLINE: nothing on this panel may read as AMG determining the
- * pilot IS on the operator's certificate. It records what the pilot has
- * been told/shown by the operator — see the migration's table comment.
+ * pilot IS on the operator's certificate, and (20260807110000) nothing
+ * on it may read as AMG computing a regulatory-compliance VERDICT either
+ * — the "Valid through" dates below are a planning aid, not that
+ * determination. See the migration's table comment and header.
+ *
+ * TYPE SPECIFICITY (20260807110000 correction — read the migration
+ * header before touching this again): 135.299(a)'s line check is NOT
+ * type-specific ("a flight check in one of the types... which that
+ * pilot is to fly" — one check covers every type), so it renders as a
+ * single fixed row below, same as basic_indoc etc., with an optional,
+ * purely informational aircraft-type field. 135.293(b)'s competency
+ * check and 135.297's IPC ARE class/type-specific (293(b): class for
+ * single-engine non-turbojet airplane, type otherwise; 297(e): "in each
+ * type... in rotation" when assigned more than one), so those two are
+ * the ones that render as repeatable-by-type sub-lists.
  */
 export default function OperatorQualificationsPanel({
   clientId,
@@ -44,11 +60,24 @@ export default function OperatorQualificationsPanel({
   }
 
   const fixedRequirements = OPERATOR_QUALIFICATION_REQUIREMENTS.filter(
-    (r) => r.value !== LINE_CHECK_REQUIREMENT
+    (r) => !TYPE_SPECIFIC_REQUIREMENTS.has(r.value)
   );
-  const lineChecks = (byRequirement.get(LINE_CHECK_REQUIREMENT) ?? []).sort((a, b) =>
-    a.type_designator.localeCompare(b.type_designator)
+
+  const typeSpecificSections = OPERATOR_QUALIFICATION_REQUIREMENTS.filter((r) =>
+    TYPE_SPECIFIC_REQUIREMENTS.has(r.value)
   );
+
+  const sectionCopy: Record<string, string> = {
+    [COMPETENCY_CHECK_REQUIREMENT]:
+      "135.293(b) is keyed to class (single-engine airplane, other than turbojet) or type " +
+      "(helicopter, multiengine airplane, turbojet airplane, powered-lift) — one competency " +
+      `check per class/type you fly for ${clientName}.`,
+    [IPC_REQUIREMENT]:
+      "135.297(e): if you're assigned more than one type for this operator, your IPC rotates " +
+      "through your types (one flight check per 6-month period, not one per type per period). " +
+      "Record each check by the type it was flown in — this panel does not compute whether your " +
+      "rotation satisfies 297(e); that is on you and your chief pilot to track.",
+  };
 
   return (
     <Card size="3">
@@ -58,9 +87,11 @@ export default function OperatorQualificationsPanel({
           What {clientName} has told or shown you about your standing on their certificate —
           training, checks, and program status. This is a record of what you were told, not a
           determination that you are on {clientName}&rsquo;s certificate; only the operator can
-          say that. 135.293/135.297/135.299&rsquo;s valid-through dates are computed for you from
-          the completion date, including the 135.301(a) one-month-early/one-month-late
-          allowance. Everything else here is a date you enter directly.
+          say that. 135.293(a)/(b), 135.297, and 135.299&rsquo;s valid-through dates are computed
+          for you from the completion date, including the 135.301(a) one-month-early/one-month-late
+          allowance — that computation is a planning aid, not a determination of regulatory
+          compliance; you and the operator remain responsible for that. Everything else here is a
+          date you enter directly.
         </Text>
       </Flex>
 
@@ -80,42 +111,51 @@ export default function OperatorQualificationsPanel({
                 clientId={clientId}
                 requirement={req.value}
                 label={req.label}
+                typeDesignator={byRequirement.get(req.value)?.[0]?.type_designator ?? ""}
                 existing={byRequirement.get(req.value)?.[0] ?? null}
+                allowTypeEdit={req.value === LINE_CHECK_REQUIREMENT}
               />
             </div>
           ))}
 
-          <Separator size="4" my="1" />
+          {typeSpecificSections.map((req) => {
+            const rows = (byRequirement.get(req.value) ?? []).sort((a, b) =>
+              a.type_designator.localeCompare(b.type_designator)
+            );
+            return (
+              <div key={req.value}>
+                <Separator size="4" my="1" />
+                <Text as="div" size="2" weight="medium" mt="2" mb="1">
+                  {req.label}
+                </Text>
+                <Text as="div" size="1" color="gray" mb="2">
+                  {sectionCopy[req.value]}
+                </Text>
 
-          <Text as="div" size="2" weight="medium" mt="2" mb="1">
-            Line checks
-          </Text>
-          <Text as="div" size="1" color="gray" mb="2">
-            135.299(a) is type-specific — one line check per aircraft type you fly for{" "}
-            {clientName}.
-          </Text>
+                {rows.map((row) => (
+                  <OperatorQualificationRow
+                    key={row.id}
+                    clientId={clientId}
+                    requirement={req.value}
+                    label={req.label}
+                    typeDesignator={row.type_designator}
+                    existing={row}
+                    allowDelete
+                  />
+                ))}
 
-          {lineChecks.map((row) => (
-            <OperatorQualificationRow
-              key={row.id}
-              clientId={clientId}
-              requirement={LINE_CHECK_REQUIREMENT}
-              label="Line check"
-              typeDesignator={row.type_designator}
-              existing={row}
-              allowDelete
-            />
-          ))}
-
-          <Separator size="4" my="1" />
-          <OperatorQualificationRow
-            key="line-check-new"
-            clientId={clientId}
-            requirement={LINE_CHECK_REQUIREMENT}
-            label="Add a line check"
-            existing={null}
-            allowTypeEdit
-          />
+                <Separator size="4" my="1" />
+                <OperatorQualificationRow
+                  key={`${req.value}-new`}
+                  clientId={clientId}
+                  requirement={req.value}
+                  label={`Add a ${req.label.toLowerCase()}`}
+                  existing={null}
+                  allowTypeEdit
+                />
+              </div>
+            );
+          })}
         </Flex>
       )}
     </Card>

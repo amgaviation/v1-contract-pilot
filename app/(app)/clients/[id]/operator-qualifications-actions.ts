@@ -7,7 +7,7 @@ import { friendlyDbError } from "@/lib/db-errors";
 import type { Database } from "@/lib/supabase/database.types";
 import {
   OPERATOR_QUALIFICATION_REQUIREMENTS,
-  LINE_CHECK_REQUIREMENT,
+  TYPE_SPECIFIC_REQUIREMENTS,
   DERIVED_EXPIRY_REQUIREMENTS,
   STATUS_OPTIONS,
 } from "./operator-qualification-kinds";
@@ -47,30 +47,39 @@ function optionalDate(formData: FormData, key: string): string | null | undefine
 }
 
 /**
- * Insert-or-update for a single (client, requirement, type_designator)
- * qualification record — the same lookup-then-branch shape
- * setClientRateOverride (rate-overrides-actions.ts) uses, for the same
- * reason: (account_id, client_id, requirement, type_designator) is what
- * IDENTIFIES a row (the migration's unique constraint), and the grant
- * withholds all three of those columns from UPDATE, so re-pointing any of
- * them has to be a delete-and-insert rather than a single upsert call.
+ * Insert-or-update for a single qualification record.
  *
- * expires_on (H4): for the three trigger-derived requirements
- * (DERIVED_EXPIRY_REQUIREMENTS — competency_check_135_293, ipc_135_297,
- * line_check_135_299) this action never reads or sends it — the database
- * trigger (pilot.compute_operator_qualification_expiry) unconditionally
- * overwrites whatever it's handed for those three, so sending a
+ * IDENTITY (20260807110000 correction — read the migration header before
+ * changing this): only for the two TYPE_SPECIFIC_REQUIREMENTS
+ * (competency_check_135_293b, ipc_135_297 — 135.293(b) is class/type-
+ * specific, 135.297(e) rotates by type) does (account_id, client_id,
+ * requirement, type_designator) identify the row; those are always
+ * created fresh (never edited in place) via the panel's "add a ___" row,
+ * matching setClientRateOverride's (rate-overrides-actions.ts)
+ * lookup-then-branch shape. For every OTHER requirement — INCLUDING the
+ * line check, which used to be type-specific and is not (135.299(a)
+ * covers every type with one check) — the row is identified by
+ * (account_id, client_id, requirement) alone, and type_designator is
+ * just another editable field on it (informational for the line check;
+ * always '' and untouched for the rest). Matching only on
+ * (client_id, requirement) for those keeps the line check pinned to one
+ * row even as its recorded type is corrected in place, instead of a
+ * changed type value silently opening a second row.
+ *
+ * expires_on (H4): for the four trigger-derived requirements
+ * (DERIVED_EXPIRY_REQUIREMENTS — written_test_135_293a,
+ * competency_check_135_293b, ipc_135_297, line_check_135_299) this
+ * action never reads or sends it — the database trigger
+ * (pilot.compute_operator_qualification_expiry) unconditionally
+ * overwrites whatever it's handed for those four, so sending a
  * pilot-typed value would be pointless at best and misleading at worst
  * (it would flash briefly before the trigger's real answer replaced it).
  * This keeps the 135.293/135.297/135.299/135.301 arithmetic in exactly
  * one place, matching every other derived value in this schema. For
- * every OTHER requirement kind — the eight with no cited calendar-month
+ * every OTHER requirement kind — the seven with no cited calendar-month
  * reg — expires_on IS read from the form and sent on both insert and
  * update, since for those it is (per the column comment) "whatever the
- * pilot enters directly", same as pilot.documents.expires_on. Before this
- * fix expires_on was unreachable for all eight non-derived kinds, so
- * insurance_approval and recurrent_training — the two rows a pilot most
- * needs a reminder on — could never appear in pilot.expirations at all.
+ * pilot enters directly", same as pilot.documents.expires_on.
  */
 export async function saveOperatorQualification(
   _prev: QualificationFormState,
@@ -106,9 +115,9 @@ export async function saveOperatorQualification(
   if (!STATUS_VALUES.has(status)) {
     return { error: "That status isn't recognized.", values: echo };
   }
-  if (requirement === LINE_CHECK_REQUIREMENT && typeDesignator === "") {
+  if (TYPE_SPECIFIC_REQUIREMENTS.has(requirement) && typeDesignator === "") {
     return {
-      error: "A line check is type-specific — enter the aircraft type it was flown in.",
+      error: "This check is class/type-specific — enter the aircraft class or type it was flown in.",
       values: echo,
     };
   }
@@ -119,7 +128,7 @@ export async function saveOperatorQualification(
   }
 
   // expires_on is only ever taken from the form for the non-derived
-  // kinds — see the function comment. For the three derived kinds the
+  // kinds — see the function comment. For the four derived kinds the
   // trigger overwrites it regardless, so there's no reason to parse (or
   // validate) a value the database is going to replace anyway.
   const derived = DERIVED_EXPIRY_REQUIREMENTS.has(requirement);
@@ -134,14 +143,23 @@ export async function saveOperatorQualification(
   const { account } = await requireAccount(`/clients/${clientId}`);
   const supabase = await createClient();
 
-  const { data: existingData, error: selectError } = await supabase
+  // IDENTITY (see the function comment): type-specific requirements are
+  // matched on type_designator too, since a pilot can hold one row per
+  // class/type. Every other requirement — including the line check,
+  // whose type_designator is now purely informational — is matched on
+  // (client_id, requirement) alone, so correcting the recorded type
+  // updates the one existing row instead of opening a second one.
+  const typeSpecific = TYPE_SPECIFIC_REQUIREMENTS.has(requirement);
+  let existingQuery = supabase
     .from("operator_qualifications")
     .select("id")
     .eq("account_id", account.id)
     .eq("client_id", clientId)
-    .eq("requirement", requirement)
-    .eq("type_designator", typeDesignator)
-    .maybeSingle();
+    .eq("requirement", requirement);
+  if (typeSpecific) {
+    existingQuery = existingQuery.eq("type_designator", typeDesignator);
+  }
+  const { data: existingData, error: selectError } = await existingQuery.maybeSingle();
 
   if (selectError) {
     return { error: friendlyDbError(selectError, "operator_qualifications.select"), values: echo };
@@ -153,6 +171,13 @@ export async function saveOperatorQualification(
       completed_on: completedOn,
       status: status as QualificationUpdate["status"],
       notes,
+      // type_designator is only ever re-sent on UPDATE for the
+      // non-type-specific kinds (in practice, only the line check's
+      // fixed row has a form field that can change it) — for the two
+      // type-specific kinds each row's type is fixed at creation and the
+      // row component never renders an editable type field once
+      // `existing` is set, so this is a no-op there.
+      ...(typeSpecific ? {} : { type_designator: typeDesignator }),
       ...(derived ? {} : { expires_on: expiresOn }),
     };
     const { error, count } = await supabase
@@ -185,10 +210,13 @@ export async function saveOperatorQualification(
 }
 
 /**
- * Removes one line-check-by-type row. Only offered for line checks in the
- * panel — every other requirement is a fixed row a pilot clears by
- * setting status back to "Not started" rather than deleting, since there
- * is exactly one row per requirement for those and the panel always shows
+ * Removes one competency-check- or IPC-by-type row (20260807110000: the
+ * two TYPE_SPECIFIC_REQUIREMENTS — see the migration header for why
+ * those two, and not the line check, are the class/type-repeatable
+ * ones). Only offered for those in the panel — every other requirement,
+ * including the line check now, is a fixed row a pilot clears by setting
+ * status back to "Not started" rather than deleting, since there is
+ * exactly one row per requirement for those and the panel always shows
  * it.
  */
 export async function deleteOperatorQualification(

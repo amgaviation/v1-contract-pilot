@@ -20,11 +20,46 @@ type QualificationRow = Database["pilot"]["Tables"]["operator_qualifications"]["
 const initialState: QualificationFormState = { error: null };
 
 /**
- * One requirement row, either the fixed kind (one per client — line 0 of
- * OPERATOR_QUALIFICATION_REQUIREMENTS minus the line check) or one
- * instance of a type-specific line check. `existing` is null for a
- * requirement the pilot hasn't recorded anything against yet — the same
- * insert-or-update branch RateOverrideRow uses for a never-set override.
+ * (20260807110000, item G) Whether an `expires_on` calendar date
+ * (a plain "YYYY-MM-DD" string, no time component) is already in the
+ * past, judged against the PILOT'S OWN LOCAL WALL CLOCK — never
+ * `new Date().toISOString()`, which reads UTC. A pilot west of
+ * Greenwich at, say, 1800 local on 31 JUL would have `toISOString()`
+ * already reporting 1 AUG, flipping a qualification valid through
+ * 2026-07-31 to a false-red "expired" badge roughly seven hours before
+ * it actually lapses on their own clock — the exact hazard
+ * lib/format.ts's parseCalendarDate/formatDate comments describe and
+ * avoid for every other date on this screen. Comparing two "YYYY-MM-DD"
+ * strings lexicographically against today's LOCAL "YYYY-MM-DD" (built
+ * from getFullYear/getMonth/getDate, not toISOString) reads the pilot's
+ * own calendar day, same as they'd read it off their phone.
+ *
+ * Ideally this would defer to pilot.expirations.ladder_stage — the
+ * server-side ladder computed against Postgres current_date, which is
+ * this codebase's single definition of "due soon" (see
+ * app/(app)/documents/page.tsx) — rather than re-deriving red/gray here
+ * at all. That requires the page component that loads `qualifications`
+ * for this panel to also join pilot.expirations and pass ladder_stage
+ * down, and that page (app/(app)/clients/[id]/page.tsx) is outside this
+ * fix's file allowlist. This function is the narrowest correct fix
+ * available from inside operator-qualification-row.tsx; the ladder-join
+ * is the follow-up flagged in the report.
+ */
+function isPastLocalDate(isoDate: string): boolean {
+  const today = new Date();
+  const y = today.getFullYear();
+  const m = String(today.getMonth() + 1).padStart(2, "0");
+  const d = String(today.getDate()).padStart(2, "0");
+  return isoDate < `${y}-${m}-${d}`;
+}
+
+/**
+ * One requirement row: either a fixed kind (one per client — every
+ * requirement except the two in TYPE_SPECIFIC_REQUIREMENTS) or one
+ * instance of a class/type-specific competency check or IPC. `existing`
+ * is null for a requirement the pilot hasn't recorded anything against
+ * yet — the same insert-or-update branch RateOverrideRow uses for a
+ * never-set override.
  */
 export default function OperatorQualificationRow({
   clientId,
@@ -41,10 +76,19 @@ export default function OperatorQualificationRow({
   /** Fixed '' for every requirement except line_check_135_299 instances. */
   typeDesignator?: string;
   existing: QualificationRow | null;
-  /** Only line-check rows offer delete — see the action's own comment. */
+  /** Only competency-check and IPC per-type rows offer delete
+   * (20260807110000 — these are the two TYPE_SPECIFIC_REQUIREMENTS now;
+   * the line check reverted to a fixed single row like every other
+   * requirement) — see the action's own comment. */
   allowDelete?: boolean;
-  /** True only for the "add another type" blank row, where type_designator
-   * is a live text field rather than a fixed hidden value. */
+  /** True for a "add another type/check" blank row (competency check,
+   * IPC), where type_designator is a live text field for a NEW row, and
+   * also true for the line check's single fixed row (20260807110000),
+   * where type_designator is an optional, informational field on an
+   * EXISTING row rather than part of what identifies it — see the
+   * sync-on-prop-change effect above for why that combination needs its
+   * own handling. False everywhere else, where type_designator is a
+   * fixed hidden value. */
   allowTypeEdit?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(saveOperatorQualification, initialState);
@@ -56,29 +100,51 @@ export default function OperatorQualificationRow({
   const derived = DERIVED_EXPIRY_REQUIREMENTS.has(requirement);
   const regCite = OPERATOR_QUALIFICATION_REG_CITE[requirement];
 
+  // (20260807110000) The line check is now a single fixed row whose
+  // type_designator is edited IN PLACE rather than only ever created
+  // fresh (the only case allowTypeEdit used to cover). A plain
+  // `useState(typeDesignator)` only reads its argument on mount, so once
+  // a save round-trips through revalidatePath and this row re-renders
+  // with a NEW `typeDesignator` prop, local state would keep showing the
+  // stale pre-save value. Re-sync whenever the prop actually changes —
+  // this fires after a successful save updates `existing`/`typeDesignator`
+  // from the server, not on every keystroke (the prop itself doesn't
+  // change while the pilot is still typing).
+  useEffect(() => {
+    setTypeInput(typeDesignator);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typeDesignator]);
+
   const completedValue =
     state.values?.completed_on !== undefined
       ? state.values.completed_on
       : existing?.completed_on ?? "";
 
   // expires_on is only ever hand-entered for the non-derived kinds (H4) —
-  // for the three trigger-derived checks the database always overwrites
-  // it, so there is deliberately no input for those; see DERIVED_EXPIRY_
-  // REQUIREMENTS and the trigger's own comment.
+  // for the four trigger-derived checks (135.293(a), 135.293(b),
+  // 135.297, 135.299 — DERIVED_EXPIRY_REQUIREMENTS) the database always
+  // overwrites it, so there is deliberately no input for those; see
+  // DERIVED_EXPIRY_REQUIREMENTS and the trigger's own comment.
   const expiresValue =
     state.values?.expires_on !== undefined
       ? state.values.expires_on
       : existing?.expires_on ?? "";
 
-  // The "add another type" blank row (allowTypeEdit) keeps a stable key in
-  // the parent list across the revalidatePath refresh that follows a
-  // successful save, so its local state would otherwise survive that
-  // refresh instead of clearing — the one case where React 19's
-  // per-dispatch form reset doesn't reach these fields because they're
-  // controlled, not uncontrolled. Clear them explicitly once a save on
-  // this specific row succeeds.
+  // The "add another type/check" blank row (allowTypeEdit with no
+  // `existing`) keeps a stable key in the parent list across the
+  // revalidatePath refresh that follows a successful save, so its local
+  // state would otherwise survive that refresh instead of clearing — the
+  // one case where React 19's per-dispatch form reset doesn't reach
+  // these fields because they're controlled, not uncontrolled. Clear
+  // them explicitly once a save on this specific row succeeds.
+  //
+  // Guarded to `existing === null` (20260807110000): the line check's
+  // fixed row also sets allowTypeEdit now (its type is edited in place,
+  // not just created fresh — see the sync effect above), and that row
+  // must NOT clear back to blank after a successful save, only the
+  // never-yet-saved "add a ___" placeholder should.
   useEffect(() => {
-    if (allowTypeEdit && state.saved) {
+    if (allowTypeEdit && existing === null && state.saved) {
       setTypeInput("");
       setStatusValue("not_started");
     }
@@ -152,9 +218,14 @@ export default function OperatorQualificationRow({
             </Text>
             {derived ? (
               existing?.expires_on ? (
-                <Badge color={existing.expires_on < new Date().toISOString().slice(0, 10) ? "red" : "gray"}>
-                  {formatDate(existing.expires_on)}
-                </Badge>
+                <>
+                  <Badge color={isPastLocalDate(existing.expires_on) ? "red" : "gray"}>
+                    {formatDate(existing.expires_on)}
+                  </Badge>
+                  <Text size="1" color="gray">
+                    Planning aid, not a determination of regulatory compliance.
+                  </Text>
+                </>
               ) : (
                 <Text size="2" color="gray">
                   Set once completed
