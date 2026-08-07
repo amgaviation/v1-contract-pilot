@@ -56,6 +56,7 @@ function normalizeHeader(h: string): string {
 
 export function parseLogTen(text: string): ParseResult | { error: string } {
   const records = parseCsv(text);
+  if (!Array.isArray(records)) return records; // { error }: e.g. an unclosed quote
   if (records.length === 0) {
     return { error: "That file is empty." };
   }

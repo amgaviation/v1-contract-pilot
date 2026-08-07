@@ -19,6 +19,8 @@ export type CsvRecord = {
   raw: string;
 };
 
+export type CsvParseError = { error: string };
+
 /**
  * Splits `text` into CSV records. Handles quoted fields, doubled-quote
  * escaping (`""` -> `"`), commas and newlines inside quotes, and both
@@ -26,11 +28,25 @@ export type CsvRecord = {
  * newline) produces no record. Every record is returned, INCLUDING the
  * header row if present — callers slice that off themselves, since some
  * formats (ForeFlight) have more than one header inside a single file.
+ *
+ * Returns a `CsvParseError` instead of records when a quoted field is
+ * opened and never closed before end of file. WITHOUT this check the
+ * tokenizer's only well-defined behaviour is to keep consuming — commas,
+ * newlines, everything — as content of that one field all the way to EOF,
+ * so the entire remainder of the file becomes a single record (typically
+ * later surfaced as exactly one rejected row) with no indication that
+ * dozens of real flights are hiding inside it unparsed. Rather than
+ * change that consuming behaviour (a correct, standard tokenizer
+ * response to a genuinely malformed file), this detects the condition
+ * and reports it as a distinct, named error naming the line where the
+ * unclosed quote started, so the pilot is told the file itself is
+ * malformed instead of being told "1 row rejected."
  */
-export function parseCsv(text: string): CsvRecord[] {
+export function parseCsv(text: string): CsvRecord[] | CsvParseError {
   const records: CsvRecord[] = [];
   let i = 0;
   const len = text.length;
+  let line = 1;
 
   while (i < len) {
     const recordStart = i;
@@ -38,6 +54,10 @@ export function parseCsv(text: string): CsvRecord[] {
     let field = "";
     let inQuotes = false;
     let sawAnyContent = false;
+    // The line the MOST RECENTLY opened quote in this record started on —
+    // if the record ends (EOF) while still inQuotes, this is the quote
+    // that never closed.
+    let quoteStartLine = line;
 
     while (i < len) {
       const ch = text[i];
@@ -52,6 +72,7 @@ export function parseCsv(text: string): CsvRecord[] {
             i += 1;
           }
         } else {
+          if (ch === "\n") line += 1;
           field += ch;
           i += 1;
         }
@@ -60,6 +81,7 @@ export function parseCsv(text: string): CsvRecord[] {
 
       if (ch === '"') {
         inQuotes = true;
+        quoteStartLine = line;
         sawAnyContent = true;
         i += 1;
         continue;
@@ -76,15 +98,23 @@ export function parseCsv(text: string): CsvRecord[] {
         // the record.
         i += 1;
         if (text[i] === "\n") i += 1;
+        line += 1;
         break;
       }
       if (ch === "\n") {
         i += 1;
+        line += 1;
         break;
       }
       field += ch;
       sawAnyContent = true;
       i += 1;
+    }
+
+    if (inQuotes) {
+      return {
+        error: `This file has an unclosed quote starting at line ${quoteStartLine} — a " was opened but never closed, so everything from there to the end of the file was read as one field. Fix the quoting near that line (check for a stray " inside a remarks/comments cell) and re-upload.`,
+      };
     }
 
     fields.push(field);

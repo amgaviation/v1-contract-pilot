@@ -46,7 +46,28 @@ import type { LogbookEntryFlightFields } from "@/app/(app)/logbook/db";
  * account_id is NOT part of the hash input: the uniqueness constraint is
  * already scoped to (account_id, row_fingerprint), so folding account_id
  * into the hash would be redundant, not additional safety.
+ *
+ * PARTS ARE LENGTH-PREFIXED before joining (`escapePart`), not just
+ * concatenated with "|": aircraft_ident is free text validated only as a
+ * plausible tail number by the import parser (apply-mapping.ts), not
+ * guaranteed delimiter-free at this layer, and a manual entry
+ * (source='manual', which never goes through the import validator at
+ * all) could contain literally anything. A `|` inside aircraft_ident
+ * would otherwise shift every field after it, so two DIFFERENT flights
+ * — one with a "|" splitting its ident into what looks like an ident +
+ * an empty from_icao, another with a genuinely matching ident and
+ * from_icao — could hash identically. Length-prefixing each part makes
+ * the boundary unambiguous regardless of what characters a part
+ * contains. NOTE: this changes the computed hash relative to the old
+ * plain-join scheme, but ONLY for rows where some part actually
+ * contained the "|" delimiter (or would coincidentally collide across a
+ * shifted boundary) — every other row's fingerprint is unaffected, since
+ * length-prefixing is a bijective encoding of the same field values.
  */
+function escapePart(value: string): string {
+  return `${value.length}:${value}`;
+}
+
 export function rowFingerprint(
   values: Pick<LogbookEntryFlightFields, "entry_date" | "aircraft_ident" | "from_icao" | "to_icao" | "total_time" | "role">
 ): string {
@@ -57,6 +78,6 @@ export function rowFingerprint(
     (values.to_icao ?? "").trim().toUpperCase(),
     Number(values.total_time).toFixed(1),
     values.role,
-  ];
+  ].map((p) => escapePart(String(p)));
   return createHash("sha256").update(parts.join("|")).digest("hex");
 }

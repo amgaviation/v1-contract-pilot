@@ -65,7 +65,7 @@ export type ParsedRow = {
   sourceRow: Record<string, string>;
   values: ParsedRowValues;
   roleSource: RoleSource;
-  /** True when a mapped landings_total column had a value this row could not attribute to any of the four typed landing columns. */
+  /** The portion of a mapped landings_total column's value NOT accounted for by this row's four typed landing columns (landings_total − their sum), whenever that's positive — e.g. ForeFlight's AllLandings minus DayLandingsFullStop/NightLandingsFullStop is exactly the touch-and-go count it never itemizes on its own. Null when there's no mapped landings_total, or its value is fully accounted for by the typed columns. */
   unclassifiedLandings: number | null;
   /** True when simulator_time > 0 but no device type could be determined — this row cannot be confirmed until the pilot picks one. */
   needsSimulatorDeviceType: boolean;

@@ -1,4 +1,4 @@
-import { parseCsv } from "./csv";
+import { parseCsv, type CsvRecord } from "./csv";
 import { applyMapping } from "./apply-mapping";
 import { FIELD_DEFS } from "./fields";
 import type { ColumnMapping, ParseResult } from "./types";
@@ -69,8 +69,9 @@ const SUGGEST_ALIASES: Record<string, string> = {
   notes: "remarks",
 };
 
-export function parseGenericHeader(text: string): { header: string[]; dataRecords: ReturnType<typeof parseCsv> } | { error: string } {
+export function parseGenericHeader(text: string): { header: string[]; dataRecords: CsvRecord[] } | { error: string } {
   const records = parseCsv(text);
+  if (!Array.isArray(records)) return records; // { error }: e.g. an unclosed quote
   if (records.length === 0) return { error: "That file is empty." };
   return { header: records[0]!.fields, dataRecords: records.slice(1) };
 }
@@ -85,7 +86,7 @@ export function suggestMapping(header: string[]): ColumnMapping {
 
 export function applyGenericMapping(
   header: string[],
-  dataRecords: ReturnType<typeof parseCsv>,
+  dataRecords: CsvRecord[],
   mapping: ColumnMapping
 ): ParseResult {
   return applyMapping({ format: "generic_csv", headerRow: header, dataRecords, mapping });
