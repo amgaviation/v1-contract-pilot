@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import NextLink from "next/link";
 import {
   Button,
@@ -68,12 +68,29 @@ export default function DraftForm({
   tripsError?: string | null;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [state, formAction, pending] = useActionState(action, initialState);
   const [selectedTrips, setSelectedTrips] = useState<Set<string>>(new Set());
+  // M13: picking a client does a router.push to `/invoices/new?client=…`,
+  // which remounts this component and resets useActionState — so a tax
+  // rate typed BEFORE choosing a client used to vanish silently, since
+  // state.values (the only other source TextField's defaultValue reads)
+  // is also gone on remount. Carried through the navigation in the URL's
+  // own `tax_rate` query param instead: seeded here on mount/remount, kept
+  // in sync as the pilot types (onChange, not just on submit), and pushed
+  // back into the URL every time pickClient navigates, so it survives the
+  // exact remount that used to erase it.
+  const [taxRate, setTaxRate] = useState(
+    () => state.values?.tax_rate_percent ?? searchParams.get("tax_rate") ?? ""
+  );
 
   function pickClient(id: string) {
     setSelectedTrips(new Set());
-    router.push(id ? `/invoices/new?client=${id}` : "/invoices/new");
+    const params = new URLSearchParams();
+    if (id) params.set("client", id);
+    if (taxRate.trim() !== "") params.set("tax_rate", taxRate);
+    const qs = params.toString();
+    router.push(qs ? `/invoices/new?${qs}` : "/invoices/new");
   }
 
   function toggleTrip(trip: TripOption) {
@@ -104,14 +121,18 @@ export default function DraftForm({
 
         <Grid columns={{ initial: "1", md: "3" }} gap="4">
           <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
-            <Text as="label" size="2" weight="medium">
+            <Text as="label" size="2" weight="medium" id="draft-client-label">
               Client
             </Text>
             <Select.Root
               value={selectedClientId || undefined}
               onValueChange={(value) => pickClient(value)}
             >
-              <Select.Trigger placeholder="Choose a client" />
+              <Select.Trigger
+                id="draft-client"
+                aria-labelledby="draft-client-label"
+                placeholder="Choose a client"
+              />
               <Select.Content>
                 {clients.map((client) => (
                   <Select.Item key={client.id} value={client.id}>
@@ -134,7 +155,8 @@ export default function DraftForm({
               id="tax_rate_percent"
               name="tax_rate_percent"
               inputMode="decimal"
-              defaultValue={state.values?.tax_rate_percent ?? ""}
+              value={taxRate}
+              onChange={(e) => setTaxRate(e.target.value)}
             />
             <Text size="1" color="gray">
               State sales/service tax, if any
@@ -257,6 +279,24 @@ export default function DraftForm({
           </Flex>
         ) : null}
 
+        {
+          // M15: a client chosen with zero trips selected used to still
+          // submit — createInvoiceDraft happily inserts a header-only
+          // draft and redirects to it, but the migration blocks SENDING
+          // an invoice with no line items, so that draft can never leave
+          // 'draft'. Blocked client-side with a visible reason (not just
+          // a disabled button — see status-actions.tsx's own comment on
+          // why a disabled control needs a reachable explanation) rather
+          // than only relying on the server, which would otherwise accept
+          // it silently and leave the pilot to discover the dead end
+          // later on the invoice screen.
+        }
+        {selectedClientId && trips.length > 0 && selectedTrips.size === 0 ? (
+          <Text as="div" size="1" color="amber" mt="3">
+            Select at least one trip before drafting this invoice.
+          </Text>
+        ) : null}
+
         <Flex mt="4" role="alert" aria-live="polite">
           {state.error ? (
             <Text size="1" color="red">
@@ -266,7 +306,10 @@ export default function DraftForm({
         </Flex>
 
         <Flex mt="4" gap="3">
-          <Button type="submit" disabled={pending || !selectedClientId}>
+          <Button
+            type="submit"
+            disabled={pending || !selectedClientId || selectedTrips.size === 0}
+          >
             {pending ? "Drafting…" : "Draft invoice"}
           </Button>
           <Button asChild variant="outline">

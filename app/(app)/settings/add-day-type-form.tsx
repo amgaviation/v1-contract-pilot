@@ -51,7 +51,7 @@ export default function AddDayTypeForm() {
             </Text>
           </Flex>
 
-          <Grid columns={{ initial: "2", md: "10" }} gap="3" align="start">
+          <Grid columns={{ initial: "2", md: "12" }} gap="3" align="start">
             <Flex direction="column" gap="1" style={{ gridColumn: "span 4" }}>
               <Text size="1" color="gray">
                 Label
@@ -94,6 +94,20 @@ export default function AddDayTypeForm() {
               <TextField.Root name="default_rate" inputMode="decimal" defaultValue={initial("default_rate")} />
               <Text size="1" color="gray">
                 Optional
+              </Text>
+            </Flex>
+            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+              <Text size="1" color="gray">
+                Default rate fraction
+              </Text>
+              <TextField.Root
+                name="default_units"
+                inputMode="decimal"
+                placeholder="1"
+                defaultValue={initial("default_units")}
+              />
+              <Text size="1" color="gray">
+                0.5 = half rate. Optional, defaults to full rate
               </Text>
             </Flex>
             <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>

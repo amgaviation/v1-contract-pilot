@@ -14,6 +14,7 @@ import {
   type LogbookEntryFlightFields,
   type DraftLegRow,
   type DraftTripRow,
+  type LogbookRole,
 } from "./db";
 
 export type LogbookFormState = {
@@ -86,18 +87,6 @@ function isDate(value: string): boolean {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(value);
 }
 
-function oneOf<T extends readonly string[]>(
-  formData: FormData,
-  key: string,
-  allowed: T,
-  fallback: T[number]
-): T[number] {
-  const value = String(formData.get(key) ?? "");
-  return (allowed as readonly string[]).includes(value)
-    ? (value as T[number])
-    : fallback;
-}
-
 function optionalOneOf<T extends readonly string[]>(
   formData: FormData,
   key: string,
@@ -148,6 +137,17 @@ function parseEntryForm(formData: FormData): ParsedEntry {
   if (totalTime === null) {
     return { values: null, error: "How much total time did you fly?" };
   }
+
+  // A missing or unrecognised role used to fall back to "PIC" silently,
+  // the same guess HIGH-CRITICAL flagged in the trip-draft confirm path.
+  // On a legal record there is no safe default crew role — reject it the
+  // same way total_time already is, rather than letting a crafted or
+  // stale POST assert PIC on the pilot's behalf.
+  const roleRaw = String(formData.get("role") ?? "");
+  if (!(ROLES as readonly string[]).includes(roleRaw)) {
+    return { values: null, error: "Pick a crew role — PIC or SIC." };
+  }
+  const role = roleRaw as (typeof ROLES)[number];
 
   const timeFields = [
     "pic_time",
@@ -222,7 +222,7 @@ function parseEntryForm(formData: FormData): ParsedEntry {
       aircraft_type: optional(formData, "aircraft_type"),
       from_icao: icao(formData, "from_icao"),
       to_icao: icao(formData, "to_icao"),
-      role: oneOf(formData, "role", ROLES, "PIC"),
+      role,
       total_time: totalTime,
       pic_time: times.pic_time ?? null,
       sic_time: times.sic_time ?? null,
@@ -256,7 +256,7 @@ export async function createLogbookEntry(
   _prev: LogbookFormState,
   formData: FormData
 ): Promise<LogbookFormState> {
-  const { account } = await requireAccount("/logbook/new");
+  const { account, user } = await requireAccount("/logbook/new");
   const { values, error } = parseEntryForm(formData);
   if (error || !values) {
     return { error: error ?? "Couldn't read that form.", values: echo(formData) };
@@ -273,6 +273,9 @@ export async function createLogbookEntry(
     source: "manual",
     trip_id: null,
     trip_leg_id: null,
+    // Whose logbook this is — the authenticated caller, never the form.
+    // See 20260807050000_logbook_airman_and_export.sql.
+    airman_user_id: user.id,
   };
   const { error: insertError } = await logbookFrom(supabase, "logbook_entries").insert(
     payload as never
@@ -357,17 +360,28 @@ export async function deleteLogbookEntry(id: string): Promise<{ error: string | 
 // a source='trip' row.
 // ---------------------------------------------------------------------------
 
+/** Shape-checks a role posted from the drafts screen the same way UUID_RE guards an id. */
+function isRole(value: unknown): value is LogbookRole {
+  return (ROLES as readonly string[]).includes(String(value));
+}
+
 /**
  * Confirms ONE leg's proposed entry. Re-reads the trip and the leg fresh
  * (never trusts anything the client sent beyond the id) so the numbers
  * that land in the logbook are exactly what's on the trip right now, not
  * whatever was on screen when the pilot opened the drafts page.
+ *
+ * `role` is required and validated here rather than defaulted — see
+ * draftPayloadForLeg's comment in db.ts for why trip_legs never supplies
+ * one on its own.
  */
 export async function confirmLegDraft(
-  tripLegId: string
+  tripLegId: string,
+  role: LogbookRole
 ): Promise<{ error: string | null }> {
   if (!UUID_RE.test(tripLegId)) return { error: "That leg isn't valid." };
-  const { account } = await requireAccount("/logbook/drafts");
+  if (!isRole(role)) return { error: "Pick PIC or SIC before confirming." };
+  const { account, user } = await requireAccount("/logbook/drafts");
 
   const supabase = await createClient();
   const { data: legData, error: legError } = await supabase
@@ -398,9 +412,12 @@ export async function confirmLegDraft(
   }
 
   const payload: LogbookEntryInsert = {
-    ...draftPayloadForLeg(trip, leg),
+    ...draftPayloadForLeg(trip, leg, role),
     account_id: account.id,
     source: "trip",
+    // The pilot confirming the draft, not whoever the leg happens to
+    // mention — see 20260807050000_logbook_airman_and_export.sql.
+    airman_user_id: user.id,
   };
 
   const { error: insertError } = await logbookFrom(supabase, "logbook_entries").insert(
@@ -428,12 +445,22 @@ export async function confirmLegDraft(
  * insert. Same re-read-fresh discipline as confirmLegDraft — the set of
  * "unconfirmed" legs is computed here, at confirm time, not accepted from
  * the caller.
+ *
+ * `role` applies to every leg the batch confirms. Trip_legs has no
+ * per-leg seat assignment, and requiring N separate role choices for one
+ * "confirm the whole trip" click would defeat the point of a batch
+ * button — so this asks once, for the trip, on the understanding that a
+ * contract pilot flies one seat for the duration of a trip. A pilot who
+ * swapped seats mid-trip can still confirm legs individually with
+ * confirmLegDraft, each with its own role.
  */
 export async function confirmTripDrafts(
-  tripId: string
+  tripId: string,
+  role: LogbookRole
 ): Promise<{ error: string | null }> {
   if (!UUID_RE.test(tripId)) return { error: "That trip isn't valid." };
-  const { account } = await requireAccount("/logbook/drafts");
+  if (!isRole(role)) return { error: "Pick PIC or SIC before confirming." };
+  const { account, user } = await requireAccount("/logbook/drafts");
 
   const supabase = await createClient();
   const { data: tripData, error: tripError } = await supabase
@@ -484,9 +511,12 @@ export async function confirmTripDrafts(
   }
 
   const payload: LogbookEntryInsert[] = unconfirmed.map((leg) => ({
-    ...draftPayloadForLeg(trip, leg),
+    ...draftPayloadForLeg(trip, leg, role),
     account_id: account.id,
     source: "trip",
+    // Same as confirmLegDraft — the pilot confirming the batch, not
+    // guessed from the trip/leg.
+    airman_user_id: user.id,
   }));
 
   const { error: insertError } = await logbookFrom(supabase, "logbook_entries").insert(

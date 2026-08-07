@@ -46,6 +46,11 @@ if (!DATABASE_URL) {
 
 const A = "00000000-0000-0000-0000-0000000000a1";
 const B = "00000000-0000-0000-0000-0000000000b1";
+// C: a third, throwaway tenant used only by the C1/C2 CRITICAL probes
+// below — kept off account A/B so it cannot perturb the row counts every
+// earlier isolation assertion in this file already depends on.
+const C = "00000000-0000-0000-0000-0000000000c9";
+const UC = "00000000-0000-0000-0000-00000000cc99";
 const UA = "00000000-0000-0000-0000-00000000aaaa";
 const UB = "00000000-0000-0000-0000-00000000bbbb";
 
@@ -167,6 +172,74 @@ begin
     raise exception 'MEDIUM-7 FAILURE: pilot views without security_invoker (or a materialized view, which can never have it): %', non_invoker;
   end if;
   raise notice 'PASS: every pilot.* view is security_invoker, and no materialized view exists in schema pilot';
+end $$;
+
+-- =====================================================================
+-- SECURITY REVIEW FINDING (F1). Every pilot.* TABLE must have RLS enabled.
+--
+-- This is not belt-and-braces, it is the load-bearing check. The Phase 1
+-- migration sets
+--     alter default privileges in schema pilot grant select on tables to authenticated
+-- so EVERY table created in this schema from now on is readable by any
+-- authenticated session the instant it exists. RLS is the only thing
+-- standing between a new table and a cross-tenant read, and RLS has to be
+-- remembered per table, by hand, in every future migration.
+--
+-- It has already been forgotten once: pilot.stripe_events picked up that
+-- default SELECT and had to be revoked in a later migration
+-- (20260805210000_phase4_receipts_storage.sql). That one was caught. The
+-- next one is caught by this block or not at all.
+--
+-- The view sweep above and this table sweep are deliberately separate:
+-- a view's leak mode is losing security_invoker, a table's is losing RLS,
+-- and neither check sees the other's objects (relkind 'r'/'p' here vs
+-- 'v'/'m' above).
+--
+-- FORCE ROW LEVEL SECURITY is deliberately NOT required — pilot.accounts
+-- is owned by a role that would then be locked out of its own recursion
+-- through current_account_ids(). That absence is a decision, not a gap.
+-- =====================================================================
+do $$
+declare unprotected text[];
+begin
+  select array_agg(c.relname order by c.relname)
+    into unprotected
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'pilot'
+      -- 'r' ordinary table, 'p' partitioned table. A partitioned parent
+      -- with RLS off is a hole even when every partition has it on.
+      and c.relkind in ('r', 'p')
+      and not c.relrowsecurity;
+  if unprotected is not null then
+    raise exception 'F1 FAILURE: pilot tables with row level security DISABLED (readable cross-tenant via the schema default SELECT grant): %', unprotected;
+  end if;
+  raise notice 'PASS F1: every table in schema pilot has row level security enabled';
+end $$;
+
+-- A table with RLS on and NO policy is closed to "authenticated" (deny by
+-- default), which is safe but almost always unintentional — it usually
+-- means a policy was meant to exist. pilot.stripe_events is the one place
+-- it IS intentional, so it is named here rather than silently tolerated.
+do $$
+declare policyless text[];
+begin
+  select array_agg(c.relname order by c.relname)
+    into policyless
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'pilot'
+      and c.relkind in ('r', 'p')
+      and c.relrowsecurity
+      and c.relname <> 'stripe_events'
+      and not exists (
+        select 1 from pg_policies p
+        where p.schemaname = 'pilot' and p.tablename = c.relname
+      );
+  if policyless is not null then
+    raise exception 'F1b FAILURE: pilot tables with RLS on but no policy at all (unreachable by any pilot — a missing policy, not a deliberate lockout): %', policyless;
+  end if;
+  raise notice 'PASS F1b: every RLS-enabled pilot table has at least one policy (stripe_events deliberately excepted)';
 end $$;
 
 -- =====================================================================
@@ -660,15 +733,39 @@ end $$;
 
 -- MEDIUM regression: the travel-day columns added by this migration are
 -- now UPDATE-writable, not just INSERT/SELECT-writable.
+--
+-- STALE-TEST FIX. This assertion used to reuse trip 7a01, which by this
+-- point in the run has been billed onto a live invoice by the block above.
+-- Phase 9's trips_protect_billed_facts then correctly refused the update
+-- ("This trip is billed on INV-... before changing its dates, rates or
+-- status"), the whole script aborted on it, and the ELEVEN assertions
+-- below this line had never once executed — the run reported 26 passes
+-- and silently skipped the rest.
+--
+-- The trigger was right and the test was wrong: a rate on a billed trip
+-- SHOULD be frozen. What this block actually means to prove is narrower —
+-- that the GRANT on the travel-day columns permits UPDATE at all — so it
+-- now proves it on a trip that is deliberately unbilled, leaving the
+-- freeze itself to the assertions that exist for it.
+-- No literal id: "authenticated" has no INSERT grant on trips.id (ids are
+-- generated), so this uses the file's _test_ids idiom like every other
+-- trip created after the seed block.
+with ins as (
+  insert into pilot.trips (account_id, client_id, starts_on, ends_on, day_rate_cents, day_count, status)
+  values ('${A}', '00000000-0000-0000-0000-00000000c0a1', current_date, current_date + 1, 100000, 2, 'completed')
+  returning id
+)
+insert into _test_ids (key, id) select 'tripGrant', id from ins;
+
 update pilot.trips set travel_day_rate_cents = 60000
-  where account_id = '${A}' and id = '00000000-0000-0000-0000-000000007a01';
+  where account_id = '${A}' and id = (select id from _test_ids where key = 'tripGrant');
 update pilot.clients set default_travel_day_rate_cents = 60000
   where account_id = '${A}' and id = '00000000-0000-0000-0000-00000000c0a1';
 do $$
 declare v bigint;
 begin
   select travel_day_rate_cents into v from pilot.trips
-    where account_id = '${A}' and id = '00000000-0000-0000-0000-000000007a01';
+    where account_id = '${A}' and id = (select id from _test_ids where key = 'tripGrant');
   if v <> 60000 then
     raise exception 'GRANT FAILURE: travel_day_rate_cents UPDATE did not take effect (got %)', v;
   end if;
@@ -810,6 +907,219 @@ begin
     raise exception 'FK-REPAIR FAILURE: trip_id was not nulled on trip delete';
   end if;
   raise notice 'PASS: deleting a trip with an attached expense succeeds and nulls only trip_id, not account_id';
+end $$;
+
+reset role;
+
+-- =====================================================================
+-- C1 PROBE (20260807070000's away backfill). This file's earlier passes
+-- only ever read the catalog for this migration's columns/grants — never
+-- WROTE against the shape that actually breaks: a trip_days row on a
+-- trip already committed to a live invoice. Reading correct proved
+-- nothing about the one statement that matters here; only replaying it
+-- against a real billed row does. A fresh, disposable tenant (C) is used
+-- so this cannot perturb any row count an earlier assertion in this file
+-- already depends on.
+--
+-- Runs in the CONNECTING role (no SET LOCAL ROLE yet in force) —
+-- exactly the privilege level a migration runs under: the table owner,
+-- not service_role and not authenticated.
+-- =====================================================================
+insert into auth.users (id, instance_id, aud, role, email, created_at, updated_at)
+values ('${UC}', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+        'tenancy-verify-c@example.invalid', now(), now());
+insert into pilot.accounts (id, kind, legal_name) values ('${C}', 'solo', 'Tenant C Test');
+insert into pilot.account_members (account_id, user_id, role) values ('${C}', '${UC}', 'owner');
+insert into pilot.clients (id, account_id, name, default_day_rate_cents)
+values ('00000000-0000-0000-0000-00000000c9c0', '${C}', 'C Client', 120000);
+insert into pilot.trips (id, account_id, client_id, starts_on, ends_on, day_rate_cents, day_count, status)
+values ('00000000-0000-0000-0000-00000000c9ee', '${C}', '00000000-0000-0000-0000-00000000c9c0',
+        current_date, current_date, 120000, 1, 'completed');
+
+-- accounts_seed_day_types already gave tenant C a counts_for_per_diem
+-- builtin (e.g. "Flight day") — reuse it rather than inventing a second
+-- one, same as the app would find on a real account.
+do $$
+declare
+  dt_id uuid;
+  trip_uuid constant uuid := '00000000-0000-0000-0000-00000000c9ee';
+  acct_id constant uuid := '${C}';
+  inv_id uuid;
+  committed text;
+  after_bare boolean;
+  after_fixed boolean;
+  rate_after bigint;
+  qty_after numeric;
+  units_after numeric;
+begin
+  select id into dt_id from pilot.day_types
+    where account_id = acct_id and counts_for_per_diem limit 1;
+
+  insert into pilot.trip_days (account_id, trip_id, day_on, day_type_id, rate_cents)
+  values (acct_id, trip_uuid, current_date, dt_id, 120000);
+
+  insert into pilot.invoices (account_id, client_id) values (acct_id, '00000000-0000-0000-0000-00000000c9c0')
+    returning id into inv_id;
+  insert into pilot.invoice_lines (account_id, invoice_id, line_type, description, unit_amount_cents, trip_id)
+  values (acct_id, inv_id, 'flight_day', 'flight', 120000, trip_uuid);
+
+  -- The trip is now committed to a DRAFT invoice — the exact shape the
+  -- brief reproduced verbatim against local Postgres.
+  committed := pilot.trip_committed_invoice(acct_id, trip_uuid);
+  if committed is distinct from 'a draft invoice' then
+    raise exception 'C1 SETUP FAILURE: trip not committed as expected (got %)', committed;
+  end if;
+
+  -- 1a. THE BARE BACKFILL STATEMENT, unmodified, must still 23514 here —
+  -- proving the guard is real and this probe is not a no-op.
+  begin
+    update pilot.trip_days td set away = true from pilot.day_types dt
+     where dt.id = td.day_type_id and dt.account_id = td.account_id
+       and dt.counts_for_per_diem and td.away = false and td.account_id = acct_id;
+    raise exception 'C1 FAILURE: bare backfill UPDATE succeeded against a billed trip_days row (guard did not fire)';
+  exception
+    when others then
+      if sqlerrm like 'C1 FAILURE%' then raise; end if;
+      if sqlstate is distinct from '23514' then
+        raise exception 'C1 FAILURE: bare backfill UPDATE failed with sqlstate % (expected 23514): %', sqlstate, sqlerrm;
+      end if;
+  end;
+
+  select away into after_bare from pilot.trip_days where account_id = acct_id and trip_id = trip_uuid;
+  if after_bare is distinct from false then
+    raise exception 'C1 FAILURE: away changed even though the bare UPDATE raised (got %)', after_bare;
+  end if;
+
+  -- 1b. THE FIX: the same statement, migration-owner context, wrapped in
+  -- the service_role bypass 20260807070000 now uses. Must succeed.
+  set local role service_role;
+  update pilot.trip_days td set away = true from pilot.day_types dt
+   where dt.id = td.day_type_id and dt.account_id = td.account_id
+     and dt.counts_for_per_diem and td.away = false and td.account_id = acct_id;
+  reset role;
+
+  select away, rate_cents, quantity, units
+    into after_fixed, rate_after, qty_after, units_after
+    from pilot.trip_days where account_id = acct_id and trip_id = trip_uuid;
+
+  if after_fixed is distinct from true then
+    raise exception 'C1 FAILURE: service_role-bypassed backfill did not set away=true (got %)', after_fixed;
+  end if;
+  -- Correctness, not just "it ran": the billed row's billed facts —
+  -- rate_cents/quantity/units — must be byte-for-byte unchanged. This
+  -- backfill restates history, it does not revalue a billed day.
+  if rate_after <> 120000 or qty_after <> 1.0 or units_after <> 1.00 then
+    raise exception 'C1 FAILURE: backfill changed a billed value (rate=% qty=% units=%, expected 120000/1.0/1.00)',
+      rate_after, qty_after, units_after;
+  end if;
+
+  raise notice 'PASS C1: bare away-backfill 23514s on a billed trip_day (sqlstate confirmed), and the service_role-bypassed backfill sets away=true while leaving every billed value (rate_cents, quantity, units) unchanged';
+end $$;
+
+-- =====================================================================
+-- C2 PROBE (guarantee_periods write path). Same lesson as C1: the prior
+-- version of this file never issued a WRITE against guarantee_periods —
+-- only catalog/grant reads — so it could not have caught a table that is
+-- 100% unwritable through the shape the app actually uses. This replays
+-- BOTH the broken shape (a raw upsert, as authenticated, matching what
+-- PostgREST compiles .upsert() into) and the fixed shape (lookup then
+-- insert-or-update, invoices/actions.ts's new code path), then proves
+-- the same month cannot be settled twice.
+-- =====================================================================
+insert into pilot.clients (id, account_id, name, default_day_rate_cents, minimum_basis, minimum_days)
+values ('00000000-0000-0000-0000-00000000c9c1', '${C}', 'C Guarantee Client', 120000, 'per_month', 10);
+
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"${UC}"}', true);
+
+-- 2a. THE BROKEN SHAPE: PostgREST's compiled upsert. Every column in the
+-- payload appears in the DO UPDATE SET list, including account_id/
+-- client_id/period_month — columns the migration's UPDATE grant withholds
+-- on purpose (they identify the row; client_rates already uses the same
+-- discipline). Must fail 42501, not silently succeed.
+do $$
+begin
+  begin
+    insert into pilot.guarantee_periods (account_id, client_id, period_month, guaranteed_days, settled_invoice_id)
+    values ('${C}', '00000000-0000-0000-0000-00000000c9c1', '2026-03-01', 10, null)
+    on conflict (account_id, client_id, period_month) do update set
+      account_id = excluded.account_id, client_id = excluded.client_id,
+      period_month = excluded.period_month, guaranteed_days = excluded.guaranteed_days,
+      settled_invoice_id = excluded.settled_invoice_id;
+    raise exception 'C2 FAILURE: PostgREST-shaped upsert against guarantee_periods succeeded as authenticated (should 42501)';
+  exception
+    when others then
+      if sqlerrm like 'C2 FAILURE%' then raise; end if;
+      if sqlstate is distinct from '42501' then
+        raise exception 'C2 FAILURE: upsert failed with sqlstate % (expected 42501 insufficient_privilege): %', sqlstate, sqlerrm;
+      end if;
+  end;
+  raise notice 'PASS C2a: the raw PostgREST-shaped .upsert() 42501s for authenticated (confirms guarantee_periods was never actually written by the old code path)';
+end $$;
+
+with ins as (
+  insert into pilot.invoices (account_id, client_id) values ('${C}', '00000000-0000-0000-0000-00000000c9c1')
+  returning id
+)
+insert into _test_ids (key, id) select 'c9inv1', id from ins;
+
+-- 2b. THE FIX: lookup-then-insert-or-update, invoices/actions.ts's new
+-- code path. First invoice for March settles the month.
+do $$
+declare existing_id uuid; wrote_count integer;
+begin
+  select id into existing_id from pilot.guarantee_periods
+    where account_id = '${C}' and client_id = '00000000-0000-0000-0000-00000000c9c1'
+      and period_month = '2026-03-01';
+  if existing_id is not null then
+    raise exception 'C2 SETUP FAILURE: guarantee_periods row already exists before first settlement';
+  end if;
+
+  insert into pilot.guarantee_periods (account_id, client_id, period_month, guaranteed_days, settled_invoice_id)
+  values ('${C}', '00000000-0000-0000-0000-00000000c9c1', '2026-03-01', 10,
+          (select id from _test_ids where key = 'c9inv1'));
+  get diagnostics wrote_count = row_count;
+  if wrote_count <> 1 then
+    raise exception 'C2 FAILURE: authenticated could not insert a guarantee_periods row via the fixed shape';
+  end if;
+  raise notice 'PASS C2b: authenticated can write a guarantee_periods row via the lookup-then-insert shape';
+end $$;
+
+-- 2c. A second invoice, same client, same month: must read the settled
+-- row and refuse a second top-up (this is the exact $12,000 over-bill
+-- shape from the brief — two invoices, one month, one guarantee).
+with ins as (
+  insert into pilot.invoices (account_id, client_id) values ('${C}', '00000000-0000-0000-0000-00000000c9c1')
+  returning id
+)
+insert into _test_ids (key, id) select 'c9inv2', id from ins;
+
+do $$
+declare settled uuid; second_write_blocked boolean := false;
+begin
+  select settled_invoice_id into settled from pilot.guarantee_periods
+    where account_id = '${C}' and client_id = '00000000-0000-0000-0000-00000000c9c1'
+      and period_month = '2026-03-01';
+  if settled is distinct from (select id from _test_ids where key = 'c9inv1') then
+    raise exception 'C2 FAILURE: second invoice does not see the first invoice''s settlement (got %)', settled;
+  end if;
+
+  -- The app's own logic on seeing "settled": warn and add no second line
+  -- (invoices/actions.ts). What this asserts at the database level is the
+  -- precondition that logic depends on — the unique constraint refuses a
+  -- second SETTLING insert for the same month even if the app's own
+  -- "already settled" branch were bypassed entirely.
+  begin
+    insert into pilot.guarantee_periods (account_id, client_id, period_month, guaranteed_days, settled_invoice_id)
+    values ('${C}', '00000000-0000-0000-0000-00000000c9c1', '2026-03-01', 10,
+            (select id from _test_ids where key = 'c9inv2'));
+  exception when unique_violation then
+    second_write_blocked := true;
+  end;
+  if not second_write_blocked then
+    raise exception 'C2 FAILURE: a second guarantee_periods row for the same (account, client, month) was allowed to insert';
+  end if;
+  raise notice 'PASS C2c: a second invoice for the same settled month cannot double-insert a settlement row — one guarantee_periods row per (client, month), ever';
 end $$;
 
 reset role;

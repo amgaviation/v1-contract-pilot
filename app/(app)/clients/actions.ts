@@ -48,6 +48,7 @@ const CLIENT_FIELDS = [
   "default_expense_treatment",
   "per_diem_mode",
   "minimum_days",
+  "minimum_basis",
   "cancellation_policy_note",
   "w9_status",
   "notes",
@@ -59,9 +60,22 @@ function echo(formData: FormData) {
   return out;
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const EXPENSE_TREATMENTS = ["rebill", "deduct", "unassigned"] as const;
 const W9_STATUSES = ["not_requested", "requested", "on_file"] as const;
 const PER_DIEM_MODES = ["per_diem", "receipts"] as const;
+// Bug fix: minimum_days used to have exactly one meaning — a per-trip
+// floor — because that was the only basis createInvoiceDraft ever applied
+// it under. A pilot on a monthly guarantee had nowhere to say so, and
+// typed the guaranteed number into this same field, which produced one
+// top-up line per trip instead of one per month (see
+// supabase/migrations/20260807040000_client_minimum_basis.sql for the
+// full story). 'per_trip' stays the fallback here too — matches the
+// column's own DEFAULT, so a value this form can't recognize behaves the
+// same way an absent one already does.
+const MINIMUM_BASES = ["per_trip", "per_month"] as const;
 
 /** Trims, and turns an empty string into NULL rather than storing "". */
 function optional(formData: FormData, key: string): string | null {
@@ -173,6 +187,7 @@ function parseClientForm(formData: FormData): ParsedClient {
       ),
       per_diem_mode: oneOf(formData, "per_diem_mode", PER_DIEM_MODES, "receipts"),
       minimum_days: minimumDays,
+      minimum_basis: oneOf(formData, "minimum_basis", MINIMUM_BASES, "per_trip"),
       cancellation_policy_note: optional(formData, "cancellation_policy_note"),
       w9_status: oneOf(formData, "w9_status", W9_STATUSES, "not_requested"),
       notes: optional(formData, "notes"),
@@ -215,7 +230,9 @@ export async function updateClientRecord(
   formData: FormData
 ): Promise<ClientFormState> {
   const id = String(formData.get("id") ?? "");
-  if (!id) return { error: "Missing client id." };
+  if (!id || !UUID_RE.test(id)) {
+    return { error: "Missing client id.", values: echo(formData) };
+  }
 
   const { account } = await requireAccount(`/clients/${id}`);
   const { values, error } = parseClientForm(formData);
@@ -230,14 +247,20 @@ export async function updateClientRecord(
   // would otherwise turn that into a cross-tenant write with nothing in
   // the application layer to refuse it.
   const payload: ClientUpdate = values;
-  const { error: updateError } = await supabase
+  const { error: updateError, count } = await supabase
     .from("clients")
-    .update(payload as never)
+    .update(payload as never, { count: "exact" })
     .eq("id", id)
     .eq("account_id", account.id);
 
   if (updateError) {
     return { error: friendlyDbError(updateError, "clients.update"), values: echo(formData) };
+  }
+  // PostgREST returns 200 with no error for a write that matched nothing
+  // (a stale tab posting an id archived or deleted elsewhere) — "no
+  // error" is not "it saved".
+  if (count === 0) {
+    return { error: "That client no longer exists.", values: echo(formData) };
   }
 
   revalidatePath("/clients");
@@ -256,14 +279,17 @@ export async function setClientArchived(
   id: string,
   archived: boolean
 ): Promise<{ error: string | null }> {
+  if (!UUID_RE.test(id)) return { error: "That client no longer exists." };
+
   const { account } = await requireAccount("/clients");
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { error, count } = await supabase
     .from("clients")
-    .update({
-      archived_at: archived ? new Date().toISOString() : null,
-    } satisfies ClientUpdate as never)
+    .update(
+      { archived_at: archived ? new Date().toISOString() : null } satisfies ClientUpdate as never,
+      { count: "exact" }
+    )
     .eq("id", id)
     .eq("account_id", account.id);
 
@@ -271,6 +297,9 @@ export async function setClientArchived(
   // client, where a throw is swallowed and the button just appears to do
   // nothing.
   if (error) return { error: friendlyDbError(error, "clients.archive") };
+  // Zero rows matched: the row is not the caller's, or is already gone —
+  // reporting success here would be a lie.
+  if (count === 0) return { error: "That client no longer exists." };
 
   revalidatePath("/clients");
   revalidatePath(`/clients/${id}`);

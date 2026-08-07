@@ -23,7 +23,7 @@ export async function GET(
   const [
     { data: invoiceData, error: invoiceError },
     { data: lineData, error: lineError },
-    { data: totalsData },
+    { data: totalsData, error: totalsError },
   ] = await Promise.all([
     supabase
       .from("invoices")
@@ -64,6 +64,20 @@ export async function GET(
   if (lineError) {
     return NextResponse.json(
       { error: "Couldn't load that invoice's lines." },
+      { status: 500 }
+    );
+  }
+  // A failed totals read must not degrade to an all-zero document — see
+  // [id]/page.tsx's "a sent, unpaid invoice must not render as a healthy
+  // $0.00 balance" comment for the same reasoning. That page can fall
+  // back to a zeroed display because it's still showing the real line
+  // items alongside a visible error callout; this route produces the
+  // artifact the client keeps, with no such callout, so a failed read
+  // here has to fail the download instead of shipping a real line-item
+  // list under a fabricated $0.00 total and $0.00 balance due.
+  if (totalsError) {
+    return NextResponse.json(
+      { error: "Couldn't load that invoice's totals." },
       { status: 500 }
     );
   }

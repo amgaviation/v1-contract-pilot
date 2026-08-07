@@ -47,6 +47,17 @@ export function rateFieldName(date: string): string {
 export function quantityFieldName(date: string): string {
   return `quantity:${date}`;
 }
+/** 20260807070000_trip_day_units_away_cancel.sql — the rate FRACTION this
+ * day bills at (0 < x <= 1), distinct from quantityFieldName's TIME
+ * fraction. */
+export function unitsFieldName(date: string): string {
+  return `units:${date}`;
+}
+/** Same migration — per-day "away from home base", the second half of
+ * per-diem eligibility alongside the day type's counts_for_per_diem. */
+export function awayFieldName(date: string): string {
+  return `away:${date}`;
+}
 export function notesFieldName(date: string): string {
   return `notes:${date}`;
 }
@@ -55,6 +66,10 @@ export type SeedDayType = {
   id: string;
   key: string;
   default_rate_cents: number | null;
+  /** 20260807070000: the day type's default rate FRACTION, resolved into
+   * a row's `units` at capture the same way default_rate_cents resolves
+   * into `rate`. */
+  default_units: number | null;
   archived_at: string | null;
   /**
    * Added for F2: a non-billable day type (e.g. the seeded "Off day")
@@ -62,6 +77,20 @@ export type SeedDayType = {
    * the server forces rate_cents to 0 regardless of what was posted.
    */
   billable: boolean;
+  /**
+   * M5 fix (2026-08-07): pilot.day_types.counts_for_per_diem — whether
+   * this day type is the kind that ordinarily puts a pilot away from home
+   * base (a flight or travel day, typically) versus one that never would
+   * (an off day). Used to pre-tick a newly generated row's `away` instead
+   * of a hardcoded false — see computeSeed and resolveAway below. Optional
+   * (not `?? true` defaulted at the type level) because the caller may not
+   * have this column plumbed through yet; every read site here falls back
+   * to `true` rather than the old `false` when it's missing, since `true`
+   * matches pilot.day_types.counts_for_per_diem's own DB default and a
+   * missing column should not silently resurrect the bug this field
+   * exists to fix.
+   */
+  counts_for_per_diem?: boolean;
 };
 
 export type SeedScalars = {
@@ -83,6 +112,23 @@ export type SeedRow = {
    * type: see quantityToInput/parseQuantity below.
    */
   quantity: string;
+  /**
+   * 20260807070000: the rate FRACTION text ("1.00" full rate, "0.50" half
+   * rate) — distinct from `quantity`. Never blank, same round-trip
+   * discipline as quantity: see unitsToInput/parseUnits below.
+   */
+  units: string;
+  /** 20260807070000: away from home base, for per-diem eligibility.
+   * M5 fix: pre-ticked from the row's day type's counts_for_per_diem at
+   * generation time (see computeSeed/resolveAway below) rather than
+   * always false — the pilot still sees and can untick it per day, the
+   * default just stops being wrong for the common case (a flight or
+   * travel day almost always IS away from home base; an off day almost
+   * never is). This is a visible, editable pre-tick, not a silent
+   * determination — see 20260807070000's header, which objects to the
+   * product GUESSING per diem, not to it defaulting a checkbox a pilot
+   * can see and change before saving anything. */
+  away: boolean;
 };
 
 export type SeedResult = {
@@ -133,6 +179,37 @@ export function parseQuantity(raw: string): number | undefined {
   return value;
 }
 
+/** Units (a rate fraction) → plain decimal input text, "1.00" for full
+ * rate. Two decimal places, matching pilot.trip_days.units' numeric(3,2) —
+ * quantityToInput above only needs one because trip_days.quantity is
+ * numeric(3,1). */
+export function unitsToInput(units: number | null | undefined): string {
+  if (units === null || units === undefined || !Number.isFinite(units)) {
+    return "1.00";
+  }
+  return units.toFixed(2);
+}
+
+/**
+ * Parses a day grid units field into the rate fraction it represents, or
+ * `undefined` if it isn't a valid pilot.trip_days.units value — outside
+ * (0, 1], or carrying more than two decimal places.
+ *
+ * A local parser rather than reusing parseTenth: that helper checks ONE
+ * decimal place (day_count/quantity are numeric(*,1)), but trip_days.units
+ * is numeric(3,2) — two decimal places — and Postgres would silently
+ * ROUND a third decimal rather than reject it, so the same "check the
+ * scale here, not just the bound" reasoning parseTenth documents applies,
+ * at a different scale.
+ */
+export function parseUnits(raw: string): number | undefined {
+  const value = raw.trim();
+  if (!/^\d{1,3}(\.\d{1,2})?$/.test(value)) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1) return undefined;
+  return parsed;
+}
+
 /**
  * The trip screen's zero-state seed: turns the trip's existing scalar
  * day_rate_cents/day_count/travel_day_rate_cents/travel_day_count into a
@@ -160,7 +237,24 @@ export function computeSeed(
   scalars: SeedScalars
 ): SeedResult {
   const rows: Record<string, SeedRow> = {};
-  for (const date of dates) rows[date] = { dayTypeId: "", rate: "", notes: "", quantity: "1" };
+  for (const date of dates)
+    rows[date] = {
+      dayTypeId: "",
+      rate: "",
+      notes: "",
+      quantity: "1",
+      // This placeholder row (no day type assigned yet) always starts
+      // units=1.00/away=false — there is no day type here to resolve
+      // either from. The travel/flight loops below OVERWRITE this
+      // placeholder once a day type is known: units stays hardcoded
+      // 1.00 there too (see the loops' own comment — deliberately NOT
+      // resolved from default_units, for backfill byte-compatibility),
+      // but away IS resolved from the day type's counts_for_per_diem
+      // (M5) since there is no equivalent "must match legacy billing
+      // exactly" constraint on a checkbox that didn't exist before.
+      units: "1.00",
+      away: false,
+    };
 
   const travelType =
     dayTypes.find((t) => t.key === "travel" && !t.archived_at) ?? null;
@@ -218,6 +312,8 @@ export function computeSeed(
         rate: centsToInput(scalars.travelDayRateCents ?? 0),
         notes: "",
         quantity: "1",
+        units: "1.00",
+        away: resolveAwayFromDayType(travelType),
       };
     } else {
       approximate = true;
@@ -230,6 +326,8 @@ export function computeSeed(
         rate: centsToInput(scalars.dayRateCents),
         notes: "",
         quantity: "1",
+        units: "1.00",
+        away: resolveAwayFromDayType(flightType),
       };
     } else {
       approximate = true;
@@ -242,6 +340,8 @@ export function computeSeed(
         rate: centsToInput(scalars.dayRateCents),
         notes: "",
         quantity: quantityToInput(dayFraction),
+        units: "1.00",
+        away: resolveAwayFromDayType(flightType),
       };
     } else {
       approximate = true;
@@ -270,4 +370,57 @@ export function resolveRate(
     return centsToInput(dayType.default_rate_cents);
   }
   return "";
+}
+
+/**
+ * Resolves a day type's pre-filled rate FRACTION at capture: the day
+ * type's own default_units, else "1.00" (full rate). No client-level
+ * override exists for units — pilot.client_rates only overrides
+ * rate_cents (see the trip_days migration's own comment on client_rates:
+ * "Consulted ONLY at day capture, to fill trip_days.rate_cents"), and
+ * this does not add a parallel per-client units override that was never
+ * asked for. Never reads a saved trip_days.units — same snapshot
+ * discipline as resolveRate.
+ */
+export function resolveUnits(
+  dayTypeId: string,
+  dayTypeById: Map<string, SeedDayType>
+): string {
+  if (!dayTypeId) return "1.00";
+  const dayType = dayTypeById.get(dayTypeId);
+  if (dayType && dayType.default_units !== null && dayType.default_units !== undefined) {
+    return unitsToInput(dayType.default_units);
+  }
+  return "1.00";
+}
+
+/** M5: `true` unless the day type explicitly says
+ * counts_for_per_diem = false. See SeedDayType.counts_for_per_diem's
+ * comment for why the fallback is `true`, not the old `false` default,
+ * when the caller hasn't fetched the column yet. */
+function resolveAwayFromDayType(dayType: SeedDayType): boolean {
+  return dayType.counts_for_per_diem !== false;
+}
+
+/**
+ * Resolves a day type's pre-filled `away` value at capture: a visible,
+ * editable pre-tick from the day type's own counts_for_per_diem, exactly
+ * paralleling resolveRate/resolveUnits above. This is the capture-time
+ * counterpart to computeSeed's use of the same rule for the legacy-trip
+ * zero-state seed — call this whenever a day type is newly assigned to a
+ * row that previously had none (the day grid's "pick a day type for this
+ * date" interaction), so a fresh row does not silently default to "no per
+ * diem" the way it did before M5. See SeedDayType.counts_for_per_diem and
+ * the SeedRow.away comment for the full reasoning; the pilot still sees
+ * and can untick this per day, the default just stops being wrong for the
+ * common case.
+ */
+export function resolveAway(
+  dayTypeId: string,
+  dayTypeById: Map<string, SeedDayType>
+): boolean {
+  if (!dayTypeId) return false;
+  const dayType = dayTypeById.get(dayTypeId);
+  if (!dayType) return false;
+  return resolveAwayFromDayType(dayType);
 }

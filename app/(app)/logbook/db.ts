@@ -52,6 +52,13 @@ export type LogbookEntryRow = {
   id: string;
   account_id: string;
   source: LogbookSource;
+  // The account_members.user_id who flew this entry. Set server-side from
+  // the session on every insert path (see actions.ts); never
+  // client-supplied and never UPDATE-writable — see the
+  // 20260807050000_logbook_airman_and_export.sql header. NULL only on a
+  // pre-existing row that predates this column on a multi-member account
+  // (see that migration's backfill note).
+  airman_user_id: string | null;
   trip_id: string | null;
   trip_leg_id: string | null;
   import_batch_id: string | null;
@@ -126,6 +133,10 @@ export type LogbookEntryFlightFields = Pick<
 export type LogbookEntryInsert = LogbookEntryFlightFields & {
   account_id: string;
   source: LogbookSource;
+  // Required, not optional: every insert path must state whose logbook
+  // this is (from requireAccount()'s `user.id`) — there is no default
+  // that would be safe to guess. See the migration header for why.
+  airman_user_id: string;
   trip_id?: string | null;
   trip_leg_id?: string | null;
 };
@@ -168,9 +179,19 @@ export type DraftTripRow = {
  * trip_legs records to a flight time), falling back to 0 when block_hours
  * is null: the column is NOT NULL on logbook_entries, and a visible,
  * editable 0 is honest where a rejected insert would just be confusing.
- * pic_time mirrors total_time on the assumption the pilot flew as PIC,
- * the overwhelmingly common case for a contract-pilot trip — both are
- * freely editable before or after confirming.
+ *
+ * `role` is NOT guessed here — it used to default to "PIC" on the
+ * assumption a contract-pilot trip is flown from the left seat, but
+ * trip_legs never actually records who occupied which seat, and a
+ * two-crew trip flown as SIC would have every leg silently confirmed as
+ * PIC into a record that is supposed to be legally defensible. `role` is
+ * now a required parameter the caller (the drafts review screen, via
+ * confirmLegDraft/confirmTripDrafts) must supply from an explicit pilot
+ * choice — the same "the draft-confirm boundary exists exactly so a
+ * human resolves this rather than the software guessing" principle the
+ * instrument/day-landings fields below already follow. pic_time/sic_time
+ * are derived from whichever role is asserted, mirroring total_time —
+ * both stay freely editable after confirming.
  */
 /**
  * Notes the leg facts the logbook's schema is more precise about than
@@ -197,7 +218,8 @@ function buildDraftRemarks(leg: {
 
 export function draftPayloadForLeg(
   trip: DraftTripRow,
-  leg: DraftLegRow
+  leg: DraftLegRow,
+  role: LogbookRole
 ): LogbookEntryFlightFields & { trip_id: string; trip_leg_id: string } {
   const totalTime = leg.block_hours ?? 0;
   return {
@@ -206,10 +228,10 @@ export function draftPayloadForLeg(
     aircraft_type: trip.aircraft_type,
     from_icao: leg.from_icao,
     to_icao: leg.to_icao,
-    role: "PIC",
+    role,
     total_time: totalTime,
-    pic_time: totalTime,
-    sic_time: null,
+    pic_time: role === "PIC" ? totalTime : null,
+    sic_time: role === "SIC" ? totalTime : null,
     solo_time: null,
     cross_country_time: null,
     night_time: leg.night_hours ?? 0,

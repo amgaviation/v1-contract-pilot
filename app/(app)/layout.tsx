@@ -3,7 +3,8 @@ import { Box, Button, Container, Flex, Separator, Text } from "@/components/ui";
 import { Logo } from "@/components/ui/logo";
 import { BRAND } from "@/lib/brand";
 import { requireAccount } from "@/lib/supabase/account";
-import NavRail from "./nav-rail";
+import { NavRail, NavStrip } from "./nav-rail";
+import SkipLink from "./skip-link";
 import { signOut } from "./actions";
 
 /**
@@ -28,10 +29,35 @@ export default async function AppLayout({
 
   return (
     <Flex direction={{ initial: "column", sm: "row" }} minHeight="100vh">
+      <SkipLink />
+
+      {/* H9: the phone-width top bar — logo plus a horizontally
+          scrolling section strip, replacing the ~400-450px column of
+          logo/eight-links/separator/Settings/account block the full
+          vertical rail used to plant in front of every page below `sm`.
+          Always rendered (never conditionally mounted): only `display`
+          toggles across the breakpoint, so switching pages never adds or
+          removes these nodes and never shifts layout. */}
+      <Box
+        display={{ initial: "block", sm: "none" }}
+        style={{
+          borderBottom: "1px solid var(--gray-a5)",
+          background: "var(--gray-a2)",
+        }}
+      >
+        <Flex align="center" gap="2" px="3" pt="3">
+          <Link href="/" aria-label={`${BRAND.name} — ${BRAND.descriptor}`}>
+            <Logo />
+          </Link>
+        </Flex>
+        <NavStrip />
+      </Box>
+
       <Box
         asChild
         width={{ initial: "100%", sm: "232px" }}
         flexShrink="0"
+        display={{ initial: "none", sm: "block" }}
         style={{
           borderRight: "1px solid var(--gray-a5)",
           background: "var(--gray-a2)",
@@ -77,8 +103,13 @@ export default async function AppLayout({
           </header>
         </Flex>
 
-        <Box flexGrow="1" p={{ initial: "4", md: "5" }}>
-          <Container size="4">{children}</Container>
+        <Box asChild flexGrow="1" p={{ initial: "4", md: "5" }}>
+          {/* The skip link's target. tabIndex={-1} makes it a valid
+              programmatic focus target without adding it to the normal
+              Tab order. */}
+          <main id="main-content" tabIndex={-1}>
+            <Container size="4">{children}</Container>
+          </main>
         </Box>
 
         <Box px="5" py="4">

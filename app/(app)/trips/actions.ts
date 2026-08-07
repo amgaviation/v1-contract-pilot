@@ -12,8 +12,11 @@ import {
   dayTypeFieldName,
   rateFieldName,
   quantityFieldName,
+  unitsFieldName,
+  awayFieldName,
   notesFieldName,
   parseQuantity,
+  parseUnits,
 } from "./day-utils";
 
 type TripInsert = Database["pilot"]["Tables"]["trips"]["Insert"];
@@ -47,7 +50,14 @@ export type TripFormState = {
    */
   daysRemoved?: number;
 };
-export type LegFormState = { error: string | null };
+/**
+ * `values` echoes the submitted leg fields on a validation failure — same
+ * reason as TripFormState above: React 19 resets an uncontrolled form on
+ * every action dispatch, including the rejected one, so without this a
+ * single bad field (say, a non-numeric block time) would wipe every other
+ * field the pilot had already typed for this leg.
+ */
+export type LegFormState = { error: string | null; values?: Record<string, string> };
 /**
  * `fieldErrors` is keyed by date ("2026-03-04") and holds every row's
  * validation problem at once — F2's fix for a 12-row grid that used to be
@@ -72,6 +82,17 @@ const TRIP_KINDS = [
 
 const TRIP_STATUSES = ["scheduled", "in_progress", "completed", "canceled"] as const;
 
+// 20260807070000_trip_day_units_away_cancel.sql. Freely pilot-editable —
+// see that migration's comment on cancellation_notice_from for why this is
+// NOT canceled_at (which is trigger-owned and never appears in a form).
+const CANCELLATION_NOTICE_FROM = [
+  "client",
+  "pilot",
+  "weather",
+  "maintenance",
+  "other",
+] as const;
+
 /** Fields whose submitted text is echoed back on a failed submit. */
 const TRIP_FIELDS = [
   "client_id",
@@ -85,6 +106,7 @@ const TRIP_FIELDS = [
   "day_count",
   "travel_day_rate",
   "travel_day_count",
+  "cancellation_notice_from",
   "notes",
 ] as const;
 
@@ -244,6 +266,17 @@ function parseTripForm(formData: FormData): ParsedTrip {
     return { values: null, error: "Travel days must be a whole number." };
   }
 
+  // 20260807070000: nullable, unlike status/trip_kind — "no notice source
+  // recorded" is a real, common state (most trips are never cancelled),
+  // not a fallback value to coerce a blank submission into.
+  const cancellationNoticeFrom = optional(formData, "cancellation_notice_from");
+  if (
+    cancellationNoticeFrom !== null &&
+    !(CANCELLATION_NOTICE_FROM as readonly string[]).includes(cancellationNoticeFrom)
+  ) {
+    return { values: null, error: "That cancellation notice source isn't valid." };
+  }
+
   return {
     error: null,
     values: {
@@ -258,6 +291,8 @@ function parseTripForm(formData: FormData): ParsedTrip {
       day_count: dayCount,
       travel_day_count: travelCount,
       travel_day_rate_cents: travelRate,
+      cancellation_notice_from:
+        cancellationNoticeFrom as TripFields["cancellation_notice_from"],
       notes: optional(formData, "notes"),
     },
   };
@@ -474,18 +509,39 @@ export async function deleteTrip(id: string): Promise<{ error: string | null }> 
 // Legs
 // ---------------------------------------------------------------------------
 
-export async function addLeg(
-  _prev: LegFormState,
-  formData: FormData
-): Promise<LegFormState> {
-  const tripId = String(formData.get("trip_id") ?? "");
-  if (!tripId || !UUID_RE.test(tripId)) return { error: "Missing trip id." };
+/** Fields whose submitted text is echoed back on a failed leg submit. */
+const LEG_FIELDS = [
+  "leg_date",
+  "from_icao",
+  "to_icao",
+  "block_hours",
+  "night_hours",
+  "instrument_hours",
+  "day_landings",
+  "night_takeoffs",
+  "night_landings_full_stop",
+  "night_landings_touch_go",
+  "approaches",
+  "holds",
+] as const;
 
-  const { account } = await requireAccount(`/trips/${tripId}`);
+function echoLeg(formData: FormData): Record<string, string> {
+  return echo(formData, LEG_FIELDS);
+}
 
+type ParsedLeg = { values: Omit<LegInsert, "account_id" | "trip_id"> | null; error: string | null };
+
+/**
+ * Shared by addLeg and updateLeg so the two can never validate a leg
+ * differently — the currency-relevant counts (night takeoffs, full-stop
+ * vs touch-and-go night landings, approaches, holds) this file's header
+ * calls out are the same facts whether they're being typed for the first
+ * time or corrected.
+ */
+function parseLegForm(formData: FormData): ParsedLeg {
   const legDate = String(formData.get("leg_date") ?? "").trim();
-  if (!legDate) return { error: "Give the leg a date." };
-  if (!isDate(legDate)) return { error: "That leg date isn't valid." };
+  if (!legDate) return { values: null, error: "Give the leg a date." };
+  if (!isDate(legDate)) return { values: null, error: "That leg date isn't valid." };
 
   // numeric(4,1) — see parseTenth on why one decimal place is checked
   // here rather than left to Postgres to round away.
@@ -507,6 +563,7 @@ export async function addLeg(
     instrumentHours === undefined
   ) {
     return {
+      values: null,
       error: "Times must be hours with at most one decimal place, like 1.4.",
     };
   }
@@ -524,10 +581,44 @@ export async function addLeg(
     const value = raw === "" ? 0 : Number(raw);
     if (!Number.isInteger(value) || value < 0 || value > 999) {
       return {
+        values: null,
         error: "Landings, takeoffs, approaches and holds must be whole numbers.",
       };
     }
     counts[field] = value;
+  }
+
+  return {
+    error: null,
+    values: {
+      leg_date: legDate,
+      from_icao: icao(formData, "from_icao"),
+      to_icao: icao(formData, "to_icao"),
+      block_hours: blockHours,
+      night_hours: nightHours,
+      instrument_hours: instrumentHours,
+      day_landings: counts.day_landings,
+      night_takeoffs: counts.night_takeoffs,
+      night_landings_full_stop: counts.night_landings_full_stop,
+      night_landings_touch_go: counts.night_landings_touch_go,
+      approaches: counts.approaches,
+      holds: counts.holds,
+    },
+  };
+}
+
+export async function addLeg(
+  _prev: LegFormState,
+  formData: FormData
+): Promise<LegFormState> {
+  const tripId = String(formData.get("trip_id") ?? "");
+  if (!tripId || !UUID_RE.test(tripId)) return { error: "Missing trip id." };
+
+  const { account } = await requireAccount(`/trips/${tripId}`);
+
+  const { values, error: parseError } = parseLegForm(formData);
+  if (parseError || !values) {
+    return { error: parseError ?? "Couldn't read that leg.", values: echoLeg(formData) };
   }
 
   const supabase = await createClient();
@@ -538,23 +629,65 @@ export async function addLeg(
     // trip_legs alone only checks the LEG's account_id, which the
     // migration's own header calls out as the trap here.
     trip_id: tripId,
-    leg_date: legDate,
-    from_icao: icao(formData, "from_icao"),
-    to_icao: icao(formData, "to_icao"),
-    block_hours: blockHours,
-    night_hours: nightHours,
-    instrument_hours: instrumentHours,
-    day_landings: counts.day_landings,
-    night_takeoffs: counts.night_takeoffs,
-    night_landings_full_stop: counts.night_landings_full_stop,
-    night_landings_touch_go: counts.night_landings_touch_go,
-    approaches: counts.approaches,
-    holds: counts.holds,
+    ...values,
   };
 
   const { error } = await supabase.from("trip_legs").insert(payload as never);
 
-  if (error) return { error: friendlyDbError(error, "trip_legs.insert") };
+  if (error) {
+    return { error: friendlyDbError(error, "trip_legs.insert"), values: echoLeg(formData) };
+  }
+
+  revalidatePath(`/trips/${tripId}`);
+  return { error: null };
+}
+
+/**
+ * Corrects a leg in place. Added alongside the delete confirm dialog
+ * (HIGH 4) so a typo'd block time — or any of the FAR 61.57 currency
+ * counts this file's header calls out — no longer requires deleting the
+ * leg and losing them to retype from scratch.
+ *
+ * Same shape as updateTrip: id validated with UUID_RE, account re-derived
+ * server-side (never trusted from the form), values echoed back on every
+ * validation or database failure so a rejected save doesn't blank the
+ * rest of what was typed, and the update checked for both `error` and
+ * `count` — PostgREST returns 200 with no error for a write that matched
+ * no rows (another tab's delete, or a crafted id), and silently reporting
+ * success there would tell a pilot their correction landed when it didn't.
+ */
+export async function updateLeg(
+  _prev: LegFormState,
+  formData: FormData
+): Promise<LegFormState> {
+  const id = String(formData.get("id") ?? "");
+  if (!id || !UUID_RE.test(id)) return { error: "That leg isn't valid." };
+
+  const tripId = String(formData.get("trip_id") ?? "");
+  if (!tripId || !UUID_RE.test(tripId)) return { error: "Missing trip id." };
+
+  const { account } = await requireAccount(`/trips/${tripId}`);
+
+  const { values, error: parseError } = parseLegForm(formData);
+  if (parseError || !values) {
+    return { error: parseError ?? "Couldn't read that leg.", values: echoLeg(formData) };
+  }
+
+  const supabase = await createClient();
+  const { error, count: rowCount } = await supabase
+    .from("trip_legs")
+    .update(values as never, { count: "exact" })
+    .eq("id", id)
+    .eq("trip_id", tripId)
+    .eq("account_id", account.id);
+
+  if (error) {
+    return { error: friendlyDbError(error, "trip_legs.update"), values: echoLeg(formData) };
+  }
+  // PostgREST returns 200 with no error for a write that matched no rows.
+  if (rowCount === 0) {
+    return { error: "That leg no longer exists.", values: echoLeg(formData) };
+  }
 
   revalidatePath(`/trips/${tripId}`);
   return { error: null };
@@ -567,13 +700,14 @@ export async function deleteLeg(
   const { account } = await requireAccount(`/trips/${tripId}`);
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { error, count: rowCount } = await supabase
     .from("trip_legs")
-    .delete()
+    .delete({ count: "exact" })
     .eq("id", id)
     .eq("account_id", account.id);
 
   if (error) return { error: friendlyDbError(error, "trip_legs.delete") };
+  if (rowCount === 0) return { error: "That leg no longer exists." };
 
   revalidatePath(`/trips/${tripId}`);
   return { error: null };
@@ -670,6 +804,8 @@ export async function saveTripDays(
     day_type_id: string;
     rate_cents: number;
     quantity: number;
+    units: number;
+    away: boolean;
     notes: string | null;
   };
 
@@ -727,6 +863,18 @@ export async function saveTripDays(
       );
     }
 
+    // 20260807070000: units (a rate FRACTION, distinct from quantity's
+    // time fraction) is required the same way quantity is — the grid
+    // never posts it blank, and a crafted POST that omits or mangles it
+    // is rejected here rather than silently defaulting to something that
+    // changes what the day bills.
+    const units = parseUnits(String(formData.get(unitsFieldName(date)) ?? ""));
+    if (units === undefined) {
+      issues.push(
+        "Rate fraction must be between 0.01 and 1.00, with at most two decimal places, like 0.5 for half rate."
+      );
+    }
+
     if (issues.length > 0) {
       fieldErrors[date] = issues.join(" ");
       continue;
@@ -739,6 +887,11 @@ export async function saveTripDays(
       day_type_id: dayTypeId,
       rate_cents: rateCents,
       quantity: quantity as number,
+      units: units as number,
+      // A checkbox posts nothing at all when unchecked, so "on" is the
+      // only value to test for — same pattern as addInvoiceLine's
+      // `taxable` field (invoices/actions.ts).
+      away: String(formData.get(awayFieldName(date)) ?? "") === "on",
       // optional() already returns null (never undefined) for a blank
       // field, so an update payload built from this always carries an
       // explicit `notes: null` rather than omitting the key — omitting it
@@ -763,8 +916,8 @@ export async function saveTripDays(
   // privilege on every column named in that SET list even when the
   // incoming value is identical to the stored one. The Phase 9 migration
   // grants `authenticated` update on only (day_on, day_type_id,
-  // rate_cents, quantity, notes); account_id/trip_id are deliberately
-  // withheld (account_id is the tenancy key and must never be
+  // rate_cents, quantity, units, away, notes); account_id/trip_id are
+  // deliberately withheld (account_id is the tenancy key and must never be
   // tenant-updatable). So a single upsert 42501s on the conflict path —
   // i.e. on every date that already has a row, which is every save after
   // the first. Diffing into three targeted writes, each naming only
@@ -773,7 +926,7 @@ export async function saveTripDays(
   // save is actually a no-op.
   const { data: existingData, error: existingError } = await supabase
     .from("trip_days")
-    .select("day_on, day_type_id, rate_cents, quantity, notes")
+    .select("day_on, day_type_id, rate_cents, quantity, units, away, notes")
     .eq("account_id", account.id)
     .eq("trip_id", tripId);
 
@@ -786,6 +939,8 @@ export async function saveTripDays(
     day_type_id: string;
     rate_cents: number;
     quantity: number;
+    units: number;
+    away: boolean;
     notes: string | null;
   };
   const existingByDate = new Map(
@@ -798,6 +953,8 @@ export async function saveTripDays(
     day_type_id: string;
     rate_cents: number;
     quantity: number;
+    units: number;
+    away: boolean;
     notes: string | null;
   }[] = [];
 
@@ -811,6 +968,8 @@ export async function saveTripDays(
       existing.day_type_id !== row.day_type_id ||
       existing.rate_cents !== row.rate_cents ||
       Number(existing.quantity) !== row.quantity ||
+      Number(existing.units) !== row.units ||
+      Boolean(existing.away) !== row.away ||
       existing.notes !== row.notes
     ) {
       toUpdate.push({
@@ -818,6 +977,8 @@ export async function saveTripDays(
         day_type_id: row.day_type_id,
         rate_cents: row.rate_cents,
         quantity: row.quantity,
+        units: row.units,
+        away: row.away,
         notes: row.notes,
       });
     }
@@ -860,10 +1021,10 @@ export async function saveTripDays(
   }
 
   // toUpdate: only the granted columns (day_type_id, rate_cents,
-  // quantity, notes) — never account_id or trip_id — keyed on the three
-  // columns that identify the row. Run concurrently: a trip is bounded by
-  // its own date range, so this is at most a few dozen statements, not a
-  // scan.
+  // quantity, units, away, notes) — never account_id or trip_id — keyed on
+  // the three columns that identify the row. Run concurrently: a trip is
+  // bounded by its own date range, so this is at most a few dozen
+  // statements, not a scan.
   if (toUpdate.length > 0) {
     const results = await Promise.all(
       toUpdate.map((row) => {
@@ -871,6 +1032,8 @@ export async function saveTripDays(
           day_type_id: row.day_type_id,
           rate_cents: row.rate_cents,
           quantity: row.quantity,
+          units: row.units,
+          away: row.away,
           notes: row.notes,
         };
         return supabase

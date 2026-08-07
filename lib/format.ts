@@ -111,8 +111,15 @@ export function parseTenth(
  * Greenwich formatting that in local time sees August 4th. A trip date is
  * a calendar fact, not an instant, so it must not shift with the reader's
  * timezone.
+ *
+ * EXPORTED so callers that need to derive a CALENDAR YEAR from a date
+ * column (e.g. bounding a tax year against `invoice_payments.paid_on`)
+ * can do it correctly: read the year with `.getUTCFullYear()` on the
+ * `Date` this returns, never `.getFullYear()` — the local-timezone
+ * variant reads back the SERVER's zone, not UTC, and west of Greenwich a
+ * "2027-01-01" payment would resolve to 2026.
  */
-function parseCalendarDate(iso: string): Date | null {
+export function parseCalendarDate(iso: string): Date | null {
   const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
   if (!y || !m || !d) return null;
   return new Date(Date.UTC(y, m - 1, d));

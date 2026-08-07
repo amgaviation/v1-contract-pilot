@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { parseDollarsToCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+import { categoryLabel } from "./labels";
 import type { Database } from "@/lib/supabase/database.types";
 
 type InvoiceInsert = Database["pilot"]["Tables"]["invoices"]["Insert"];
@@ -312,9 +313,52 @@ export async function createInvoiceDraft(
     travel_day_rate_cents: number | null;
     billing_state: string;
   };
-  const trips = ((tripRows ?? []) as TripRow[]).filter(
+  const billingStateUnbilled = ((tripRows ?? []) as TripRow[]).filter(
     (t) => t.billing_state === "unbilled"
   );
+
+  // F8 (mirrored from trips/actions.ts): billing_state only advances on an
+  // invoice STATUS change, never when a line is added to a draft, so a
+  // trip already sitting on someone else's still-DRAFT invoice still
+  // reads 'unbilled' here and would otherwise be billed a second time.
+  // pilot.trip_committed_invoice answers "is a LIVE invoice line already
+  // referencing this trip" directly — the same definition the database's
+  // own double-bill trigger (invoice_lines_validate_trip) enforces — so
+  // checking it here lets a partially-bad submission still draft the
+  // trips that ARE clean, with a warning naming the ones that aren't,
+  // instead of the whole batched insert failing opaquely on whichever
+  // trip the trigger happens to hit first.
+  //
+  // Best-effort per trip, same as the picker (invoices/new/page.tsx) and
+  // trips/actions.ts: an individual RPC failure reads as "not known to be
+  // committed elsewhere" rather than blocking the draft — the trigger is
+  // still the real enforcement either way, this only makes the common
+  // case (one stale trip among several clean ones) fail nicer.
+  const committedResults = await Promise.all(
+    billingStateUnbilled.map((t) =>
+      supabase.rpc("trip_committed_invoice", {
+        p_account_id: account.id,
+        p_trip_id: t.id,
+      } as never)
+    )
+  );
+  const committedByTrip = new Map<string, string | null>(
+    billingStateUnbilled.map((t, index) => [
+      t.id,
+      (committedResults[index]?.data as string | null | undefined) ?? null,
+    ])
+  );
+  const preselectionWarnings: string[] = [];
+  const trips = billingStateUnbilled.filter((t) => {
+    const committedLabel = committedByTrip.get(t.id);
+    if (committedLabel) {
+      preselectionWarnings.push(
+        `${formatDateRange(t.starts_on, t.ends_on)}: already billed on ${committedLabel} — not added to this invoice.`
+      );
+      return false;
+    }
+    return true;
+  });
   const tripIdsToBill = trips.map((t) => t.id);
 
   // ---------------------------------------------------------------------
@@ -350,6 +394,16 @@ export async function createInvoiceDraft(
     // this is cast at the boundary the same way every row here already
     // is, and needs no change there.
     quantity: number;
+    // 20260807070000_trip_day_units_away_cancel.sql. units is a RATE
+    // fraction (0 < x <= 1, numeric(3,2)) — distinct from quantity's TIME
+    // fraction — multiplied into a row's contribution to its invoice
+    // group's summed quantity below; see that migration's header for why
+    // it does not join the (day_type_id, rate_cents) grouping key. away
+    // is per-diem's other half: per diem now requires
+    // counts_for_per_diem (the day type) AND away (the day), not
+    // counts_for_per_diem alone.
+    units: number;
+    away: boolean;
   };
   type DayTypeRow = {
     id: string;
@@ -362,6 +416,16 @@ export async function createInvoiceDraft(
     per_diem_mode: "per_diem" | "receipts";
     default_per_diem_cents: number | null;
     minimum_days: number | null;
+    // BUG FIX (supabase/migrations/20260807040000_client_minimum_basis.sql):
+    // minimum_days used to have exactly one meaning, a per-trip floor,
+    // because that was the only thing this function did with it. A client
+    // on a monthly guarantee had no field to say so, typed the guaranteed
+    // number in here anyway, and got a top-up line on EVERY short trip
+    // instead of one for the month. minimum_basis is the fix: 'per_trip'
+    // keeps today's behavior (and is what every row defaults to and every
+    // existing row already has), 'per_month' routes through the
+    // guarantee_periods settlement below instead.
+    minimum_basis: "per_trip" | "per_month";
     cancellation_policy_note: string | null;
   };
 
@@ -380,7 +444,7 @@ export async function createInvoiceDraft(
       .in("trip_id", tripIdsToBill),
     supabase
       .from("trip_days")
-      .select("id, trip_id, day_on, day_type_id, rate_cents, quantity")
+      .select("id, trip_id, day_on, day_type_id, rate_cents, quantity, units, away")
       .eq("account_id", account.id)
       .in("trip_id", tripIdsToBill),
     // The tenant's whole day-type taxonomy — a handful of rows per
@@ -395,7 +459,7 @@ export async function createInvoiceDraft(
     supabase
       .from("clients")
       .select(
-        "per_diem_mode, default_per_diem_cents, minimum_days, cancellation_policy_note"
+        "per_diem_mode, default_per_diem_cents, minimum_days, minimum_basis, cancellation_policy_note"
       )
       .eq("account_id", account.id)
       .eq("id", clientId)
@@ -404,10 +468,13 @@ export async function createInvoiceDraft(
     // cancellation_policy_note as a warning. A SEPARATE query with its own
     // status='canceled' filter — not a relaxation of the completed-only
     // filter on the trips query above, which stays exactly as written.
-    // These rows never feed `lines`.
+    // These rows never feed `lines`. starts_on/canceled_at/
+    // cancellation_notice_from (20260807070000) are what let the warning
+    // say WHEN a trip was cancelled and how far ahead of its start that
+    // was, instead of just that it happened.
     supabase
       .from("trips")
-      .select("id")
+      .select("id, starts_on, canceled_at, cancellation_notice_from")
       .eq("account_id", account.id)
       .eq("client_id", clientId)
       .eq("status", "canceled")
@@ -466,17 +533,49 @@ export async function createInvoiceDraft(
     clientBilling && clientBilling.per_diem_mode === "per_diem"
       ? clientBilling.default_per_diem_cents
       : null;
+  // Absent minimum_basis reads as 'per_trip' — matches the column's own
+  // DEFAULT (every row written before this feature existed has exactly
+  // that value), so a null client row (client somehow not found) or a
+  // stale cached read behaves the same as "no monthly guarantee".
+  const minimumBasis: "per_trip" | "per_month" =
+    clientBilling?.minimum_basis ?? "per_trip";
+
+  // ---------------------------------------------------------------------
+  // MONTHLY GUARANTEE accumulator — 'per_month' path only. Keyed by the
+  // first-of-month date ("YYYY-MM-01") of each BILLABLE, PRICED trip_days
+  // row's own day_on, not by the trip's start date. A trip spanning a
+  // month boundary (flown Jan 30 - Feb 2) must have its days split across
+  // both months' totals — trip_days is one row per calendar date
+  // specifically so that "which month did this day happen in" always has
+  // a per-day answer, and anything coarser (the trip's start month, its
+  // majority month) would move days between an owner's January and
+  // February invoices depending on where in the month the trip happened to
+  // fall, which is not something either month's true-up should depend on.
+  // Populated inside the per-trip loop below, alongside (never instead of)
+  // the existing per-day-type-and-rate grouping — this is a second view of
+  // the same rows, not a replacement for the first.
+  // ---------------------------------------------------------------------
+  const monthlyBillable = new Map<
+    string,
+    { qty: number; bestRateCents: number }
+  >();
   // Best-effort: a failed read here means "don't know", so it suppresses
   // the cancellation-note warning rather than blocking the draft — no
   // billing value depends on it, only a piece of review-time copy.
-  const anyCanceledSelected =
-    !canceledTripsError &&
-    ((canceledTripRows ?? []) as { id: string }[]).length > 0;
+  type CanceledTripRow = {
+    id: string;
+    starts_on: string;
+    canceled_at: string | null;
+    cancellation_notice_from: string | null;
+  };
+  const canceledTripsSelected: CanceledTripRow[] = canceledTripsError
+    ? []
+    : ((canceledTripRows ?? []) as CanceledTripRow[]);
 
   const lines: LineInsert[] = [];
   let sortOrder = 0;
   let skippedTravelDays = false;
-  const warnings: string[] = [];
+  const warnings: string[] = [...preselectionWarnings];
 
   for (const trip of trips) {
     const tripDayRows = dayRowsByTrip.get(trip.id) ?? [];
@@ -527,8 +626,41 @@ export async function createInvoiceDraft(
         // F1: sum the rows' OWN quantity (0.1-1.0 each, a half day is a
         // shipped feature) rather than counting rows — a group of two
         // rows can be 2.0 days or 1.3, and counting rows always says 2.
-        group.quantitySum += Number(row.quantity);
+        //
+        // 20260807070000: multiplied by the row's OWN units (a rate
+        // fraction, e.g. 0.5 for "this travel day pays half") — a row's
+        // contribution to the group's summed quantity is quantity*units,
+        // not bare quantity. rateCents (the group's unit_amount_cents) is
+        // untouched by units; only how much of that rate this row
+        // contributes moves. Every row written before this column existed
+        // has units=1.00, so this sum is byte-for-byte unchanged for them.
+        // See that migration's header for why units does not join the
+        // grouping key above.
+        group.quantitySum += Number(row.quantity) * Number(row.units);
         groups.set(key, group);
+
+        // Monthly guarantee accumulation — see monthlyBillable's own
+        // comment above for why this buckets by the ROW's day_on rather
+        // than the trip's month. Only worth doing for a 'per_month'
+        // client; a 'per_trip' client's invoice must come out byte-for-
+        // byte identical to before this feature existed, so this branch
+        // must never run any code that could affect it.
+        //
+        // Bucketed at quantity*units too, for the same reason the
+        // per-trip minimum below is: a monthly guarantee is a floor on
+        // PAY, not on calendar days, so a half-rate day should count as
+        // half toward it — see 20260807070000's header for the full
+        // reasoning.
+        if (minimumBasis === "per_month") {
+          const monthKey = `${row.day_on.slice(0, 7)}-01`;
+          const bucket = monthlyBillable.get(monthKey) ?? {
+            qty: 0,
+            bestRateCents: 0,
+          };
+          bucket.qty += Number(row.quantity) * Number(row.units);
+          if (rateCents > bucket.bestRateCents) bucket.bestRateCents = rateCents;
+          monthlyBillable.set(monthKey, bucket);
+        }
       }
 
       for (const [label, count] of unpriced) {
@@ -538,7 +670,7 @@ export async function createInvoiceDraft(
         // word "day" at all (a tenant can rename it), so it's named
         // explicitly instead of concatenated into a plural.
         warnings.push(
-          `${trip.starts_on} to ${trip.ends_on}: ${count} day(s) of type "${label}" had no rate set and weren't billed.`
+          `${formatDateRange(trip.starts_on, trip.ends_on)}: ${count} day(s) of type "${label}" had no rate set and weren't billed.`
         );
       }
 
@@ -580,14 +712,23 @@ export async function createInvoiceDraft(
         });
       }
 
-      // Contract minimum — day-row path ONLY. A trip with no day rows
-      // never reaches this branch, so minimum_days can never change what
-      // a scalar-path trip bills.
-      if (clientBilling?.minimum_days != null) {
+      // Contract minimum, PER-TRIP basis — day-row path ONLY. A trip with
+      // no day rows never reaches this branch, so minimum_days can never
+      // change what a scalar-path trip bills.
+      //
+      // BUG FIX: this used to run unconditionally whenever minimum_days
+      // was set, which is what produced one top-up line per trip even for
+      // a client whose minimum_days actually meant a MONTHLY guarantee —
+      // see minimumBasis's own comment above. Gating on
+      // `minimumBasis === "per_trip"` is what makes the per_trip path
+      // byte-for-byte unchanged (it's every existing client's value, and
+      // the column's own DEFAULT) while routing a 'per_month' client to
+      // the once-per-invoice settlement block after this loop instead.
+      if (minimumBasis === "per_trip" && clientBilling?.minimum_days != null) {
         const minDays = Number(clientBilling.minimum_days);
         if (tripDayLines.length === 0) {
           warnings.push(
-            `${trip.starts_on} to ${trip.ends_on}: this client has a ${formatMinDays(minDays)}-day contract minimum, but the trip has no billable day line to apply it to.`
+            `${formatDateRange(trip.starts_on, trip.ends_on)}: this client has a ${formatMinDays(minDays)}-day contract minimum, but the trip has no billable day line to apply it to.`
           );
         } else {
           const totalBillableQty = roundQuantity(
@@ -655,7 +796,7 @@ export async function createInvoiceDraft(
           account_id: account.id,
           invoice_id: invoiceId,
           line_type: "flight_day",
-          description: `Flight days — ${trip.starts_on} to ${trip.ends_on}`,
+          description: `Flight days — ${formatDateRange(trip.starts_on, trip.ends_on)}`,
           quantity: trip.day_count,
           unit_amount_cents: trip.day_rate_cents,
           taxable: true,
@@ -673,7 +814,7 @@ export async function createInvoiceDraft(
             account_id: account.id,
             invoice_id: invoiceId,
             line_type: "travel_day",
-            description: `Travel days — ${trip.starts_on} to ${trip.ends_on}`,
+            description: `Travel days — ${formatDateRange(trip.starts_on, trip.ends_on)}`,
             quantity: trip.travel_day_count,
             unit_amount_cents: trip.travel_day_rate_cents,
             taxable: true,
@@ -692,15 +833,25 @@ export async function createInvoiceDraft(
     // line guessed from day_count.
     if (perDiemRateCents !== null) {
       if (tripDayRows.length > 0) {
+        // 20260807070000: per diem is for being AWAY, not for the kind of
+        // day alone — counts_for_per_diem (the day type) is now ANDed
+        // with away (the day). A standby day at home base no longer
+        // draws per diem just because "standby" is configured to count;
+        // it also has to be a day the pilot was actually away. See that
+        // migration's header for why away defaults false on every row
+        // written before this column existed (a deliberate, conservative
+        // under-count on legacy data — flagged there, not hidden here).
         const perDiemCount = tripDayRows.filter(
-          (row) => dayTypeMap.get(row.day_type_id)?.counts_for_per_diem === true
+          (row) =>
+            dayTypeMap.get(row.day_type_id)?.counts_for_per_diem === true &&
+            row.away === true
         ).length;
         if (perDiemCount > 0) {
           lines.push({
             account_id: account.id,
             invoice_id: invoiceId,
             line_type: "per_diem",
-            description: `Per diem — ${trip.starts_on} to ${trip.ends_on}`,
+            description: `Per diem — ${formatDateRange(trip.starts_on, trip.ends_on)}`,
             quantity: perDiemCount,
             unit_amount_cents: perDiemRateCents,
             // C10: a straight expense reimbursement is commonly not
@@ -718,29 +869,284 @@ export async function createInvoiceDraft(
           // to seed 'off' as true — an off day is the paradigm per-diem
           // day, the pilot is away and eating whether or not they fly —
           // but a tenant can still turn it off on a custom day type), or
-          // this trip is made up entirely of day types that don't count.
+          // this trip is made up entirely of day types that don't count,
+          // OR (20260807070000) every eligible day type's rows are marked
+          // `away = false` — including every row on a trip captured
+          // before that column existed, which defaults false on all of
+          // them. The wording covers both causes rather than guessing
+          // which one applies to this trip.
           warnings.push(
-            `${trip.starts_on} to ${trip.ends_on}: this client is on per diem, but none of this trip's day types count toward it, so no per-diem line was added.`
+            `${formatDateRange(trip.starts_on, trip.ends_on)}: this client is on per diem, but no day on this trip both counts toward it and is marked away from home base, so no per-diem line was added. Check the day grid's "Away" column.`
           );
         }
       } else {
         warnings.push(
-          `${trip.starts_on} to ${trip.ends_on}: this client is on per diem, but the trip has no day rows to count, so no per-diem line was added.`
+          `${formatDateRange(trip.starts_on, trip.ends_on)}: this client is on per diem, but the trip has no day rows to count, so no per-diem line was added.`
         );
       }
     }
   }
 
-  // Cancellation — a note, once, if the client has one on file and any
-  // SELECTED trip is canceled. Never a computed fee: see
+  // ---------------------------------------------------------------------
+  // Monthly guarantee settlement — 'per_month' basis ONLY, applied ONCE
+  // PER COVERED MONTH ACROSS THE WHOLE INVOICE, never per trip. This is
+  // the actual fix: the old code's per-trip loop above would have emitted
+  // one top-up line for every short trip in a month; this emits at most
+  // one, sized against the month's TOTAL billable days across every trip
+  // selected on this draft.
+  //
+  // monthlyBillable is empty for every 'per_trip' client (the accumulator
+  // is only ever written when minimumBasis === "per_month") and for a
+  // 'per_month' client whose selected trips produced no billable day rows
+  // at all, so this block is a no-op in both of those cases — nothing
+  // below can affect a 'per_trip' client's invoice.
+  //
+  // KNOWN LIMITATION, stated rather than hidden: "worked" below is the sum
+  // ONLY across trips SELECTED ON THIS INVOICE, not every trip this client
+  // has ever had billed in that month. If a month's trips get split across
+  // two invoices (drafted separately), the FIRST invoice to touch that
+  // month settles it — sized against whatever it alone saw — and the
+  // second sees pilot.guarantee_periods already holds a settled row for
+  // that month and stops, warning instead of computing a second, possibly
+  // more informed, top-up. That is the conservative side of the tradeoff:
+  // it can under-apply a guarantee split across invoices, but it can never
+  // double-apply one, which is the failure this whole feature exists to
+  // close. A pilot who deliberately splits one month's trips across
+  // invoices should draft the smaller ones first if they want the
+  // guarantee sized off the fuller picture.
+  // ---------------------------------------------------------------------
+  if (
+    minimumBasis === "per_month" &&
+    clientBilling?.minimum_days != null &&
+    monthlyBillable.size > 0
+  ) {
+    const minDays = Number(clientBilling.minimum_days);
+    const monthKeys = [...monthlyBillable.keys()].sort();
+
+    const { data: periodRows, error: periodsError } = await supabase
+      .from("guarantee_periods")
+      .select("id, period_month, guaranteed_days, settled_invoice_id")
+      .eq("account_id", account.id)
+      .eq("client_id", clientId)
+      .in("period_month", monthKeys);
+
+    if (periodsError) {
+      // Can't safely tell which months are already settled without this
+      // read — guessing "none settled" on a fetch failure could top up a
+      // month a sibling invoice already topped up, which is precisely the
+      // double-bill this table exists to prevent. Fail loud, same
+      // reasoning as the dayRows/dayTypes/clientBilling fetch failures
+      // above.
+      redirect(
+        `/invoices/${invoiceId}?warning=${encodeURIComponent(
+          `Created the draft, but couldn't check this client's monthly guarantee history, so no monthly minimum was applied: ${friendlyDbError(
+            periodsError,
+            "guarantee_periods.select"
+          )}`
+        )}`
+      );
+    }
+
+    type PeriodRow = {
+      id: string;
+      period_month: string;
+      guaranteed_days: number;
+      settled_invoice_id: string | null;
+    };
+    const existingPeriodByMonth = new Map<string, PeriodRow>(
+      ((periodRows ?? []) as PeriodRow[]).map((r) => [r.period_month, r])
+    );
+
+    // L1: name the settling invoice the way every other warning in this
+    // file does (formatDateRange/formatMonthLabel) instead of printing
+    // settled_invoice_id — a uuid — straight into pilot-facing text.
+    // Same label shape pilot.trip_committed_invoice already uses for the
+    // per-trip version of this warning above: the invoice_number if the
+    // settling invoice has been issued one, else "a draft invoice".
+    const settledIds = [
+      ...new Set(
+        ((periodRows ?? []) as PeriodRow[])
+          .map((r) => r.settled_invoice_id)
+          .filter((id): id is string => id != null)
+      ),
+    ];
+    const settledInvoiceLabelById = new Map<string, string>();
+    if (settledIds.length > 0) {
+      const { data: settledInvoiceRows } = await supabase
+        .from("invoices")
+        .select("id, invoice_number")
+        .eq("account_id", account.id)
+        .in("id", settledIds);
+      for (const row of (settledInvoiceRows ?? []) as {
+        id: string;
+        invoice_number: string | null;
+      }[]) {
+        settledInvoiceLabelById.set(
+          row.id,
+          row.invoice_number ?? "a draft invoice"
+        );
+      }
+    }
+
+    type GuaranteePeriodInsert =
+      Database["pilot"]["Tables"]["guarantee_periods"]["Insert"];
+
+    for (const monthKey of monthKeys) {
+      const bucket = monthlyBillable.get(monthKey)!;
+      const monthLabel = formatMonthLabel(monthKey);
+      const existingPeriod = existingPeriodByMonth.get(monthKey);
+      const alreadySettled = existingPeriod?.settled_invoice_id ?? null;
+
+      if (alreadySettled) {
+        // IDEMPOTENCY: a different invoice already settled this month —
+        // the common shape being a second invoice for the same client,
+        // drafted later, that happens to also cover a trip inside an
+        // already-topped-up month. Warn, and add no second line.
+        const settledLabel =
+          settledInvoiceLabelById.get(alreadySettled) ?? "a draft invoice";
+        warnings.push(
+          `${monthLabel}: this client's monthly guarantee for this month was already settled on invoice ${settledLabel} — no second top-up line added.`
+        );
+        continue;
+      }
+
+      const worked = roundQuantity(bucket.qty);
+      if (worked < minDays) {
+        const shortfall = roundQuantity(minDays - worked);
+        // RATE CHOICE — same reasoning as the per-trip minimum's own
+        // comment above, extended to a month: the HIGHEST
+        // unit_amount_cents among this month's own billable day rows
+        // (tracked as monthlyBillable's bestRateCents while those rows
+        // were grouped, above), so the guarantee can never pay the pilot
+        // less than the day it is topping off would have.
+        lines.push({
+          account_id: account.id,
+          invoice_id: invoiceId,
+          line_type: "other",
+          // Names the month explicitly — an aircraft owner's AP
+          // department sees ONE line for a STATED month, backed by a
+          // stated worked-vs-guaranteed day count, not one line per trip.
+          description: `Monthly guarantee — ${monthLabel} — ${formatMinDays(
+            minDays
+          )}-day minimum, ${formatMinDays(worked)} ${
+            worked === 1 ? "day" : "days"
+          } worked`,
+          quantity: shortfall,
+          unit_amount_cents: bucket.bestRateCents,
+          taxable: true,
+          // No trip_id: this line is a monthly aggregate across however
+          // many trips contributed to the month, not one trip's own line
+          // — unlike every other line this function emits.
+          sort_order: sortOrder++,
+        });
+      }
+
+      // Recorded whether or not a line was emitted — "worked already met
+      // the guarantee" is a legitimate settlement outcome too, and
+      // recording it here is what stops a later invoice from re-deriving
+      // (and potentially double-counting) the same month.
+      //
+      // C2 FIX — lookup-then-insert-or-update, the same shape
+      // trips/actions.ts's trip_days save and
+      // clients/[id]/rate-overrides-actions.ts's client_rates write both
+      // already use, and for the same reason: PostgREST's `.upsert()`
+      // compiles to `ON CONFLICT ... DO UPDATE SET <every payload column>
+      // = excluded.<col>`, and Postgres checks UPDATE privilege on every
+      // column named in that SET list STATICALLY — before any conflict is
+      // even evaluated, and even when the incoming value matches the
+      // stored one. The payload here is (account_id, client_id,
+      // period_month, guaranteed_days, settled_invoice_id); this
+      // migration's UPDATE grant is only (guaranteed_days,
+      // settled_invoice_id) — account_id/client_id/period_month identify
+      // the row and are insert-only, the same discipline client_rates
+      // already uses for (account_id, client_id, day_type_id). So
+      // `.upsert()` 42501'd for `authenticated` on every call, the table
+      // was never actually written, and the monthly guarantee double-
+      // billed every month split across two invoices (see this file's own
+      // header comment above). The row is already in hand from
+      // periodRows/existingPeriodByMonth above, so no extra read is
+      // needed — just branch on it, and check `{count:"exact"}` on the
+      // write so a silently-denied write surfaces here instead of at a
+      // client's AP department.
+      if (existingPeriod) {
+        const { error: updateError, count: updateCount } = await supabase
+          .from("guarantee_periods")
+          .update(
+            {
+              guaranteed_days: minDays,
+              settled_invoice_id: invoiceId,
+            } as never,
+            { count: "exact" }
+          )
+          .eq("id", existingPeriod.id)
+          .eq("account_id", account.id);
+
+        if (updateError) {
+          // The invoice line(s) above already landed in `lines` and will
+          // still be inserted below — losing the settlement record is a
+          // "this month might get topped up again" risk, not a "this
+          // invoice is wrong" one, so it's a warning, not a hard failure.
+          warnings.push(
+            `Couldn't record ${monthLabel}'s guarantee settlement (${friendlyDbError(
+              updateError,
+              "guarantee_periods.update"
+            )}). A later invoice for this client may re-offer the same month.`
+          );
+        } else if (updateCount === 0) {
+          warnings.push(
+            `Couldn't record ${monthLabel}'s guarantee settlement — no matching record to update. A later invoice for this client may re-offer the same month.`
+          );
+        }
+      } else {
+        const insertPayload: GuaranteePeriodInsert = {
+          account_id: account.id,
+          client_id: clientId,
+          period_month: monthKey,
+          guaranteed_days: minDays,
+          settled_invoice_id: invoiceId,
+        };
+        const { error: insertError, count: insertCount } = await supabase
+          .from("guarantee_periods")
+          .insert(insertPayload as never, { count: "exact" });
+
+        if (insertError) {
+          warnings.push(
+            `Couldn't record ${monthLabel}'s guarantee settlement (${friendlyDbError(
+              insertError,
+              "guarantee_periods.insert"
+            )}). A later invoice for this client may re-offer the same month.`
+          );
+        } else if (insertCount !== 1) {
+          warnings.push(
+            `Couldn't record ${monthLabel}'s guarantee settlement — the write didn't take. A later invoice for this client may re-offer the same month.`
+          );
+        }
+      }
+    }
+  }
+
+  // Cancellation — a note per canceled SELECTED trip, if the client has a
+  // policy on file. Never a computed fee: see
   // pilot.clients.cancellation_policy_note's comment in the Phase 9
   // migration on why an unenforceable percentage is worse than recording
   // the agreement and letting the pilot add the manual cancellation_fee
   // line themselves.
-  if (clientBilling?.cancellation_policy_note && anyCanceledSelected) {
-    warnings.push(
-      `This client has a cancellation policy on file: "${clientBilling.cancellation_policy_note}". One or more selected trips is canceled — add a cancellation_fee line by hand if it applies.`
-    );
+  //
+  // 20260807070000_trip_day_units_away_cancel.sql made this specific: it
+  // used to be one generic sentence for the whole invoice ("one or more
+  // selected trips is canceled"); now it names WHICH trip, WHEN it was
+  // cancelled, and how far ahead of its start date that was — the actual
+  // evidence a cancellation-fee clause needs and a client's AP department
+  // would otherwise contest. One line per canceled trip, not one for the
+  // invoice, because each trip's timing is its own fact.
+  if (clientBilling?.cancellation_policy_note) {
+    for (const trip of canceledTripsSelected) {
+      warnings.push(
+        `This client has a cancellation policy on file: "${clientBilling.cancellation_policy_note}". ${formatDate(
+          trip.starts_on
+        )} trip was ${describeCancellationTiming(trip)} — add a cancellation_fee line by hand if it applies.`
+      );
+    }
   }
 
   for (const expense of expenses) {
@@ -750,7 +1156,7 @@ export async function createInvoiceDraft(
       line_type: "reimbursable_expense",
       description: `${categoryLabel(expense.category)}${
         expense.vendor ? ` — ${expense.vendor}` : ""
-      } (${expense.incurred_on})`,
+      } (${formatDate(expense.incurred_on)})`,
       quantity: 1,
       unit_amount_cents: expense.amount_cents,
       // C10: a straight expense reimbursement is commonly not taxable —
@@ -822,18 +1228,76 @@ function formatMinDays(days: number): string {
   return Number.isInteger(days) ? String(days) : days.toFixed(1);
 }
 
-function categoryLabel(category: string): string {
-  const labels: Record<string, string> = {
-    airline: "Airline",
-    hotel: "Hotel",
-    rental_car: "Rental car",
-    rideshare: "Rideshare",
-    fuel: "Fuel",
-    meals: "Meals",
-    parking: "Parking",
-    other: "Expense",
-  };
-  return labels[category] ?? "Expense";
+/**
+ * "YYYY-MM-01" (a guarantee_periods.period_month value) to "August 2026",
+ * for the monthly guarantee's own line description and warnings — the one
+ * place on the invoice a pilot or client sees WHICH month was settled.
+ * Parsed as UTC midnight, same rule as every other date in this file
+ * (lib/format.ts's parseCalendarDate comment explains why: a viewer west
+ * of Greenwich formatting a local Date sees the wrong calendar day/month).
+ */
+function formatMonthLabel(periodMonth: string): string {
+  const [y, m] = periodMonth.slice(0, 7).split("-").map(Number);
+  const date = new Date(Date.UTC(y!, (m ?? 1) - 1, 1));
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+/**
+ * The cancellation warning's specific, evidence-bearing clause —
+ * 20260807070000_trip_day_units_away_cancel.sql's whole point: "canceled
+ * on Aug 7 at 6:00 PM UTC, 6 hours before the trip's Aug 8 start date"
+ * instead of just "is canceled".
+ *
+ * HONEST ABOUT GRANULARITY: pilot.trips.starts_on is a `date` column —
+ * this product records no time-of-day for a trip's start anywhere — so
+ * "hours before start" is measured against that date's UTC midnight, not
+ * an actual show time. Stated in the sentence itself ("start date", not
+ * "start time") rather than implying a precision this product doesn't
+ * have.
+ */
+function describeCancellationTiming(trip: {
+  starts_on: string;
+  canceled_at: string | null;
+  cancellation_notice_from: string | null;
+}): string {
+  const noticeFrom = trip.cancellation_notice_from
+    ? ` (notice from ${trip.cancellation_notice_from})`
+    : "";
+  if (!trip.canceled_at) {
+    // Predates the trigger, or was never captured — no timestamp to
+    // reason about. Said plainly rather than guessed: see the migration's
+    // header on why no CHECK backfills this and no code should either.
+    return `canceled, but there's no cancellation timestamp on record${noticeFrom}`;
+  }
+  const canceledAt = new Date(trip.canceled_at);
+  const startOfDay = new Date(`${trip.starts_on.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(canceledAt.getTime()) || Number.isNaN(startOfDay.getTime())) {
+    return `canceled${noticeFrom}`;
+  }
+  const hours = (startOfDay.getTime() - canceledAt.getTime()) / 3_600_000;
+  const canceledAtLabel = new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "UTC",
+  }).format(canceledAt);
+  const timingLabel =
+    hours >= 0
+      ? `${formatHoursSpan(hours)} before its start date`
+      : `${formatHoursSpan(-hours)} after its start date`;
+  return `canceled ${canceledAtLabel} UTC — ${timingLabel}${noticeFrom}`;
+}
+
+/** "6 hours" / "1.5 hours" / "1 hour" — rounded to a tenth, same reasoning
+ * as roundQuantity: hides sub-tenth float noise without changing the
+ * figure a pilot would compute by hand. */
+function formatHoursSpan(hours: number): string {
+  const rounded = Math.round(hours * 10) / 10;
+  const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  return `${text} hour${rounded === 1 ? "" : "s"}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1047,7 +1511,7 @@ export async function addInvoiceLine(
   // tripId, so it goes through the same invoice_lines_validate_trip
   // double-bill guard createInvoiceDraft's batched insert does.
   const { error } = await supabase.from("invoice_lines").insert(payload as never);
-  if (error) return { error: linesDbError(error, "invoice_lines.insert") };
+  if (error) return { error: linesDbError(error, "invoice_lines.insert"), values };
 
   revalidatePath(`/invoices/${invoiceId}`);
   return { error: null };
@@ -1087,7 +1551,7 @@ export async function addRebillExpenseLine(
     line_type: "reimbursable_expense",
     description: `${categoryLabel(expense.category)}${
       expense.vendor ? ` — ${expense.vendor}` : ""
-    } (${expense.incurred_on})`,
+    } (${formatDate(expense.incurred_on)})`,
     quantity: 1,
     unit_amount_cents: expense.amount_cents,
     taxable: false,
@@ -1149,7 +1613,7 @@ export async function updateInvoiceLine(
     .eq("id", id)
     .eq("account_id", account.id); // defence in depth alongside RLS
 
-  if (error) return { error: friendlyDbError(error, "invoice_lines.update") };
+  if (error) return { error: friendlyDbError(error, "invoice_lines.update"), values };
   if (!count) return { error: "That line no longer exists.", values };
 
   revalidatePath(`/invoices/${invoiceId}`);
@@ -1189,6 +1653,24 @@ export async function deleteInvoiceLine(
 // insert-only by construction; there is nothing to build a delete/edit path
 // for on this surface.
 // ---------------------------------------------------------------------------
+/**
+ * Every field the payment form posts, as submitted — mirrors echo() /
+ * lineFormValues() above. Payment-panel.tsx's `echoed()` reads
+ * `state.values` on a rejected submit; without this, `values` never gets
+ * set on any validation-failure return, so the echo was dead code and a
+ * rejected payment blanked date/amount/method/notes on a money ledger.
+ */
+function paymentFormValues(formData: FormData): Record<string, string> {
+  const str = (k: string) => String(formData.get(k) ?? "");
+  return {
+    invoice_id: str("invoice_id"),
+    paid_on: str("paid_on"),
+    amount: str("amount"),
+    method: str("method"),
+    notes: str("notes"),
+  };
+}
+
 export async function recordPayment(
   _prev: InvoiceFormState,
   formData: FormData
@@ -1199,11 +1681,16 @@ export async function recordPayment(
   const { account } = await requireAccount(`/invoices/${invoiceId}`);
 
   const paidOn = String(formData.get("paid_on") ?? "").trim();
-  if (!paidOn || !isDate(paidOn)) return { error: "Give the payment a valid date." };
+  if (!paidOn || !isDate(paidOn)) {
+    return { error: "Give the payment a valid date.", values: paymentFormValues(formData) };
+  }
 
   const amountCents = parseDollarsToCents(String(formData.get("amount") ?? ""));
   if (amountCents === undefined || amountCents === null || amountCents <= 0) {
-    return { error: "Amount must be a positive amount like 1500 or 1500.00." };
+    return {
+      error: "Amount must be a positive amount like 1500 or 1500.00.",
+      values: paymentFormValues(formData),
+    };
   }
 
   const methodRaw = optional(formData, "method");
@@ -1227,7 +1714,10 @@ export async function recordPayment(
     .insert(payload as never);
 
   if (paymentError) {
-    return { error: friendlyDbError(paymentError, "invoice_payments.insert") };
+    return {
+      error: friendlyDbError(paymentError, "invoice_payments.insert"),
+      values: paymentFormValues(formData),
+    };
   }
 
   // Advance status to match the ledger — pilot.invoice_totals is the one

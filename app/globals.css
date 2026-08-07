@@ -51,10 +51,17 @@
    padding back out so its content lines up flush with the container's
    edge instead of being padded twice.
 
-   This product's ghost Cards do not live in that shape. All 51 of them
-   are siblings inside gapped Flex/Grid stacks (Overview's KPI row, every
-   settings panel, the auth/404/error shells), not lone children of a
-   padded wrapper — so the "surface minus background" mental model is
+   This product's ghost Cards do not live in that shape. EVERY Card here is
+   a ghost — not one call site sets `variant`, so the default in
+   components/ui reaches all of them — and they sit as siblings inside
+   gapped Flex/Grid stacks (Overview's KPI row, every settings panel, the
+   auth/404/error shells), not as lone children of a padded wrapper.
+
+   (This paragraph used to name a count. It was wrong — off by ten — and it
+   would have been wrong again the moment anyone added a Card. What holds
+   is that the shape is universal, not the tally.)
+
+   So the "surface minus background" mental model is
    the only one that holds here, and the outdent is pure liability:
    measured before this rule, adjacent size-1 ghost Cards in a gap="4"
    column overlapped by 7.2px, a size-4 ghost Card inside a p="4" Flex

@@ -38,6 +38,7 @@ const DAY_TYPE_FIELDS = [
   "billable",
   "counts_for_per_diem",
   "default_rate",
+  "default_units",
   "invoice_line_type",
   "sort_order",
 ] as const;
@@ -62,6 +63,11 @@ type DayTypeFields = {
   billable: boolean;
   counts_for_per_diem: boolean;
   default_rate_cents: number | null;
+  /** M3 fix: the default rate FRACTION (0 < x <= 1), e.g. 0.50 so a
+   * travel day type can default to "half rate" the way the trips/day-
+   * utils.ts/20260807070000 header's own motivating example describes,
+   * without the pilot having to tick Half rate on every individual day. */
+  default_units: number | null;
   invoice_line_type: (typeof LINE_TYPES)[number];
   sort_order: number;
 };
@@ -104,6 +110,28 @@ function parseDayTypeForm(formData: FormData): ParsedDayType {
     return { ...empty, error: "Rate can't be negative." };
   }
 
+  // M3: default_units is a rate FRACTION (0 < x <= 1), same numeric(3,2)
+  // shape trip_days.units already uses — blank means "no default set",
+  // resolveUnits (day-utils.ts) then falls back to 1.00 (full rate) at
+  // capture, same as a blank default_rate means "no rate agreed".
+  const rawUnits = String(formData.get("default_units") ?? "").trim();
+  let defaultUnits: number | null = null;
+  if (rawUnits !== "") {
+    if (!/^\d{1,3}(\.\d{1,2})?$/.test(rawUnits)) {
+      return {
+        ...empty,
+        error: "Default rate fraction must be a number like 0.5 or 1, or left blank.",
+      };
+    }
+    defaultUnits = Number(rawUnits);
+    if (!Number.isFinite(defaultUnits) || defaultUnits <= 0 || defaultUnits > 1) {
+      return {
+        ...empty,
+        error: "Default rate fraction must be greater than 0 and at most 1 (e.g. 0.5 for half rate).",
+      };
+    }
+  }
+
   const lineType = String(formData.get("invoice_line_type") ?? "");
   if (!(LINE_TYPES as readonly string[]).includes(lineType)) {
     return { ...empty, error: "Choose which invoice line this day type bills as." };
@@ -122,6 +150,7 @@ function parseDayTypeForm(formData: FormData): ParsedDayType {
       billable,
       counts_for_per_diem: countsForPerDiem,
       default_rate_cents: defaultRate,
+      default_units: defaultUnits,
       invoice_line_type: lineType as (typeof LINE_TYPES)[number],
       sort_order: sortOrder,
     },
@@ -259,6 +288,7 @@ export async function createDayType(
     billable: values.billable,
     counts_for_per_diem: values.counts_for_per_diem,
     default_rate_cents: values.default_rate_cents,
+    default_units: values.default_units,
     invoice_line_type: values.invoice_line_type,
     sort_order: nextSortOrder,
   };

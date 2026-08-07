@@ -90,8 +90,25 @@ export default async function LogbookPage() {
       }
       action={
         <>
+          {/* This product is never the only copy of a pilot's legal
+              record (61.51) — this is that pilot's own copy to keep,
+              regardless of what happens to this account. Plain <a>, not
+              a client-side link: it's a file download from
+              /logbook/export, same pattern as the invoice PDF link. */}
+          <Button asChild variant="outline">
+            <a href="/logbook/export" download>
+              Download your logbook (CSV)
+            </a>
+          </Button>
           <Button asChild variant="outline">
             <NextLink href="/logbook/drafts">Trip drafts</NextLink>
+          </Button>
+          {/* ForeFlight / LogTen Pro / generic CSV import — see
+              app/(app)/logbook/import. Same draft-confirm boundary as
+              Trip drafts: nothing lands here without the pilot reviewing
+              a preview and confirming. */}
+          <Button asChild variant="outline">
+            <NextLink href="/logbook/import">Import CSV</NextLink>
           </Button>
           <Button asChild>
             <NextLink href="/logbook/new">Log an entry</NextLink>
@@ -143,7 +160,7 @@ export default async function LogbookPage() {
           <Card>
             {entries.length === 0 ? (
               <Flex direction="column" align="center" gap="3" py="6">
-                <Heading as="h3" size="4">No logbook entries yet</Heading>
+                <Heading as="h2" size="4">No logbook entries yet</Heading>
                 <Text size="2" color="gray" align="center">
                   Log a flight by hand, or confirm the entries a completed trip proposes.
                 </Text>

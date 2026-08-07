@@ -380,6 +380,77 @@ Two triggers keep day rows and trip dates honest in both directions
 (`trip_days_validate_within_trip`, `trips_protect_day_range`), and `trip_days_protect_billed`
 freezes a trip's days once it is invoiced or paid — mirroring `invoices_protect_issued`.
 
+## Layer 1, extended
+
+Layer 1 shipped as above, then grew three more contract-fidelity gaps and one
+billing-shape gap, all found by the aviation-domain and correctness reviews
+and all landed without Phase 7's flag — each is a date or a rate the pilot
+entered, laddered or summed, never a legality verdict.
+
+- **`pilot.trip_days.units`** — a rate fraction (0 < x ≤ 1), separate from
+  `quantity` (a time fraction). Before this, "travel pays half" could only be
+  expressed as a second day type whose `default_rate_cents` the pilot had
+  hand-halved from the flight rate — a number computed once, with no
+  relationship to the rate it was derived from, that silently drifted the
+  moment the flight rate was renegotiated. `units` is snapshotted at capture
+  exactly like `rate_cents`, and folds into a row's contribution to its
+  invoice-line group's summed quantity rather than joining the grouping key,
+  so a travel day at half rate and one at full rate still land on one line
+  at one rate. Existing rows backfill to `1.00` — what every one of them
+  already meant.
+- **`pilot.trip_days.away`** — per-diem counting was `counts_for_per_diem`
+  (a property of the day *type*) alone, so a standby day at home base and a
+  standby day in a hotel counted identically — the exact gap Layer 1's own
+  limitations list named and left open. Per-diem counting is now
+  `counts_for_per_diem AND away`. New rows default `away = false` (the
+  product records no home base anywhere, so "away" can never be inferred,
+  only entered, and under-counting is the direction a pilot notices and
+  corrects on an unsent draft rather than over-billing a client). Existing
+  rows are **backfilled to `true` where their day type already counted for
+  per diem** — deliberately not left `false`: those rows were already
+  producing a per-diem line, and leaving them `false` would have been a
+  silent pay cut with nothing on screen explaining it. Rows whose day type
+  never counted for per diem stay `false`.
+- **`clients.minimum_basis`** (`'per_trip' | 'per_month'`) — `minimum_days`
+  had no basis, and the per-trip top-up ran inside the per-trip invoice
+  loop unconditionally. A pilot on a monthly guarantee ("10 days/month at a
+  committed rate") had no way to say so, and four 3-day trips on one
+  invoice produced four separate 7-day top-ups — 28 phantom days on one
+  document. `minimum_basis` defaults to `'per_trip'`, byte-identical to the
+  prior behaviour, so no existing client's invoice changes value.
+  `pilot.guarantee_periods`, unique on `(account_id, client_id,
+  period_month)`, makes a monthly settlement unrepeatable across invoices —
+  a month already settled produces a warning, never a second line. Known and
+  documented in the migration: a month split across two invoices settles
+  from the first invoice's partial view, which can under-apply but never
+  double-apply.
+- **`pilot.trips.canceled_at`** (trigger-owned) and
+  `cancellation_notice_from` — a cancellation fee keys off timing ("inside
+  24–48 hours", industry convention, not law) that the product had no
+  record of. The fee itself stays hand-entered, unchanged from Layer 1's own
+  reasoning on `cancellation_policy_note`: those percentages are convention,
+  and computing an unenforceable fee is worse than recording the agreement.
+
+Alongside these, **`pilot.operator_qualifications`** records, per client,
+the 135.293 competency check, the 135.297 IPC, and the 135.299 line check —
+status-only rows also exist for the Part 120 drug programme and PRD
+consent, because 111.105 and 120.105 are obligations on the operator and the
+reviewing entity, not determinations this product may make. Windows are
+calendar months computed by trigger, per 135.301 (an IPC completed 15 JAN is
+valid through 31 JUL, not 14 JUL) — implemented for the Part 135 checks only;
+it does not reach `pilot.documents`' flight-review expiry, which has no
+expiry-compute trigger at all. These surface in "Needs attention," not
+"Document expirations" — that panel's copy says "the expiry dates you
+recorded on your own documents," and an operator qualification is a status
+on someone else's certificate, so widening its query would have made its own
+disclaimer false.
+
+**`/reports/year-end`** adds a cash-basis year-end packet (income by client,
+deductible/rebilled expenses, an explicit unassigned-receipts figure) and
+`pilot.client_tax_forms` for 1099-NEC reconciliation. The disclaimer sits
+above every figure, not in a footnote, and nothing computes tax owed — see
+"Standing counsel gates" below.
+
 ## Layers 2–4 (not yet built)
 
 - **Their words.** `pilot.custom_options` (`expense_category` | `trip_kind` | `document_kind`),
@@ -421,10 +492,9 @@ defect pretending to be a feature.
   trips list still renders a badge for. Fixing it means either a `SECURITY DEFINER` RPC with an
   in-body tenancy check (the `next_invoice_number` shape) or removing the state. It needs a
   write-off *feature*, not a grant, so it waits for one rather than getting an RPC nothing calls.
-- **Per diem is a property of the day *type*, not of the day.** Standby at home base earns no
-  per diem; standby on the road does. `day_types.counts_for_per_diem` cannot express that, so a
-  pilot has to keep two day types to get it right, and nothing tells them so. The fix is an
-  `away` flag on `trip_days`, or derivation from a home base the product does not yet record.
+- ~~**Per diem is a property of the day *type*, not of the day.**~~ **Closed** by
+  `trip_days.away` — see "Layer 1, extended" above. Per-diem counting is now
+  `counts_for_per_diem AND away`, entered per day.
 - **No first/last-day per-diem proration.** The draft bills full per diem × N days. The
   convention a pilot's client will name — GSA/IRS M&IE — pays 75% on the first and last day of
   travel. Convention, not law, but it is *the* convention, so billing 100% on both ends
@@ -473,3 +543,78 @@ A third, smaller one worth the same treatment: **a PostgREST `.upsert()` compile
 every column in that SET list whether or not the value changes. On a table with column-scoped
 grants — which is every table in this schema — an upsert therefore fails on the conflict path,
 i.e. on every save after the first. Diff and issue targeted writes instead.
+
+---
+
+# What the aviation-domain review found still missing
+
+This is not a new phase. It is the record of what an aviation-domain review looked for after
+Phase 9's extensions and did not find — and, in each case, why it was left that way rather than
+built. Keep this list current as the gaps close; do not let it read as a status page once they
+do.
+
+**There is no airman record.** `pilot.accounts` is a billing entity and `account_members` is a
+join table between a person and an account — neither represents a *pilot* as an FAA-certificated
+airman. `logbook_entries.airman_user_id` (Layer 1, extended, and the "no airman" fix in the
+attribution work above) says *whose* logbook an entry belongs to; it does not say what
+certificate, ratings, or currency-relevant history that airman holds. There is no airman table,
+no certificate record, no ratings, and no category/class column on an aircraft. Everything below
+follows from this one gap.
+
+**FAR 61.57 currency is not computable, and Phase 7 is blocked on this — not merely harder.**
+Specifically, and in order of what is missing:
+- No category and class recorded anywhere (on the airman or the aircraft), so landings cannot be
+  bucketed by category/class and an undifferentiated landing count reads as more current than a
+  pilot may actually be.
+- No day-takeoff count is recorded at all — only landings.
+- No tailwheel flag, which changes what counts as a landing to a full stop for currency purposes.
+- No record of intercepting and tracking a course through the use of navigation systems, which
+  61.57(c)(1)(iii) requires for instrument currency and which a schema of block times and
+  landings has no field for.
+Currency behind the Phase 7 flag was already the plan's own stated risk ("a tool telling a pilot
+they are legal to fly is a real exposure surface"); this is the specific reason the flag cannot
+be enabled yet, independent of the disclaimer-wording review it was already gated on. The gate
+does not move until the airman record exists to compute against.
+
+**Medical is a single hand-typed `expires_on` on a `pilot.documents` row, and that is not enough
+to represent one under 14 CFR 61.23.** One medical certificate carries *several* simultaneous
+expiry dates depending on the class held, the airman's age at the time of examination, and which
+privileges are being exercised on a given flight — a single scalar field can only ever be
+correct for one of those readings and silently wrong for the others. This needs a data model
+that can hold more than one expiry per certificate, counsel review before it is built (medical
+data is qualitatively different from a day rate or a receipt), and a privacy review, because a
+medical record is exactly the kind of thing the plan's original custody promise ("no application
+code path grants tenant A anything about tenant B") has to hold for without exception.
+
+**14 CFR 135.267 duty and rest is not modelled at all, and any count built on top of what exists
+today would count *all* commercial flying across every operator a pilot flies for** — a
+multi-operator contract pilot's actual cumulative flight-time exposure, not a per-client slice of
+it — because nothing in this schema scopes flight time to one operator's limits versus another's.
+Nothing here tracks duty periods, rest periods, or flight-time limitations under Part 135 at all;
+the closest thing that exists, `pilot.operator_qualifications`, only ever records per-operator
+*qualification* status, never time worked. This is the highest-liability output the product could
+ship — a tool telling a pilot they are within limits when their flying for a different operator
+has already pushed them over is worse than telling them nothing. It must ship inside Phase 7's
+flag, not ahead of it, and needs its own reviewed disclaimer distinct from the currency one —
+"you are current" and "you are legal to fly today" are different claims with different
+consequences of being wrong.
+
+**The logbook CSV import is still unbuilt.** `pilot.logbook_import_batches` and
+`pilot.logbook_source_files` exist in the schema, carry RLS, and have no code path that writes
+to them — `/logbook/export` (this build's CSV work) is the read/portability direction only.
+Decisions #12 and #13 above call for ForeFlight, LogTen Pro, and a generic column mapper, and
+the Risks section already named it "the biggest piece of work in the build" and Phase 6's own
+line called it "the largest single piece here — budget it accordingly." That estimate has not
+changed; nothing in this build reduced its scope.
+
+## Standing counsel gates, restated
+
+Three surfaces now carry an explicit counsel review requirement, beyond the currency-disclaimer
+gate already locked in Decisions #15 and the standing gates above:
+- **The tax and year-end copy** (`/reports/year-end`, `pilot.client_tax_forms`) — this product
+  is not a tax preparer and must not read as one; the disclaimer above every figure is a first
+  pass, not a substitute for review.
+- **Any medical record** — see above; this is not built yet, and does not get built without
+  counsel and privacy review first.
+- **Any duty/rest output** — see 135.267 above; ships inside Phase 7's flag with its own
+  reviewed disclaimer, never ahead of it.

@@ -55,12 +55,14 @@ export default async function TripPage({
     // which day rows actually count toward the billed total.
     supabase
       .from("day_types")
-      .select("id, key, label, billable, default_rate_cents, sort_order, archived_at")
+      .select(
+        "id, key, label, billable, counts_for_per_diem, default_rate_cents, default_units, sort_order, archived_at"
+      )
       .order("sort_order", { ascending: true })
       .order("key", { ascending: true }),
     supabase
       .from("trip_days")
-      .select("day_on, day_type_id, rate_cents, quantity, notes")
+      .select("day_on, day_type_id, rate_cents, quantity, units, away, notes")
       .eq("trip_id", id)
       .order("day_on", { ascending: true }),
     // Fetched account-wide and filtered to this trip's client below,
@@ -200,7 +202,7 @@ export default async function TripPage({
         </Box>
         <Box gridColumn={{ lg: "span 5" }}>
           <Card size="3">
-            <Heading as="h3" size="4">Legs</Heading>
+            <Heading as="h2" size="4">Legs</Heading>
             <Text as="p" size="2" color="gray" className="tnum">
               {blockTotal.toFixed(1)} block hours ·{" "}
               {nightFullStop} night full-stop landing
@@ -212,7 +214,7 @@ export default async function TripPage({
 
         <Box gridColumn={{ lg: "span 12" }}>
           <Card size="3">
-            <Heading as="h3" size="4">Day grid</Heading>
+            <Heading as="h2" size="4">Day grid</Heading>
             <Text as="p" size="2" color="gray" mb="3">
               One row per calendar day of the trip — this is what feeds
               invoicing and per diem, and once it has rows it is what

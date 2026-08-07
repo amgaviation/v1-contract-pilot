@@ -11,10 +11,19 @@ AMG appears in exactly one place: the footer, as "powered by AMG Aviation".
 
 ## Status
 
-Live Supabase project, live Stripe (test mode), deployed to Vercel. Phases 0–6
-and 8 are built; Phase 9 Layer 1 (tenant-defined day types and rate cards) is
-merged. Phase 7 (currency) is deliberately unbuilt — it ships behind a flag,
-dark, and only after counsel re-confirms the disclaimer wording.
+Live Supabase project, live Stripe (test mode), deployed to Vercel. Phases
+0–6 and 8 are built; Phase 9 Layer 1 (tenant-defined day types and rate
+cards) is merged and has since been extended — half-day units, away-vs-home
+per diem, a monthly billing guarantee alongside the per-trip minimum, Part
+135 operator qualifications, trip cancellation tracking, a streaming logbook
+CSV export, and a year-end packet with 1099 reconciliation. Phase 7
+(currency) is deliberately unbuilt — it ships behind a flag, dark, and only
+after counsel re-confirms the disclaimer wording. See `docs/PLAN.md` for what
+Phase 7 is still missing and why it is blocked, not merely unstarted.
+
+The logbook CSV **import** (ForeFlight, LogTen Pro, generic mapper) is also
+still unbuilt: `logbook_import_batches` and `logbook_source_files` exist in
+the schema, with RLS, and no code path writes to them.
 
 **One thing blocks real users:** signup returns `Error sending confirmation
 email`. SMTP is configured against Resend, credentials are accepted, and the
@@ -29,7 +38,7 @@ Next.js 16 · React 19 · TypeScript (strict) · **Radix Themes** ·
 Supabase (`@supabase/ssr`) · Stripe (platform billing) + Stripe Connect
 (the pilot's own client billing) · `@react-pdf/renderer` for invoices.
 
-No Tailwind, no CSS-in-JS, no component library beyond Radix. Ten runtime
+No Tailwind, no CSS-in-JS, no component library beyond Radix. Eleven runtime
 dependencies.
 
 ## The design system is six props, plus one small defaults file
@@ -60,9 +69,9 @@ always wins.
 Ghost Cards get one small correction on top of Radix's own CSS:
 `app/globals.css` cancels the negative margin Radix's ghost Card variant
 applies by default (it assumes a ghost Card is the sole child of an
-already-padded container, which is not the shape any of this product's 51
-ghost Cards are in — see that file's comment for the measured before/after
-numbers).
+already-padded container, which is not the shape any of this product's ghost
+Cards are in — see that file's comment for the measured before/after
+numbers; its count of them predates this feature push and is now stale).
 
 `panelBackground="solid"` is the one non-default `<Theme>` choice worth
 knowing: Radix defaults panels to translucent, and a pilot comparing a column
@@ -98,12 +107,20 @@ component directly.
 ```
 app/(app)/          the authenticated product. One gate — requireAccount()
                     in the route-group layout — covers every screen.
+app/(app)/reports/  the year-end packet (`reports/year-end`): cash-basis
+                    income, deductible/rebilled expenses, unassigned
+                    receipts, and 1099 reconciliation against
+                    pilot.client_tax_forms.
+app/(app)/logbook/export/  streaming CSV export of the pilot's own logbook —
+                    the record-portability path; CSV import is not built.
 app/(auth)/         login, signup, password reset, and the post-checkout
                     welcome screen.
 app/api/stripe/     the webhook. The only place the service-role client is
                     used, anywhere in the product.
 lib/supabase/       browser, server and service-role clients, all pinned to
                     the `pilot` schema.
+lib/csv.ts          the one CSV encoder both exports share — RFC 4180
+                    quoting plus a formula-injection guard.
 supabase/migrations/  every schema change, applied in order. Read the file
                     headers — they carry the reasoning, including the
                     mistakes that produced the corrective migrations.
@@ -128,5 +145,21 @@ column-scoped grants — and the service role holds BYPASSRLS, so asserting
 through it would prove nothing. Every negative case asserts a specific
 SQLSTATE; "an error happened" is not a pass. They refuse to run against a
 non-local host without an explicit opt-in, because they create auth users.
+
+`tenancy:verify` also runs an RLS sweep, load-bearing rather than
+belt-and-braces: F1 fails if any `pilot` table has row-level security
+disabled (the schema grants default SELECT on every future table to
+`authenticated`, so RLS is the only barrier), and F1b fails if an
+RLS-enabled table has no policy at all — reachable by no one, which is a
+missing policy rather than a deliberate lockout. Both are probed against a
+real table, not just read. Currently 37 assertions pass against a local
+Postgres 16 running every migration.
+
+`billing:verify` counts and names its own skips: sections that need a
+service-role client (`NEXT_SUPABASE_URL` + `NEXT_SUPABASE_SECRET_KEY`) print
+`SKIP` and are excluded from the pass/fail counters, and the summary says
+outright when a run did not verify everything — a green count that quietly
+asserted fewer things than it claims is exactly the defect this exists to
+catch.
 
 All fixtures are synthetic. No live pilot data, ever.

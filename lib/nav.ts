@@ -5,7 +5,7 @@
  * own icon-name strings, collapse groups and demo entries. This is a plain
  * list because that is all the nav has ever needed.
  *
- * Settings sits apart from the seven feature sections deliberately — it is
+ * Settings sits apart from the eight feature sections deliberately — it is
  * where a pilot changes how the rest behaves, not another place to file
  * work, and the rail renders it below a separator for that reason.
  */
@@ -22,6 +22,7 @@ export const NAV_SECTIONS: readonly NavItem[] = [
   { href: "/logbook", label: "Logbook" },
   { href: "/clients", label: "Clients" },
   { href: "/documents", label: "Documents" },
+  { href: "/reports", label: "Reports" },
 ] as const;
 
 export const NAV_SETTINGS: NavItem = { href: "/settings", label: "Settings" };

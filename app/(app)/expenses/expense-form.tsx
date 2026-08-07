@@ -21,6 +21,8 @@ export type ExpenseFormValues = {
 export type TripOption = {
   id: string;
   label: string;
+  clientName: string | null;
+  defaultTreatment: string | null;
 };
 
 /** Ported verbatim from the schema's vocabulary; labels are the pilot's. */
@@ -88,14 +90,59 @@ export default function ExpenseForm({
   // pilot actually sees is what's actually posted, regardless of what the
   // native <select> reverted to.
   const [category, setCategory] = useState(() => initial("category", values.category, "other"));
-  const [treatment, setTreatment] = useState(() =>
-    submitted?.treatment ?? (values.treatment ?? "unassigned")
+  const tripsById = new Map(trips.map((trip) => [trip.id, trip]));
+
+  // H7: the client already answers "rebill or deduct?" on its own record
+  // (default_expense_treatment) — a brand-new expense that arrives with a
+  // trip already picked (preselected via ?trip=, or the pilot's own first
+  // choice) should DEFAULT to that answer instead of hardcoding
+  // "unassigned" and making the pilot re-decide something the product
+  // already knows. `treatmentTouched` is what keeps it a default rather
+  // than a forced value: once the pilot changes the Treatment select
+  // themselves, the trip-driven default stops overwriting it, including
+  // if they go on to change the trip again.
+  const isNew = !values.id;
+  const [treatment, setTreatment] = useState(() => {
+    if (submitted?.treatment !== undefined) return submitted.treatment;
+    if (values.treatment !== undefined && values.treatment !== null) {
+      return values.treatment;
+    }
+    if (isNew && values.trip_id) {
+      const preselected = tripsById.get(values.trip_id);
+      if (preselected?.defaultTreatment) return preselected.defaultTreatment;
+    }
+    return "unassigned";
+  });
+  const [treatmentTouched, setTreatmentTouched] = useState(
+    () => submitted?.treatment !== undefined
   );
   const [tripId, setTripId] = useState(() => {
     const stored = submitted?.trip_id ?? values.trip_id ?? "";
     return stored === "" ? NO_TRIP : stored;
   });
   const rebilling = treatment === "rebill";
+  const selectedTrip = tripId === NO_TRIP ? null : tripsById.get(tripId) ?? null;
+
+  const handleTreatmentChange = (next: string) => {
+    setTreatment(next);
+    setTreatmentTouched(true);
+  };
+
+  const handleTripChange = (next: string) => {
+    setTripId(next);
+    if (!isNew || treatmentTouched) return;
+    const trip = next === NO_TRIP ? null : tripsById.get(next) ?? null;
+    if (trip?.defaultTreatment) setTreatment(trip.defaultTreatment);
+  };
+
+  // True only while the currently-shown treatment IS the untouched
+  // default this trip's client supplied — the visible "why" behind the
+  // value, so the pilot isn't surprised by a select that didn't start on
+  // "Decide later" and never told them why.
+  const defaultedFromClient =
+    isNew && !treatmentTouched && selectedTrip?.defaultTreatment === treatment
+      ? selectedTrip?.clientName ?? null
+      : null;
 
   return (
     <Card size="3">
@@ -181,7 +228,7 @@ export default function ExpenseForm({
             <Text as="label" size="2" weight="medium" id="treatment-label">
               Treatment
             </Text>
-            <Select.Root value={treatment} onValueChange={setTreatment}>
+            <Select.Root value={treatment} onValueChange={handleTreatmentChange}>
               <Select.Trigger aria-labelledby="treatment-label" />
               <Select.Content>
                 {TREATMENTS.map((option) => (
@@ -191,12 +238,17 @@ export default function ExpenseForm({
                 ))}
               </Select.Content>
             </Select.Root>
+            {defaultedFromClient ? (
+              <Text size="1" color="gray">
+                {`Defaulted from ${defaultedFromClient}'s billing preference — change it anytime.`}
+              </Text>
+            ) : null}
           </Flex>
           <Flex direction="column" gap="1">
             <Text as="label" size="2" weight="medium" id="trip-label">
               Trip
             </Text>
-            <Select.Root value={tripId} onValueChange={setTripId}>
+            <Select.Root value={tripId} onValueChange={handleTripChange}>
               <Select.Trigger aria-labelledby="trip-label" />
               <Select.Content>
                 <Select.Item value={NO_TRIP}>No trip</Select.Item>

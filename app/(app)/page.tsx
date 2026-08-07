@@ -89,6 +89,15 @@ type ExpirationRow = {
   ladder_stage: "overdue" | "t_minus_1" | "t_minus_7" | "t_minus_14" | "t_minus_30" | "ok";
 };
 
+// Needed to deep-link an operator-qualification expiration to the client
+// record it's held under — pilot.expirations' source_id for these rows is
+// the operator_qualifications row id, not the client id (see the "Needs
+// attention" comment below), so a second lookup resolves it.
+type OperatorQualClientRow = {
+  id: string;
+  client_id: string;
+};
+
 /** Ordered ICAO chain from a trip's legs, e.g. "KFXE → KTEB → KFXE". */
 function buildRoute(legs: LegRow[]): string | null {
   const points: string[] = [];
@@ -139,6 +148,7 @@ export default async function OverviewPage() {
     overdueRes,
     paymentsRes,
     expirationsRes,
+    operatorQualExpirationsRes,
     voidInvoicesRes,
   ] = await Promise.all([
     supabase
@@ -190,6 +200,26 @@ export default async function OverviewPage() {
       .select("source_id, item_kind, item_label, expires_on, days_remaining, ladder_stage")
       .in("item_kind", ["medical", "flight_review", "passport"])
       .order("expires_on", { ascending: true }),
+    // Operator qualifications — 135.293/135.297/135.299 checks and the
+    // status-only rows, all unioned into pilot.expirations with
+    // source_table='operator_qualification' (20260807060000). Filtered by
+    // source_table rather than an item_kind allowlist so this stays
+    // correct if the requirement CHECK ever grows a kind — unlike the
+    // documents panel above, EVERY operator-qualification kind belongs in
+    // the attention queue, there's no "not this panel's concern" subset to
+    // exclude. ladder_stage != 'ok' reuses the same ladder the documents
+    // panel and pilot.expirations itself define, rather than inventing a
+    // day-count threshold here. This feeds "Needs attention", NOT the
+    // "Document expirations" panel — an operator qualification is a status
+    // on someone else's certificate, not the pilot's own document; see
+    // that panel's query comment above.
+    supabase
+      .from("expirations")
+      .select("source_id, item_kind, item_label, expires_on, days_remaining, ladder_stage")
+      .eq("source_table", "operator_qualification")
+      .neq("ladder_stage", "ok")
+      .order("expires_on", { ascending: true })
+      .limit(AGGREGATE_LIMIT),
     // invoice_totals/invoice_payments' own comment: amount_paid_cents sums
     // EVERY payment row regardless of the invoice's current status,
     // including 'void' (partial -> void is a legal transition). "Paid this
@@ -205,6 +235,7 @@ export default async function OverviewPage() {
   const overdue = (overdueRes.data ?? []) as OverdueRow[];
   const payments = (paymentsRes.data ?? []) as PaymentRow[];
   const expirations = (expirationsRes.data ?? []) as ExpirationRow[];
+  const operatorQualExpirations = (operatorQualExpirationsRes.data ?? []) as ExpirationRow[];
   const voidInvoiceIds = new Set(
     ((voidInvoicesRes.data ?? []) as { id: string }[]).map((i) => i.id)
   );
@@ -229,8 +260,12 @@ export default async function OverviewPage() {
   // 'partial'), so every overdue invoice_id is already a member of
   // liveInvoices — one balance-due lookup covers both.
   const balanceIds = liveInvoices.map((i) => i.id);
+  // pilot.expirations' source_id for an operator_qualification row is the
+  // qualification row's own id, not the client id the "Open client" link
+  // needs — resolved with a second, dependent lookup.
+  const operatorQualIds = operatorQualExpirations.map((e) => e.source_id);
 
-  const [legsRes, totalsRes, dayRowsRes, dayTypesRes] = await Promise.all([
+  const [legsRes, totalsRes, dayRowsRes, dayTypesRes, operatorQualClientsRes] = await Promise.all([
     tripIds.length
       ? supabase
           .from("trip_legs")
@@ -251,14 +286,27 @@ export default async function OverviewPage() {
     tripIds.length
       ? supabase
           .from("trip_days")
-          .select("trip_id, day_type_id, rate_cents, quantity")
+          .select("trip_id, day_type_id, rate_cents, quantity, units")
           .in("trip_id", tripIds)
       : Promise.resolve({ data: [] as (TripDayValueRow & { trip_id: string })[], error: null }),
     supabase.from("day_types").select("id, billable"),
+    operatorQualIds.length
+      ? supabase
+          .from("operator_qualifications")
+          .select("id, client_id")
+          .in("id", operatorQualIds)
+          .limit(AGGREGATE_LIMIT)
+      : Promise.resolve({ data: [] as OperatorQualClientRow[], error: null }),
   ]);
 
   const legs = (legsRes.data ?? []) as LegRow[];
   const totals = (totalsRes.data ?? []) as InvoiceTotalRow[];
+  const operatorQualClientId = new Map(
+    ((operatorQualClientsRes.data ?? []) as OperatorQualClientRow[]).map((r) => [
+      r.id,
+      r.client_id,
+    ])
+  );
 
   // A query error is not "no data" — it must be visible, not quietly
   // rendered as a healthy zero-state dashboard.
@@ -270,11 +318,13 @@ export default async function OverviewPage() {
     { context: "overdue invoices", error: overdueRes.error },
     { context: "payments", error: paymentsRes.error },
     { context: "document expirations", error: expirationsRes.error },
+    { context: "operator qualifications", error: operatorQualExpirationsRes.error },
     { context: "trip routes", error: legsRes.error },
     { context: "invoice balances", error: totalsRes.error },
     { context: "voided invoices", error: voidInvoicesRes.error },
     { context: "trip day grids", error: dayRowsRes.error },
     { context: "day types", error: dayTypesRes.error },
+    { context: "operator qualification clients", error: operatorQualClientsRes.error },
   ].filter((e) => e.error);
 
   // -----------------------------------------------------------------------
@@ -419,6 +469,16 @@ export default async function OverviewPage() {
     };
   });
 
+  // M12: the invoice draft flow is single-client by construction
+  // (/invoices/new drafts against exactly one client's trips), so "Invoice
+  // N trips" can only be honest when every one of those N unbilled trips
+  // shares a client. When they don't, the button must stop promising a
+  // multi-client batch it cannot perform.
+  const unbilledClientIds = new Set(
+    trips.map((t) => t.client_id).filter((id): id is string => Boolean(id))
+  );
+  const soleClientId = unbilledClientIds.size === 1 ? [...unbilledClientIds][0] : null;
+
   // Needs attention — past-due invoices, unassigned receipts, and clients
   // missing a W-9. Built as the FULL, unsliced list first and counted from
   // THAT — the previous version sliced overdue to 8 and W-9s to 3 but
@@ -437,9 +497,42 @@ export default async function OverviewPage() {
         row.days_overdue,
         "day"
       )}`,
-      action: "Remind",
-      href: "/invoices",
+      // M11: "Remind" named an action this product cannot perform —
+      // nothing here sends mail. This only opens the invoice record, so
+      // it's labeled for that, matching the fix already applied to the
+      // W-9 button below. Deep-linked to the invoice itself, not the
+      // list, now that invoice.invoice_id is in scope here.
+      action: "Open invoice",
+      href: `/invoices/${row.invoice_id}`,
     };
+  });
+
+  // Lapsing operator qualifications — a 135.293/.297/.299 check (or a
+  // drug & alcohol / PRD status row) past or nearing its ladder threshold.
+  // item_label already reads "<operator name> — <requirement>[ (type)]"
+  // (pilot.expirations' own union, 20260807060000), so no separate
+  // client-name join is needed for the label — only for the href, via
+  // operatorQualClientId resolved in Phase 2. A row whose client lookup
+  // came back empty (shouldn't happen — the FK is NOT NULL — but a
+  // partial/truncated read is still possible) is dropped rather than
+  // linked to nothing.
+  const operatorQualItemsAll = operatorQualExpirations.flatMap((row) => {
+    const clientId = operatorQualClientId.get(row.source_id);
+    if (!clientId) return [];
+    return [
+      {
+        id: `operator-qual-${row.source_id}`,
+        label: row.item_label,
+        detail:
+          row.ladder_stage === "overdue"
+            ? `Expired ${formatDate(row.expires_on)}`
+            : `Expires ${formatDate(row.expires_on)}`,
+        // Same rule as the W-9 button below: this only opens the client
+        // record, it doesn't renew or schedule anything.
+        action: "Open client",
+        href: `/clients/${clientId}`,
+      },
+    ];
   });
 
   const unassignedCount = expenses.filter((e) => e.treatment === "unassigned").length;
@@ -464,23 +557,49 @@ export default async function OverviewPage() {
         ? `Requested ${formatDate(c.w9_sent_at)}`
         : "Not yet requested",
     // "Open client", not "Request"/"Resend" — this button only navigates
-    // to /clients, it doesn't send anything. A verb that performs no
-    // action is a defect; label it for what it actually does.
+    // to the client record, it doesn't send anything. A verb that
+    // performs no action is a defect; label it for what it actually does.
+    // Deep-linked to the client itself, not the list — c.id is in scope
+    // here.
     action: "Open client",
-    href: "/clients",
+    href: `/clients/${c.id}`,
   }));
 
-  const attentionItemsAll = [...overdueItemsAll, ...unassignedItem, ...w9ItemsAll];
+  const attentionItemsAll = [
+    ...operatorQualItemsAll,
+    ...overdueItemsAll,
+    ...unassignedItem,
+    ...w9ItemsAll,
+  ];
   const attentionCount = attentionItemsAll.length;
 
   // Display list: the unassigned-receipts item gets a slot reserved for it
-  // before overdue/W-9 fill the rest, so it can never be starved out by a
-  // long overdue list the way the previous concatenate-then-slice did.
+  // before everything else fills the rest, so it can never be starved out
+  // by a long overdue/qualification list the way the previous
+  // concatenate-then-slice did.
+  //
+  // Within the remaining slots, operator qualifications are prioritized
+  // ABOVE overdue invoices: an overdue invoice is money already earned and
+  // owed, recoverable whenever it's chased down, but a lapsed 135.297 IPC
+  // or 135.293 competency check is the ability to fly for that operator at
+  // all — a harder, more time-sensitive stop than a late payment.
   const reservedSlots = unassignedItem.length;
   const remainingSlots = Math.max(0, NEEDS_ATTENTION_LIMIT - reservedSlots);
-  const overdueDisplay = overdueItemsAll.slice(0, remainingSlots);
-  const w9Display = w9ItemsAll.slice(0, Math.max(0, remainingSlots - overdueDisplay.length));
-  const NEEDS_ATTENTION = [...overdueDisplay, ...unassignedItem, ...w9Display];
+  const operatorQualDisplay = operatorQualItemsAll.slice(0, remainingSlots);
+  const overdueDisplay = overdueItemsAll.slice(
+    0,
+    Math.max(0, remainingSlots - operatorQualDisplay.length)
+  );
+  const w9Display = w9ItemsAll.slice(
+    0,
+    Math.max(0, remainingSlots - operatorQualDisplay.length - overdueDisplay.length)
+  );
+  const NEEDS_ATTENTION = [
+    ...operatorQualDisplay,
+    ...overdueDisplay,
+    ...unassignedItem,
+    ...w9Display,
+  ];
   const attentionMoreCount = attentionCount - NEEDS_ATTENTION.length;
 
   const readyCount = trips.length;
@@ -647,22 +766,28 @@ export default async function OverviewPage() {
             <>
               <Flex direction="column">
                 {readyTrips.map((trip) => (
-                  <Flex key={trip.id} justify="between" align="start" py="2">
-                    <Flex direction="column">
-                      <Text weight="medium">{trip.client}</Text>
-                      <Text size="1" color="gray">
-                        {[trip.route, trip.tail, `${pluralize(trip.days, "day")}`, trip.dates]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </Text>
-                      <Text size="1" color="gray">
-                        {trip.detail}
+                  <NextLink
+                    key={trip.id}
+                    href={`/trips/${trip.id}`}
+                    style={{ textDecoration: "none", color: "inherit" }}
+                  >
+                    <Flex justify="between" align="start" py="2">
+                      <Flex direction="column">
+                        <Text weight="medium">{trip.client}</Text>
+                        <Text size="1" color="gray">
+                          {[trip.route, trip.tail, `${pluralize(trip.days, "day")}`, trip.dates]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </Text>
+                        <Text size="1" color="gray">
+                          {trip.detail}
+                        </Text>
+                      </Flex>
+                      <Text weight="bold" className="tnum">
+                        {formatCents(trip.amountCents)}
                       </Text>
                     </Flex>
-                    <Text weight="bold" className="tnum">
-                      {formatCents(trip.amountCents)}
-                    </Text>
-                  </Flex>
+                  </NextLink>
                 ))}
               </Flex>
               {readyCount > readyTrips.length ? (
@@ -671,9 +796,24 @@ export default async function OverviewPage() {
                 </Text>
               ) : null}
               <Flex mt="3">
-                <Button asChild>
-                  <NextLink href="/invoices/new">{`Invoice ${pluralize(readyCount, "trip")}`}</NextLink>
-                </Button>
+                {soleClientId ? (
+                  <Button asChild>
+                    <NextLink href={`/invoices/new?client=${soleClientId}`}>
+                      {`Invoice ${pluralize(readyCount, "trip")}`}
+                    </NextLink>
+                  </Button>
+                ) : (
+                  // M12: /invoices/new drafts against exactly one client's
+                  // trips, so a button offering to "Invoice N trips" here
+                  // cannot keep that promise once those N trips span more
+                  // than one client — it would have to silently drop most
+                  // of them. Relabeled to what it can actually do: open
+                  // the drafting flow and let the pilot pick which
+                  // client's batch to start.
+                  <Button asChild variant="outline">
+                    <NextLink href="/invoices/new">Start an invoice</NextLink>
+                  </Button>
+                )}
               </Flex>
             </>
           )}
