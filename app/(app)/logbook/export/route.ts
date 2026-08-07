@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { logbookFrom, type LogbookEntryRow } from "../db";
+import { csvRow } from "@/lib/csv";
 
 // This is the pilot's own copy of their legal record (14 CFR 61.51), not a
 // cached artifact — always the current rows.
@@ -47,33 +48,7 @@ const HEADER = [
   "Source",
 ] as const;
 
-/**
- * RFC 4180 field escaping. A field is quoted, with any embedded `"`
- * doubled, whenever it contains a comma, a quote, or a newline (CR or LF)
- * — the three characters that would otherwise corrupt the column
- * boundaries of every field after it. Untouched otherwise, so a plain
- * "KTEB" or "1.4" round-trips byte-identical without needless quoting.
- *
- * Also guards against CSV/formula injection: a `remarks` field is
- * pilot-authored free text, and a leading =, +, -, or @ is interpreted as
- * a formula by Excel/Sheets when the file is opened there. Prefixing such
- * a field with a leading apostrophe (inside the quotes) neutralizes that
- * without changing what a spec-compliant CSV reader hands back to a
- * program parsing the file as data rather than opening it in a
- * spreadsheet.
- */
-function csvField(value: string | number | null | undefined): string {
-  let s = value === null || value === undefined ? "" : String(value);
-  if (/^[=+\-@]/.test(s)) s = `'${s}`;
-  if (/[",\r\n]/.test(s)) {
-    return `"${s.replace(/"/g, '""')}"`;
-  }
-  return s;
-}
 
-function csvRow(fields: (string | number | null | undefined)[]): string {
-  return fields.map(csvField).join(",") + "\r\n";
-}
 
 function entryToRow(e: LogbookEntryRow): string {
   return csvRow([

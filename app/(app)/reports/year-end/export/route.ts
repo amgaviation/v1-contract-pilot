@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { CATEGORY_LABEL } from "../db";
 import { loadYearEndReport } from "../queries";
+import { csvRow } from "@/lib/csv";
 
 // A year-end figure is either right or it should error loudly — never a
 // silently truncated download that looks complete. This report's queries
@@ -23,24 +24,7 @@ const SECTIONS = [
 ] as const;
 type Section = (typeof SECTIONS)[number];
 
-/**
- * RFC 4180 field escaping, plus formula-injection guarding for a leading
- * =/+/-/@ — copied verbatim from app/(app)/logbook/export/route.ts's
- * csvField so the two CSV exports in this product escape identically
- * rather than drifting into two slightly different implementations.
- */
-function csvField(value: string | number | null | undefined): string {
-  let s = value === null || value === undefined ? "" : String(value);
-  if (/^[=+\-@]/.test(s)) s = `'${s}`;
-  if (/[",\r\n]/.test(s)) {
-    return `"${s.replace(/"/g, '""')}"`;
-  }
-  return s;
-}
 
-function csvRow(fields: (string | number | null | undefined)[]): string {
-  return fields.map(csvField).join(",") + "\r\n";
-}
 
 function centsToDollarsString(cents: number | null | undefined): string {
   if (cents === null || cents === undefined) return "";
