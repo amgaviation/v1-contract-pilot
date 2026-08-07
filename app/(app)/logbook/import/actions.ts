@@ -23,10 +23,61 @@ const APPROACH_TYPES: readonly ApproachType[] = [
 ];
 const FORMATS: readonly ImportFormat[] = ["foreflight", "logten", "generic_csv"];
 
-/** A hard ceiling on one confirm request — not a product limit on logbook size, just a guard against an unbounded payload in one HTTP request. A career logbook that exceeds this splits across two file uploads/imports, each with its own batch. */
-const MAX_ROWS_PER_CONFIRM = 20000;
-/** How many rejected-row details are kept in error_summary — matches the house "explicit limit + truncation callout" rule rather than storing an unbounded blob. */
+/**
+ * A hard ceiling on one confirm request, sized to what the request can
+ * actually deliver — not a product limit on logbook size. A career logbook
+ * that exceeds this splits across two file uploads/imports, each with its
+ * own batch.
+ *
+ * WHY 5,000 AND NOT 20,000: `sourceRow` re-serializes every source cell
+ * keyed by its ORIGINAL header name (on top of the already-parsed
+ * `values`), which inflates the POST body far past the CSV's own size —
+ * and this action runs behind next.config.ts's `bodySizeLimit: "10mb"`
+ * (owned elsewhere; not editable here), so the row cap has to actually fit
+ * under that, not just be some round number. Measured with a synthetic
+ * ForeFlight-shaped fixture (24 source columns, matching a real ForeFlight
+ * Logbook export) via confirmImport's own payload shape:
+ *
+ *   rows    minimal remarks   60-char remarks   200-char remarks
+ *   1,000        1.17 MB           1.29 MB           —
+ *   5,000        5.74 MB           6.33 MB           7.73 MB
+ *   9,000       10.51 MB          11.57 MB           —
+ *   20,000      23.37 MB          25.73 MB           —
+ *
+ * 5,000 rows stays comfortably under 10 MB even with realistic remarks;
+ * 9,000 (this product's stated adoption target — a pilot with 9,000 hours
+ * importing a career logbook) is already over the limit on minimal
+ * remarks alone, which is why that pilot MUST split their file rather
+ * than hit an opaque framework error. These are OUR measurements against
+ * a synthetic fixture we built for this fix (not the reviewer's exact
+ * numbers, which used a different column set) — re-measure if the source
+ * column count or `sourceRow`'s shape changes.
+ *
+ * A row cap alone is not sufficient on its own: very long remarks can
+ * still blow the budget under 5,000 rows (measured: 5,000 rows x 500-char
+ * remarks = 10.73 MB). import-workspace.tsx's client-side byte-size
+ * estimate (ESTIMATED_PAYLOAD_BYTE_LIMIT) is the second layer that catches
+ * that case BEFORE the POST is even sent, with a specific message instead
+ * of the framework's opaque one.
+ */
+const MAX_ROWS_PER_CONFIRM = 5000;
+/** How many rejected-row / duplicate-row details are kept in error_summary — matches the house "explicit limit + truncation callout" rule rather than storing an unbounded blob. */
 const MAX_STORED_REJECTIONS = 500;
+/**
+ * How many fingerprints go in one dedup `.in()` lookup. supabase-js emits
+ * this as a GET with the fingerprint list in the query string
+ * (`?row_fingerprint=in.(...)`), not the request body — a SHA-256 hex
+ * fingerprint is 64 chars, ~65 bytes once comma-joined, so an unbounded
+ * `.in()` over a multi-thousand-row import can build a multi-hundred-KB
+ * URL and hit a gateway's 414/header-size limit, aborting the whole
+ * import at the dedup step (`fail("dedup lookup failed", ...)`) long
+ * before any row is even validated for insert. 40 fingerprints is
+ * ~2.6 KB of query string — comfortably inside even a conservative 8 KB
+ * total header budget alongside auth/cookie headers, which a fingerprint
+ * count sized to fit under a 10 MB *body* limit would not by itself
+ * guarantee, since this is a URL length problem, not a body size one.
+ */
+const FINGERPRINT_LOOKUP_CHUNK = 40;
 
 export type ConfirmImportRow = {
   rowNumber: number;
@@ -45,12 +96,42 @@ export type ConfirmImportPayload = {
   excludedByPilot: number;
 };
 
+export type DuplicateRowDetail = {
+  rowNumber: number;
+  sourceRow: Record<string, string>;
+  /**
+   * "in_logbook" — this row's fingerprint already exists in
+   * logbook_entries from an earlier import; the flight is presumed
+   * already recorded.
+   * "in_file" — this row's fingerprint collides with an EARLIER row in
+   * THIS SAME confirm. This is not necessarily the same flight (see
+   * fingerprint.ts's documented collision case: two identical pattern
+   * hops flown back to back on a first-ever import) — it is reported
+   * separately from "in_logbook" precisely so the pilot isn't told a
+   * false "already in your logbook from a previous import" about a row
+   * that was never previously imported at all.
+   */
+  kind: "in_logbook" | "in_file";
+};
+
 export type ConfirmImportResult = {
   error: string | null;
   batchId?: string;
   imported?: number;
-  duplicates?: number;
+  duplicatesInLogbook?: number;
+  duplicatesInFile?: number;
+  duplicateDetail?: DuplicateRowDetail[];
+  duplicateDetailTruncated?: boolean;
   rejectedCount?: number;
+  /**
+   * True when some rows landed in the logbook but the confirm didn't
+   * finish (a later chunk/row failed after earlier ones committed).
+   * `error` is null in this case on purpose — it isn't a failure the
+   * pilot needs to retry from scratch, it's an incomplete run they need
+   * to act on. See actions.ts's fail() for why.
+   */
+  partial?: boolean;
+  partialMessage?: string;
 };
 
 function isRole(v: unknown): v is LogbookRole {
@@ -68,13 +149,99 @@ function isTenth(v: unknown, max: number): v is number {
 function isCount(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 999;
 }
+/**
+ * Validates entry_date is a REAL calendar date, not just `\d{4}-\d{2}-\d{2}`
+ * shaped text. The shape-only regex this replaced accepted "2026-02-30",
+ * which Postgres rejects at insert time with 22008 (date/time field value
+ * out of range) — AFTER earlier chunks in the same confirm may already be
+ * committed (see the insert loop's comment on why that used to report a
+ * false total failure). Catching this here, before anything is inserted,
+ * is what makes step 3's "validate every row before anything is
+ * fingerprinted or inserted" promise actually true for a bad date.
+ *
+ * Written independently of lib/logbook-import/fields.ts's
+ * parseFlexibleDate (which does the equivalent arithmetic day-count check
+ * for the CLIENT parser) rather than importing it — that module is owned
+ * by a different agent's concurrent work and its shape may change; this
+ * function only needs to re-verify a date the client already normalized
+ * to ISO, not parse arbitrary source formats.
+ */
 function isDateString(v: unknown): v is string {
-  return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  if (typeof v !== "string") return false;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (year < 1900 || year > 2100) return false;
+  if (month < 1 || month > 12) return false;
+  const isLeapYear = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  const daysInMonth = [31, isLeapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  const maxDay = daysInMonth[month - 1] ?? 31;
+  if (day < 1 || day > maxDay) return false;
+  return true;
 }
 function isIcaoOrNull(v: unknown): v is string | null {
   if (v === null) return true;
   return typeof v === "string" && /^[A-Z0-9]{3,4}$/.test(v);
 }
+
+/** Every column a `source='import'` row is ever allowed to carry from the
+ * client's parsed `values`, listed explicitly and copied field-by-field
+ * (see toFlightFields below) rather than via object spread. `values` is
+ * typed as LogbookEntryFlightFields at compile time, but this is a "use
+ * server" action — nothing stops a crafted POST's JSON body from carrying
+ * extra keys (trip_id, trip_leg_id, account_id, source, ...) that
+ * TypeScript's static type never sees at runtime. `{ ...row.values, ... }`
+ * would forward every one of those straight into the insert, trusting the
+ * *shape* of client JSON in exactly the way this file's own top comment
+ * says it must not. An explicit allowlist copy makes that whole bug class
+ * unreachable regardless of what the payload's JSON actually contains. */
+const FLIGHT_FIELDS: (keyof LogbookEntryFlightFields)[] = [
+  "entry_date",
+  "aircraft_ident",
+  "aircraft_type",
+  "from_icao",
+  "to_icao",
+  "role",
+  "total_time",
+  "pic_time",
+  "sic_time",
+  "solo_time",
+  "cross_country_time",
+  "night_time",
+  "instrument_actual_time",
+  "instrument_simulated_time",
+  "flight_instructor_time",
+  "dual_received_time",
+  "simulator_time",
+  "simulator_device_type",
+  "day_landings_full_stop",
+  "day_landings_touch_go",
+  "night_takeoffs",
+  "night_landings_full_stop",
+  "night_landings_touch_go",
+  "approaches_count",
+  "approach_type",
+  "holds",
+  "remarks",
+];
+
+function toFlightFields(values: LogbookEntryFlightFields): LogbookEntryFlightFields {
+  const out = {} as LogbookEntryFlightFields;
+  for (const key of FLIGHT_FIELDS) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (out as any)[key] = values[key];
+  }
+  return out;
+}
+
+/** An import row this action builds itself: ImportEntryInsert (from the
+ * parser-owned types.ts) plus an explicit, always-null trip_id/trip_leg_id
+ * — see toInsert.push below and the migration's
+ * logbook_entries_import_no_trip_lineage CHECK for why these are pinned
+ * rather than merely omitted. */
+type ImportRowInsert = ImportEntryInsert & { trip_id: null; trip_leg_id: null };
 
 /**
  * Defense-in-depth revalidation of a row this server never computed
@@ -106,6 +273,30 @@ function validateRow(values: LogbookEntryFlightFields): string | null {
   for (const key of optionalTimes) {
     const v = values[key];
     if (v !== null && !isTenth(v, 999)) return `invalid ${key}`;
+  }
+  // Cross-field time sanity, mirroring the CHECK constraints added by
+  // 20260807100000_logbook_import_integrity.sql — each of these is a
+  // PORTION of the same flight total_time measures, so it can never
+  // exceed total_time. pic_time/sic_time are bounded here too (a real
+  // physical impossibility on their own — 900 hours of PIC time on a
+  // 1-hour flight), but deliberately NOT bounded by their SUM: see that
+  // migration's comment on 61.51(e)(1)(i) dual-logged PIC+SIC time for
+  // why pic_time + sic_time > total_time is a legitimate, common
+  // professional-pilot logbook pattern, not a defect.
+  const boundedByTotal: (keyof LogbookEntryFlightFields)[] = [
+    "pic_time",
+    "sic_time",
+    "solo_time",
+    "cross_country_time",
+    "night_time",
+    "instrument_actual_time",
+    "instrument_simulated_time",
+  ];
+  for (const key of boundedByTotal) {
+    const v = values[key];
+    if (typeof v === "number" && v > values.total_time) {
+      return `${key} cannot be greater than total_time`;
+    }
   }
   const counts: (keyof LogbookEntryFlightFields)[] = [
     "day_landings_full_stop",
@@ -173,13 +364,70 @@ export async function confirmImport(payload: ConfirmImportPayload): Promise<Conf
   }
   const batchId = (batchInsert.data as { id: string }).id;
 
-  const fail = async (message: string, error: unknown) => {
+  // Set once the source-file row is created (step 2). `fail` reads this
+  // by closure, not by parameter, because it can be called before that
+  // row exists (the source-file insert failing IS one of its call sites).
+  let sourceFileId: string | undefined;
+
+  /**
+   * Reports a confirm that could not finish. What "recoverable" means
+   * here depends on whether anything already landed:
+   *
+   *   importedSoFar === 0 — nothing from this confirm is in
+   *   logbook_entries yet, so nothing REFERENCES this batch/source-file
+   *   pair (import_batch_id/source_file_id are ON DELETE RESTRICT — see
+   *   20260805220000's header — specifically because a real entry must
+   *   never lose its lineage, but an EMPTY batch has no such entry to
+   *   protect). Delete both rows outright so a retry starts clean instead
+   *   of leaving a permanently dangling status:'failed' row an account
+   *   can never remove — the exact problem the reviewer flagged. This is
+   *   best-effort: if the delete itself errors, the batch just remains as
+   *   a harmless historical 'failed' row, no worse than before this fix.
+   *
+   *   importedSoFar > 0 — real rows are already committed (chunks/rows
+   *   before this one succeeded; see the insert loop below — each
+   *   round-trip is its own statement, not one transaction, because this
+   *   action runs as the authenticated pilot under RLS and this app has
+   *   exactly one service-role entry point (the Stripe webhook), which
+   *   this is not it). Telling the pilot "failed" here would be a lie on
+   *   top of committed data — the actual harm the reviewer found. Instead
+   *   the batch is marked 'partial' (status CHECK widened for this by
+   *   20260807100000) with the true imported_rows count, and the pilot is
+   *   told exactly how many rows landed and what to do about the rest.
+   */
+  const fail = async (message: string, error: unknown, importedSoFar: number): Promise<ConfirmImportResult> => {
     console.error("[logbook import]", message, error);
+
+    if (importedSoFar === 0) {
+      if (sourceFileId) {
+        await logbookFrom(supabase, "logbook_source_files")
+          .delete()
+          .eq("id", sourceFileId)
+          .eq("account_id", account.id);
+      }
+      await logbookFrom(supabase, "logbook_import_batches")
+        .delete()
+        .eq("id", batchId)
+        .eq("account_id", account.id);
+      return { error: "Couldn't complete that import. Nothing was added to your logbook — check the file and try again." };
+    }
+
+    const reason = friendlyDbError(error as { code?: string; message?: string } | null, message);
+    const partialSummary = JSON.stringify({ failedAt: message, importedBeforeFailure: importedSoFar });
     await logbookFrom(supabase, "logbook_import_batches")
-      .update({ status: "failed", error_summary: message } as never)
+      .update(
+        { status: "partial", imported_rows: importedSoFar, error_summary: partialSummary } as never,
+        { count: "exact" }
+      )
       .eq("id", batchId)
       .eq("account_id", account.id);
-    return { error: "Couldn't complete that import. Try again." };
+    return {
+      error: null,
+      batchId,
+      imported: importedSoFar,
+      partial: true,
+      partialMessage: `${importedSoFar} row${importedSoFar === 1 ? "" : "s"} were saved to your logbook before the import stopped. ${reason} The remaining rows were not attempted — re-export just the rows after this point and import them separately.`,
+    };
   };
 
   // 2. The source file row.
@@ -197,9 +445,9 @@ export async function confirmImport(payload: ConfirmImportPayload): Promise<Conf
     .single();
 
   if (fileInsert.error || !fileInsert.data) {
-    return fail("source file insert failed", fileInsert.error);
+    return await fail("source file insert failed", fileInsert.error, 0);
   }
-  const sourceFileId = (fileInsert.data as { id: string }).id;
+  sourceFileId = (fileInsert.data as { id: string }).id;
 
   // 3. Validate every row's shape before anything is fingerprinted or
   // inserted — one bad row aborts the whole confirm rather than landing
@@ -208,7 +456,7 @@ export async function confirmImport(payload: ConfirmImportPayload): Promise<Conf
   for (const row of payload.rows) {
     const problem = validateRow(row.values);
     if (problem) {
-      return await fail(`row ${row.rowNumber}: ${problem}`, null);
+      return await fail(`row ${row.rowNumber}: ${problem}`, null, 0);
     }
   }
 
@@ -224,32 +472,71 @@ export async function confirmImport(payload: ConfirmImportPayload): Promise<Conf
   }));
   const candidateFingerprints = Array.from(new Set(withFingerprint.map((r) => r.fingerprint)));
 
-  const existing = await logbookFrom(supabase, "logbook_entries")
-    .select("row_fingerprint")
-    .eq("account_id", account.id)
-    .eq("source", "import")
-    .in("row_fingerprint", candidateFingerprints);
+  // Looked up in bounded chunks, not one `.in()` call — see
+  // FINGERPRINT_LOOKUP_CHUNK's comment for why an unbounded list here is
+  // a URL-length failure mode, not a body-size one.
+  const seenFingerprints = new Set<string>();
+  for (let i = 0; i < candidateFingerprints.length; i += FINGERPRINT_LOOKUP_CHUNK) {
+    const chunk = candidateFingerprints.slice(i, i + FINGERPRINT_LOOKUP_CHUNK);
+    const existing = await logbookFrom(supabase, "logbook_entries")
+      .select("row_fingerprint")
+      .eq("account_id", account.id)
+      .eq("source", "import")
+      .in("row_fingerprint", chunk);
 
-  if (existing.error) {
-    return await fail("dedup lookup failed", existing.error);
+    if (existing.error) {
+      return await fail("dedup lookup failed", existing.error, 0);
+    }
+    for (const r of (existing.data ?? []) as { row_fingerprint: string }[]) {
+      seenFingerprints.add(r.row_fingerprint);
+    }
   }
-  const seenFingerprints = new Set<string>(
-    ((existing.data ?? []) as { row_fingerprint: string }[]).map((r) => r.row_fingerprint)
-  );
 
-  let duplicates = 0;
-  const toInsert: ImportEntryInsert[] = [];
+  let duplicatesInLogbook = 0;
+  let duplicatesInFile = 0;
+  const duplicateDetail: DuplicateRowDetail[] = [];
+  // Fingerprints seen so far WITHIN THIS FILE, kept separate from
+  // seenFingerprints (which is only ever populated from logbook_entries
+  // above). Conflating the two — as a single shared set that both starts
+  // pre-loaded from the DB lookup AND accumulates during the loop — is
+  // what made every in-file duplicate get reported with the same
+  // "already in your logbook from a previous import" sentence as a true
+  // DB match, which is false for a first-ever import (see
+  // fingerprint.ts's documented pattern-work-hop collision case).
+  const fileFingerprints = new Set<string>();
+  const toInsert: ImportRowInsert[] = [];
   for (const { row, fingerprint } of withFingerprint) {
     if (seenFingerprints.has(fingerprint)) {
-      duplicates += 1;
+      duplicatesInLogbook += 1;
+      if (duplicateDetail.length < MAX_STORED_REJECTIONS) {
+        duplicateDetail.push({ rowNumber: row.rowNumber, sourceRow: row.sourceRow, kind: "in_logbook" });
+      }
       continue;
     }
-    seenFingerprints.add(fingerprint); // guards against two identical rows within THIS file too
+    if (fileFingerprints.has(fingerprint)) {
+      duplicatesInFile += 1;
+      if (duplicateDetail.length < MAX_STORED_REJECTIONS) {
+        duplicateDetail.push({ rowNumber: row.rowNumber, sourceRow: row.sourceRow, kind: "in_file" });
+      }
+      continue;
+    }
+    fileFingerprints.add(fingerprint);
     toInsert.push({
-      ...row.values,
+      ...toFlightFields(row.values),
       account_id: account.id,
       airman_user_id: user.id,
       source: "import",
+      // Explicitly pinned, not merely omitted: trip_id/trip_leg_id are
+      // granted on INSERT (20260807090000, for the confirmed-draft flow)
+      // and are NOT part of LogbookEntryFlightFields/ConfirmImportRow, but
+      // toFlightFields' explicit allowlist copy is the thing that stops a
+      // crafted payload's extra JSON keys from reaching this object at
+      // all — these two lines are the second half of that fix, stating
+      // the intent in code instead of leaving it implicit. See
+      // logbook_entries_import_no_trip_lineage (20260807100000) for the
+      // hard boundary behind this.
+      trip_id: null,
+      trip_leg_id: null,
       import_batch_id: batchId,
       source_file_id: sourceFileId,
       source_row_number: row.rowNumber,
@@ -262,6 +549,18 @@ export async function confirmImport(payload: ConfirmImportPayload): Promise<Conf
   // one giant INSERT is both a worse failure unit (one bad row voids the
   // whole batch) and closer to PostgREST/connection payload limits than
   // several smaller ones.
+  //
+  // HONESTY, NOT ATOMICITY: these chunks are separate round-trips, not one
+  // transaction — this action runs as the authenticated pilot under RLS,
+  // and this app has exactly one service-role entry point (the Stripe
+  // webhook; see lib/supabase/service-role.ts), which import must not
+  // become a second one of. That means a failure at chunk k genuinely
+  // leaves chunks 1..k-1 committed. Rather than wrap that in a fake
+  // all-or-nothing story, `fail()` above reports it truthfully: exactly
+  // how many rows landed and what to do about the rest. `imported` below
+  // is only ever incremented by a COUNT POSTGREST ACTUALLY RETURNED — see
+  // the `gotCount` checks — never assumed, so this number is never a
+  // guess.
   const CHUNK = 500;
   let imported = 0;
   for (let i = 0; i < toInsert.length; i += CHUNK) {
@@ -284,18 +583,27 @@ export async function confirmImport(payload: ConfirmImportPayload): Promise<Conf
           );
           if (single.error) {
             if ((single.error as { code?: string }).code === "23505") {
-              duplicates += 1;
+              duplicatesInLogbook += 1;
               continue;
             }
-            return await fail("insert failed mid-batch", single.error);
+            return await fail("insert failed mid-batch", single.error, imported);
           }
           if (single.count === 1) imported += 1;
         }
         continue;
       }
-      return await fail("insert failed", insertResult.error);
+      return await fail("insert failed", insertResult.error, imported);
     }
-    imported += insertResult.count ?? chunk.length;
+    const gotCount = typeof insertResult.count === "number" ? insertResult.count : null;
+    if (gotCount === null) {
+      // PostgREST didn't return a count even though { count: "exact" }
+      // was requested — an anomaly, not a success we can vouch for.
+      // Fabricating `chunk.length` here (the previous behavior) would
+      // make the pilot's final "N entries added" a guess rather than a
+      // fact; treat it the same as any other insert failure instead.
+      return await fail("insert returned no count", null, imported);
+    }
+    imported += gotCount;
   }
 
   // 6. Close out the batch with a durable record of what happened —
@@ -308,10 +616,14 @@ export async function confirmImport(payload: ConfirmImportPayload): Promise<Conf
     raw: r.raw.slice(0, 500),
     reason: r.reason,
   }));
+  const duplicateDetailTruncated = duplicateDetail.length >= MAX_STORED_REJECTIONS;
   const errorSummary = JSON.stringify({
     rejected: rejectedForSummary,
     rejectedTruncated: payload.rejected.length > MAX_STORED_REJECTIONS,
-    duplicatesSkipped: duplicates,
+    duplicatesInLogbook,
+    duplicatesInFile,
+    duplicateDetail,
+    duplicateDetailTruncated,
     excludedByPilot: payload.excludedByPilot,
   });
 
@@ -343,7 +655,10 @@ export async function confirmImport(payload: ConfirmImportPayload): Promise<Conf
     error: null,
     batchId,
     imported,
-    duplicates,
+    duplicatesInLogbook,
+    duplicatesInFile,
+    duplicateDetail,
+    duplicateDetailTruncated,
     rejectedCount: payload.rejected.length,
   };
 }

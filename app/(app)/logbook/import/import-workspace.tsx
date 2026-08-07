@@ -25,11 +25,31 @@ import { resolveRow } from "@/lib/logbook-import/resolve-row";
 import type { CsvRecord } from "@/lib/logbook-import/csv";
 import type { ColumnMapping, ImportFormat, ParseResult, ParsedRow } from "@/lib/logbook-import/types";
 import type { LogbookRole, SimulatorDeviceType } from "../db";
-import { confirmImport, type ConfirmImportResult, type ConfirmImportRow } from "./actions";
+import {
+  confirmImport,
+  type ConfirmImportResult,
+  type ConfirmImportRow,
+  type DuplicateRowDetail,
+} from "./actions";
 
 const NONE = "__none__";
 const PREVIEW_ROW_LIMIT = 200;
 const REJECTED_ROW_LIMIT = 200;
+const DUPLICATE_ROW_LIMIT = 200;
+/**
+ * Client-side estimate of the confirmImport POST body, checked BEFORE the
+ * request is sent. actions.ts's MAX_ROWS_PER_CONFIRM comment has the
+ * measured numbers this is sized against: 5,000 rows stays comfortably
+ * under the 10 MB next.config.ts bodySizeLimit on realistic remarks, but
+ * a file with unusually long remarks can still blow the budget well
+ * under that row count (measured: 5,000 rows x 500-char remarks = 10.73
+ * MB) — the row cap alone can't catch that case, only an actual size
+ * estimate can. 8,000,000 bytes leaves ~2 MB of headroom under the 10 MB
+ * limit for the Server Actions envelope / HTTP framing this estimate
+ * doesn't account for. Catching it here means the pilot gets this app's
+ * own specific message instead of an opaque Next.js framework error.
+ */
+const ESTIMATED_PAYLOAD_BYTE_LIMIT = 8_000_000;
 
 const ROLE_OPTIONS: { value: LogbookRole; label: string }[] = [
   { value: "PIC", label: "PIC" },
@@ -223,6 +243,20 @@ export default function ImportWorkspace() {
       rows.push({ rowNumber: row.rowNumber, sourceRow: row.sourceRow, values: resolved });
     }
 
+    // Estimate the POST body size BEFORE sending it — see
+    // ESTIMATED_PAYLOAD_BYTE_LIMIT's comment. This is the same shape
+    // confirmImport's payload argument actually has (rows + rejected +
+    // the small fixed fields), so stringifying it here is a faithful
+    // proxy for what fetch will actually send.
+    const estimatedPayload = { format: result.format, fileName: preview.fileName, rows, rejected: result.rejected };
+    const estimatedBytes = new TextEncoder().encode(JSON.stringify(estimatedPayload)).length;
+    if (estimatedBytes > ESTIMATED_PAYLOAD_BYTE_LIMIT) {
+      setConfirmError(
+        `This import is too large to send in one request (about ${(estimatedBytes / 1_000_000).toFixed(1)} MB). Split the file into smaller pieces and import them separately, or shorten long remarks, then try again.`
+      );
+      return;
+    }
+
     setConfirmError(null);
     startTransition(async () => {
       const outcome = await confirmImport({
@@ -243,22 +277,47 @@ export default function ImportWorkspace() {
 
   if (stage.kind === "done") {
     const { outcome } = stage;
+    const duplicateDetail = outcome.duplicateDetail ?? [];
     return (
       <Card>
         <Flex direction="column" gap="3" p="3">
           <Flex align="center" gap="2">
-            <CheckCircledIcon color="green" />
+            {outcome.partial ? (
+              <ExclamationTriangleIcon color="amber" />
+            ) : (
+              <CheckCircledIcon color="green" />
+            )}
             <Heading as="h3" size="4">
-              Import complete
+              {outcome.partial ? "Import didn't finish" : "Import complete"}
             </Heading>
           </Flex>
-          <Text size="2">
-            {outcome.imported} entr{outcome.imported === 1 ? "y" : "ies"} added to your logbook.
-          </Text>
-          {outcome.duplicates ? (
+          {outcome.partial ? (
+            <Callout.Root color="amber">
+              <Callout.Icon>
+                <ExclamationTriangleIcon />
+              </Callout.Icon>
+              <Callout.Text>{outcome.partialMessage}</Callout.Text>
+            </Callout.Root>
+          ) : (
+            <Text size="2">
+              <span className="tnum">{outcome.imported}</span> entr{outcome.imported === 1 ? "y" : "ies"}{" "}
+              added to your logbook.
+            </Text>
+          )}
+          {outcome.duplicatesInLogbook ? (
             <Text size="2" color="gray">
-              {outcome.duplicates} row{outcome.duplicates === 1 ? "" : "s"} skipped — already in your
-              logbook from a previous import of this file.
+              <span className="tnum">{outcome.duplicatesInLogbook}</span> row
+              {outcome.duplicatesInLogbook === 1 ? "" : "s"} skipped — already in your logbook from a
+              previous import.
+            </Text>
+          ) : null}
+          {outcome.duplicatesInFile ? (
+            <Text size="2" color="gray">
+              <span className="tnum">{outcome.duplicatesInFile}</span> row
+              {outcome.duplicatesInFile === 1 ? "" : "s"} skipped — duplicate of an earlier row in this
+              same file, not a previous import. If these are genuinely two different flights (e.g. two
+              identical pattern-work hops flown back to back), add the missed one by hand — see the rows
+              below.
             </Text>
           ) : null}
           {outcome.rejectedCount ? (
@@ -275,6 +334,9 @@ export default function ImportWorkspace() {
               Import another file
             </Button>
           </Flex>
+          {duplicateDetail.length > 0 ? (
+            <DuplicateTable rows={duplicateDetail} truncated={outcome.duplicateDetailTruncated ?? false} />
+          ) : null}
           {stage.result.rejected.length > 0 ? (
             <RejectedTable rejected={stage.result.rejected} />
           ) : null}
@@ -410,7 +472,20 @@ export default function ImportWorkspace() {
                         </Text>
                       </Table.Cell>
                       <Table.Cell>
-                        {row.roleSource === "needs_selection" ? (
+                        {/* Every row's role is editable, not just
+                            "needs_selection" ones — an "inferred" row is a
+                            SOFTWARE GUESS, pre-selected here for
+                            convenience but never locked in. This matters
+                            regulatorily: pic_time > 0 with sic_time = 0
+                            infers PIC, but that shape also covers a rated
+                            SIC who is sole manipulator and logs PIC time
+                            per 61.51(e)(1)(i) while ACTING as SIC — the
+                            inference cannot tell those apart, so the pilot
+                            must be able to correct it. See the "(inferred)"
+                            marker below for what the software guessed,
+                            distinct from whatever the pilot ends up
+                            choosing. */}
+                        <Flex direction="column" gap="1">
                           <Select.Root
                             value={s.role ?? NONE}
                             onValueChange={(v) =>
@@ -427,11 +502,12 @@ export default function ImportWorkspace() {
                               ))}
                             </Select.Content>
                           </Select.Root>
-                        ) : (
-                          <Text size="1" color="gray">
-                            {row.values.role} {row.roleSource === "inferred" ? "(inferred)" : ""}
-                          </Text>
-                        )}
+                          {row.roleSource === "inferred" ? (
+                            <Text size="1" color="gray">
+                              Software guessed {row.values.role}
+                            </Text>
+                          ) : null}
+                        </Flex>
                       </Table.Cell>
                       <Table.Cell>
                         {row.needsSimulatorDeviceType ? (
@@ -624,6 +700,75 @@ export default function ImportWorkspace() {
         <Text size="1" color="gray">
           Nothing is written to your logbook until you review and confirm on the next screen.
         </Text>
+      </Flex>
+    </Card>
+  );
+}
+
+/** Turns a sourceRow (header -> cell) into a compact, readable line — the
+ * closest thing a valid (non-rejected) row has to RejectedTable's `raw`
+ * string, since a valid row was never stored as one raw line to begin
+ * with. */
+function summarizeSourceRow(sourceRow: Record<string, string>): string {
+  return Object.entries(sourceRow)
+    .filter(([, v]) => v !== "")
+    .map(([k, v]) => `${k}=${v}`)
+    .join(", ");
+}
+
+function DuplicateTable({ rows, truncated }: { rows: DuplicateRowDetail[]; truncated: boolean }) {
+  const shown = rows.slice(0, DUPLICATE_ROW_LIMIT);
+  return (
+    <Card>
+      <Flex direction="column" gap="2" p="3">
+        <Flex align="center" gap="2">
+          <Badge color="gray">{rows.length} duplicate{rows.length === 1 ? "" : "s"}</Badge>
+          <Heading as="h3" size="3">
+            Rows skipped as duplicates
+          </Heading>
+        </Flex>
+        <Text size="1" color="gray">
+          &ldquo;Already in your logbook&rdquo; rows match a flight from a previous import.
+          &ldquo;Duplicate in this file&rdquo; rows match an earlier row in THIS file — if that&rsquo;s a
+          real second flight (not a data-entry repeat), add it by hand.
+        </Text>
+        {truncated ? (
+          <Text size="1" color="amber">
+            {`Showing the first ${DUPLICATE_ROW_LIMIT} of ${rows.length} duplicate rows.`}
+          </Text>
+        ) : null}
+        <div style={{ overflowX: "auto" }}>
+          <Table.Root variant="ghost" size="1">
+            <Table.Header>
+              <Table.Row>
+                <Table.ColumnHeaderCell>Row</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>Why skipped</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>Original row</Table.ColumnHeaderCell>
+              </Table.Row>
+            </Table.Header>
+            <Table.Body>
+              {shown.map((r) => (
+                <Table.Row key={r.rowNumber}>
+                  <Table.Cell>
+                    <Text size="1" className="tnum">
+                      {r.rowNumber}
+                    </Text>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <Text size="1" color={r.kind === "in_file" ? "amber" : "gray"}>
+                      {r.kind === "in_file" ? "Duplicate in this file" : "Already in your logbook"}
+                    </Text>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <Code size="1" color="gray" variant="ghost">
+                      {summarizeSourceRow(r.sourceRow).slice(0, 300)}
+                    </Code>
+                  </Table.Cell>
+                </Table.Row>
+              ))}
+            </Table.Body>
+          </Table.Root>
+        </div>
       </Flex>
     </Card>
   );
