@@ -103,6 +103,13 @@ export default async function LogbookPage() {
           <Button asChild variant="outline">
             <NextLink href="/logbook/drafts">Trip drafts</NextLink>
           </Button>
+          {/* ForeFlight / LogTen Pro / generic CSV import — see
+              app/(app)/logbook/import. Same draft-confirm boundary as
+              Trip drafts: nothing lands here without the pilot reviewing
+              a preview and confirming. */}
+          <Button asChild variant="outline">
+            <NextLink href="/logbook/import">Import CSV</NextLink>
+          </Button>
           <Button asChild>
             <NextLink href="/logbook/new">Log an entry</NextLink>
           </Button>
