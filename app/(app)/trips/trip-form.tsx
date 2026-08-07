@@ -15,6 +15,7 @@ import {
   TextField,
 } from "@/components/ui";
 import { centsToInput } from "@/lib/format";
+import { TRIP_OPERATING_RULES } from "@/lib/operating-rule";
 import type { TripFormState } from "./actions";
 
 export type TripFormValues = {
@@ -26,6 +27,7 @@ export type TripFormValues = {
   ends_on?: string | null;
   aircraft_ident?: string | null;
   aircraft_type?: string | null;
+  operating_rule?: string | null;
   day_rate_cents?: number | null;
   day_count?: number | null;
   travel_day_count?: number | null;
@@ -42,6 +44,15 @@ export type ClientOption = {
   name: string;
   default_day_rate_cents: number | null;
   default_travel_day_rate_cents: number | null;
+  /** 20260807130000 — used only to SEED a new trip's operating_rule when
+   * a client is picked; see pickClient below. REQUIRED, not optional:
+   * both screens that render this form select the column (trips/new and
+   * trips/[id]), and a caller that forgot it would silently leave every
+   * new trip on the form's own 'part_91' default no matter which client
+   * was picked. For a Part 135 operator that is the wrong part on the
+   * one field gating the 135.301(a) grace, so this is deliberately a
+   * type error rather than a quiet wrong answer. */
+  operating_rule: string | null;
 };
 
 /**
@@ -159,6 +170,15 @@ export default function TripForm({
   }, [state]);
   const [tripKind, setTripKind] = useState(() => initial("trip_kind", "contract_pilot"));
   const [status, setStatus] = useState(() => initial("status", "scheduled"));
+  const [operatingRule, setOperatingRule] = useState(() =>
+    initial("operating_rule", "part_91")
+  );
+  // Whether the pilot has deliberately touched this select — once true,
+  // picking a client no longer overwrites it. Starts true on the edit
+  // screen (values.id set): an existing trip's operating_rule is a fact
+  // already recorded, not something a client re-pick should silently
+  // change out from under it.
+  const [operatingRuleTouched, setOperatingRuleTouched] = useState(() => Boolean(values.id));
   const [cancellationNoticeFrom, setCancellationNoticeFrom] = useState(() =>
     initial("cancellation_notice_from", "")
   );
@@ -168,12 +188,16 @@ export default function TripForm({
     if (submitted?.cancellation_notice_from !== undefined) {
       setCancellationNoticeFrom(String(submitted.cancellation_notice_from || ""));
     }
+    if (submitted?.operating_rule !== undefined) {
+      setOperatingRule(String(submitted.operating_rule || "part_91"));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitted]);
   const clientLabelId = useId();
   const tripKindId = useId();
   const statusId = useId();
   const noticeFromId = useId();
+  const operatingRuleId = useId();
 
   function pickClient(nextId: string) {
     setClientId(nextId);
@@ -191,6 +215,20 @@ export default function TripForm({
       picked.default_travel_day_rate_cents !== null
     ) {
       setTravelRate(centsToInput(picked.default_travel_day_rate_cents));
+    }
+    // 20260807130000: seeds operating_rule from the client's, same "fills
+    // in, then independently editable" treatment as the rates above —
+    // gated on `!operatingRuleTouched` rather than a blank check, because
+    // this field (unlike the rate text fields) never has a blank state to
+    // test for. Only seeds when the client has a SINGLE determinable part
+    // ('part_91' or 'part_135') — a client of 'both' or 'unspecified'
+    // gives no one answer to seed, so the trip keeps whatever it already
+    // had (the 'part_91' form default on a brand-new trip).
+    if (
+      !operatingRuleTouched &&
+      (picked.operating_rule === "part_91" || picked.operating_rule === "part_135")
+    ) {
+      setOperatingRule(picked.operating_rule);
     }
   }
 
@@ -338,6 +376,38 @@ export default function TripForm({
               disabled={locked}
               defaultValue={initial("ends_on")}
             />
+          </Flex>
+
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" id={`${operatingRuleId}-label`}>
+              Operating rule
+            </Text>
+            <Select.Root
+              key={`operating-rule-${genTick}`}
+              value={operatingRule}
+              onValueChange={(next) => {
+                setOperatingRuleTouched(true);
+                setOperatingRule(next);
+              }}
+              disabled={locked}
+            >
+              <Select.Trigger
+                id={operatingRuleId}
+                aria-labelledby={`${operatingRuleId}-label`}
+              />
+              <Select.Content>
+                {TRIP_OPERATING_RULES.map((option) => (
+                  <Select.Item key={option.value} value={option.value}>
+                    {option.label}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+            <input type="hidden" name="operating_rule" value={operatingRule} />
+            <Text size="1" color="gray">
+              Which part this specific trip is flown under — fills in from the client, always
+              overridable per trip.
+            </Text>
           </Flex>
 
           <Flex direction="column" gap="1">

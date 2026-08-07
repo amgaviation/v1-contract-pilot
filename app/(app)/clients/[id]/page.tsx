@@ -284,6 +284,7 @@ export default async function EditClientPage({
         <OperatorQualificationsPanel
           clientId={client.id}
           clientName={client.name}
+          clientOperatingRule={client.operating_rule}
           qualifications={qualifications}
           loadError={qualificationsLoadError}
         />

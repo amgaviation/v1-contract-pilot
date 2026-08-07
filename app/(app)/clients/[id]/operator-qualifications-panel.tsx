@@ -1,9 +1,11 @@
 import { Callout, Card, Flex, Heading, Separator, Text } from "@/components/ui";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import type { Database } from "@/lib/supabase/database.types";
+import { includesPart135, type ClientOperatingRule } from "@/lib/operating-rule";
 import {
   OPERATOR_QUALIFICATION_REQUIREMENTS,
   TYPE_SPECIFIC_REQUIREMENTS,
+  PART_135_ONLY_REQUIREMENTS,
   COMPETENCY_CHECK_REQUIREMENT,
   IPC_REQUIREMENT,
   LINE_CHECK_REQUIREMENT,
@@ -40,15 +42,31 @@ type QualificationRow = Database["pilot"]["Tables"]["operator_qualifications"]["
  * single-engine non-turbojet airplane, type otherwise; 297(e): "in each
  * type... in rotation" when assigned more than one), so those two are
  * the ones that render as repeatable-by-type sub-lists.
+ *
+ * PART 91 / PART 135 GATING (20260807130000, closing the regulatory-
+ * audit gap): the four Part 135-specific requirements
+ * (PART_135_ONLY_REQUIREMENTS — written test, competency check, IPC,
+ * line check) are only rendered when this client's operating_rule
+ * includes Part 135 (includesPart135() — 'part_135' or 'both';
+ * 'unspecified' reads as NOT Part 135, the safe direction — see
+ * lib/operating-rule.ts). This is a DISPLAY gate only: the seven
+ * requirements with no cited calendar-month reg (basic_indoc through
+ * company_manuals/other) are not Part 135-specific and stay visible
+ * regardless of operating_rule, exactly as before. The 135.301(a) grace
+ * itself is gated separately, at the database (20260807130000's change
+ * to pilot.compute_operator_qualification_expiry()) — hiding a row here
+ * does not, by itself, change what's stored for it.
  */
 export default function OperatorQualificationsPanel({
   clientId,
   clientName,
+  clientOperatingRule,
   qualifications,
   loadError,
 }: {
   clientId: string;
   clientName: string;
+  clientOperatingRule: ClientOperatingRule;
   qualifications: QualificationRow[];
   loadError?: boolean;
 }) {
@@ -59,11 +77,17 @@ export default function OperatorQualificationsPanel({
     byRequirement.set(q.requirement, list);
   }
 
-  const fixedRequirements = OPERATOR_QUALIFICATION_REQUIREMENTS.filter(
+  const showPart135 = includesPart135(clientOperatingRule);
+
+  const visibleRequirements = OPERATOR_QUALIFICATION_REQUIREMENTS.filter(
+    (r) => showPart135 || !PART_135_ONLY_REQUIREMENTS.has(r.value)
+  );
+
+  const fixedRequirements = visibleRequirements.filter(
     (r) => !TYPE_SPECIFIC_REQUIREMENTS.has(r.value)
   );
 
-  const typeSpecificSections = OPERATOR_QUALIFICATION_REQUIREMENTS.filter((r) =>
+  const typeSpecificSections = visibleRequirements.filter((r) =>
     TYPE_SPECIFIC_REQUIREMENTS.has(r.value)
   );
 
@@ -93,6 +117,18 @@ export default function OperatorQualificationsPanel({
           compliance; you and the operator remain responsible for that. Everything else here is a
           date you enter directly.
         </Text>
+        {showPart135 ? null : (
+          <Callout.Root color="gray" size="1">
+            <Callout.Text>
+              {clientName}&rsquo;s operating rule is set to{" "}
+              {clientOperatingRule === "unspecified" ? "not yet specified" : "Part 91 only"} on
+              the form above, so the Part 135 checks (135.293 written test and competency check,
+              135.297 IPC, 135.299 line check) are hidden — those regs bind Part 135 operations
+              only. Set the operating rule to Part 135 or Both above if this client ever gives you
+              Part 135 work.
+            </Callout.Text>
+          </Callout.Root>
+        )}
       </Flex>
 
       {loadError ? (
