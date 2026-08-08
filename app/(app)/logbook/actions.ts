@@ -35,6 +35,9 @@ const APPROACH_TYPES = [
   "visual",
   "other",
 ] as const;
+// 61.57(c)(1) condition, distinct from APPROACH_TYPES above — see
+// db.ts's ApproachCondition comment.
+const APPROACH_CONDITIONS = ["actual", "simulated", "neither"] as const;
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -67,6 +70,7 @@ const ENTRY_FIELDS = [
   "night_landings_touch_go",
   "approaches_count",
   "approach_type",
+  "approach_condition",
   "courses_intercepted_tracked",
   "holds",
   "view_limiting_pilot_name",
@@ -218,6 +222,25 @@ function parseEntryForm(formData: FormData): ParsedEntry {
     };
   }
 
+  // 61.57(c)(1) condition — see db.ts's ApproachCondition comment. Same
+  // "picked a value but logged zero approaches" guard as approach_type,
+  // plus the migration's own visual/condition CHECK mirrored here so a
+  // mismatch is a sentence, not a raw constraint name from friendlyDbError.
+  const approachCondition = optionalOneOf(formData, "approach_condition", APPROACH_CONDITIONS);
+  if (approachCondition && counts.approaches_count === 0) {
+    return {
+      values: null,
+      error: "You picked an approach condition but logged zero approaches — add the count.",
+    };
+  }
+  if (approachType === "visual" && (approachCondition === "actual" || approachCondition === "simulated")) {
+    return {
+      values: null,
+      error:
+        "A visual approach can't be flown in actual instrument conditions or under a view-limiting device — pick \"Neither\" or leave the condition blank.",
+    };
+  }
+
   // Checkbox: present in FormData only when checked.
   const coursesInterceptedTracked = formData.get("courses_intercepted_tracked") === "on";
 
@@ -250,6 +273,7 @@ function parseEntryForm(formData: FormData): ParsedEntry {
       night_landings_touch_go: counts.night_landings_touch_go ?? 0,
       approaches_count: counts.approaches_count ?? 0,
       approach_type: approachType,
+      approach_condition: approachCondition,
       courses_intercepted_tracked: coursesInterceptedTracked,
       holds: counts.holds ?? 0,
       view_limiting_pilot_name: optional(formData, "view_limiting_pilot_name"),

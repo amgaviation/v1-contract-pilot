@@ -28,6 +28,14 @@
  *                                                      trip_days.units/away,
  *                                                      trips.canceled_at/
  *                                                      cancellation_notice_from)
+ *   20260807140000_approach_conditions.sql            (documents.kind +
+ *                                                      'pic_proficiency_check';
+ *                                                      logbook_entries.approach_condition
+ *                                                      is NOT covered here —
+ *                                                      logbook_entries stays
+ *                                                      out of this file per
+ *                                                      app/(app)/logbook/db.ts's
+ *                                                      header comment)
  */
 export type Json =
   | string
@@ -574,6 +582,7 @@ export type Database = {
           kind:
             | "medical"
             | "flight_review"
+            | "pic_proficiency_check"
             | "passport"
             | "certificate"
             | "insurance"
@@ -594,6 +603,7 @@ export type Database = {
           kind:
             | "medical"
             | "flight_review"
+            | "pic_proficiency_check"
             | "passport"
             | "certificate"
             | "insurance"
@@ -614,6 +624,7 @@ export type Database = {
           kind?:
             | "medical"
             | "flight_review"
+            | "pic_proficiency_check"
             | "passport"
             | "certificate"
             | "insurance"

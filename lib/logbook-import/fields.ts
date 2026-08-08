@@ -51,6 +51,15 @@ export const FIELD_DEFS: FieldDef[] = [
     kind: "enum",
     options: ["ils", "rnav_lpv", "rnav_lnav", "vor", "loc", "ndb", "visual", "other"],
   },
+  {
+    key: "approach_condition",
+    label: "Approach condition — actual/simulated/neither (61.57(c)(1))",
+    kind: "enum",
+    // A different axis from approach_type (see db.ts's ApproachCondition
+    // comment) — 'neither' is a real, disqualifying, asserted value,
+    // distinct from an unmapped column (which stays null/unknown).
+    options: ["actual", "simulated", "neither"],
+  },
   { key: "holds", label: "Holds", kind: "count" },
   {
     key: "courses_intercepted_tracked",
