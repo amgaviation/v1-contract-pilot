@@ -10,7 +10,12 @@ import type { ImportFormat, ImportEntryInsert } from "@/lib/logbook-import/types
 import type { LogbookEntryFlightFields } from "../db";
 
 const ROLES: readonly LogbookRole[] = ["PIC", "SIC"];
-const SIM_DEVICES: readonly SimulatorDeviceType[] = ["ftd", "atd", "other"];
+// "ffs" included alongside the pilot-pickable ftd/atd/other: ForeFlight
+// rows can carry a derived simulator_device_type of "ffs" (see
+// lib/logbook-import/foreflight.ts's deriveSimulatorDeviceType logic,
+// inlined in parseForeflight) that the pilot never chose from a picker —
+// rejecting it here would abort an otherwise-valid ForeFlight confirm.
+const SIM_DEVICES: readonly SimulatorDeviceType[] = ["ffs", "ftd", "atd", "other"];
 const APPROACH_TYPES: readonly ApproachType[] = [
   "ils",
   "rnav_lpv",

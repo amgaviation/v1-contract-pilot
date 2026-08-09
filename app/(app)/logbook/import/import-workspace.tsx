@@ -182,14 +182,23 @@ export default function ImportWorkspace() {
     let needsRole = 0;
     let needsDevice = 0;
     let includedCount = 0;
+    // Rows that are checked, have a resolvable role, AND (if simulator
+    // time applies) a resolved device type — i.e. rows that will actually
+    // be SENT on the next confirm. Distinct from includedCount: a row can
+    // be "included" (checked) but still held back this time because its
+    // role is unresolved (see handleConfirm) — the button label below
+    // must say what will actually happen, not just what's checked.
+    let willImportCount = 0;
     for (const row of preview.result.valid) {
       const s = stateFor(row);
       if (!s.included) continue;
       includedCount += 1;
       if (!s.role) needsRole += 1;
       if (row.needsSimulatorDeviceType && !s.simulatorDeviceType) needsDevice += 1;
+      const deviceOk = !row.needsSimulatorDeviceType || !!s.simulatorDeviceType;
+      if (s.role && deviceOk) willImportCount += 1;
     }
-    return { needsRole, needsDevice, includedCount };
+    return { needsRole, needsDevice, includedCount, willImportCount };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preview, rowStates]);
 
@@ -224,6 +233,7 @@ export default function ImportWorkspace() {
 
     const rows: ConfirmImportRow[] = [];
     let excludedByPilot = 0;
+    let heldForRole = 0;
     for (const row of result.valid) {
       const s = stateFor(row);
       if (!s.included) {
@@ -235,12 +245,31 @@ export default function ImportWorkspace() {
         simulatorDeviceType: s.simulatorDeviceType,
       });
       if (!resolved) {
-        // Confirm is disabled while summary.needsRole/needsDevice > 0, so
-        // this is a defensive fallback, not the normal path.
-        setConfirmError("Some rows still need a role or simulator device type chosen.");
-        return;
+        // A source like ForeFlight has no role column at all — PIC, SIC,
+        // Solo, and DualReceived are independent TIME fields that can
+        // overlap on the same row, and pilot.logbook_entries.role is a
+        // not-null PIC/SIC enum that cannot represent "solo" or "dual
+        // received" at all. Forcing a role guess here would be writing a
+        // false PIC/SIC assertion into a legal record. So: a row whose
+        // role genuinely can't be determined from the file (and the pilot
+        // hasn't picked one in the table above) is held back from THIS
+        // confirm rather than blocking every other row in the batch —
+        // "let ForeFlight imports just import." The pilot resolves it
+        // later, either by picking a role in this table and re-including
+        // it, or by adding it by hand.
+        heldForRole += 1;
+        continue;
       }
       rows.push({ rowNumber: row.rowNumber, sourceRow: row.sourceRow, values: resolved });
+    }
+
+    if (rows.length === 0) {
+      setConfirmError(
+        heldForRole > 0
+          ? "Every included row needs a role (PIC/SIC) chosen before it can be imported — pick one per row, or use the default buttons above."
+          : "No rows are selected to import."
+      );
+      return;
     }
 
     // Estimate the POST body size BEFORE sending it — see
@@ -265,7 +294,14 @@ export default function ImportWorkspace() {
         totalRows: result.valid.length + result.rejected.length,
         rows,
         rejected: result.rejected,
-        excludedByPilot,
+        // Rows unchecked by the pilot and rows held back for an
+        // unresolved role are both "not sent this time" from the
+        // batch-summary's point of view — see confirmImport's
+        // ConfirmImportPayload comment. This client distinguishes them in
+        // its OWN messaging (the confirmError above, and the "held back"
+        // note the pilot sees before confirming) but reports one combined
+        // count to the server, same as before this change.
+        excludedByPilot: excludedByPilot + heldForRole,
       });
       if (outcome.error) {
         setConfirmError(outcome.error);
@@ -349,11 +385,18 @@ export default function ImportWorkspace() {
     const { result } = stage;
     const shown = result.valid.slice(0, PREVIEW_ROW_LIMIT);
     const truncated = result.valid.length > PREVIEW_ROW_LIMIT;
-    const canConfirm =
-      (summary?.includedCount ?? 0) > 0 &&
-      (summary?.needsRole ?? 0) === 0 &&
-      (summary?.needsDevice ?? 0) === 0 &&
-      !pending;
+    // needsRole does NOT gate confirm: a ForeFlight-shaped source has no
+    // role column, and forcing the pilot to resolve every ambiguous row
+    // before ANY row can be imported is exactly the "can't force you to
+    // group items if they're not already grouped" behavior this screen
+    // must not have. A row still needing a role is simply held back from
+    // this confirm (see handleConfirm) rather than blocking the rest.
+    // needsDevice DOES still gate: simulator_device_type is a much smaller
+    // set of rows in practice and, unlike role, the schema's CHECK ties it
+    // directly to simulator_time > 0 on the SAME row, so silently holding
+    // those back would surprise a pilot who didn't notice a handful of
+    // rows vanished from an otherwise-complete import.
+    const canConfirm = (summary?.willImportCount ?? 0) > 0 && (summary?.needsDevice ?? 0) === 0 && !pending;
 
     return (
       <Flex direction="column" gap="4">
@@ -375,8 +418,9 @@ export default function ImportWorkspace() {
                   <Flex align="center" gap="2" wrap="wrap">
                     <span>
                       {summary.needsRole} row{summary.needsRole === 1 ? "" : "s"} don&rsquo;t say
-                      PIC or SIC and can&rsquo;t be inferred — pick a role for each, or set one
-                      default for all of them:
+                      PIC or SIC and can&rsquo;t be inferred — these will be held back when you
+                      import (the rest of the batch is not blocked). Pick a role for each, or set
+                      one default for all of them, to include them this time:
                     </span>
                     <Button size="1" variant="outline" onClick={() => applyDefaultRoleToUndecided("PIC")}>
                       Set undecided to PIC
@@ -567,7 +611,7 @@ export default function ImportWorkspace() {
           <Button onClick={handleConfirm} disabled={!canConfirm}>
             {pending
               ? "Importing…"
-              : `Import ${summary?.includedCount ?? 0} entr${(summary?.includedCount ?? 0) === 1 ? "y" : "ies"}`}
+              : `Import ${summary?.willImportCount ?? 0} entr${(summary?.willImportCount ?? 0) === 1 ? "y" : "ies"}`}
           </Button>
           <Button variant="outline" onClick={resetToPick} disabled={pending}>
             Start over
