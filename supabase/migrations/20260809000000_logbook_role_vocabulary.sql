@@ -1,0 +1,101 @@
+-- Widen pilot.logbook_entries.role beyond PIC/SIC — a real ForeFlight
+-- export (221 flights, measured 2026-08-09) had 171 rows resolve to PIC, 1
+-- to SIC, and 50 that could not be represented at all: rows carrying solo
+-- time with no PIC/SIC signal, and rows carrying dual-received time with no
+-- PIC/SIC signal. Import was correctly holding those 50 back rather than
+-- writing a fabricated PIC — falsifying a legal record is worse than an
+-- incomplete import — but the product owner's instruction is that a
+-- ForeFlight export should just import, so the vocabulary has to grow to
+-- cover what pilots actually log.
+--
+-- REGULATORY BASIS — 14 CFR 61.51, fetched via the eCFR versioner API,
+-- https://www.ecfr.gov/api/versioner/v1/full/2026-08-05/title-14.xml?section=61.51,
+-- issue date 2026-08-05, retrieved 2026-08-09:
+--   (d) Solo flight time: "a pilot may log as solo flight time only that
+--       flight time when the pilot is the sole occupant of the aircraft"
+--       (with a narrow student-pilot-in-an-airship exception, irrelevant to
+--       this product's contract-pilot users).
+--   (e) Pilot in command time: loggable when sole manipulator of the
+--       controls of an aircraft the pilot is rated in, when sole occupant,
+--       when acting as PIC of an aircraft requiring more than one pilot, or
+--       (commercial/ATP only) performing PIC duties under supervision.
+--   (f) Second in command time: loggable per §61.55 in specific
+--       multi-pilot/§135.99(c)/government-designated circumstances.
+--   (h) Training time: "A person may log training time when that person
+--       receives training from an authorized instructor" — this is DUAL
+--       RECEIVED, the training-received side of the instructor/student
+--       pair. The schema's existing flight_instructor_time column is the
+--       OTHER side of that pair — 61.51(g)'s dual GIVEN, an instructor's own
+--       log of instruction provided — and already exists as a time column,
+--       not a role.
+--
+-- VALUE SET CHOSEN: add 'SOLO' and 'DUAL_RECEIVED'. Do NOT add
+-- 'DUAL_GIVEN'.
+--   - SOLO covers 61.51(d) — a real, distinct loggable category the old
+--     PIC/SIC pair had no room for, and the 33 solo-time rows in the real
+--     export are exactly this case.
+--   - DUAL_RECEIVED covers 61.51(h) training received — the 96 rows in the
+--     real export that carry dual_received_time. This is the case the
+--     product owner specifically named ("annual recurrent training at a
+--     Part 142 centre... not an edge case, constantly") and the real
+--     export shows it is the majority of the previously-stuck rows.
+--   - DUAL_GIVEN is deliberately NOT added. It appears in some ForeFlight
+--     exports (a CFI logging instruction given), but role is a per-LEG
+--     crew-position label and "instruction given" already has its own time
+--     column (flight_instructor_time) that coexists with a PIC/SIC/SOLO
+--     role exactly the way dual_received_time coexists with PIC below —
+--     an instructor giving dual is normally also PIC or SIC of that leg.
+--     Nothing in the measured 221-row export needs a DUAL_GIVEN ROLE value
+--     to resolve (every row that carries flight_instructor_time > 0 also
+--     carries a resolvable PIC/SIC/SOLO/DUAL_RECEIVED signal), so adding it
+--     would be exactly the invoice_lines.line_type mistake this task warns
+--     against — a value nothing can emit. If a future export surfaces a row
+--     that genuinely needs it, add it then, against real data.
+--
+-- ROLE IS A COARSE LABEL; THE TIMES ARE THE TRUTH. This migration does NOT
+-- make the new values mutually exclusive with the time columns, and adds NO
+-- CHECK forbidding a row from carrying both pic_time and dual_received_time
+-- together — that combination is real and legal: a rated pilot in
+-- recurrent training logs PIC as sole manipulator under 61.51(e)(1)(i)
+-- while simultaneously receiving instruction under 61.51(h) for the same
+-- flight. Such a row's role is 'PIC' (see precedence below); its
+-- dual_received_time still stands as its own fact for currency purposes
+-- (see docs/CURRENCY-SPEC.md update in this same change).
+--
+-- PRECEDENCE FOR DERIVING role FROM OVERLAPPING TIMES (implemented in
+-- lib/logbook-import/apply-mapping.ts's role-inference block, unchanged in
+-- this migration but recorded here since the migration is what makes the
+-- widened vocabulary meaningful):
+--   1. An explicit, recognized role column in the source file always wins.
+--   2. picTime > 0 and sicTime == 0  -> PIC.
+--      (Unaffected by dual_received_time being present alongside it — see
+--      the paragraph above. This already resolved 171/221 real rows before
+--      this migration and does not change.)
+--   3. sicTime > 0 and picTime == 0  -> SIC.
+--   4. picTime == 0 and sicTime == 0:
+--        a. soloTime > 0             -> SOLO.
+--        b. else dualReceivedTime > 0 -> DUAL_RECEIVED.
+--        c. else                     -> needs_selection (never guessed).
+--   5. picTime > 0 and sicTime > 0 (both asserted, no dual-received
+--      involvement) -> needs_selection, unchanged from before this
+--      migration — a genuinely ambiguous multi-crew-logging row still asks
+--      the pilot, same as it always has.
+-- Solo is checked before dual-received in step 4 because the two are
+-- mutually exclusive in practice (solo means sole occupant; dual received
+-- means an instructor is aboard) and solo is the more specific,
+-- unambiguous signal of the two whenever both happen to be mapped.
+--
+-- EXISTING ROWS ARE UNCHANGED: this migration only widens a CHECK
+-- constraint (backward compatible — every row that passed the old,
+-- narrower list still passes the new, wider one) and touches no data.
+-- Verified by re-running with a synthetic pre-existing PIC/SIC row present
+-- before and after (see PR/report for the psql transcript).
+
+alter table pilot.logbook_entries
+  drop constraint logbook_entries_role_check;
+alter table pilot.logbook_entries
+  add constraint logbook_entries_role_check
+    check (role in ('PIC', 'SIC', 'SOLO', 'DUAL_RECEIVED'));
+
+comment on column pilot.logbook_entries.role is
+  'Per-leg crew-position label (product-translation.md §1), not a pilot attribute. PIC/SIC per 61.51(e)/(f). SOLO per 61.51(d) — sole occupant. DUAL_RECEIVED per 61.51(h) — training received from an authorized instructor. Deliberately does NOT include a DUAL_GIVEN value (an instructor''s dual-given is flight_instructor_time, a time column, not a role) — see the migration header for why. Role is a coarse label; it does not constrain which time columns may be non-null on the same row — a PIC row legitimately also carries dual_received_time (recurrent training: sole-manipulator PIC per 61.51(e)(1)(i) while receiving instruction per 61.51(h) on the same flight). See supabase/migrations/20260809000000_logbook_role_vocabulary.sql for the full reasoning, the precedence rule for deriving one role from overlapping times, and the eCFR fetch this rests on.';

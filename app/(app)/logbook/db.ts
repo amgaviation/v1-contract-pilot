@@ -35,7 +35,12 @@ export function logbookFrom(supabase: PilotClient, table: LogbookTableName): any
 }
 
 export type LogbookSource = "trip" | "import" | "manual" | "foreflight_sync";
-export type LogbookRole = "PIC" | "SIC";
+// PIC/SIC per 61.51(e)/(f); SOLO per 61.51(d) — sole occupant; DUAL_RECEIVED
+// per 61.51(h) — training received from an authorized instructor.
+// Deliberately no DUAL_GIVEN value — an instructor's dual given is the
+// flight_instructor_time column, not a role. See
+// supabase/migrations/20260809000000_logbook_role_vocabulary.sql.
+export type LogbookRole = "PIC" | "SIC" | "SOLO" | "DUAL_RECEIVED";
 // 'ffs' = full flight simulator — the only device class 61.57(b)(2) accepts
 // for NIGHT takeoff/landing currency; 'ftd' and 'atd' cover 61.57(a) day
 // currency (ftd only) and 61.57(c) instrument currency (atd) respectively.

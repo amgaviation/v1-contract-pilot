@@ -142,8 +142,10 @@ lines.push(flight({
   simFlight: "2.0", ffs: "2.0",
 }));
 
-// Row 6: DualReceived-only — no PIC/SIC signal at all, role must come
-// back unresolved (needs_selection), never guessed.
+// Row 6: DualReceived-only — no PIC/SIC signal at all. Role is now
+// inferred as DUAL_RECEIVED (61.51(h)) — see
+// supabase/migrations/20260809000000_logbook_role_vocabulary.sql's
+// precedence rule. Still never a PIC/SIC guess.
 lines.push(flight({
   date: "2026-01-10", tail: "N100AM", total: "1.1", dualReceived: "1.1",
 }));
@@ -153,6 +155,26 @@ lines.push(flight({
 lines.push(flight({
   date: "2026-01-11", tail: "N200AM", sic: "2.0", total: "2.0",
   checkride: "TRUE", pilotComments: "Type ride",
+}));
+
+// Row 8: Solo-only — no PIC/SIC signal at all. Role is now inferred as
+// SOLO (61.51(d)) — see the same migration's precedence rule.
+lines.push(flight({
+  date: "2026-01-12", tail: "N100AM", total: "0.6", solo: "0.6",
+}));
+
+// Row 9: recurrent training shape — PIC AND dual_received_time on the
+// same row (61.51(e)(1)(i) sole-manipulator PIC while also receiving
+// instruction per 61.51(h)). Role stays PIC — the migration deliberately
+// does not exclude this combination.
+lines.push(flight({
+  date: "2026-01-13", tail: "N200AM", pic: "1.0", total: "1.0", dualReceived: "1.0",
+}));
+
+// Row 10: genuinely no signal at all (no PIC/SIC/solo/dual-received) —
+// must still come back unresolved (needs_selection), never guessed.
+lines.push(flight({
+  date: "2026-01-14", tail: "N100AM", total: "0.5",
 }));
 
 const FIXTURE = "﻿" + lines.join("\r\n") + "\r\n";
@@ -209,7 +231,7 @@ if (result.error) {
   process.exit(1);
 }
 
-check("all 7 synthetic flight rows parsed (0 rejected)", result.valid.length === 7 && result.rejected.length === 0);
+check("all 10 synthetic flight rows parsed (0 rejected)", result.valid.length === 10 && result.rejected.length === 0);
 
 const byDate = Object.fromEntries(result.valid.map((r) => [r.values.entry_date, r]));
 
@@ -233,13 +255,25 @@ check("row4 residual/touch-and-go landings surfaced", byDate["2026-01-08"]?.uncl
 check("row5 simulator_device_type derived as ffs", byDate["2026-01-09"]?.values.simulator_device_type === "ffs");
 check("row5 needsSimulatorDeviceType false (resolved, not left for the pilot)", byDate["2026-01-09"]?.needsSimulatorDeviceType === false);
 
-// Row 6 — DualReceived-only: role NOT guessed.
-check("row6 role left unresolved (needs_selection), never guessed PIC/SIC", byDate["2026-01-10"]?.values.role === null && byDate["2026-01-10"]?.roleSource === "needs_selection");
-check("row6 dual_received_time carried through as a time, not forced into a role", byDate["2026-01-10"]?.values.dual_received_time === 1.1);
+// Row 6 — DualReceived-only: inferred as DUAL_RECEIVED, never PIC/SIC.
+check("row6 role inferred DUAL_RECEIVED", byDate["2026-01-10"]?.values.role === "DUAL_RECEIVED" && byDate["2026-01-10"]?.roleSource === "inferred");
+check("row6 dual_received_time carried through as a time", byDate["2026-01-10"]?.values.dual_received_time === 1.1);
 
 // Row 7 — SIC role, FAA event flag surfaced via remarks (never a documents record — this parser has no documents-table access at all).
 check("row7 role explicit-inferred SIC", byDate["2026-01-11"]?.values.role === "SIC");
 check("row7 Checkride (FAA) flag surfaced in remarks", (byDate["2026-01-11"]?.values.remarks ?? "").includes("TRUE"));
+
+// Row 8 — Solo-only: inferred as SOLO.
+check("row8 role inferred SOLO", byDate["2026-01-12"]?.values.role === "SOLO" && byDate["2026-01-12"]?.roleSource === "inferred");
+check("row8 solo_time carried through as a time", byDate["2026-01-12"]?.values.solo_time === 0.6);
+
+// Row 9 — PIC with dual_received_time on the same row: role stays PIC,
+// the coexistence is not forbidden.
+check("row9 role stays PIC despite dual_received_time present", byDate["2026-01-13"]?.values.role === "PIC" && byDate["2026-01-13"]?.roleSource === "inferred");
+check("row9 dual_received_time preserved alongside pic_time", byDate["2026-01-13"]?.values.dual_received_time === 1.0 && byDate["2026-01-13"]?.values.pic_time === 1.0);
+
+// Row 10 — no signal at all: still unresolved, never guessed.
+check("row10 role left unresolved (needs_selection) with no signal at all", byDate["2026-01-14"]?.values.role === null && byDate["2026-01-14"]?.roleSource === "needs_selection");
 
 // Aircraft Table lookup feeds aircraft_type (Flights Table has no type column of its own).
 check("aircraft_type resolved via Aircraft Table lookup", byDate["2026-01-05"]?.values.aircraft_type === "C172");

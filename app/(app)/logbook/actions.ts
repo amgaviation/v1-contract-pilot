@@ -23,7 +23,10 @@ export type LogbookFormState = {
   values?: Record<string, string>;
 };
 
-const ROLES = ["PIC", "SIC"] as const;
+// PIC/SIC/SOLO/DUAL_RECEIVED — see db.ts's LogbookRole comment and
+// supabase/migrations/20260809000000_logbook_role_vocabulary.sql for why
+// this list doesn't include DUAL_GIVEN.
+const ROLES = ["PIC", "SIC", "SOLO", "DUAL_RECEIVED"] as const;
 const SIMULATOR_DEVICE_TYPES = ["ffs", "ftd", "atd", "other"] as const;
 const APPROACH_TYPES = [
   "ils",

@@ -54,6 +54,8 @@ const ESTIMATED_PAYLOAD_BYTE_LIMIT = 8_000_000;
 const ROLE_OPTIONS: { value: LogbookRole; label: string }[] = [
   { value: "PIC", label: "PIC" },
   { value: "SIC", label: "SIC" },
+  { value: "SOLO", label: "Solo" },
+  { value: "DUAL_RECEIVED", label: "Dual received" },
 ];
 const DEVICE_OPTIONS: { value: SimulatorDeviceType; label: string }[] = [
   { value: "ftd", label: "FTD" },
@@ -247,10 +249,14 @@ export default function ImportWorkspace() {
       if (!resolved) {
         // A source like ForeFlight has no role column at all — PIC, SIC,
         // Solo, and DualReceived are independent TIME fields that can
-        // overlap on the same row, and pilot.logbook_entries.role is a
-        // not-null PIC/SIC enum that cannot represent "solo" or "dual
-        // received" at all. Forcing a role guess here would be writing a
-        // false PIC/SIC assertion into a legal record. So: a row whose
+        // overlap on the same row (see the role-vocabulary migration's
+        // precedence rule for how apply-mapping.ts resolves the common
+        // cases automatically). pilot.logbook_entries.role now covers all
+        // four (PIC/SIC/SOLO/DUAL_RECEIVED), so this branch is reached
+        // only when a row's times give NO usable signal at all (e.g. every
+        // relevant time column is zero/blank) or a mapped role column had
+        // an unrecognized value — forcing a guess here would still be
+        // writing a false assertion into a legal record. So: a row whose
         // role genuinely can't be determined from the file (and the pilot
         // hasn't picked one in the table above) is held back from THIS
         // confirm rather than blocking every other row in the batch —
@@ -417,16 +423,27 @@ export default function ImportWorkspace() {
                 <Callout.Text>
                   <Flex align="center" gap="2" wrap="wrap">
                     <span>
-                      {summary.needsRole} row{summary.needsRole === 1 ? "" : "s"} don&rsquo;t say
-                      PIC or SIC and can&rsquo;t be inferred — these will be held back when you
-                      import (the rest of the batch is not blocked). Pick a role for each, or set
-                      one default for all of them, to include them this time:
+                      {summary.needsRole} row{summary.needsRole === 1 ? "" : "s"} don&rsquo;t give
+                      an unambiguous PIC/SIC/Solo/Dual-received signal and can&rsquo;t be inferred
+                      — these will be held back when you import (the rest of the batch is not
+                      blocked). Pick a role for each, or set one default for all of them, to
+                      include them this time:
                     </span>
                     <Button size="1" variant="outline" onClick={() => applyDefaultRoleToUndecided("PIC")}>
                       Set undecided to PIC
                     </Button>
                     <Button size="1" variant="outline" onClick={() => applyDefaultRoleToUndecided("SIC")}>
                       Set undecided to SIC
+                    </Button>
+                    <Button size="1" variant="outline" onClick={() => applyDefaultRoleToUndecided("SOLO")}>
+                      Set undecided to Solo
+                    </Button>
+                    <Button
+                      size="1"
+                      variant="outline"
+                      onClick={() => applyDefaultRoleToUndecided("DUAL_RECEIVED")}
+                    >
+                      Set undecided to Dual received
                     </Button>
                   </Flex>
                 </Callout.Text>
