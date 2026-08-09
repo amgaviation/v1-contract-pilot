@@ -1,9 +1,10 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { Button, Card, Flex, Select, Text, TextField } from "@/components/ui";
+import { Button, Card, Flex, Select, Separator, Text, TextField } from "@/components/ui";
 import { formatCents, formatDate } from "@/lib/format";
 import { recordPayment, type InvoiceFormState } from "../actions";
+import { createInvoicePaymentLink, type CreateLinkState } from "../payment-link-actions";
 
 export type PaymentRow = {
   id: string;
@@ -12,6 +13,69 @@ export type PaymentRow = {
   method: "ach" | "check" | "wire" | "card" | "cash" | "other" | null;
   notes: string | null;
 };
+
+const initialLinkState: CreateLinkState = { error: null };
+
+/**
+ * "Pay online" — Stripe Connect (Standard), payment-link-only (docs/
+ * PLAN.md decision #8). See
+ * supabase/migrations/20260809040000_connect_payments.sql's header for
+ * the full (a)-vs-(b) reasoning; the short version: auto-recording a
+ * client's payment would need a Connect webhook writing tenant financial
+ * data through a request with no session, which is exactly the kind of
+ * second privileged entry point lib/supabase/service-role.ts's own header
+ * says must not exist beyond the platform billing webhook. So this button
+ * only ever CREATES a Stripe-hosted Payment Link (a direct charge on the
+ * pilot's own connected account, no application fee, no funds routed
+ * through this platform) — when the client pays, the pilot sees it land
+ * in their own Stripe Dashboard and records it below exactly as they
+ * would a cheque or a wire. That manual last step is a documented,
+ * deliberate gap, not an oversight.
+ */
+function PayOnlinePanel({
+  invoiceId,
+  connected,
+  existingLinkUrl,
+}: {
+  invoiceId: string;
+  connected: boolean;
+  existingLinkUrl: string | null;
+}) {
+  const [state, formAction, pending] = useActionState(createInvoicePaymentLink, initialLinkState);
+  const url = state.url ?? existingLinkUrl;
+
+  if (!connected) {
+    return (
+      <Text size="1" color="gray">
+        Connect Stripe from Settings to accept card payments online.
+      </Text>
+    );
+  }
+
+  return (
+    <Flex direction="column" gap="2" align="start">
+      {url ? (
+        <Flex direction="column" gap="1" width="100%">
+          <Text size="1" color="gray">
+            Send this link to your client to pay by card:
+          </Text>
+          <TextField.Root readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
+        </Flex>
+      ) : null}
+      <form action={formAction}>
+        <input type="hidden" name="invoice_id" value={invoiceId} />
+        <Button type="submit" variant="outline" disabled={pending}>
+          {pending ? "Creating…" : url ? "Generate a new link" : "Generate payment link"}
+        </Button>
+      </form>
+      {state.error ? (
+        <Text size="1" color="red">
+          {state.error}
+        </Text>
+      ) : null}
+    </Flex>
+  );
+}
 
 // Radix Select forbids an item with value="" — "Unspecified" instead uses
 // this sentinel, translated back to "" (the value the `method` FormData
@@ -56,10 +120,14 @@ export default function PaymentPanel({
   invoiceId,
   status,
   payments,
+  connectAccountConnected,
+  existingPaymentLinkUrl,
 }: {
   invoiceId: string;
   status: "draft" | "sent" | "partial" | "paid" | "void";
   payments: PaymentRow[];
+  connectAccountConnected: boolean;
+  existingPaymentLinkUrl: string | null;
 }) {
   const [state, formAction, pending] = useActionState(recordPayment, initialState);
   // H5: a rejected payment used to blank amount/notes/date entirely — it
@@ -105,6 +173,21 @@ export default function PaymentPanel({
           ))}
         </Flex>
       )}
+
+      {canRecordPayment ? (
+        <>
+          <Separator size="4" my="3" />
+          <Text as="div" size="2" weight="medium" mb="2">
+            Pay online
+          </Text>
+          <PayOnlinePanel
+            invoiceId={invoiceId}
+            connected={connectAccountConnected}
+            existingLinkUrl={existingPaymentLinkUrl}
+          />
+          <Separator size="4" my="3" />
+        </>
+      ) : null}
 
       {canRecordPayment ? (
         <form

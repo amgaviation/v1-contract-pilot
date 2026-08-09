@@ -8,6 +8,7 @@ import SettingsForm, { type SettingsValues } from "./settings-form";
 import LogoPanel from "./logo-panel";
 import SettingsTabs from "./settings-tabs";
 import DayTypesPanel from "./day-types-panel";
+import ConnectPanel from "./connect-panel";
 
 type DayTypeRow = Database["pilot"]["Tables"]["day_types"]["Row"];
 
@@ -19,9 +20,9 @@ export default async function SettingsPage({
   // F10: makes the day-types tab deep-linkable (/settings?tab=day-types)
   // — read server-side and handed to the client tab switch as its initial
   // state, rather than making the client fetch it itself.
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; warning?: string; connected?: string }>;
 }) {
-  const { tab } = await searchParams;
+  const { tab, warning, connected } = await searchParams;
 
   // requireAccount's row has everything this page needs for its own
   // server-rendered text (logo_url, plan, status below), but it is also
@@ -92,6 +93,12 @@ export default async function SettingsPage({
                   </Text>
                 </Flex>
               </Card>
+              <ConnectPanel
+                canEdit={canEdit}
+                connected={Boolean(account.connect_account_id)}
+                warning={warning}
+                justConnected={connected === "1"}
+              />
             </Flex>
           </Grid>
         }

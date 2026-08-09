@@ -4,6 +4,7 @@ import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
+import { isLiveMode } from "@/lib/stripe/server";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import PageShell from "../../page-shell";
@@ -25,6 +26,8 @@ type InvoiceRow = {
   tax_rate_bps: number;
   delivery_method: "platform_email" | "manual_download" | null;
   notes: string | null;
+  stripe_payment_link_url: string | null;
+  stripe_payment_link_livemode: boolean | null;
 };
 
 type TotalsRow = {
@@ -56,7 +59,7 @@ export default async function InvoicePage({
 }) {
   const { id } = await params;
   const { warning } = await searchParams;
-  await requireAccount(`/invoices/${id}`);
+  const { account } = await requireAccount(`/invoices/${id}`);
 
   const supabase = await createClient();
 
@@ -220,7 +223,22 @@ export default async function InvoicePage({
 
         <Flex direction="column" gap="4" style={{ gridColumn: "span 5" }}>
           <StatusActions invoice={invoice} hasLines={lines.length > 0} />
-          <PaymentPanel invoiceId={invoice.id} status={invoice.status} payments={payments} />
+          <PaymentPanel
+            invoiceId={invoice.id}
+            status={invoice.status}
+            payments={payments}
+            connectAccountConnected={Boolean(account.connect_account_id)}
+            // A payment link created in the other mode (e.g. a test link
+            // left over from before the deployment went live-keyed) is
+            // never surfaced as payable — same test/live separation the
+            // platform webhook enforces via isLiveMode(), applied here to
+            // display rather than to a write.
+            existingPaymentLinkUrl={
+              invoice.stripe_payment_link_url && invoice.stripe_payment_link_livemode === isLiveMode()
+                ? invoice.stripe_payment_link_url
+                : null
+            }
+          />
         </Flex>
       </Grid>
     </PageShell>

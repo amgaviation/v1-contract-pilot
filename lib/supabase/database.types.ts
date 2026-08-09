@@ -885,6 +885,13 @@ export type Database = {
           tax_rate_bps: number;
           delivery_method: "platform_email" | "manual_download" | null;
           notes: string | null;
+          // 20260809040000_connect_payments.sql. Ordinary tenant business
+          // data, not a billing/entitlement column — see that migration's
+          // header for why these three are authenticated-writable while
+          // accounts.connect_account_id is not.
+          stripe_payment_link_id: string | null;
+          stripe_payment_link_url: string | null;
+          stripe_payment_link_livemode: boolean | null;
           created_at: string;
           updated_at: string;
         };
@@ -905,6 +912,9 @@ export type Database = {
           tax_rate_bps?: number;
           delivery_method?: "platform_email" | "manual_download" | null;
           notes?: string | null;
+          stripe_payment_link_id?: string | null;
+          stripe_payment_link_url?: string | null;
+          stripe_payment_link_livemode?: boolean | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -928,6 +938,9 @@ export type Database = {
           tax_rate_bps?: number;
           delivery_method?: "platform_email" | "manual_download" | null;
           notes?: string | null;
+          stripe_payment_link_id?: string | null;
+          stripe_payment_link_url?: string | null;
+          stripe_payment_link_livemode?: boolean | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1289,6 +1302,19 @@ export type Database = {
       trip_committed_invoice: {
         Args: { p_account_id: string; p_trip_id: string };
         Returns: string | null;
+      };
+      // Added by 20260809040000_connect_payments.sql. Both are SECURITY
+      // DEFINER, owner-gated, and derive the caller from auth.uid()
+      // internally rather than trusting anything about "who's calling" —
+      // see that migration's header for why these exist instead of
+      // widening lib/supabase/service-role.ts.
+      connect_account_link: {
+        Args: { p_account_id: string; p_connect_account_id: string };
+        Returns: undefined;
+      };
+      connect_account_unlink: {
+        Args: { p_account_id: string };
+        Returns: undefined;
       };
     };
     Enums: Record<string, never>;
