@@ -1,0 +1,353 @@
+import { notFound } from "next/navigation";
+import { Badge, Box, Button, Card, Container, Flex, Separator, Table, Text } from "@/components/ui";
+import { Logo } from "@/components/ui/logo";
+import { createClient } from "@/lib/supabase/server";
+import { isLiveMode } from "@/lib/stripe/server";
+import { formatCents, formatDate } from "@/lib/format";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * The CLIENT-FACING invoice — this product's first unauthenticated route
+ * that exposes tenant data. Read supabase/migrations/20260809060000_
+ * invoice_public_share.sql in full before touching this file; that
+ * migration's `pilot.invoice_public` function is the entire access
+ * boundary, and this page is a thin renderer of exactly what it returns.
+ *
+ * NO SESSION ASSUMED ANYWHERE IN THIS FILE: no `requireAccount`, no
+ * `lib/supabase/account.ts` import, no read of `auth.getUser()`. The
+ * Supabase client below is created the same way the authenticated screens
+ * create theirs (`lib/supabase/server.ts`'s `createClient()` — it merely
+ * binds to whatever cookies exist, session or none), but the ONLY call
+ * made through it is `rpc("invoice_public", ...)`, which runs as `anon`
+ * for a visitor with no session (the ordinary case here) and as
+ * `authenticated` for a signed-in pilot previewing their own link — both
+ * paths go through the identical SECURITY DEFINER function, so a pilot
+ * previewing sees byte-for-byte what their client will.
+ *
+ * FIELD-BY-FIELD JUSTIFICATION for every field `pilot.invoice_public`
+ * returns and this page renders — the promised companion to that
+ * migration's own header comment:
+ *
+ *   invoice.invoice_number  The document's own identifier. Already on
+ *                           every PDF this pilot has ever sent.
+ *   invoice.status          So a paid/partially-paid invoice says so
+ *                           instead of asking to be paid again — the
+ *                           "degrade honestly" requirement.
+ *   invoice.issued_on/due_on  Ordinary invoice header facts.
+ *   invoice.notes            Pilot-authored, ALREADY client-facing —
+ *                           lib/invoice-pdf.tsx renders this exact field
+ *                           in the PDF this pilot already sends by hand;
+ *                           this is not a new disclosure, only a second
+ *                           surface for one already-shared fact.
+ *   account.legal_name/address*  The pilot's own business identity — the
+ *                           client already knows who is billing them
+ *                           (it's who they hired). NOT included: any
+ *                           other `pilot.accounts` column — no plan,
+ *                           status, seat_count, connect_account_id,
+ *                           stripe_customer_id, trial_ends_at, or logo
+ *                           (the PDF route's logo fetch needs a private-
+ *                           bucket download this function deliberately
+ *                           does not attempt — see that route's own
+ *                           comment on why a logo failure must not break
+ *                           rendering; the public page ships text-only
+ *                           rather than add a second signed-URL surface
+ *                           for this first version).
+ *   client.name/contact_name/address*  The BILLED client's OWN name and
+ *                           address — this is the invoice's "Bill To"
+ *                           block, the client's own data being shown back
+ *                           to them, the same fields (and ONLY these
+ *                           fields — no contact_email/contact_phone, which
+ *                           the PDF route doesn't select either) the PDF
+ *                           already puts in their hands. NOT included:
+ *                           anything that would let this client discover
+ *                           this pilot's OTHER clients — there is no way
+ *                           to reach any client row but this invoice's own
+ *                           billed client, ever, from this function.
+ *   lines[].description/quantity/unit_amount_cents/amount_cents  What was
+ *                           billed, at the granularity the client already
+ *                           agreed to pay. NOT included: line_type,
+ *                           trip_id, expense_id, expense_treatment,
+ *                           sort_order, id, created_at — none of that is
+ *                           meaningful to the person paying the bill, and
+ *                           expense_id/trip_id are internal foreign keys
+ *                           into tables (pilot.expenses, pilot.trips) this
+ *                           client must never be able to correlate against.
+ *   totals.*                subtotal/tax/total/amount_paid/balance_due/
+ *                           last_paid_on — pilot.invoice_totals is this
+ *                           schema's single source for these figures (see
+ *                           that view's own comment); reading it here
+ *                           rather than re-deriving keeps the client-
+ *                           facing total byte-for-byte identical to what
+ *                           the pilot sees on their own screen.
+ *   payment.url/livemode     The Stripe Payment Link, if one exists — the
+ *                           whole point of this feature (see PLAN.md
+ *                           decision #8). `url` is not a secret: it is the
+ *                           exact string Stripe already hands anyone who
+ *                           has it. `livemode` is compared against
+ *                           isLiveMode() below, mirroring PaymentPanel's
+ *                           own test/live guard, so a test-mode link is
+ *                           never rendered as payable to a real client.
+ *                           stripe_payment_link_id is deliberately NOT
+ *                           returned — the client never needs Stripe's
+ *                           internal object id, only the URL.
+ *
+ * Nothing about the ACCOUNT beyond what's on this one document, nothing
+ * about any OTHER invoice, nothing about any OTHER client, no cost/margin
+ * data (expenses.amount_cents as the PILOT paid it never appears here —
+ * only the rebilled invoice_lines.amount_cents the CLIENT owes), no
+ * expenses.treatment, no internal notes table, no logbook, no expirations.
+ */
+
+type PublicInvoice = {
+  invoice: {
+    invoice_number: string | null;
+    status: "sent" | "partial" | "paid";
+    issued_on: string | null;
+    due_on: string | null;
+    notes: string | null;
+  };
+  account: {
+    legal_name: string;
+    address_line1: string | null;
+    address_line2: string | null;
+    city: string | null;
+    state: string | null;
+    postal_code: string | null;
+    country: string | null;
+  };
+  client: {
+    name: string;
+    contact_name: string | null;
+    address_line1: string | null;
+    address_line2: string | null;
+    city: string | null;
+    state: string | null;
+    postal_code: string | null;
+    country: string | null;
+  };
+  lines: {
+    description: string;
+    quantity: number;
+    unit_amount_cents: number;
+    amount_cents: number;
+  }[];
+  totals: {
+    subtotal_cents: number;
+    tax_cents: number;
+    total_cents: number;
+    amount_paid_cents: number;
+    balance_due_cents: number;
+    last_paid_on: string | null;
+  };
+  payment: {
+    url: string | null;
+    livemode: boolean | null;
+  };
+};
+
+function addressLines(entity: {
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  country: string | null;
+}): string[] {
+  const lines: string[] = [];
+  if (entity.address_line1) lines.push(entity.address_line1);
+  if (entity.address_line2) lines.push(entity.address_line2);
+  const cityLine = [entity.city, entity.state, entity.postal_code].filter(Boolean).join(", ");
+  if (cityLine) lines.push(cityLine);
+  if (entity.country) lines.push(entity.country);
+  return lines;
+}
+
+const STATUS_LABEL: Record<string, { color: "blue" | "amber" | "green"; label: string }> = {
+  sent: { color: "blue", label: "Awaiting payment" },
+  partial: { color: "amber", label: "Partially paid" },
+  paid: { color: "green", label: "Paid" },
+};
+
+export default async function PublicInvoicePage({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}) {
+  const { token } = await params;
+
+  const supabase = await createClient();
+
+  // A malformed/miscopied URL segment (wrong length, wrong charset) is
+  // rejected here before ever reaching the database — cheap, and it means
+  // the RPC only ever sees something shaped like a real token. This is
+  // NOT the security boundary (pilot.invoice_public's own token match is),
+  // only an early exit for the overwhelmingly common "link got truncated
+  // in an email client" case.
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) {
+    notFound();
+  }
+
+  const { data, error } = await supabase.rpc("invoice_public", { p_token: token } as never);
+
+  // A genuine query failure (network, database down) is a real error, not
+  // a verdict on the token — rendered as a normal 500 by Next's error
+  // boundary, distinct from the notFound() branch below, and the token
+  // itself never appears in what gets thrown or logged.
+  if (error) {
+    throw new Error("Couldn't load this invoice right now.");
+  }
+
+  // null covers an unknown token, a revoked one, and an invoice that
+  // reverted out of a shareable status — all three, identically, by
+  // design (see the migration's own comment on pilot.invoice_public).
+  if (!data) {
+    notFound();
+  }
+
+  const invoice = data as unknown as PublicInvoice;
+  const status = STATUS_LABEL[invoice.invoice.status] ?? STATUS_LABEL.sent!;
+  const payable =
+    invoice.totals.balance_due_cents > 0 &&
+    invoice.payment.url !== null &&
+    invoice.payment.livemode === isLiveMode();
+
+  return (
+    <Box style={{ minHeight: "100vh", background: "var(--gray-2)" }}>
+      <Container size="3" p={{ initial: "4", sm: "6" }}>
+        <Flex align="center" justify="between" mb="5">
+          <Logo />
+          <Badge color={status.color} size="2">
+            {status.label}
+          </Badge>
+        </Flex>
+
+        <Card size="4">
+          <Flex justify="between" wrap="wrap" gap="4" mb="4">
+            <Box>
+              <Text as="div" size="5" weight="bold">
+                {invoice.account.legal_name}
+              </Text>
+              {addressLines(invoice.account).map((line, i) => (
+                <Text as="div" key={i} color="gray" size="2">
+                  {line}
+                </Text>
+              ))}
+            </Box>
+            <Box>
+              <Text as="div" size="2" color="gray">
+                Invoice
+              </Text>
+              <Text as="div" size="5" weight="bold">
+                {invoice.invoice.invoice_number ?? "—"}
+              </Text>
+              <Text as="div" size="2" color="gray">
+                {invoice.invoice.issued_on ? `Issued ${formatDate(invoice.invoice.issued_on)}` : null}
+              </Text>
+              <Text as="div" size="2" color="gray">
+                {invoice.invoice.due_on ? `Due ${formatDate(invoice.invoice.due_on)}` : null}
+              </Text>
+            </Box>
+          </Flex>
+
+          <Separator size="4" mb="4" />
+
+          <Box mb="4">
+            <Text as="div" size="1" color="gray" mb="1">
+              Bill to
+            </Text>
+            <Text as="div" weight="medium">
+              {invoice.client.name}
+            </Text>
+            {invoice.client.contact_name ? (
+              <Text as="div" color="gray" size="2">
+                Attn: {invoice.client.contact_name}
+              </Text>
+            ) : null}
+            {addressLines(invoice.client).map((line, i) => (
+              <Text as="div" key={i} color="gray" size="2">
+                {line}
+              </Text>
+            ))}
+          </Box>
+
+          <Table.Root variant="surface" mb="4">
+            <Table.Header>
+              <Table.Row>
+                <Table.ColumnHeaderCell>Description</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell align="right">Qty</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell align="right">Rate</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell align="right">Amount</Table.ColumnHeaderCell>
+              </Table.Row>
+            </Table.Header>
+            <Table.Body>
+              {invoice.lines.map((line, i) => (
+                <Table.Row key={i}>
+                  <Table.Cell>{line.description}</Table.Cell>
+                  <Table.Cell align="right" className="tnum">
+                    {line.quantity}
+                  </Table.Cell>
+                  <Table.Cell align="right" className="tnum">
+                    {formatCents(line.unit_amount_cents)}
+                  </Table.Cell>
+                  <Table.Cell align="right" className="tnum">
+                    {formatCents(line.amount_cents)}
+                  </Table.Cell>
+                </Table.Row>
+              ))}
+            </Table.Body>
+          </Table.Root>
+
+          <Flex direction="column" gap="1" align="end" mb="4">
+            <TotalsLine label="Subtotal" value={invoice.totals.subtotal_cents} />
+            <TotalsLine label="Tax" value={invoice.totals.tax_cents} />
+            <TotalsLine label="Total" value={invoice.totals.total_cents} emphasize />
+            <TotalsLine label="Paid" value={invoice.totals.amount_paid_cents} />
+            <TotalsLine label="Balance due" value={invoice.totals.balance_due_cents} emphasize />
+          </Flex>
+
+          {invoice.invoice.notes ? (
+            <>
+              <Separator size="4" mb="3" />
+              <Text as="div" size="2" color="gray">
+                {invoice.invoice.notes}
+              </Text>
+            </>
+          ) : null}
+
+          {payable ? (
+            <>
+              <Separator size="4" my="4" />
+              <Button asChild size="3" style={{ width: "100%" }}>
+                <a href={invoice.payment.url!} target="_blank" rel="noopener noreferrer">
+                  Pay {formatCents(invoice.totals.balance_due_cents)} online
+                </a>
+              </Button>
+            </>
+          ) : null}
+        </Card>
+      </Container>
+    </Box>
+  );
+}
+
+function TotalsLine({
+  label,
+  value,
+  emphasize = false,
+}: {
+  label: string;
+  value: number;
+  emphasize?: boolean;
+}) {
+  return (
+    <Flex gap="4" minWidth="220px" justify="between">
+      <Text color="gray" weight={emphasize ? "bold" : "regular"}>
+        {label}
+      </Text>
+      <Text weight={emphasize ? "bold" : "regular"} className="tnum">
+        {formatCents(value)}
+      </Text>
+    </Flex>
+  );
+}
