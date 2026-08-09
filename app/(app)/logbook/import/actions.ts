@@ -9,8 +9,20 @@ import { rowFingerprint } from "@/lib/logbook-import/fingerprint";
 import type { ImportFormat, ImportEntryInsert } from "@/lib/logbook-import/types";
 import type { LogbookEntryFlightFields } from "../db";
 
-const ROLES: readonly LogbookRole[] = ["PIC", "SIC"];
-const SIM_DEVICES: readonly SimulatorDeviceType[] = ["ftd", "atd", "other"];
+// PIC/SIC/SOLO/DUAL_RECEIVED — see db.ts's LogbookRole comment and
+// supabase/migrations/20260809000000_logbook_role_vocabulary.sql for why
+// this list doesn't include DUAL_GIVEN. This is the server-side boundary
+// (validateRow, below) — it must independently allow whatever the client's
+// resolveRow/apply-mapping.ts can now resolve, or a crafted request would
+// be the only thing rejecting a legitimately-resolved SOLO/DUAL_RECEIVED
+// row.
+const ROLES: readonly LogbookRole[] = ["PIC", "SIC", "SOLO", "DUAL_RECEIVED"];
+// "ffs" included alongside the pilot-pickable ftd/atd/other: ForeFlight
+// rows can carry a derived simulator_device_type of "ffs" (see
+// lib/logbook-import/foreflight.ts's deriveSimulatorDeviceType logic,
+// inlined in parseForeflight) that the pilot never chose from a picker —
+// rejecting it here would abort an otherwise-valid ForeFlight confirm.
+const SIM_DEVICES: readonly SimulatorDeviceType[] = ["ffs", "ftd", "atd", "other"];
 const APPROACH_TYPES: readonly ApproachType[] = [
   "ils",
   "rnav_lpv",

@@ -43,6 +43,8 @@ export type LogbookEntryFormValues = {
 const ROLES = [
   { value: "PIC", label: "PIC" },
   { value: "SIC", label: "SIC" },
+  { value: "SOLO", label: "Solo" },
+  { value: "DUAL_RECEIVED", label: "Dual received" },
 ];
 
 // Radix Select.Item forbids an empty-string value, so the "no selection"
