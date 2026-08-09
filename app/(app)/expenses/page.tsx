@@ -70,7 +70,7 @@ export default async function ExpensesPage() {
   await requireAccount("/expenses");
 
   const supabase = await createClient();
-  const [{ data: expenseData, error }, { data: tripData }] = await Promise.all([
+  const [{ data: expenseData, error }, { data: tripData }, unreviewedCount] = await Promise.all([
     supabase
       .from("expenses")
       .select(
@@ -82,6 +82,13 @@ export default async function ExpensesPage() {
       .from("trips")
       .select("id, starts_on, ends_on, aircraft_ident")
       .order("starts_on", { ascending: false }),
+    // count-only ("head: true" — no rows fetched) — this is a badge, not
+    // a list, so nothing from bank_transactions itself needs to reach
+    // this page's payload.
+    supabase
+      .from("bank_transactions")
+      .select("id", { count: "exact", head: true })
+      .eq("review_state", "unreviewed"),
   ]);
 
   const expenses = (expenseData ?? []) as ExpenseRow[];
@@ -107,6 +114,8 @@ export default async function ExpensesPage() {
     .filter((e) => e.treatment === "deduct")
     .reduce((sum, e) => sum + e.amount_cents, 0);
 
+  const unreviewedTransactions = unreviewedCount.count ?? 0;
+
   const queueRows: QueueRow[] = unassigned.map((expense) => ({
     id: expense.id,
     label: `${CATEGORY_LABEL[expense.category] ?? "Other"}${
@@ -131,9 +140,14 @@ export default async function ExpensesPage() {
             }`
       }
       action={
-        <Button asChild>
-          <NextLink href="/expenses/new">Add expense</NextLink>
-        </Button>
+        <Flex gap="3">
+          <Button asChild variant="soft">
+            <NextLink href="/expenses/import">Import statement</NextLink>
+          </Button>
+          <Button asChild>
+            <NextLink href="/expenses/new">Add expense</NextLink>
+          </Button>
+        </Flex>
       }
     >
       {error ? (
@@ -157,6 +171,28 @@ export default async function ExpensesPage() {
                   {`Totals above may be partial — there are more than ${EXPENSES_LIMIT} expenses and only the first ${EXPENSES_LIMIT} were totaled.`}
                 </Callout.Text>
               </Callout.Root>
+            </Box>
+          ) : null}
+
+          {unreviewedTransactions > 0 ? (
+            <Box mb="4">
+              <Card size="3">
+                <Flex align="center" justify="between" wrap="wrap" gap="3">
+                  <Box>
+                    <Text as="div" size="4" weight="bold">
+                      Imported transactions to review
+                    </Text>
+                    <Text as="div" color="gray" className="tnum">
+                      {unreviewedTransactions} transaction{unreviewedTransactions === 1 ? "" : "s"} from a bank
+                      statement import {unreviewedTransactions === 1 ? "hasn't" : "haven't"} been categorized yet —
+                      nothing here is in your books until you review each one.
+                    </Text>
+                  </Box>
+                  <Button asChild variant="soft">
+                    <NextLink href="/expenses/transactions">Review now</NextLink>
+                  </Button>
+                </Flex>
+              </Card>
             </Box>
           ) : null}
 

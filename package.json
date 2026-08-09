@@ -13,7 +13,9 @@
     "billing:verify": "node scripts/billing-verify.mjs",
     "trip:verify": "node scripts/trip-verify.mjs",
     "customisation:verify": "node scripts/customisation-verify.mjs",
-    "connect:verify": "node scripts/connect-verify.mjs"
+    "connect:verify": "node scripts/connect-verify.mjs",
+    "invoice-share-verify": "node scripts/invoice-share-verify.mjs",
+    "bank-import:verify": "node --experimental-strip-types scripts/bank-import-verify.mjs"
   },
   "dependencies": {
     "@radix-ui/colors": "^3.0.0",
