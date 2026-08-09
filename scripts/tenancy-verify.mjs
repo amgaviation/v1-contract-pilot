@@ -970,6 +970,65 @@ begin
 end $$;
 
 -- =====================================================================
+-- D2 PROBE (20260809020000, mileage). Two properties, both of which were
+-- proven by hand when the feature landed and neither of which any
+-- assertion in this suite covered — which is exactly how a property
+-- stops being true later without anyone noticing.
+--
+-- 1. TENANCY. mileage_entries carries deduction figures; tenant B must
+--    not see tenant A's.
+--
+-- 2. THE RATE SNAPSHOT. mileage_entries.rate_cents_per_mile is captured
+--    at entry and must NEVER re-resolve from pilot.mileage_rates. A
+--    pilot enters next year's IRS rate; every drive they logged last
+--    year must keep the rate it was recorded at, because those figures
+--    may already be on a filed return. This is the same rule
+--    trip_days.rate_cents follows, and the failure mode here is worse:
+--    silently restating a prior year's deduction.
+-- =====================================================================
+do $$
+declare
+  entry_id uuid; rate_after numeric; amount_after bigint; leaked int;
+begin
+  insert into pilot.mileage_rates (account_id, tax_year, rate_cents_per_mile)
+    values ('${A}', 2026, 50.000);
+  insert into pilot.mileage_entries
+    (account_id, drove_on, miles, from_place, to_place, purpose, rate_cents_per_mile)
+  values
+    ('${A}', date '2026-03-01', 42.3, 'home', 'KTEB', 'Positioning drive', 50.000)
+  returning id into entry_id;
+
+  -- The pilot updates the year's rate. The captured entry must not move.
+  update pilot.mileage_rates set rate_cents_per_mile = 99.900
+   where account_id = '${A}' and tax_year = 2026;
+
+  select rate_cents_per_mile, amount_cents into rate_after, amount_after
+    from pilot.mileage_entries where id = entry_id;
+
+  if rate_after is distinct from 50.000 then
+    raise exception 'MILEAGE SNAPSHOT FAILURE: entry rate re-resolved to % after the year rate changed (expected 50.000)', rate_after;
+  end if;
+  if amount_after is distinct from round(42.3 * 50.000)::bigint then
+    raise exception 'MILEAGE SNAPSHOT FAILURE: amount_cents = %, expected % (the exact product of the SNAPSHOTTED rate)',
+      amount_after, round(42.3 * 50.000)::bigint;
+  end if;
+  raise notice 'PASS: a mileage entry keeps the rate it was captured at when the year rate changes';
+
+  -- Tenancy: B must not see A's row.
+  set local role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', '${UB}')::text, true);
+  select count(*) into leaked from pilot.mileage_entries where account_id = '${A}';
+  reset role;
+  if leaked <> 0 then
+    raise exception 'MILEAGE TENANCY FAILURE: tenant B sees % of tenant A mileage rows', leaked;
+  end if;
+  raise notice 'PASS: tenant B sees zero of tenant A''s mileage entries';
+
+  delete from pilot.mileage_entries where account_id = '${A}';
+  delete from pilot.mileage_rates where account_id = '${A}';
+end $$;
+
+-- =====================================================================
 -- C1 PROBE (20260807070000's away backfill). This file's earlier passes
 -- only ever read the catalog for this migration's columns/grants — never
 -- WROTE against the shape that actually breaks: a trip_days row on a
