@@ -4,10 +4,10 @@ import { useState } from "react";
 import { Box, Tabs } from "@/components/ui";
 import type { ReactNode } from "react";
 
-type TabKey = "business" | "day-types";
+type TabKey = "business" | "day-types" | "mileage";
 
 function isTabKey(value: string | undefined): value is TabKey {
-  return value === "business" || value === "day-types";
+  return value === "business" || value === "day-types" || value === "mileage";
 }
 
 /**
@@ -37,10 +37,12 @@ function isTabKey(value: string | undefined): value is TabKey {
 export default function SettingsTabs({
   business,
   dayTypes,
+  mileage,
   initialTab,
 }: {
   business: ReactNode;
   dayTypes: ReactNode;
+  mileage: ReactNode;
   initialTab?: string;
 }) {
   const [tab, setTab] = useState<TabKey>(isTabKey(initialTab) ? initialTab : "business");
@@ -59,6 +61,7 @@ export default function SettingsTabs({
       <Tabs.List aria-label="Settings sections">
         <Tabs.Trigger value="business">Your business</Tabs.Trigger>
         <Tabs.Trigger value="day-types">Day types</Tabs.Trigger>
+        <Tabs.Trigger value="mileage">Mileage</Tabs.Trigger>
       </Tabs.List>
 
       <Box pt="4">
@@ -67,6 +70,9 @@ export default function SettingsTabs({
         </Tabs.Content>
         <Tabs.Content value="day-types" forceMount style={{ display: tab === "day-types" ? "block" : "none" }}>
           {dayTypes}
+        </Tabs.Content>
+        <Tabs.Content value="mileage" forceMount style={{ display: tab === "mileage" ? "block" : "none" }}>
+          {mileage}
         </Tabs.Content>
       </Box>
     </Tabs.Root>

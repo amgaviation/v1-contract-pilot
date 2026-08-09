@@ -227,7 +227,7 @@ export async function loadYearEndReport(
   const { data: invoiceData, error: invoiceError } = invoiceIds.length
     ? await supabase
         .from("invoices")
-        .select("id, client_id, invoice_number")
+        .select("id, client_id, invoice_number, status")
         .eq("account_id", accountId)
         .in("id", invoiceIds)
     : { data: [] as never[], error: null };
@@ -236,13 +236,22 @@ export async function loadYearEndReport(
       id: string;
       client_id: string;
       invoice_number: string | null;
+      status: string;
     }[]).map((i) => [i.id, i])
   );
 
+  // Defect 1 (see app/(app)/reports/profit-loss/queries.ts's identical
+  // fix, kept in lockstep with this one so the two screens never disagree
+  // about "what did I make this year"): sent -> partial -> void is a legal
+  // transition and invoice_payments rows are never deleted, so a payment
+  // against a now-void invoice sits in this table forever. It is not
+  // income. app/(app)/page.tsx's "Paid this year" KPI already filters this
+  // out; this report — the one a pilot hands their accountant — must too.
   const incomeMap = new Map<string, IncomeByClient>();
   const paymentRows: PaymentRow[] = [];
   for (const payment of payments) {
     const invoice = invoiceById.get(payment.invoice_id);
+    if (invoice?.status === "void") continue;
     const clientId = invoice?.client_id ?? null;
     const name = (clientId && clientName.get(clientId)) || "Unknown client";
     paymentRows.push({
@@ -271,7 +280,7 @@ export async function loadYearEndReport(
   const incomeByClient = [...incomeMap.values()].sort(
     (a, b) => b.totalCents - a.totalCents
   );
-  const incomeTotalCents = payments.reduce((sum, p) => sum + p.amount_cents, 0);
+  const incomeTotalCents = incomeByClient.reduce((sum, c) => sum + c.totalCents, 0);
 
   // ---- B. Deductible expenses by category ------------------------------
   const deductibleExpensesRaw = (deductData ?? []) as {

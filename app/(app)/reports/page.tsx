@@ -38,6 +38,17 @@ export default async function ReportsIndexPage() {
             set-aside planner.
           </Text>
         </Card>
+        <Card size="3">
+          <Heading as="h2" size="4" mb="1">
+            <RadixLink asChild>
+              <NextLink href="/reports/profit-loss">Profit &amp; loss</NextLink>
+            </RadixLink>
+          </Heading>
+          <Text as="div" size="2" color="gray">
+            Income and expenses by year, quarter, or month, compared
+            against the prior period.
+          </Text>
+        </Card>
       </Flex>
     </PageShell>
   );

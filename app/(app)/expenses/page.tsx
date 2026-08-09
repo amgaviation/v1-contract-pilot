@@ -66,11 +66,20 @@ const TREATMENT_BADGE: Record<string, Badge> = {
 // ENTRIES_LIMIT and page.tsx's AGGREGATE_LIMIT — copied, not reinvented.
 const EXPENSES_LIMIT = 1000;
 
+// Mirrors EXPENSES_LIMIT's truncation-visibility reasoning: only the
+// mileage TOTAL is shown on this page (the log itself lives at
+// /expenses/mileage), but the same silent-truncation hazard applies to it.
+const MILEAGE_LIMIT = 1000;
+
 export default async function ExpensesPage() {
   await requireAccount("/expenses");
 
   const supabase = await createClient();
-  const [{ data: expenseData, error }, { data: tripData }] = await Promise.all([
+  const [
+    { data: expenseData, error },
+    { data: tripData },
+    { data: mileageData, error: mileageError },
+  ] = await Promise.all([
     supabase
       .from("expenses")
       .select(
@@ -82,11 +91,20 @@ export default async function ExpensesPage() {
       .from("trips")
       .select("id, starts_on, ends_on, aircraft_ident")
       .order("starts_on", { ascending: false }),
+    supabase
+      .from("mileage_entries")
+      .select("miles, amount_cents")
+      .limit(MILEAGE_LIMIT),
   ]);
 
   const expenses = (expenseData ?? []) as ExpenseRow[];
   const trips = (tripData ?? []) as TripRow[];
   const truncatedExpenses = expenses.length === EXPENSES_LIMIT;
+
+  const mileageRows = (mileageData ?? []) as { miles: number; amount_cents: number }[];
+  const mileageTotalCents = mileageRows.reduce((sum, r) => sum + r.amount_cents, 0);
+  const mileageTotalMiles = mileageRows.reduce((sum, r) => sum + r.miles, 0);
+  const mileageTruncated = mileageRows.length === MILEAGE_LIMIT;
 
   const tripLabel = (trip: TripRow) =>
     `${formatDateRange(trip.starts_on, trip.ends_on)}${
@@ -131,9 +149,14 @@ export default async function ExpensesPage() {
             }`
       }
       action={
-        <Button asChild>
-          <NextLink href="/expenses/new">Add expense</NextLink>
-        </Button>
+        <Flex gap="3">
+          <Button asChild variant="outline">
+            <NextLink href="/expenses/mileage">Mileage log</NextLink>
+          </Button>
+          <Button asChild>
+            <NextLink href="/expenses/new">Add expense</NextLink>
+          </Button>
+        </Flex>
       }
     >
       {error ? (
@@ -175,6 +198,35 @@ export default async function ExpensesPage() {
               </Card>
             </Box>
           ) : null}
+
+          <Box mb="4">
+            <Card size="3">
+              <Flex justify="between" align="center" wrap="wrap" gap="3">
+                <Flex direction="column" gap="1">
+                  <Text as="div" size="4" weight="bold">
+                    Mileage
+                  </Text>
+                  <Text as="div" size="2" color="gray">
+                    {mileageError
+                      ? "Couldn't load your mileage total."
+                      : `${mileageTotalMiles.toFixed(1)} mi logged at the standard mileage rate${
+                          mileageTruncated ? " (partial — see the mileage log)" : ""
+                        }`}
+                  </Text>
+                </Flex>
+                <Flex align="center" gap="4">
+                  {!mileageError ? (
+                    <Text size="5" weight="bold" className="tnum">
+                      {formatCents(mileageTotalCents)}
+                    </Text>
+                  ) : null}
+                  <Button asChild variant="soft">
+                    <NextLink href="/expenses/mileage">Log a drive</NextLink>
+                  </Button>
+                </Flex>
+              </Flex>
+            </Card>
+          </Box>
 
           <Card size="3">
             {expenses.length === 0 ? (
