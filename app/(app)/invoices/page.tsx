@@ -16,8 +16,12 @@ import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import PageShell from "../page-shell";
+import { computeDuePeriods } from "./recurring/actions";
+import type { Database } from "@/lib/supabase/database.types";
 
 export const metadata = { title: "Invoices" };
+
+type RecurringScheduleRow = Database["pilot"]["Tables"]["recurring_invoice_schedules"]["Row"];
 
 type InvoiceListRow = {
   id: string;
@@ -58,6 +62,8 @@ export default async function InvoicesPage() {
     { data: totalsData, error: totalsError },
     { data: overdueData, error: overdueError },
     { data: clientData, error: clientError },
+    { data: recurringScheduleData, error: recurringScheduleError },
+    { data: recurringGenerationData, error: recurringGenerationError },
   ] = await Promise.all([
     supabase
       .from("invoices")
@@ -66,11 +72,40 @@ export default async function InvoicesPage() {
     supabase.from("invoice_totals").select("invoice_id, total_cents, balance_due_cents"),
     supabase.from("invoices_overdue").select("invoice_id"),
     supabase.from("clients").select("id, name"),
+    // Best-effort: a failed read here only costs the "due to create" count
+    // its accuracy, not the whole invoice list, so it's kept out of
+    // firstError (matching how invoices/recurring/page.tsx treats its own
+    // reads as blocking, but THIS page's primary purpose is the invoice
+    // list, not the recurring queue).
+    supabase
+      .from("recurring_invoice_schedules")
+      .select("id, account_id, client_id, cadence, anchor_date, end_date, description, amount_cents, tax_rate_bps, active, created_at, updated_at")
+      .eq("active", true),
+    supabase.from("recurring_invoice_generations").select("schedule_id, period_start"),
   ]);
 
   // A failed totals/overdue/clients query is not "no data" — rendering it
   // as $0.00 would make a sent, unpaid invoice look paid in normal styling.
   const firstError = error ?? totalsError ?? overdueError ?? clientError;
+
+  // "Due to create" — the same computation invoices/recurring/page.tsx
+  // does, reused here (not forked) so this count and that page's queue can
+  // never disagree. Silently 0 on a read failure rather than surfacing a
+  // second error banner on this page — recurringScheduleError/
+  // recurringGenerationError are deliberately not folded into firstError.
+  let dueToCreateCount = 0;
+  if (!recurringScheduleError && !recurringGenerationError) {
+    const generationsBySchedule = new Map<string, Set<string>>();
+    for (const g of (recurringGenerationData ?? []) as { schedule_id: string; period_start: string }[]) {
+      if (!generationsBySchedule.has(g.schedule_id)) generationsBySchedule.set(g.schedule_id, new Set());
+      generationsBySchedule.get(g.schedule_id)!.add(g.period_start);
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    for (const schedule of (recurringScheduleData ?? []) as RecurringScheduleRow[]) {
+      const generated = generationsBySchedule.get(schedule.id) ?? new Set<string>();
+      dueToCreateCount += (await computeDuePeriods(schedule, generated, today)).length;
+    }
+  }
 
   const invoices = (invoiceData ?? []) as InvoiceListRow[];
   const totalsByInvoice = new Map(
@@ -99,11 +134,40 @@ export default async function InvoicesPage() {
             }`
       }
       action={
-        <Button asChild>
-          <NextLink href="/invoices/new">New invoice</NextLink>
-        </Button>
+        <Flex gap="2" wrap="wrap">
+          <Button asChild variant="soft">
+            <NextLink href="/invoices/recurring">
+              Recurring
+              {dueToCreateCount > 0 ? (
+                <Badge color="amber" ml="1" className="tnum">
+                  {dueToCreateCount} due
+                </Badge>
+              ) : null}
+            </NextLink>
+          </Button>
+          <Button asChild>
+            <NextLink href="/invoices/new">New invoice</NextLink>
+          </Button>
+        </Flex>
       }
     >
+      {dueToCreateCount > 0 ? (
+        <Callout.Root color="amber">
+          <Callout.Icon>
+            <ExclamationTriangleIcon />
+          </Callout.Icon>
+          <Callout.Text>
+            <Text as="span" className="tnum">
+              {dueToCreateCount}
+            </Text>{" "}
+            recurring invoice{dueToCreateCount === 1 ? " is" : "s are"} due to create.{" "}
+            <RadixLink asChild>
+              <NextLink href="/invoices/recurring">Review the queue</NextLink>
+            </RadixLink>
+            .
+          </Callout.Text>
+        </Callout.Root>
+      ) : null}
       <Card size="3">
         {firstError ? (
           <Callout.Root color="red">

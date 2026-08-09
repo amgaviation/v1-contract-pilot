@@ -38,6 +38,8 @@
  *                                                      header comment)
  *   20260809020000_mileage.sql                        (mileage_rates,
  *                                                      mileage_entries)
+ *   20260809030000_recurring_invoices.sql             (recurring_invoice_schedules,
+ *                                                      recurring_invoice_generations)
  */
 export type Json =
   | string
@@ -1310,6 +1312,98 @@ export type Database = {
             columns: ["account_id", "client_id"];
             isOneToOne: false;
             referencedRelation: "clients";
+            referencedColumns: ["account_id", "id"];
+          },
+        ];
+      };
+      // -----------------------------------------------------------------
+      // 20260809030000_recurring_invoices.sql. A standing cadence a pilot
+      // bills a client on (fixed description + amount, monthly or
+      // quarterly). See the migration header for why this is fixed-amount
+      // only (no monthly-guarantee/guarantee_periods linkage yet) and why
+      // client_id/cadence/anchor_date are not updatable.
+      // -----------------------------------------------------------------
+      recurring_invoice_schedules: {
+        Row: {
+          id: string;
+          account_id: string;
+          client_id: string;
+          cadence: "monthly" | "quarterly";
+          anchor_date: string;
+          end_date: string | null;
+          description: string;
+          amount_cents: number;
+          tax_rate_bps: number;
+          active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          account_id: string;
+          client_id: string;
+          cadence: "monthly" | "quarterly";
+          anchor_date: string;
+          end_date?: string | null;
+          description: string;
+          amount_cents: number;
+          tax_rate_bps?: number;
+          active?: boolean;
+        };
+        Update: {
+          end_date?: string | null;
+          description?: string;
+          amount_cents?: number;
+          tax_rate_bps?: number;
+          active?: boolean;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "recurring_invoice_schedules_account_id_client_id_fkey";
+            columns: ["account_id", "client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["account_id", "id"];
+          },
+        ];
+      };
+      // -----------------------------------------------------------------
+      // 20260809030000_recurring_invoices.sql. The idempotency ledger: one
+      // row per (schedule, period_start) ever generated. unique
+      // (account_id, schedule_id, period_start) is what makes a double
+      // generation impossible — see the migration header. No UPDATE/DELETE
+      // grant exists on this table at all (a generation, once recorded, is
+      // an immutable fact), so this type carries no Update shape.
+      // -----------------------------------------------------------------
+      recurring_invoice_generations: {
+        Row: {
+          id: string;
+          account_id: string;
+          schedule_id: string;
+          period_start: string;
+          invoice_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          account_id: string;
+          schedule_id: string;
+          period_start: string;
+          invoice_id: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "recurring_invoice_generations_account_id_schedule_id_fkey";
+            columns: ["account_id", "schedule_id"];
+            isOneToOne: false;
+            referencedRelation: "recurring_invoice_schedules";
+            referencedColumns: ["account_id", "id"];
+          },
+          {
+            foreignKeyName: "recurring_invoice_generations_account_id_invoice_id_fkey";
+            columns: ["account_id", "invoice_id"];
+            isOneToOne: false;
+            referencedRelation: "invoices";
             referencedColumns: ["account_id", "id"];
           },
         ];

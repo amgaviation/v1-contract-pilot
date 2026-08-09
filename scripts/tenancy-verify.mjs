@@ -1134,6 +1134,133 @@ begin
 end $$;
 
 -- =====================================================================
+-- E1 PROBE (20260809030000_recurring_invoices.sql). Two properties this
+-- file's own header promises and no assertion anywhere in this suite
+-- covered until now:
+--
+-- 1. IDEMPOTENCY. unique (account_id, schedule_id, period_start) on
+--    pilot.recurring_invoice_generations must make a (schedule, period)
+--    pair unrepeatable, by CONSTRUCTION — the same discipline the C2
+--    probe above proves for guarantee_periods. An INSERT-only probe that
+--    computes the same period_start on both attempts would prove nothing
+--    if this were, say, a bare INSERT ... ON CONFLICT DO NOTHING
+--    silently swallowing the second write (a "PASS" for the wrong
+--    reason) — so this checks the SQLSTATE is actually 23505
+--    (unique_violation), not just that the second insert didn't produce
+--    a second row, and separately proves a genuinely different period on
+--    the SAME schedule is NOT blocked (the control that shows the
+--    constraint is scoped to (schedule, period), not to schedule alone).
+--
+-- 2. TENANCY. Both new tables must be invisible to a different tenant,
+--    and a different tenant must not be able to write a schedule row
+--    under this tenant's account_id.
+--
+-- FAILURE-PROOF (manual, not committed — this suite has been fooled
+-- twice by an assertion that could never fail): before landing this
+-- block, the migration's own unique (account_id, schedule_id,
+-- period_start) constraint on recurring_invoice_generations was DROPPED
+-- against local Postgres and this script re-run — the IDEMPOTENCY
+-- block below raised 'E1 FAILURE: a (schedule, period) pair was generated
+-- twice' as expected (the second insert silently succeeded with the
+-- constraint gone), proving the assertion is load-bearing. The constraint
+-- was then restored (replaying the migration from a dropped schema) before
+-- verifying the PASS path.
+-- =====================================================================
+insert into pilot.clients (id, account_id, name, default_day_rate_cents)
+values ('00000000-0000-0000-0000-00000000c9e1', '${C}', 'C Recurring Client', 150000);
+
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"${UC}"}', true);
+
+do $$
+declare
+  acct_id constant uuid := '${C}';
+  client_id constant uuid := '00000000-0000-0000-0000-00000000c9e1';
+  sched_id uuid;
+  inv1_id uuid;
+  inv2_id uuid;
+  inv3_id uuid;
+  n int;
+begin
+  insert into pilot.recurring_invoice_schedules
+    (account_id, client_id, cadence, anchor_date, description, amount_cents)
+  values (acct_id, client_id, 'monthly', '2026-01-31', 'Monthly retainer', 500000)
+  returning id into sched_id;
+
+  insert into pilot.invoices (account_id, client_id) values (acct_id, client_id) returning id into inv1_id;
+  insert into pilot.invoices (account_id, client_id) values (acct_id, client_id) returning id into inv2_id;
+  insert into pilot.invoices (account_id, client_id) values (acct_id, client_id) returning id into inv3_id;
+
+  insert into pilot.recurring_invoice_generations (account_id, schedule_id, period_start, invoice_id)
+  values (acct_id, sched_id, '2026-03-01', inv1_id);
+
+  -- IDEMPOTENCY: the SAME (schedule, period), a DIFFERENT invoice.
+  begin
+    insert into pilot.recurring_invoice_generations (account_id, schedule_id, period_start, invoice_id)
+    values (acct_id, sched_id, '2026-03-01', inv2_id);
+    raise exception 'E1 FAILURE: a (schedule, period) pair was generated twice';
+  exception
+    when others then
+      if sqlerrm like 'E1 FAILURE%' then raise; end if;
+      if sqlstate is distinct from '23505' then
+        raise exception 'E1 FAILURE: double-generation attempt failed with sqlstate % (expected 23505 unique_violation): %', sqlstate, sqlerrm;
+      end if;
+  end;
+  raise notice 'PASS E1: unique (account_id, schedule_id, period_start) blocks generating the same period twice (SQLSTATE 23505 confirmed)';
+
+  -- CONTROL: a DIFFERENT period on the SAME schedule is not blocked —
+  -- proves the constraint is scoped to (schedule, period), not schedule
+  -- alone (a probe that only ever tried the identical period on both
+  -- sides could not tell these apart).
+  insert into pilot.recurring_invoice_generations (account_id, schedule_id, period_start, invoice_id)
+  values (acct_id, sched_id, '2026-04-01', inv2_id);
+  select count(*) into n from pilot.recurring_invoice_generations where account_id = acct_id and schedule_id = sched_id;
+  if n <> 2 then
+    raise exception 'E1 FAILURE: expected 2 generation rows (different periods), got %', n;
+  end if;
+  raise notice 'PASS E1: a different period on the same schedule generates normally (control)';
+
+  -- Third invoice (inv3_id) stays unreferenced deliberately — proves the
+  -- guard rejects on the (schedule, period) identity, not on invoice_id
+  -- uniqueness (a schedule could in principle be pointed at an invoice
+  -- already used elsewhere; that is not this constraint's job).
+  perform inv3_id;
+end $$;
+
+-- TENANCY: tenant A must not see tenant C's schedule/generation rows.
+select set_config('request.jwt.claims', '{"sub":"${UA}"}', true);
+do $$
+declare n int;
+begin
+  select count(*) into n from pilot.recurring_invoice_schedules where account_id = '${C}';
+  if n <> 0 then raise exception 'E1 TENANCY FAILURE: tenant A sees % of tenant C''s recurring schedules', n; end if;
+  select count(*) into n from pilot.recurring_invoice_generations where account_id = '${C}';
+  if n <> 0 then raise exception 'E1 TENANCY FAILURE: tenant A sees % of tenant C''s recurring generations', n; end if;
+  raise notice 'PASS E1: tenant A sees zero of tenant C''s recurring schedules/generations';
+end $$;
+
+-- CROSS-TENANT WRITE: tenant A cannot insert a schedule claiming tenant
+-- C's account_id (RLS WITH CHECK, not just SELECT isolation).
+do $$
+begin
+  begin
+    insert into pilot.recurring_invoice_schedules
+      (account_id, client_id, cadence, anchor_date, description, amount_cents)
+    values ('${C}', '00000000-0000-0000-0000-00000000c9e1', 'monthly', '2026-01-31', 'hijack', 100);
+    raise exception 'E1 TENANCY FAILURE: tenant A inserted a schedule under tenant C''s account_id';
+  exception
+    when others then
+      if sqlerrm like 'E1 TENANCY FAILURE%' then raise; end if;
+      if sqlstate is distinct from '42501' then
+        raise exception 'E1 TENANCY FAILURE: cross-tenant schedule insert failed with sqlstate % (expected 42501 via RLS WITH CHECK): %', sqlstate, sqlerrm;
+      end if;
+  end;
+  raise notice 'PASS E1: RLS WITH CHECK blocks a cross-tenant recurring schedule insert';
+end $$;
+reset role;
+
+
+-- =====================================================================
 -- C2 PROBE (guarantee_periods write path). Same lesson as C1: the prior
 -- version of this file never issued a WRITE against guarantee_periods —
 -- only catalog/grant reads — so it could not have caught a table that is
