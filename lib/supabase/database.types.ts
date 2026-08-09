@@ -36,6 +36,8 @@
  *                                                      out of this file per
  *                                                      app/(app)/logbook/db.ts's
  *                                                      header comment)
+ *   20260809020000_mileage.sql                        (mileage_rates,
+ *                                                      mileage_entries)
  */
 export type Json =
   | string
@@ -1206,6 +1208,108 @@ export type Database = {
             columns: ["account_id", "document_id"];
             isOneToOne: false;
             referencedRelation: "documents";
+            referencedColumns: ["account_id", "id"];
+          },
+        ];
+      };
+      // -----------------------------------------------------------------
+      // 20260809020000_mileage.sql — mileage / vehicle deduction tracking.
+      // rate_cents_per_mile is numeric(6,3) (not bigint cents) because the
+      // published rate carries a fractional cent; mileage_entries snapshots
+      // it at capture and never re-resolves it from mileage_rates. See the
+      // migration header for the full money-type reasoning.
+      // -----------------------------------------------------------------
+      mileage_rates: {
+        Row: {
+          id: string;
+          account_id: string;
+          tax_year: number;
+          rate_cents_per_mile: number;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          account_id: string;
+          tax_year: number;
+          rate_cents_per_mile: number;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          account_id?: string;
+          tax_year?: number;
+          rate_cents_per_mile?: number;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      mileage_entries: {
+        Row: {
+          id: string;
+          account_id: string;
+          drove_on: string;
+          miles: number;
+          from_place: string;
+          to_place: string;
+          purpose: string;
+          trip_id: string | null;
+          client_id: string | null;
+          rate_cents_per_mile: number;
+          // GENERATED column — never present in Insert/Update below.
+          amount_cents: number;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          account_id: string;
+          drove_on: string;
+          miles: number;
+          from_place: string;
+          to_place: string;
+          purpose: string;
+          trip_id?: string | null;
+          client_id?: string | null;
+          rate_cents_per_mile: number;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          account_id?: string;
+          drove_on?: string;
+          miles?: number;
+          from_place?: string;
+          to_place?: string;
+          purpose?: string;
+          trip_id?: string | null;
+          client_id?: string | null;
+          rate_cents_per_mile?: number;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "mileage_entries_account_id_trip_id_fkey";
+            columns: ["account_id", "trip_id"];
+            isOneToOne: false;
+            referencedRelation: "trips";
+            referencedColumns: ["account_id", "id"];
+          },
+          {
+            foreignKeyName: "mileage_entries_account_id_client_id_fkey";
+            columns: ["account_id", "client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
             referencedColumns: ["account_id", "id"];
           },
         ];

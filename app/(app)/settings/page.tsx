@@ -8,8 +8,10 @@ import SettingsForm, { type SettingsValues } from "./settings-form";
 import LogoPanel from "./logo-panel";
 import SettingsTabs from "./settings-tabs";
 import DayTypesPanel from "./day-types-panel";
+import MileageRatesPanel from "./mileage-rates-panel";
 
 type DayTypeRow = Database["pilot"]["Tables"]["day_types"]["Row"];
+type MileageRateRow = Database["pilot"]["Tables"]["mileage_rates"]["Row"];
 
 export const metadata = { title: "Settings" };
 
@@ -58,6 +60,13 @@ export default async function SettingsPage({
 
   const dayTypes = (dayTypesData ?? []) as DayTypeRow[];
 
+  const { data: mileageRatesData, error: mileageRatesError } = await supabase
+    .from("mileage_rates")
+    .select("*")
+    .order("tax_year", { ascending: false });
+
+  const mileageRates = (mileageRatesData ?? []) as MileageRateRow[];
+
   return (
     <PageShell
       title="Settings"
@@ -104,6 +113,17 @@ export default async function SettingsPage({
             </Card>
           ) : (
             <DayTypesPanel dayTypes={dayTypes} canEdit={canEdit} />
+          )
+        }
+        mileage={
+          mileageRatesError ? (
+            <Card>
+              <Text size="2" color="red">
+                Couldn&rsquo;t load your mileage rates. Try reloading the page.
+              </Text>
+            </Card>
+          ) : (
+            <MileageRatesPanel rates={mileageRates} canEdit={canEdit} />
           )
         }
       />
