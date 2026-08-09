@@ -40,6 +40,15 @@ function bpsToPercentInput(bps: number): string {
 const emptyCreateState: ScheduleFormState = { error: null, values: {} };
 const emptyEditState: ScheduleEditState = { error: null };
 
+/** `min` for the anchor_date input — a soft nudge, not a real bound (the
+ * server never enforces this; see the input's own comment). Computed at
+ * module load, not per-render, since it only needs day granularity. */
+const FIVE_YEARS_AGO = (() => {
+  const d = new Date();
+  d.setUTCFullYear(d.getUTCFullYear() - 5);
+  return d.toISOString().slice(0, 10);
+})();
+
 function AddScheduleCard({ clients }: { clients: ClientOption[] }) {
   const [state, formAction, pending] = useActionState(createRecurringSchedule, emptyCreateState);
   const v = state.values ?? {};
@@ -97,8 +106,18 @@ function AddScheduleCard({ clients }: { clients: ClientOption[] }) {
               type="date"
               name="anchor_date"
               required
+              // Helps the honest mistake only — a deliberately backdated
+              // anchor still passes server-side (isDate is the real
+              // validation; see actions.ts). The real guard against a
+              // large backlog materializing in one click is the
+              // create-all confirmation threshold in
+              // generateAllDueRecurringInvoices (defect 7).
+              min={FIVE_YEARS_AGO}
               defaultValue={v.anchor_date ?? ""}
             />
+            <Text size="1" color="gray">
+              A date further in the past can queue up many months of due invoices at once.
+            </Text>
           </Flex>
 
           <Flex direction="column" gap="1">

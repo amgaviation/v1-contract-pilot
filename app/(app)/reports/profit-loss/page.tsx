@@ -240,7 +240,7 @@ export default async function ProfitLossReportPage({
                 <ExclamationTriangleIcon />
               </Callout.Icon>
               <Callout.Text>
-                There are more {report.incomeTruncated ? "payments" : ""}
+                There are more {report.incomeTruncated ? "payments (or clients)" : ""}
                 {report.incomeTruncated && report.expensesTruncated ? " and " : ""}
                 {report.expensesTruncated ? "deductible expenses" : ""} in
                 this period (or its comparison period) than this page
@@ -307,12 +307,12 @@ export default async function ProfitLossReportPage({
             <Flex justify="between" align="start" mb="3" wrap="wrap" gap="2">
               <Box>
                 <Heading as="h2" size="4">
-                  Expenses, by category
+                  Expenses
                 </Heading>
                 <Text as="div" size="2" color="gray">
-                  Receipts tagged &ldquo;Keep as a deduction&rdquo;, incurred{" "}
-                  {period.start} through {period.end}. Rebilled and
-                  unassigned receipts are shown separately below.
+                  Deductible receipts plus rebilled costs, incurred{" "}
+                  {period.start} through {period.end}. Unassigned receipts
+                  are shown separately below.
                 </Text>
               </Box>
               <Flex direction="column" align="end" gap="1">
@@ -323,9 +323,9 @@ export default async function ProfitLossReportPage({
               </Flex>
             </Flex>
 
-            {report.expensesByCategory.length === 0 ? (
+            {report.expensesByCategory.length === 0 && report.rebilledCount === 0 ? (
               <Text size="2" color="gray">
-                No expenses tagged as deductions this period.
+                No expenses this period.
               </Text>
             ) : (
               <Table.Root variant="ghost">
@@ -350,6 +350,19 @@ export default async function ProfitLossReportPage({
                       </Table.Cell>
                     </Table.Row>
                   ))}
+                  {report.rebilledCount > 0 ? (
+                    <Table.Row>
+                      <Table.RowHeaderCell>Rebilled costs (paired with the reimbursement in Income above)</Table.RowHeaderCell>
+                      <Table.Cell justify="end">
+                        <Text className="tnum">{report.rebilledCount}</Text>
+                      </Table.Cell>
+                      <Table.Cell justify="end">
+                        <Text className="tnum" weight="medium">
+                          {formatCents(report.rebilledCostCents)}
+                        </Text>
+                      </Table.Cell>
+                    </Table.Row>
+                  ) : null}
                 </Table.Body>
               </Table.Root>
             )}
@@ -363,10 +376,13 @@ export default async function ProfitLossReportPage({
                   {report.rebilledCount} rebilled receipt
                   {report.rebilledCount === 1 ? "" : "s"} totaling{" "}
                   <span className="tnum">{formatCents(report.rebilledCostCents)}</span>{" "}
-                  this period are intentionally NOT counted here — the
-                  reimbursement is already included in Income above once
-                  the client pays. Counting the receipt again as an
-                  expense would double it. See the{" "}
+                  this period ARE counted above, as their own line, inside
+                  Expenses — this is money the pilot actually paid out of
+                  pocket. It is not excluded: the matching reimbursement is
+                  a client payment already counted in Income above, and
+                  only subtracting the outflow here lets the two sides of
+                  that pass-through net out to the true economic result.
+                  See the{" "}
                   <RadixLink asChild>
                     <NextLink href="/reports/year-end">year-end report</NextLink>
                   </RadixLink>{" "}
@@ -376,6 +392,54 @@ export default async function ProfitLossReportPage({
                     : ""}
                 </Callout.Text>
               </Callout.Root>
+            ) : null}
+          </Card>
+
+          {/* ---------------- Mileage, flagged ---------------- */}
+          <Card size="3">
+            <Flex justify="between" align="start" wrap="wrap" gap="2">
+              <Box>
+                <Heading as="h2" size="4">
+                  Mileage
+                </Heading>
+                <Text as="div" size="2" color="gray">
+                  Standard-mileage-rate drives logged {period.start} through{" "}
+                  {period.end} — excluded from Expenses above. The standard
+                  mileage rate and actual vehicle expenses (fuel, rental
+                  car) are alternative deduction methods for the same
+                  vehicle, never additive, and this report can&rsquo;t tell
+                  which one applies to a given vehicle and year — folding
+                  this in automatically risks a double-claimed deduction.
+                  Review it in{" "}
+                  <RadixLink asChild>
+                    <NextLink href="/expenses/mileage">Mileage</NextLink>
+                  </RadixLink>{" "}
+                  before filing.
+                </Text>
+              </Box>
+              {report.mileageCount > 0 ? (
+                <Badge color="gray" size="2">
+                  <span className="tnum">
+                    {report.mileageCount} · {formatCents(report.mileageTotalCents)}
+                  </span>
+                </Badge>
+              ) : null}
+            </Flex>
+            {report.mileageTruncated ? (
+              <Callout.Root color="amber" mt="3">
+                <Callout.Icon>
+                  <ExclamationTriangleIcon />
+                </Callout.Icon>
+                <Callout.Text>
+                  There are more logged drives this period than this page
+                  totals.
+                </Callout.Text>
+              </Callout.Root>
+            ) : null}
+            {report.mileageCount === 0 ? (
+              <Text size="2" color="gray">
+                No mileage logged this period.
+              </Text>
             ) : null}
           </Card>
 

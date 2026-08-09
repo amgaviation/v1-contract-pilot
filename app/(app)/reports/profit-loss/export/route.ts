@@ -89,8 +89,20 @@ export async function GET(request: NextRequest) {
 
   // Same "right or loudly wrong, never silently partial" rule as
   // year-end's export: refuse to emit rather than ship a CSV whose Total
-  // silently excludes rows past PAYMENTS_LIMIT/EXPENSES_LIMIT.
-  if (report.incomeTruncated || report.expensesTruncated) {
+  // silently excludes rows past PAYMENTS_LIMIT/EXPENSES_LIMIT. Defect 10:
+  // this guard used to check only incomeTruncated/expensesTruncated while
+  // still writing the rebilled and unassigned totals unconditionally below
+  // — those two have their own truncation flags (rebilledTruncated,
+  // unassignedTruncated, and now mileageTruncated) that the on-screen
+  // callouts already surface, so the export must refuse on them too rather
+  // than being the one artifact that can carry a silently short figure.
+  if (
+    report.incomeTruncated ||
+    report.expensesTruncated ||
+    report.rebilledTruncated ||
+    report.unassignedTruncated ||
+    report.mileageTruncated
+  ) {
     return NextResponse.json(
       {
         error:
@@ -151,7 +163,7 @@ export async function GET(request: NextRequest) {
 
   rows.push(
     csvRow([
-      "Rebilled receipts (already included in income, not counted as an expense)",
+      "Rebilled costs (already counted inside Total expenses above, paired with the reimbursement in Total income)",
       report.rebilledCount,
       centsToDollarsString(report.rebilledCostCents),
     ])
@@ -161,6 +173,13 @@ export async function GET(request: NextRequest) {
       "Unassigned receipts (excluded from income and expenses)",
       report.unassignedCount,
       centsToDollarsString(report.unassignedTotalCents),
+    ])
+  );
+  rows.push(
+    csvRow([
+      "Mileage (excluded from expenses — standard mileage rate is an alternative to, not additive with, actual vehicle expenses)",
+      report.mileageCount,
+      centsToDollarsString(report.mileageTotalCents),
     ])
   );
 

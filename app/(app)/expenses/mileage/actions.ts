@@ -72,8 +72,18 @@ function parseRate(raw: string): number | null | undefined {
   return parsed;
 }
 
-function parseEntryForm(formData: FormData): {
-  values: Omit<MileageInsert, "account_id"> | null;
+/**
+ * Fields shared by create and update. rate_cents_per_mile is deliberately
+ * NOT parsed here — see parseEntryForm (create-only) below. As of
+ * 20260809050000, `authenticated` has no UPDATE grant on
+ * mileage_entries.rate_cents_per_mile at all (the column is snapshotted at
+ * capture and genuinely immutable), so an update payload must never
+ * attempt to write it — including a value that happens to match what's
+ * already stored, since the point is that this code path no longer
+ * resolves or reasons about the rate at all.
+ */
+function parseCommonEntryFields(formData: FormData): {
+  values: Omit<MileageInsert, "account_id" | "rate_cents_per_mile"> | null;
   error: string | null;
 } {
   const droveOn = String(formData.get("drove_on") ?? "").trim();
@@ -113,6 +123,29 @@ function parseEntryForm(formData: FormData): {
   const clientId = optionalUuid(formData, "client_id");
   if (clientId === undefined) return { values: null, error: "That client isn't valid." };
 
+  return {
+    error: null,
+    values: {
+      drove_on: droveOn,
+      miles,
+      from_place: fromPlace,
+      to_place: toPlace,
+      purpose,
+      trip_id: tripId,
+      client_id: clientId,
+      notes: optional(formData, "notes"),
+    },
+  };
+}
+
+/** Create-only: also parses the rate, required for a brand-new entry. */
+function parseEntryForm(formData: FormData): {
+  values: Omit<MileageInsert, "account_id"> | null;
+  error: string | null;
+} {
+  const common = parseCommonEntryFields(formData);
+  if (common.error || !common.values) return { values: null, error: common.error };
+
   const rate = parseRate(String(formData.get("rate_cents_per_mile") ?? ""));
   if (rate === undefined) {
     return {
@@ -132,17 +165,7 @@ function parseEntryForm(formData: FormData): {
 
   return {
     error: null,
-    values: {
-      drove_on: droveOn,
-      miles,
-      from_place: fromPlace,
-      to_place: toPlace,
-      purpose,
-      trip_id: tripId,
-      client_id: clientId,
-      rate_cents_per_mile: rate,
-      notes: optional(formData, "notes"),
-    },
+    values: { ...common.values, rate_cents_per_mile: rate },
   };
 }
 
@@ -177,7 +200,13 @@ export async function updateMileageEntry(
   if (!id || !UUID_RE.test(id)) return { error: "Missing mileage entry id." };
 
   const { account } = await requireAccount("/expenses/mileage");
-  const { values, error } = parseEntryForm(formData);
+  // rate_cents_per_mile is intentionally NOT parsed or written here — see
+  // parseCommonEntryFields' comment. The database also refuses this
+  // (authenticated has no UPDATE grant on that column as of
+  // 20260809050000), but the app layer doesn't even attempt it: a wrong
+  // rate is corrected by deleting the entry and logging it again, never by
+  // editing the rate on an already-recorded drive.
+  const { values, error } = parseCommonEntryFields(formData);
   if (error || !values) {
     return { error: error ?? "Couldn't read that form.", values: echo(formData) };
   }

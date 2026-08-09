@@ -14,6 +14,23 @@ type Supa = Awaited<ReturnType<typeof createClient>>;
 // not doubled — because each query is scoped to its own [start, end].
 const PAYMENTS_LIMIT = 2000;
 const EXPENSES_LIMIT = 2000;
+// Same cap discipline for the two lookups defect 9 exposed: an unbounded
+// `.in("id", invoiceIds)` / unbounded `clients` select silently truncates
+// past the Data API cap just like the list queries above do, and a
+// truncated lookup doesn't zero out the total — it quietly reassigns rows
+// to "Unknown client" while incomeTotalCents stays right, which is worse
+// than a wrong total because nothing on screen says the by-client table is
+// short. invoiceIds is a de-duplicated set of at most PAYMENTS_LIMIT ids
+// (one per payment, capped already), so INVOICE_LOOKUP_LIMIT reuses that
+// bound; clients get their own cap because a pilot's client list is
+// unrelated in size to their payment count.
+const INVOICE_LOOKUP_LIMIT = PAYMENTS_LIMIT;
+const CLIENTS_LIMIT = 2000;
+// Mileage — defect 4: pilot.mileage_entries carries a real cash-equivalent
+// Schedule C deduction (the standard mileage rate) that this report
+// previously surfaced nowhere. It is intentionally NOT summed into
+// Expenses — see the "MILEAGE" note above loadProfitLossReport for why.
+const MILEAGE_LIMIT = 2000;
 
 // ---------------------------------------------------------------------------
 // Period resolution.
@@ -295,6 +312,12 @@ type PeriodFigures = {
   unassignedCount: number;
   unassignedTruncated: boolean;
 
+  mileageTotalCents: number;
+  mileageCount: number;
+  mileageTruncated: boolean;
+
+  invoiceLookupTruncated: boolean;
+
   error: string | null;
 };
 
@@ -310,6 +333,7 @@ async function loadPeriodFigures(
     { data: deductData, error: deductError },
     { data: rebillData, error: rebillError },
     { data: unassignedData, error: unassignedError },
+    { data: mileageData, error: mileageError },
   ] = await Promise.all([
     // CASH-BASIS income: pilot.invoice_payments by paid_on, exactly as
     // app/(app)/reports/year-end/queries.ts section A and
@@ -340,13 +364,10 @@ async function loadPeriodFigures(
       .gte("incurred_on", start)
       .lte("incurred_on", end)
       .limit(EXPENSES_LIMIT),
-    // Rebilled expenses — counted here ONLY for the informational
-    // "reimbursed costs" line below, never as a P&L expense. See the
-    // treatment note above loadProfitLossReport for the full reasoning:
-    // the reimbursement already arrives as ordinary cash-basis income
-    // through invoice_payments once the client pays, so folding the
-    // original outlay into Expenses too would double-count it and
-    // understate profit — the exact trap the task brief calls out.
+    // Rebilled expenses — a REAL cash outflow in the period incurred, and
+    // counted as an Expenses sub-line below (see "THE REBILL DECISION"
+    // above loadProfitLossReport — corrected; the previous version of this
+    // comment argued the opposite and was wrong).
     supabase
       .from("expenses")
       .select("id, amount_cents")
@@ -367,10 +388,26 @@ async function loadPeriodFigures(
       .gte("incurred_on", start)
       .lte("incurred_on", end)
       .limit(EXPENSES_LIMIT),
+    // Mileage — defect 4. Deliberately EXCLUDED from the Expenses total
+    // (see the "MILEAGE" note above loadProfitLossReport) and surfaced as
+    // its own flagged, informational figure instead, the same shape as
+    // Unassigned receipts above.
+    supabase
+      .from("mileage_entries")
+      .select("id, amount_cents")
+      .eq("account_id", accountId)
+      .gte("drove_on", start)
+      .lte("drove_on", end)
+      .limit(MILEAGE_LIMIT),
   ]);
 
   const error =
-    paymentsError?.message ?? deductError?.message ?? rebillError?.message ?? unassignedError?.message ?? null;
+    paymentsError?.message ??
+    deductError?.message ??
+    rebillError?.message ??
+    unassignedError?.message ??
+    mileageError?.message ??
+    null;
 
   const payments = (paymentData ?? []) as {
     id: string; invoice_id: string; paid_on: string; amount_cents: number;
@@ -381,16 +418,33 @@ async function loadPeriodFigures(
   const { data: invoiceData, error: invoiceError } = invoiceIds.length
     ? await supabase
         .from("invoices")
-        .select("id, client_id")
+        .select("id, client_id, status")
         .eq("account_id", accountId)
         .in("id", invoiceIds)
+        .limit(INVOICE_LOOKUP_LIMIT)
     : { data: [] as never[], error: null };
-  const invoiceClientById = new Map(
-    ((invoiceData ?? []) as { id: string; client_id: string }[]).map((i) => [i.id, i.client_id])
-  );
+  const invoiceRows = (invoiceData ?? []) as { id: string; client_id: string; status: string }[];
+  // Defect 9: an unbounded `.in()` silently truncates past the Data API
+  // cap just like every list query in this file — cap it explicitly and
+  // fold the truncation into the same on-screen callout paymentsTruncated
+  // already drives, rather than letting a capped lookup quietly reassign
+  // rows to "Unknown client" while incomeTotalCents stays (deceptively)
+  // right.
+  const invoiceLookupTruncated = invoiceIds.length > 0 && invoiceRows.length === INVOICE_LOOKUP_LIMIT;
+  const invoiceClientById = new Map(invoiceRows.map((i) => [i.id, i.client_id]));
+  // Defect 1: an invoice_payments row is never deleted when its parent
+  // invoice transitions to 'void' (sent/partial -> void is a legal
+  // transition — see app/(app)/page.tsx's "Paid this year" KPI, which
+  // already does this same filter for the dashboard). A payment against a
+  // now-void invoice is not income; skip it here too so this screen and
+  // the dashboard's cash-basis figure for the same period can never
+  // disagree, and so app/(app)/reports/year-end/queries.ts's identical fix
+  // stays in lockstep with this one.
+  const voidInvoiceIds = new Set(invoiceRows.filter((i) => i.status === "void").map((i) => i.id));
 
   const incomeMap = new Map<string, IncomeByClient>();
   for (const p of payments) {
+    if (voidInvoiceIds.has(p.invoice_id)) continue;
     const clientId = invoiceClientById.get(p.invoice_id) ?? null;
     const name = (clientId && clientName.get(clientId)) || "Unknown client";
     const key = clientId ?? `unknown:${p.invoice_id}`;
@@ -403,7 +457,9 @@ async function loadPeriodFigures(
     }
   }
   const incomeByClient = [...incomeMap.values()].sort((a, b) => b.totalCents - a.totalCents);
-  const incomeTotalCents = payments.reduce((sum, p) => sum + p.amount_cents, 0);
+  const incomeTotalCents = payments
+    .filter((p) => !voidInvoiceIds.has(p.invoice_id))
+    .reduce((sum, p) => sum + p.amount_cents, 0);
 
   const deductRaw = (deductData ?? []) as { id: string; category: string; amount_cents: number }[];
   const deductibleTruncated = deductRaw.length === EXPENSES_LIMIT;
@@ -418,15 +474,26 @@ async function loadPeriodFigures(
     }
   }
   const expensesByCategory = [...catMap.values()].sort((a, b) => b.totalCents - a.totalCents);
-  const expensesTotalCents = deductRaw.reduce((sum, e) => sum + e.amount_cents, 0);
+  const deductibleTotalCents = deductRaw.reduce((sum, e) => sum + e.amount_cents, 0);
 
   const rebillRaw = (rebillData ?? []) as { id: string; amount_cents: number }[];
   const rebilledTruncated = rebillRaw.length === EXPENSES_LIMIT;
   const rebilledCostCents = rebillRaw.reduce((sum, e) => sum + e.amount_cents, 0);
 
+  // Defect 2 fix: Expenses = deductible expenses + rebilled costs. The
+  // rebilled outlay is a real cash outflow in the period it was incurred;
+  // see "THE REBILL DECISION" above loadProfitLossReport for the corrected
+  // reasoning (the previous version subtracted nothing here, which
+  // overstated profit by exactly rebilledCostCents).
+  const expensesTotalCents = deductibleTotalCents + rebilledCostCents;
+
   const unassignedRaw = (unassignedData ?? []) as { id: string; amount_cents: number }[];
   const unassignedTruncated = unassignedRaw.length === EXPENSES_LIMIT;
   const unassignedTotalCents = unassignedRaw.reduce((sum, e) => sum + e.amount_cents, 0);
+
+  const mileageRaw = (mileageData ?? []) as { id: string; amount_cents: number }[];
+  const mileageTruncated = mileageRaw.length === MILEAGE_LIMIT;
+  const mileageTotalCents = mileageRaw.reduce((sum, e) => sum + e.amount_cents, 0);
 
   return {
     incomeByClient,
@@ -446,6 +513,12 @@ async function loadPeriodFigures(
     unassignedTotalCents,
     unassignedCount: unassignedRaw.length,
     unassignedTruncated,
+
+    mileageTotalCents,
+    mileageCount: mileageRaw.length,
+    mileageTruncated,
+
+    invoiceLookupTruncated,
 
     error: error ?? invoiceError?.message ?? null,
   };
@@ -472,6 +545,10 @@ export type ProfitLossReport = {
   unassignedTotalCents: number;
   unassignedCount: number;
   unassignedTruncated: boolean;
+
+  mileageTotalCents: number;
+  mileageCount: number;
+  mileageTruncated: boolean;
 };
 
 /**
@@ -485,40 +562,80 @@ export type ProfitLossReport = {
  * though RLS is the real boundary — defence in depth, matching the note
  * in app/(app)/expenses/actions.ts.
  *
- * ---- THE REBILL DECISION -------------------------------------------------
- * `treatment = 'rebill'` expenses are excluded from Expenses here, on
- * purpose, for the same reason app/(app)/reports/year-end/queries.ts's own
- * section B (deductibleByCategory) and quarterly's deductibleCents only
- * ever read `treatment = 'deduct'`: a rebilled expense is a pass-through
- * cost the pilot fronted and gets made whole for. The reimbursement
- * arrives as an ordinary invoice_lines charge on the client's invoice and,
- * once paid, is already inside `incomeTotalCents` via invoice_payments —
- * there is no separate "reimbursement" bucket in this schema, it is
- * literally the same cash-basis income everything else in Income comes
- * from. Counting the original outlay as an Expense on top of that would
- * subtract a cost from profit whose matching inflow is already sitting in
- * Income, understating profit by roughly double the rebilled amount — the
- * exact defect the task brief warns about. Nor is it correct to drop the
- * rebilled expense from the books silently: a pilot comparing this
- * screen's Income total against their bank deposits needs to see that the
- * reimbursement they received is accounted for, which is why the
- * `rebilledCostCents` figure is still surfaced, just as an informational
- * note ("already included in income above"), not as a P&L line item, and
- * not netted against anything. This treats a fully-reimbursed rebill
- * (the ordinary case) as cash-basis-neutral, matching how year-end's own
- * section C describes the relationship. A rebilled expense that was NEVER
- * actually invoiced, or invoiced for less than it cost, is not specially
- * reconciled here — that gap is what year-end's own rebilled/reconciled
- * table is for; this screen is a summary, not a substitute for it.
+ * ---- THE REBILL DECISION (CORRECTED — the earlier version of this note
+ * argued the opposite and was wrong; read this if you're tempted to
+ * re-derive the old conclusion) -------------------------------------------
+ * `treatment = 'rebill'` expenses ARE counted in Expenses here (folded
+ * into expensesTotalCents alongside deductible expenses, and still broken
+ * out as its own `rebilledCostCents` figure so a pilot can see the two
+ * pieces separately). They used to be excluded, on the theory that the
+ * reimbursement "is already included in Income above once the client
+ * pays" and counting the receipt too would double-count it. That theory
+ * does not survive tracing the actual cash:
+ *
+ *   1. Pilot pays $500 for fuel  -> -$500 cash, period A.
+ *   2. Client pays an invoice containing a $500 reimbursable_expense line
+ *      -> +$500 cash, period B (or the same period; doesn't matter here).
+ *   3. True net across both events: $0.
+ *
+ * Income on this screen is `sum(invoice_payments.amount_cents)` — the
+ * WHOLE payment, with no line-level decomposition by kind. So step 2's
+ * +$500 is already inside incomeTotalCents; there is no separate
+ * "reimbursement" bucket that would need excluding to avoid double
+ * counting. Excluding step 1's outflow, as the old version of this file
+ * did, means the two legs never cancel: net profit came out overstated by
+ * exactly rebilledCostCents, not understated — the double-count the old
+ * comment warned about would only be real if Income were computed from
+ * non-reimbursable invoice_lines only, and it isn't. The sub-cases make
+ * the same point harder to miss: a rebilled expense that was NEVER
+ * actually invoiced overstates profit by the full cost (there is no
+ * offsetting inflow at all — the old on-screen claim that it "is already
+ * included in Income above" was simply false for that row); a partially
+ * paid invoice reimburses pro-rata while the old code excluded the whole
+ * cost; a cost incurred in December and reimbursed in February splits
+ * across tax years and never nets out within either one.
+ *
+ * This does NOT change what happens when a rebill is never invoiced, or
+ * invoiced short — that gap is what year-end's own rebilled/reconciled
+ * table (section C) is for; this screen is a period summary, not a
+ * substitute for that reconciliation.
  * ---------------------------------------------------------------------------
+ *
+ * ---- MILEAGE (defect 4) ---------------------------------------------------
+ * pilot.mileage_entries carries a real, dollar-valued Schedule C
+ * deduction (the standard mileage rate — see that migration's own header,
+ * which calls it "often one of the larger line items"), and until now it
+ * appeared in NO report. Silently absent is the one option that is wrong
+ * for a figure this size, so it is surfaced here as its own flagged,
+ * informational total (`mileageTotalCents`) — the same treatment as
+ * Unassigned receipts, shape (b) from the task brief rather than (a).
+ * It is deliberately NOT folded into Expenses/expensesTotalCents: the same
+ * migration's header explains that the standard mileage rate and actual
+ * vehicle expenses (which is what a `category = 'fuel'`/`'rental_car'`
+ * deduct-treatment expense records) are ALTERNATIVE methods for the same
+ * vehicle, never additive, and this schema cannot tell which method a
+ * pilot has elected for a given vehicle/year. Auto-adding mileage to
+ * Expenses would silently double-claim for any pilot who also expenses
+ * actual fuel/rental-car costs for the same vehicle — a real dollar error
+ * this report has no way to detect or prevent. Surfacing it as an
+ * explicit excluded figure (with its own truncation flag) lets the pilot
+ * see the number and decide, without the report guessing on their behalf.
  */
 export async function loadProfitLossReport(
   supabase: Supa,
   accountId: string,
   period: PLPeriod
 ): Promise<ProfitLossReport> {
-  const { data: clientData, error: clientError } = await supabase.from("clients").select("id, name");
-  const clientName = new Map(((clientData ?? []) as { id: string; name: string }[]).map((c) => [c.id, c.name]));
+  // Defect 9: capped, matching every other list query in this file — an
+  // unbounded clients select silently truncates past the Data API cap,
+  // and a pilot's client roster is not guaranteed small forever.
+  const { data: clientData, error: clientError } = await supabase
+    .from("clients")
+    .select("id, name")
+    .limit(CLIENTS_LIMIT);
+  const clientRows = (clientData ?? []) as { id: string; name: string }[];
+  const clientsTruncated = clientRows.length === CLIENTS_LIMIT;
+  const clientName = new Map(clientRows.map((c) => [c.id, c.name]));
 
   const [current, prior] = await Promise.all([
     loadPeriodFigures(supabase, accountId, period.start, period.end, clientName),
@@ -544,7 +661,16 @@ export async function loadProfitLossReport(
 
     incomeByClient: current.incomeByClient,
     incomeComparison,
-    incomeTruncated: current.paymentsTruncated || prior.paymentsTruncated,
+    // Defect 9: the client roster cap and the per-period invoice-id lookup
+    // cap both degrade the SAME symptom (rows silently reassigned to
+    // "Unknown client") as a truncated payments page, so they fold into
+    // this one flag rather than needing their own separate callout.
+    incomeTruncated:
+      current.paymentsTruncated ||
+      prior.paymentsTruncated ||
+      current.invoiceLookupTruncated ||
+      prior.invoiceLookupTruncated ||
+      clientsTruncated,
 
     expensesByCategory: current.expensesByCategory,
     expensesComparison,
@@ -559,5 +685,9 @@ export async function loadProfitLossReport(
     unassignedTotalCents: current.unassignedTotalCents,
     unassignedCount: current.unassignedCount,
     unassignedTruncated: current.unassignedTruncated,
+
+    mileageTotalCents: current.mileageTotalCents,
+    mileageCount: current.mileageCount,
+    mileageTruncated: current.mileageTruncated,
   };
 }

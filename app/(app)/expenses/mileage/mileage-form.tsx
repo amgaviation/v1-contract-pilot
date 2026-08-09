@@ -65,6 +65,7 @@ function EntryFields({
   clients,
   rates,
   disabled,
+  rateLocked,
 }: {
   idPrefix: string;
   values: {
@@ -82,6 +83,18 @@ function EntryFields({
   clients: ClientOption[];
   rates: RatesByYear;
   disabled?: boolean;
+  /**
+   * True when editing an already-saved entry. The rate is snapshotted at
+   * capture and, as of 20260809050000, genuinely immutable — the database
+   * has no UPDATE grant on mileage_entries.rate_cents_per_mile for
+   * `authenticated` at all. This renders the rate as read-only display
+   * text with NO `name` attribute, so it is never submitted on an edit
+   * (an update payload including it would be rejected with a permission
+   * error rather than silently accepted). Correcting a wrong rate is
+   * delete-and-recreate, the same discipline
+   * recurring_invoice_schedules.client_id/cadence/anchor_date uses.
+   */
+  rateLocked?: boolean;
 }) {
   const [droveOn, setDroveOn] = useState(values.drove_on);
   const [tripId, setTripId] = useState(values.trip_id === "" ? NO_TRIP : values.trip_id);
@@ -207,33 +220,54 @@ function EntryFields({
         <Text as="label" size="2" weight="medium" htmlFor={`${idPrefix}-rate`}>
           Rate (cents/mile)
         </Text>
-        <TextField.Root
-          id={`${idPrefix}-rate`}
-          name="rate_cents_per_mile"
-          required
-          inputMode="decimal"
-          disabled={disabled}
-          value={rate}
-          onChange={(e) => setRate(e.target.value)}
-        />
-        {yearRate !== undefined ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="1"
-            disabled={disabled}
-            onClick={() => setRate(formatRateForDisplay(yearRate))}
-          >
-            Use {year}&rsquo;s rate ({formatRateForDisplay(yearRate)}¢/mi)
-          </Button>
+        {rateLocked ? (
+          <>
+            <TextField.Root
+              id={`${idPrefix}-rate`}
+              // NO name — never submitted. Locked once saved; see
+              // EntryFields' rateLocked doc comment.
+              value={values.rate_cents_per_mile}
+              readOnly
+              disabled
+              className="tnum"
+            />
+            <Text size="1" color="gray">
+              Locked once saved, so a later rate change can never restate a
+              drive already recorded. To fix a wrong rate, delete this drive
+              and log it again.
+            </Text>
+          </>
         ) : (
-          <Text size="1" color="amber">
-            {year ? `No rate on file for ${year}. ` : ""}
-            <RadixLink asChild>
-              <NextLink href="/settings?tab=mileage">Add it in Settings</NextLink>
-            </RadixLink>
-            , or enter it manually.
-          </Text>
+          <>
+            <TextField.Root
+              id={`${idPrefix}-rate`}
+              name="rate_cents_per_mile"
+              required
+              inputMode="decimal"
+              disabled={disabled}
+              value={rate}
+              onChange={(e) => setRate(e.target.value)}
+            />
+            {yearRate !== undefined ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="1"
+                disabled={disabled}
+                onClick={() => setRate(formatRateForDisplay(yearRate))}
+              >
+                Use {year}&rsquo;s rate ({formatRateForDisplay(yearRate)}¢/mi)
+              </Button>
+            ) : (
+              <Text size="1" color="amber">
+                {year ? `No rate on file for ${year}. ` : ""}
+                <RadixLink asChild>
+                  <NextLink href="/settings?tab=mileage">Add it in Settings</NextLink>
+                </RadixLink>
+                , or enter it manually.
+              </Text>
+            )}
+          </>
         )}
       </Flex>
       <Box style={{ gridColumn: "span 2" }}>
@@ -492,6 +526,7 @@ function EntryRow({
             trips={trips}
             clients={clients}
             rates={rates}
+            rateLocked
           />
           <Flex mt="2" role="alert" aria-live="polite">
             {state.error ? (

@@ -1220,6 +1220,13 @@ export type Database = {
       // published rate carries a fractional cent; mileage_entries snapshots
       // it at capture and never re-resolves it from mileage_rates. See the
       // migration header for the full money-type reasoning.
+      //
+      // mileage_entries.rate_cents_per_mile is listed below in Update for
+      // shape-completeness only (it mirrors the Row/Insert types) — as of
+      // 20260809050000_mileage_and_recurring_fixes.sql, `authenticated`
+      // has NO UPDATE grant on this column at the database, and the app
+      // layer (expenses/mileage/actions.ts) never attempts to write it on
+      // update. Do not add it back to an UPDATE payload.
       // -----------------------------------------------------------------
       mileage_rates: {
         Row: {
@@ -1487,6 +1494,20 @@ export type Database = {
       trip_committed_invoice: {
         Args: { p_account_id: string; p_trip_id: string };
         Returns: string | null;
+      };
+      // Added by 20260809050000_mileage_and_recurring_fixes.sql (defect 6
+      // fix). SECURITY DEFINER: writes the invoice, its line, and the
+      // recurring_invoice_generations ledger row as one atomic statement
+      // so a partial failure (including the ledger's own 23505) can never
+      // leave an orphaned invoice/line behind. Returns the new invoice id,
+      // or raises (never trust a caller-supplied account_id — the
+      // function re-derives it from the schedule after checking
+      // pilot.current_account_ids()). Does not check period due-ness —
+      // the caller (generateRecurringInvoice, recurring/actions.ts) still
+      // does that server-side before calling.
+      generate_recurring_invoice: {
+        Args: { p_schedule_id: string; p_period_start: string };
+        Returns: string;
       };
     };
     Enums: Record<string, never>;
