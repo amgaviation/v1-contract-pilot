@@ -378,6 +378,85 @@ note("\nWhat a correction is not");
   );
 }
 
+note("\nThe payment-link columns an issued invoice still owns");
+{
+  // THIS SECTION EXISTS BECAUSE ITS ABSENCE SHIPPED A CRITICAL BUG.
+  // 20260810120000 re-declared invoices_protect_issued from a stale
+  // ancestor and silently dropped stripe_payment_link_amount_cents from
+  // the allow-list, so every "Generate payment link" write on a sent
+  // invoice raised — AFTER Stripe had already minted a real, payable link
+  // the product could then never retire. This script never mentioned
+  // stripe, so 16 green checks said nothing about it.
+  const written = asTenant(
+    A.user,
+    `update pilot.invoices
+        set stripe_payment_link_id = 'plink_synthetic',
+            stripe_payment_link_url = 'https://example.invalid/pay/synthetic',
+            stripe_payment_link_livemode = false,
+            stripe_payment_link_amount_cents = 25000
+      where id = '${INVOICE2}';
+     select coalesce(stripe_payment_link_amount_cents::text, 'null')
+       from pilot.invoices where id = '${INVOICE2}';`
+  );
+  equals(
+    "a payment link, INCLUDING the amount it was priced at, can be written to an issued invoice",
+    written.out,
+    "25000"
+  );
+
+  const cleared = asTenant(
+    A.user,
+    `update pilot.invoices
+        set stripe_payment_link_id = 'plink_synthetic',
+            stripe_payment_link_url = 'https://example.invalid/pay/synthetic',
+            stripe_payment_link_livemode = false,
+            stripe_payment_link_amount_cents = 25000
+      where id = '${INVOICE2}';
+     update pilot.invoices
+        set stripe_payment_link_id = null,
+            stripe_payment_link_url = null,
+            stripe_payment_link_livemode = null,
+            stripe_payment_link_amount_cents = null
+      where id = '${INVOICE2}';
+     select coalesce(stripe_payment_link_amount_cents::text, 'cleared')
+       from pilot.invoices where id = '${INVOICE2}';`
+  );
+  // Retiring a link when a payment lands, and clearing it on void, both
+  // write all four columns at once. If any one of them is outside the
+  // allow-list the whole statement raises.
+  equals("and retired again, all four columns together", cleared.out, "cleared");
+
+  const voided = asTenant(
+    A.user,
+    `${REVERSE}
+     update pilot.invoices
+        set stripe_payment_link_id = 'plink_synthetic',
+            stripe_payment_link_url = 'https://example.invalid/pay/synthetic',
+            stripe_payment_link_livemode = false,
+            stripe_payment_link_amount_cents = 45000
+      where id = '${INVOICE}';
+     update pilot.invoices
+        set status = 'void',
+            stripe_payment_link_id = null,
+            stripe_payment_link_url = null,
+            stripe_payment_link_livemode = null,
+            stripe_payment_link_amount_cents = null
+      where id = '${INVOICE}';
+     select status from pilot.invoices where id = '${INVOICE}';`
+  );
+  // The exact statement voidInvoice issues, on the exact invoice a pilot
+  // would be voiding: one whose bad payment they just corrected, which is
+  // back to 'sent', and which still carries the link generated earlier.
+  // 20260810010000's FINDING 3 was written to make this work;
+  // 20260810120000 broke it again.
+  //
+  // NOTE the invoice is corrected FIRST. 'paid' -> 'void' is not a
+  // permitted transition and never was — a settled invoice is not voided,
+  // it is credited. Asserting it could be was this test being wrong about
+  // the state machine, not the state machine being wrong.
+  equals("an invoice carrying a live link can still be voided", voided.out, "void");
+}
+
 note("\nThe status door stays shut for everything else");
 {
   refuses(

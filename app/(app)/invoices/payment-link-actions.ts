@@ -122,18 +122,45 @@ export async function createInvoicePaymentLink(
     return { error: "Couldn't create a Stripe payment link. Try again.", warning };
   }
 
-  const { error: updateError } = await supabase
+  // THE LINK ALREADY EXISTS ON STRIPE BY THIS POINT. That is what makes
+  // this particular write the one that must not fail quietly: if the row
+  // does not record the id, the product can never retire the link when the
+  // invoice is paid nor deactivate it when the invoice is voided, and a
+  // client can pay a link this software cannot see. A trigger regression
+  // made exactly that happen — see
+  // supabase/migrations/20260810130000_restore_payment_link_amount_guard.sql.
+  //
+  // So: count the rows. PostgREST answers 200 for a write that matched
+  // none, and the account_id filter means a forged invoice id matches
+  // nothing rather than relying on RLS alone to silently drop it.
+  const { error: updateError, count } = await supabase
     .from("invoices")
-    .update({
-      stripe_payment_link_id: link.id,
-      stripe_payment_link_url: link.url,
-      stripe_payment_link_livemode: link.livemode,
-      // What the link is priced at, so the invoice screen can say so and
-      // can spot a link that no longer matches the balance due.
-      stripe_payment_link_amount_cents: balanceDueCents,
-    } as never)
-    .eq("id", invoiceId);
+    .update(
+      {
+        stripe_payment_link_id: link.id,
+        stripe_payment_link_url: link.url,
+        stripe_payment_link_livemode: link.livemode,
+        // What the link is priced at, so the invoice screen can say so and
+        // can spot a link that no longer matches the balance due.
+        stripe_payment_link_amount_cents: balanceDueCents,
+      } as never,
+      { count: "exact" }
+    )
+    .eq("id", invoiceId)
+    .eq("account_id", account.id);
   if (updateError) return { error: friendlyDbError(updateError, "invoices.update(payment_link)") };
+  if (count === 0) {
+    // The link is live on Stripe and unrecorded here. Say so, with the id,
+    // because the pilot's own Stripe Dashboard is now the only place it
+    // can be deactivated.
+    console.error(
+      `payment link ${link.id} created on Stripe but NOT recorded on invoice ${invoiceId} — zero rows updated`
+    );
+    return {
+      error: `A payment link was created but couldn't be saved against this invoice. Deactivate ${link.id} in your Stripe Dashboard before generating another one.`,
+      warning,
+    };
+  }
 
   revalidatePath(`/invoices/${invoiceId}`);
   return { error: null, url: link.url, warning };
