@@ -516,23 +516,75 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
             {confirmResult ? (
               <Callout.Root color={confirmResult.partial ? "amber" : "green"}>
                 <Callout.Text>
+                  {/* THE TWO KINDS OF DUPLICATE ARE NOT THE SAME EVENT and
+                      were being summed into one number.
+
+                      An IN-LEDGER duplicate is the feature working: an
+                      overlapping re-import found a transaction already
+                      imported, and skipping it is exactly right.
+
+                      An IN-FILE duplicate is a transaction the statement
+                      itself listed twice as far as the fingerprint can
+                      tell — two $4.75 coffees, a toll charged both ways —
+                      and one of them was DROPPED. That is a probable real
+                      transaction the pilot now has to notice is missing.
+                      fingerprint.ts documents the collision and justifies
+                      it by saying the loss is "recoverable: the pilot adds
+                      the missed transaction as a manual expense" — which
+                      requires telling them, and one combined count in a
+                      routine-looking total does not. */}
                   {confirmResult.partial
                     ? confirmResult.partialMessage
                     : `Imported ${confirmResult.imported ?? 0}. ${
-                        (confirmResult.duplicatesInLedger ?? 0) + (confirmResult.duplicatesInFile ?? 0)
-                      } duplicate(s) skipped, ${confirmResult.rejectedCount ?? 0} rejected.`}{" "}
+                        confirmResult.duplicatesInLedger ?? 0
+                      } already imported before, ${confirmResult.rejectedCount ?? 0} rejected.`}{" "}
                   <RadixLink asChild>
                     <NextLink href="/expenses/transactions">Go review them →</NextLink>
                   </RadixLink>
                 </Callout.Text>
               </Callout.Root>
-            ) : (
+            ) : null}
+
+            {/* The in-file collisions, called out separately and by row,
+                because each one is a transaction that did NOT make it in
+                and that the pilot has to decide about. duplicateDetail was
+                already being computed, persisted to the batch AND returned
+                — and then dropped on the floor here. bank_import_batches
+                is never selected anywhere, so it was unreachable forever. */}
+            {confirmResult && !confirmResult.partial && (confirmResult.duplicatesInFile ?? 0) > 0 ? (
+              <Callout.Root color="amber">
+                <Callout.Text>
+                  <Text as="div" weight="medium" mb="1">
+                    {confirmResult.duplicatesInFile} transaction
+                    {confirmResult.duplicatesInFile === 1 ? " was" : "s were"} skipped as a
+                    repeat of another row in the same file.
+                  </Text>
+                  <Text as="div" size="1" mb="1">
+                    Two charges on the same day, at the same place, for the same
+                    amount look identical to us — so if these are genuinely
+                    separate (two crew meals, a toll paid both ways), add the
+                    missing one as an expense by hand.
+                  </Text>
+                  {(confirmResult.duplicateDetail ?? [])
+                    .filter((d) => d.kind === "in_file")
+                    .slice(0, 10)
+                    .map((d) => (
+                      <Text as="div" size="1" key={`dup-${d.rowNumber}`}>
+                        Row {d.rowNumber}
+                        {d.sourceRow ? ` — ${Object.values(d.sourceRow).slice(0, 3).join(" · ")}` : ""}
+                      </Text>
+                    ))}
+                </Callout.Text>
+              </Callout.Root>
+            ) : null}
+
+            {!confirmResult ? (
               <Box>
                 <Button type="button" onClick={handleConfirm} disabled={confirming || includedRows.length === 0}>
                   {confirming ? "Importing…" : `Import ${includedRows.length} transaction${includedRows.length === 1 ? "" : "s"}`}
                 </Button>
               </Box>
-            )}
+            ) : null}
           </Flex>
         </Card>
       ) : null}
