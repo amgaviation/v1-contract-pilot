@@ -70,7 +70,7 @@ export default async function LogbookDraftsPage() {
           supabase
             .from("trip_legs")
             .select(
-              "id, trip_id, leg_date, from_icao, to_icao, block_hours, night_hours, instrument_hours, day_landings, night_takeoffs, night_landings_full_stop, night_landings_touch_go, approaches, holds"
+              "id, trip_id, leg_date, from_icao, to_icao, block_hours, night_hours, instrument_hours, instrument_actual_hours, instrument_simulated_hours, cross_country_hours, day_takeoffs, day_landings, day_landings_full_stop, night_takeoffs, night_landings_full_stop, night_landings_touch_go, approaches, holds"
             )
             .in("trip_id", tripIds)
             .order("leg_date", { ascending: true }),

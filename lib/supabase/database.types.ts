@@ -452,7 +452,18 @@ export type Database = {
           block_hours: number | null;
           night_hours: number | null;
           instrument_hours: number | null;
+          // 20260810080000_trip_legs_currency_fields.sql — 61.51(b)(3)
+          // names actual and simulated instrument separately, and
+          // 61.57(a)(1) counts takeoffs apart from landings. Additive;
+          // instrument_hours is the legacy combined total and is NOT the
+          // sum of the two below.
+          instrument_actual_hours: number | null;
+          instrument_simulated_hours: number | null;
+          cross_country_hours: number | null;
+          day_takeoffs: number;
           day_landings: number;
+          /** How many of day_landings were to a full stop (a subset). */
+          day_landings_full_stop: number;
           night_takeoffs: number;
           night_landings_full_stop: number;
           night_landings_touch_go: number;
@@ -473,7 +484,12 @@ export type Database = {
           block_hours?: number | null;
           night_hours?: number | null;
           instrument_hours?: number | null;
+          instrument_actual_hours?: number | null;
+          instrument_simulated_hours?: number | null;
+          cross_country_hours?: number | null;
+          day_takeoffs?: number;
           day_landings?: number;
+          day_landings_full_stop?: number;
           night_takeoffs?: number;
           night_landings_full_stop?: number;
           night_landings_touch_go?: number;
@@ -494,7 +510,12 @@ export type Database = {
           block_hours?: number | null;
           night_hours?: number | null;
           instrument_hours?: number | null;
+          instrument_actual_hours?: number | null;
+          instrument_simulated_hours?: number | null;
+          cross_country_hours?: number | null;
+          day_takeoffs?: number;
           day_landings?: number;
+          day_landings_full_stop?: number;
           night_takeoffs?: number;
           night_landings_full_stop?: number;
           night_landings_touch_go?: number;

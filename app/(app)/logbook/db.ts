@@ -198,6 +198,11 @@ export type DraftLegRow = {
   block_hours: number | null;
   night_hours: number | null;
   instrument_hours: number | null;
+  instrument_actual_hours: number | null;
+  instrument_simulated_hours: number | null;
+  cross_country_hours: number | null;
+  day_takeoffs: number | null;
+  day_landings_full_stop: number | null;
   day_landings: number;
   night_takeoffs: number;
   night_landings_full_stop: number;
@@ -246,6 +251,11 @@ export type DraftTripRow = {
 function buildDraftRemarks(leg: {
   day_landings: number | null;
   instrument_hours: number | null;
+  instrument_actual_hours: number | null;
+  instrument_simulated_hours: number | null;
+  cross_country_hours: number | null;
+  day_takeoffs: number | null;
+  day_landings_full_stop: number | null;
 }): string | null {
   const notes: string[] = [];
   if (leg.day_landings) {
@@ -278,35 +288,36 @@ export function draftPayloadForLeg(
     pic_time: role === "PIC" ? totalTime : null,
     sic_time: role === "SIC" ? totalTime : null,
     solo_time: null,
-    cross_country_time: null,
+    // Captured on the leg now (20260810080000). Still null when the pilot
+    // left it blank — an unstated fact stays unstated.
+    cross_country_time: leg.cross_country_hours ?? null,
     night_time: leg.night_hours ?? 0,
-    // NOT mapped to instrument_actual_time. pilot.trip_legs records one
-    // undifferentiated `instrument_hours`; the logbook separates ACTUAL
-    // (in IMC) from SIMULATED (hood//view-limiting device), and the trip
-    // never recorded which. Asserting "actual" would put a fact the pilot
-    // never stated into the record they may have to defend, so the draft
-    // leaves both null and carries the number into remarks for the pilot
-    // to place. The draft-confirm boundary exists exactly so a human
-    // resolves this rather than the software guessing.
-    instrument_actual_time: null,
-    instrument_simulated_time: null,
+    // The leg now records these as the two separate conditions of flight
+    // 61.51(b)(3) names, so they carry straight across. The legacy
+    // combined `instrument_hours` is STILL never mapped here: a leg that
+    // holds only a total genuinely does not know the split, and asserting
+    // "actual" would put a fact the pilot never stated into a record they
+    // may have to defend. That case keeps going to remarks instead.
+    instrument_actual_time: leg.instrument_actual_hours ?? null,
+    instrument_simulated_time: leg.instrument_simulated_hours ?? null,
     flight_instructor_time: null,
     dual_received_time: null,
     simulator_time: null,
     simulator_device_type: null,
-    // trip_legs has no day-takeoff count at all (61.57(a) gap; see the
-    // Phase 6-corrections migration) — leaves 0 rather than guessing, same
-    // "the draft-confirm boundary is where a human resolves this" posture
-    // as everything else below.
-    day_takeoffs: 0,
-    // Same problem, sharper: trip_legs has a single `day_landings`
-    // count, while the logbook splits full-stop from touch-and-go
-    // because tailwheel currency (61.57(a)) turns on full-stop landings
-    // specifically. Filling full_stop with the total would silently
-    // manufacture currency the pilot may not have. Both stay zero and
-    // the count goes to remarks.
-    day_landings_full_stop: 0,
-    day_landings_touch_go: 0,
+    // 61.57(a)(1) counts takeoffs separately from landings, and the leg
+    // records that now — so a trip-derived entry no longer arrives with a
+    // structural zero in the field day currency is computed from.
+    day_takeoffs: leg.day_takeoffs ?? 0,
+    // The leg records how many of its day landings were to a full stop,
+    // so the split is a fact rather than a guess. Touch-and-go is the
+    // remainder BY DEFINITION — it is not a second independent count, and
+    // deriving it here cannot manufacture currency the way filling
+    // full_stop with the total would have.
+    day_landings_full_stop: leg.day_landings_full_stop ?? 0,
+    day_landings_touch_go: Math.max(
+      0,
+      (leg.day_landings ?? 0) - (leg.day_landings_full_stop ?? 0)
+    ),
     night_takeoffs: leg.night_takeoffs ?? 0,
     night_landings_full_stop: leg.night_landings_full_stop ?? 0,
     night_landings_touch_go: leg.night_landings_touch_go ?? 0,

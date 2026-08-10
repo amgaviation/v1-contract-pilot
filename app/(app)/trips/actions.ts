@@ -587,7 +587,12 @@ const LEG_FIELDS = [
   "block_hours",
   "night_hours",
   "instrument_hours",
+  "instrument_actual_hours",
+  "instrument_simulated_hours",
+  "cross_country_hours",
+  "day_takeoffs",
   "day_landings",
+  "day_landings_full_stop",
   "night_takeoffs",
   "night_landings_full_stop",
   "night_landings_touch_go",
@@ -627,10 +632,30 @@ function parseLegForm(formData: FormData): ParsedLeg {
     String(formData.get("instrument_hours") ?? ""),
     { max: 999, allowBlank: true }
   );
+  // 61.51(b)(3) names ACTUAL and SIMULATED instrument as two separate
+  // conditions of flight, so they are two fields. The legacy combined
+  // `instrument_hours` stays writable for rows that predate the split and
+  // is never derived from these — see the column comment in
+  // 20260810080000_trip_legs_currency_fields.sql.
+  const instrumentActual = parseTenth(
+    String(formData.get("instrument_actual_hours") ?? ""),
+    { max: 999, allowBlank: true }
+  );
+  const instrumentSimulated = parseTenth(
+    String(formData.get("instrument_simulated_hours") ?? ""),
+    { max: 999, allowBlank: true }
+  );
+  const crossCountryHours = parseTenth(
+    String(formData.get("cross_country_hours") ?? ""),
+    { max: 999, allowBlank: true }
+  );
   if (
     blockHours === undefined ||
     nightHours === undefined ||
-    instrumentHours === undefined
+    instrumentHours === undefined ||
+    instrumentActual === undefined ||
+    instrumentSimulated === undefined ||
+    crossCountryHours === undefined
   ) {
     return {
       values: null,
@@ -640,7 +665,9 @@ function parseLegForm(formData: FormData): ParsedLeg {
 
   const counts: Record<string, number> = {};
   for (const field of [
+    "day_takeoffs",
     "day_landings",
+    "day_landings_full_stop",
     "night_takeoffs",
     "night_landings_full_stop",
     "night_landings_touch_go",
@@ -658,6 +685,17 @@ function parseLegForm(formData: FormData): ParsedLeg {
     counts[field] = value;
   }
 
+  // Mirrors trip_legs_day_full_stop_within_landings so the pilot gets a
+  // sentence instead of a constraint name. The database is still the
+  // authority.
+  if ((counts.day_landings_full_stop ?? 0) > (counts.day_landings ?? 0)) {
+    return {
+      values: null,
+      error:
+        "Full-stop landings can't exceed the day landings — the full-stop count is how many of them came to a stop.",
+    };
+  }
+
   return {
     error: null,
     values: {
@@ -667,7 +705,12 @@ function parseLegForm(formData: FormData): ParsedLeg {
       block_hours: blockHours,
       night_hours: nightHours,
       instrument_hours: instrumentHours,
+      instrument_actual_hours: instrumentActual,
+      instrument_simulated_hours: instrumentSimulated,
+      cross_country_hours: crossCountryHours,
+      day_takeoffs: counts.day_takeoffs,
       day_landings: counts.day_landings,
+      day_landings_full_stop: counts.day_landings_full_stop,
       night_takeoffs: counts.night_takeoffs,
       night_landings_full_stop: counts.night_landings_full_stop,
       night_landings_touch_go: counts.night_landings_touch_go,
