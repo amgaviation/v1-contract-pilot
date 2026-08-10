@@ -9,14 +9,15 @@
     "typecheck": "tsc --noEmit",
     "tokens:verify": "node scripts/verify-tokens.mjs",
     "tenancy:verify": "node scripts/tenancy-verify.mjs",
-    "test": "npm run typecheck && npm run tokens:verify",
+    "test": "npm run typecheck && npm run tokens:verify && npm run test:unit",
     "billing:verify": "node scripts/billing-verify.mjs",
     "trip:verify": "node scripts/trip-verify.mjs",
     "customisation:verify": "node scripts/customisation-verify.mjs",
     "connect:verify": "node scripts/connect-verify.mjs",
     "invoice-share-verify": "node scripts/invoice-share-verify.mjs",
     "bank-import:verify": "node --experimental-strip-types scripts/bank-import-verify.mjs",
-    "foreflight-import:verify": "node scripts/foreflight-import-verify.mjs"
+    "foreflight-import:verify": "node scripts/foreflight-import-verify.mjs",
+    "test:unit": "node --test --experimental-strip-types --import ./scripts/lib/ts-extensionless-loader.mjs \"tests/*.test.mjs\""
   },
   "dependencies": {
     "@radix-ui/colors": "^3.0.0",
