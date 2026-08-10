@@ -1079,3 +1079,39 @@ The flag is `CURRENCY_ENGINE_ENABLED` and it is **off**: it requires the exact s
 unset variable, an empty variable, and the string `false` all read as off. Nothing renders currency
 to a pilot today. **The gates in `docs/LAUNCH-GATES.md` are unchanged — counsel reviews the
 disclaimer, Tony reviews this document, and only then does the flag move.**
+
+### 12.8 Addendum — the sixth round, and one behaviour change worth your eyes
+
+The two remaining findings from the fifth review are closed, and this section records the one that
+changes an answer rather than a word.
+
+**Two discriminators became one.** The engine asked "does this row have any real aircraft time?" in
+two places with two different proxies. `instrument.ts` keyed on `approachCondition` — actual weather
+cannot happen in a box, so a row logged `actual` must be real. Sound reasoning, but a proxy, and it
+was wrong in exactly one shape: a MIXED row (real aircraft time left over after subtracting simulator
+time) whose approaches were flown under a view-limiting device **in the aircraft** per 61.57(c)(1),
+not in the device session the same entry also logs. `passenger-shared.ts` read that row correctly as
+real-aircraft; `instrument.ts` read the identical row as a device session and could never make it
+certain. `lib/currency/simulator.ts` is now the single predicate both import, on this schema's own
+definition of wholly-simulator (`total_time <= simulator_time`, the condition
+`20260810020000`'s CHECK already uses to permit a null crew role).
+
+A reviewer constructed the disagreeing row and ran it: the old `instrument.ts` test called it a
+device session, the old `passenger-shared.ts` test called it real, and all five cards now agree it is
+real and credit it.
+
+**THE BEHAVIOUR CHANGE.** A consequence of using one predicate in both modules is that a mixed row
+logged `simulated` can now become **certain, credited instrument evidence**, where before it was
+permanently ambiguous. That is correct — the row genuinely has real aircraft time and the approaches
+were genuinely flown in the aircraft — but it credits approaches the previous code never could, so it
+is a change to a currency verdict and not merely to a disclosure. It is flagged here rather than
+buried in a diff.
+
+**And the assumption behind it is now stated.** Where a mixed row is counted, the card says its
+movements were taken as flown in the aircraft. The schema records no split of movements between the
+aircraft and the device, so that attribution is an assumption — the only one available, and
+defensible, but this engine's posture is that its assumptions are visible.
+
+**Still not verified:** the database-contract half of `currency:verify` did not run in that session,
+and the new mixed-row instrument case was not added to the property-test invariant table. Neither
+blocks anything while the flag is off, and both belong to whoever picks this up.
