@@ -116,10 +116,28 @@ suite is a floor and not a ceiling. Closed so far, each verified against live eC
   that reads another member's medical.
 - 61.57(c)(2)'s device path was unreachable, since a simulator row has no tail number by design.
 
-**Open at the time of writing, and blocking this gate:** the most recent type-rating fix turns a
-per-entry missing fact into a whole-card gate, so one unrelated entry can empty 61.57(a), (b) and
-135.247 for any pilot whose aircraft has no recorded type rating — most piston pilots. A repair is
-in flight. **Do not flip this flag on the strength of the suite being green.**
+**That class is now closed, and closed structurally.** Every gate runs through one rule — *a missing
+fact produces `insufficient_data` only if supplying it could change the answer* — and the invariant
+is asserted directly as a property test: **adding one more logbook entry can never turn a card from
+`estimated_current` into `insufficient_data`**, because flying more cannot make a pilot less current.
+A reviewer proved that test bites by reintroducing the old bug shape five separate times, reverting
+between each and verifying the files byte-identical afterwards. The decisive result: a single-axis
+gear-gate regression on one card is caught by the property test and **by nothing else in 230 tests**.
+
+Later rounds also closed: a mixed real-and-simulator row was discarded whole, throwing away real
+takeoffs and landings; and the fix for that read `total_time === simulator_time`, which credited a
+row whose simulator time EXCEEDED its total time — the engine manufacturing currency from a pure
+simulator session.
+
+**Still open, and why this gate is still shut.** Two medium findings, both about honesty rather than
+arithmetic. The instrument card and the three 90-day cards now answer "was this a real flight or a
+device session?" by two different tests, and they can disagree on the same row. And a credited mixed
+row attributes all of its movements to the aircraft portion without disclosing that the schema
+records no split between the aircraft and the device — a defensible assumption, but an undisclosed
+one, and this engine's whole posture is that its arithmetic is visible.
+
+**Do not flip this flag on the strength of the suite being green.** Six adversarial rounds have run
+and five of them found something the round before had introduced. The suite is a floor.
 
 ---
 
