@@ -19,7 +19,10 @@ const TRIAL_LABEL = "7-day free trial";
 const FEATURES: { title: string; body: string }[] = [
   {
     title: "Trips",
-    body: "Every job is one trip record — flight days, travel days, and the client attached to it. Your logbook entries, your invoice, and your expenses all draw from the same trip instead of three separate re-entries of the same dates.",
+    // Kept in step with the hero, which was corrected for the same reason: the
+    // trip does not generate expenses, it is what they attach to. "Draw from"
+    // was soft enough to survive one reading and not a second.
+    body: "Every job is one trip record — flight days, travel days, and the client attached to it. Your logbook draft and your invoice lines are built from that trip, and the receipts you file against it land on the right invoice and the right tax year.",
   },
   {
     title: "Invoicing",
