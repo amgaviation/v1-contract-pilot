@@ -334,7 +334,15 @@ insert into pilot.account_members (account_id, user_id, role) values
   ('${A}', '${UA}', 'owner'),
   ('${B}', '${UB}', 'owner');
 
-set local role authenticated;
+-- FIXTURE SEED, run privileged and with explicit ids so later assertions
+-- can reference them by literal. It is deliberately NOT run as
+-- authenticated any more: 20260810030000 column-scopes INSERT on these
+-- tables and withholds id, so a client cannot pick its own primary keys —
+-- and the app never sends one. Seeding through the real grants would
+-- therefore need generated ids threaded through every assertion below,
+-- which would obscure what each one is actually testing. The grants
+-- themselves are asserted directly, and against the REAL app payloads, by
+-- the BANK-GRANT block at the end of this file.
 select set_config('request.jwt.claims', json_build_object('sub', '${UA}', 'role', 'authenticated')::text, true);
 insert into pilot.bank_accounts (id, account_id, label, last4, kind) values
   ('${BANK_A}', '${A}', 'Chase checking', '4471', 'checking');
@@ -350,7 +358,6 @@ values
   ('${TXN_A1}', '${A}', '${BANK_A}', '00000000-0000-0000-0000-00000000bd01', '00000000-0000-0000-0000-00000000be01',
    1, '{"Date":"2026-01-05","Description":"STARBUCKS","Amount":"-4.75"}'::jsonb,
    '2026-01-05', 'STARBUCKS #1234', -475, 'fp-starbucks-2026-01-05');
-reset role;
 
 -- ===========================================================================
 -- BANK-DEDUP-1 — the unique index rejects a true duplicate (same account,
@@ -386,10 +393,18 @@ reset role;
 -- fingerprint (the two-cards-same-coffee-same-day case documented in
 -- fingerprint.ts) — proves the index is scoped, not global.
 -- ===========================================================================
-set local role authenticated;
-select set_config('request.jwt.claims', json_build_object('sub', '${UA}', 'role', 'authenticated')::text, true);
+-- Seeded with an explicit id as the setup role, NOT as authenticated:
+-- 20260810030000 column-scopes INSERT on pilot.bank_accounts to
+-- (account_id, label, last4, kind), deliberately withholding id so a
+-- client cannot choose its own primary keys. The app never sends one
+-- either (BankAccountInsert is exactly those four columns). This probe
+-- is about the TRANSACTION insert below, so the account it needs is
+-- fixture setup rather than part of what is being asserted.
 insert into pilot.bank_accounts (id, account_id, label, kind) values
   ('00000000-0000-0000-0000-00000000bb02', '${A}', 'Amex card', 'credit_card');
+
+set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', '${UA}', 'role', 'authenticated')::text, true);
 do $$
 begin
   insert into pilot.bank_transactions
@@ -476,14 +491,28 @@ end $$;
 -- BANK-REVIEW-3 — a rebill treatment with no trip is rejected (mirrors
 -- pilot.expenses' identical rule).
 -- ===========================================================================
+-- Reaches the reviewed state the way the APP does — insert unreviewed,
+-- then confirm — rather than minting a reviewed row directly. It has to:
+-- 20260810030000 withholds review_state/category/treatment from the
+-- INSERT grant precisely so a row cannot be born already confirmed. That
+-- makes this a better assertion than it was, because it now exercises the
+-- real confirmTransaction shape instead of a state the app can never
+-- produce.
 do $$
+declare v_txn uuid;
 begin
+  insert into pilot.bank_transactions
+    (account_id, bank_account_id, import_batch_id, source_file_id, source_row_number,
+     source_row, posted_on, description, amount_cents, fingerprint)
+  values
+    ('${A}', '${BANK_A}', '00000000-0000-0000-0000-00000000bd01', '00000000-0000-0000-0000-00000000be01',
+     10, '{}'::jsonb, '2026-01-10', 'REBILL NO TRIP', -200, 'fp-rebill-no-trip')
+  returning id into v_txn;
+
   begin
-    insert into pilot.bank_transactions
-      (account_id, bank_account_id, import_batch_id, source_file_id, source_row_number, source_row, posted_on, description, amount_cents, fingerprint, review_state, category, treatment, trip_id)
-    values
-      ('${A}', '${BANK_A}', '00000000-0000-0000-0000-00000000bd01', '00000000-0000-0000-0000-00000000be01',
-       10, '{}'::jsonb, '2026-01-10', 'REBILL NO TRIP', -200, 'fp-rebill-no-trip', 'reviewed', 'fuel', 'rebill', null);
+    update pilot.bank_transactions
+      set review_state = 'reviewed', category = 'fuel', treatment = 'rebill', trip_id = null
+      where id = v_txn and account_id = '${A}';
     raise exception 'BANK-REVIEW-3 FAILURE: rebill with no trip was accepted';
   exception
     when check_violation then
@@ -539,6 +568,150 @@ begin
     when unique_violation then
       raise notice 'PASS (BANK-DEDUP-9b): restoring the dedup index restores BANK-DEDUP-1''s denial — the schema is back to its real, shipped state';
   end;
+end $$;
+reset role;
+
+-- ===========================================================================
+-- BANK-FK — a bank-derived expense can actually be DELETED.
+--
+-- 20260809070000 wrote both bank FKs as a composite on delete set null
+-- with no column list, so Postgres nulled EVERY column of the key —
+-- including account_id, which is not null. Deleting a bank-derived expense
+-- therefore failed with 23502 naming account_id, surfaced to the pilot as
+-- "Something required is missing.", and the expense was undeletable from
+-- the UI. That matters more than a stuck row: deleting the duplicate is
+-- the only remedy when the same spend is entered twice (photographed
+-- receipt + card statement), and a rebilled duplicate reaches a client.
+-- Fixed by 20260810030000; asserted here in both directions.
+-- ===========================================================================
+set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', '${UA}', 'role', 'authenticated')::text, true);
+do $$
+declare
+  v_acct uuid;
+  v_exp uuid;
+  v_deleted int;
+  v_expense_id uuid;
+  v_txn uuid;
+begin
+  -- Self-contained fixture: an expense, and a bank transaction reviewed
+  -- into it. This is exactly the shape a confirmed bank row leaves behind.
+  -- The id is RETURNED rather than supplied, because pilot.expenses
+  -- withholds id from its INSERT grant too — the same column-scoping this
+  -- migration brings to the bank tables.
+  insert into pilot.expenses (account_id, incurred_on, category, amount_cents, treatment)
+    values ('${A}', current_date, 'hotel', 31200, 'deduct')
+    returning id into v_expense_id;
+  insert into pilot.bank_transactions
+    (account_id, bank_account_id, import_batch_id, source_file_id, source_row_number,
+     source_row, posted_on, description, amount_cents, fingerprint)
+    values ('${A}', '${BANK_A}', '00000000-0000-0000-0000-00000000bd01',
+            '00000000-0000-0000-0000-00000000be01', 901, '{}'::jsonb, current_date,
+            'SYNTH HOTEL FK PROBE', -31200, 'fp-bank-fk-probe')
+    returning id into v_txn;
+  update pilot.bank_transactions
+    set review_state = 'reviewed', category = 'hotel', treatment = 'deduct', expense_id = v_expense_id
+    where id = v_txn and account_id = '${A}';
+
+  delete from pilot.expenses where id = v_expense_id and account_id = '${A}';
+  get diagnostics v_deleted = row_count;
+  if v_deleted <> 1 then
+    raise exception 'BANK-FK-1 FAILURE: the expense did not delete (% rows)', v_deleted;
+  end if;
+
+  select account_id, expense_id into v_acct, v_exp
+    from pilot.bank_transactions where id = v_txn;
+  if v_acct is distinct from '${A}'::uuid then
+    raise exception 'BANK-FK-1 FAILURE: account_id was nulled by the FK action (got %)', v_acct;
+  end if;
+  if v_exp is not null then
+    raise exception 'BANK-FK-1 FAILURE: expense_id survived the delete';
+  end if;
+  raise notice 'PASS (BANK-FK-1): deleting a bank-derived expense succeeds, nulls only expense_id, and leaves account_id intact';
+end $$;
+reset role;
+
+-- ===========================================================================
+-- BANK-GRANT — INSERT is column-scoped, and the real payloads still work.
+--
+-- The four bank tables were the ONLY tables in schema pilot carrying a
+-- full-table INSERT grant, which handed back on the way IN every column
+-- the migration's own comment explains is withheld from UPDATE: the dedup
+-- fingerprint, the import lineage, the amount the bank sent.
+--
+-- BANK-GRANT-1 is the anti-revoke-trap assertion and the reason this block
+-- exists at all: revoke insert on <table> drops every column-level
+-- privilege, and the grant that follows restores only what it lists. A
+-- column left off is REVOKED, not preserved, and the feature breaks with
+-- 42501 at runtime. This repo has been caught by that three times, so the
+-- fix is not trusted from the migration text — the real insert payloads
+-- are executed here, as the authenticated role, against the real schema.
+-- ===========================================================================
+set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', '${UA}', 'role', 'authenticated')::text, true);
+do $$
+declare v_ba uuid; v_b uuid; v_sf uuid;
+begin
+  insert into pilot.bank_accounts (account_id, label, last4, kind)
+    values ('${A}', 'Grant probe', '4321', 'credit_card') returning id into v_ba;
+  insert into pilot.bank_import_batches (account_id, bank_account_id, source_format, status, total_rows)
+    values ('${A}', v_ba, 'csv_signed', 'processing', 1) returning id into v_b;
+  insert into pilot.bank_source_files (account_id, import_batch_id, file_name, row_count)
+    values ('${A}', v_b, 'grant-probe.csv', 1) returning id into v_sf;
+  insert into pilot.bank_transactions
+    (account_id, bank_account_id, import_batch_id, source_file_id, source_row_number,
+     source_row, posted_on, description, amount_cents, fingerprint)
+    values ('${A}', v_ba, v_b, v_sf, 1, '{}'::jsonb, current_date, 'GRANT PROBE', -1200, 'fp-grant-probe');
+  raise notice 'PASS (BANK-GRANT-1): every real bank insert payload still succeeds after column-scoping — the revoke trap did not fire';
+end $$;
+
+do $$
+begin
+  begin
+    insert into pilot.bank_transactions
+      (account_id, bank_account_id, import_batch_id, source_file_id, source_row_number,
+       source_row, posted_on, description, amount_cents, fingerprint,
+       review_state, category, treatment)
+    select account_id, bank_account_id, import_batch_id, source_file_id, 99,
+       '{"forged":"yes"}'::jsonb, current_date, 'FORGED', -5000, 'fp-forged',
+       'reviewed', 'fuel', 'deduct'
+    from pilot.bank_transactions where account_id = '${A}' and fingerprint = 'fp-grant-probe';
+    raise exception 'BANK-GRANT-2 FAILURE: a transaction was minted already reviewed, skipping the draft-confirm boundary entirely';
+  exception when insufficient_privilege then
+    raise notice 'PASS (BANK-GRANT-2, sqlstate confirmed 42501): review_state/category/treatment are not INSERT-grantable — a transaction is born unreviewed and only confirmTransaction can change that';
+  end;
+end $$;
+
+do $$
+begin
+  begin
+    insert into pilot.bank_transactions
+      (account_id, bank_account_id, import_batch_id, source_file_id, source_row_number,
+       source_row, posted_on, description, amount_cents, fingerprint, created_at)
+    select account_id, bank_account_id, import_batch_id, source_file_id, 98,
+       '{}'::jsonb, current_date, 'BACKDATED', -100, 'fp-backdated', '1999-01-01'
+    from pilot.bank_transactions where account_id = '${A}' and fingerprint = 'fp-grant-probe';
+    raise exception 'BANK-GRANT-3 FAILURE: created_at was forged on insert';
+  exception when insufficient_privilege then
+    raise notice 'PASS (BANK-GRANT-3, sqlstate confirmed 42501): created_at cannot be backdated on insert';
+  end;
+end $$;
+
+do $$
+declare t text; n int;
+begin
+  foreach t in array array['bank_accounts','bank_import_batches','bank_source_files','bank_transactions'] loop
+    select count(*) into n from information_schema.column_privileges
+      where table_schema = 'pilot' and table_name = t
+        and grantee = 'authenticated' and privilege_type = 'INSERT';
+    if n = 0 then
+      raise exception 'BANK-GRANT-4 FAILURE: pilot.% has NO insertable columns — the revoke wiped it and nothing was restored', t;
+    end if;
+    if n = (select count(*) from information_schema.columns where table_schema = 'pilot' and table_name = t) then
+      raise exception 'BANK-GRANT-4 FAILURE: pilot.% is INSERT-grantable on every column again', t;
+    end if;
+  end loop;
+  raise notice 'PASS (BANK-GRANT-4): all four bank tables are INSERT-scoped to a strict subset of their columns — read from information_schema, not from the migration text';
 end $$;
 reset role;
 
