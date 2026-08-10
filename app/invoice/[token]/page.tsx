@@ -235,9 +235,12 @@ export default async function PublicInvoicePage({
   // amount_cents === null covers a link generated before this column
   // existed (20260810010000) and never regenerated since — there is no way
   // to know what it charges without a Stripe round trip this page
-  // deliberately doesn't make (see the migration's own "no second signed-
-  // URL surface" reasoning for the logo, the same tradeoff applies here),
-  // so an unknown snapshot is treated exactly like a stale one: not payable.
+  // deliberately doesn't make (see this file's own "no second signed-URL
+  // surface" reasoning for the logo, above at lines 49-55; the same
+  // tradeoff applies here), so an unknown snapshot is treated exactly like
+  // a stale one: not payable. app/(app)/invoices/[id]/payment-panel.tsx's
+  // PayOnlinePanel treats the same null the same way, so this page and the
+  // pilot's own screen never disagree about whether a link is trustworthy.
   const linkCurrent =
     linkLooksLive &&
     invoice.payment.amount_cents !== null &&

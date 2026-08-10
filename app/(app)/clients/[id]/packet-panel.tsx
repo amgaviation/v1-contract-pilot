@@ -62,16 +62,30 @@ export default function PacketPanel({
 
   const pending = creating || revoking;
 
-  // The freshly minted token, else whatever is already live, UNLESS a
-  // revoke on THIS render just committed. revalidatePath re-renders the
-  // server component and `existing` correctly turns null, but
-  // revokeState lives in useActionState on the client and survives that
-  // re-render on its own — without this check the panel kept resolving
-  // existing?.token (or a stale state.token from an earlier create) and
-  // kept showing "send this to them" for a link that 404s the instant a
-  // client opens it. The RPC rotates on re-share, so at most one of
-  // state.token / existing?.token is ever current when neither applies.
-  const token = revokeState.revoked ? null : state.token ?? existing?.token ?? null;
+  // The freshest token this render should show: a freshly minted one from
+  // THIS create beats whatever the server already had, so the pilot sees
+  // the new link immediately without waiting on revalidatePath's
+  // re-render (same reasoning as SharePanel's `liveToken`).
+  const candidateToken = state.token ?? existing?.token ?? null;
+
+  // A revoke nulls OUT the specific token it targeted, not "whatever
+  // token this panel is showing right now". revokeState.revokedToken is
+  // echoed back by revokePacketShare from the hidden `revoking_token`
+  // input, i.e. it names the exact token that revoke dispatch tried to
+  // kill. Scoping the check to that identity — rather than a bare
+  // `revokeState.revoked` latch — is what lets it self-clear: once a
+  // LATER create mints a different token, candidateToken no longer
+  // equals revokedToken and this branch is simply moot, so the new link
+  // renders normally without anything having to reset revokeState. A
+  // bare latch cannot do that — it stays true for the rest of the mount,
+  // so create A, revoke A, create B would render NO link for B while the
+  // panel simultaneously said "the previous link was revoked" under a
+  // "Replace the link" button: three contradictory statements about the
+  // same packet on one render.
+  const token =
+    candidateToken && revokeState.revoked && revokeState.revokedToken === candidateToken
+      ? null
+      : candidateToken;
   const url = token
     ? `${typeof window === "undefined" ? "" : window.location.origin}/packet/${token}`
     : null;
@@ -127,7 +141,7 @@ export default function PacketPanel({
               </Select.Root>
             </Flex>
             <Button type="submit" disabled={pending}>
-              {creating ? "Creating…" : existing?.token ? "Replace the link" : "Create the link"}
+              {creating ? "Creating…" : token ? "Replace the link" : "Create the link"}
             </Button>
           </Flex>
 
@@ -139,6 +153,10 @@ export default function PacketPanel({
         </form>
       )}
 
+      {/* Gated on `!url`, which is itself already derived from the
+          revokedToken match above — so this only shows once the token it
+          is talking about has actually been cleared off screen, not for
+          the whole remaining lifetime of the mount. */}
       {!url && revokeState.revoked ? (
         <Text as="p" size="1" color="gray" mt="2">
           The previous link was revoked.
@@ -199,6 +217,12 @@ export default function PacketPanel({
                 <AlertDialog.Action>
                   <form action={revokeAction}>
                     <input type="hidden" name="client_id" value={clientId} />
+                    {/* Echoes back exactly the token this render is
+                        showing, so revokePacketShare's returned
+                        revokedToken can be compared against a later
+                        render's own token — see the `token` derivation
+                        above and packet-actions.ts's comment on it. */}
+                    <input type="hidden" name="revoking_token" value={token ?? ""} />
                     <Button type="submit" variant="solid" color="red" disabled={pending}>
                       Revoke
                     </Button>
@@ -207,7 +231,13 @@ export default function PacketPanel({
               </Flex>
             </AlertDialog.Content>
           </AlertDialog.Root>
-          {revokeState.error ? (
+          {/* Scoped to the token this failed revoke was actually about, the
+              same way the success path is scoped above — otherwise a
+              revoke that failed on an old token would keep showing this
+              error underneath a brand new link a subsequent create just
+              made live, which is not a failure of anything on screen
+              anymore. */}
+          {revokeState.error && revokeState.revokedToken === token ? (
             <Callout.Root color="red" size="1">
               <Callout.Text>{revokeState.error}</Callout.Text>
             </Callout.Root>

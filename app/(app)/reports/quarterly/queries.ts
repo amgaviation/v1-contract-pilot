@@ -20,8 +20,11 @@ type Supa = Awaited<ReturnType<typeof createClient>>;
 const PAYMENTS_LIMIT = 1000;
 const EXPENSES_LIMIT = 1000;
 // Mileage — this report used to have no query against mileage_entries at
-// all, so the pilot's standard-mileage deduction never fed the "what to
-// set aside" figure or appeared anywhere on this screen. Same cap
+// all, so the pilot's standard-mileage deduction appeared nowhere on this
+// screen. Now queried and shown as an informational line per period (see
+// PeriodFigures below) — but it is still deliberately NOT folded into
+// netProfitCents, so it still does not feed the "what to set aside"
+// figure; only "appeared nowhere on this screen" got fixed. Same cap
 // discipline as every other list query in this file.
 const MILEAGE_LIMIT = 1000;
 
@@ -190,12 +193,16 @@ export async function loadQuarterlyReport(
     // Mileage — drove_on and miles ONLY, never the per-row snapshotted
     // amount_cents, per lib/mileage.ts's header. Whole-year fetch, bucketed
     // into periods below, same shape as the unassigned-receipts query above.
+    // Ordered like every other list query in this file so a truncated read
+    // drops a deterministic tail instead of a server-arbitrary subset that
+    // would change the on-screen total on every reload.
     supabase
       .from("mileage_entries")
       .select("id, drove_on, miles")
       .eq("account_id", accountId)
       .gte("drove_on", yearStart)
       .lte("drove_on", yearEnd)
+      .order("drove_on", { ascending: true })
       .limit(MILEAGE_LIMIT),
     // The pilot's own per-year IRS rate. Never hardcoded — see the
     // mileage_rates table comment for why a baked-in figure would silently

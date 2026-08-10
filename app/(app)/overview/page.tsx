@@ -7,8 +7,8 @@ import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import { tripValueCents, type TripDayValueRow } from "@/lib/trip-value";
-import { EXPIRY_LADDER_BADGE, type ExpiryBadge } from "./documents/expiry-badge";
-import PageShell from "./page-shell";
+import { EXPIRY_LADDER_BADGE, type ExpiryBadge } from "../documents/expiry-badge";
+import PageShell from "../page-shell";
 
 export const metadata = { title: "Overview" };
 

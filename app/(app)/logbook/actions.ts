@@ -588,6 +588,20 @@ export async function confirmTripDrafts(
   );
 
   if (insertError) {
+    // Same race confirmLegDraft guards against, just reachable here too
+    // despite the confirmedLegIds re-read above: another tab/session can
+    // still confirm one of these legs between that read and this insert.
+    // The batch is one statement, so a 23505 on any single leg fails the
+    // whole insert — nothing in this batch lands, not just the duplicate.
+    // That's recoverable, not a real failure: confirming again re-reads
+    // confirmedLegIds fresh and only inserts what's still unconfirmed.
+    if ((insertError as { code?: string }).code === "23505") {
+      revalidatePath("/logbook/drafts");
+      return {
+        error:
+          "One of these legs was already confirmed to your logbook. Confirm the trip again to add the rest.",
+      };
+    }
     return { error: friendlyDbError(insertError, "logbook_entries.insert") };
   }
 

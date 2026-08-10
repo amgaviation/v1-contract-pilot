@@ -143,3 +143,20 @@
   width: auto;
   display: block;
 }
+
+/* The marketing surface's one deliberate use of a full navy panel — the
+   trial CTA band on app/(marketing)/page.tsx. Everywhere else on the
+   public site is Radix's ordinary light theme (see app/layout.tsx); this
+   is the exception, so it needs its own background/ink pair rather than
+   any Radix scale step, the same reasoning --v1-logo-mark/--v1-logo-bug
+   above already established for the wordmark. #0B1F33 is not a Theme
+   accent — it is the exact navy baked into public/brand/navy.svg,
+   white.svg, expanded.svg and app-icon.svg, so a panel sitting next to
+   one of those marks is the same navy, not a near-miss the eye can catch.
+   Components reach these through var(), never the literal, which is what
+   lets this file (and only this file — see scripts/verify-tokens.mjs's
+   EXEMPT_FILES) hold the hex at all. */
+:root {
+  --v1-marketing-navy: #0b1f33;
+  --v1-marketing-navy-ink: #ffffff;
+}

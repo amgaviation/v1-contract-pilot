@@ -32,18 +32,43 @@ export type PaymentRow = {
 function CorrectPaymentForm({
   invoiceId,
   payment,
+  wasCorrected,
 }: {
   invoiceId: string;
   payment: PaymentRow;
+  /**
+   * True once `payments` (refetched via revalidatePath after a successful
+   * correction) shows a row naming this one as reversed. The parent used
+   * to unmount this component outright the instant that flipped true —
+   * but that refetch and this form's OWN useActionState result land in
+   * the same render (both are driven by the same server action response),
+   * so an unmount here would have deleted a just-arrived LINK_STILL_LIVE_
+   * WARNING before the pilot ever saw it. Keep rendering until any notice
+   * has been shown and acknowledged.
+   */
+  wasCorrected: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
   const [state, formAction, pending] = useActionState(correctPayment, initialState);
+  const notice = dismissed ? undefined : state.notice;
 
   useEffect(() => {
-    if (state.saved) setOpen(false);
-  }, [state.saved]);
+    // Close on a clean correction, but NOT when retiring the payment link
+    // came back with LINK_STILL_LIVE_WARNING (actions.ts's retirePaymentLink)
+    // — that is a task only the pilot can finish on Stripe's own dashboard,
+    // and closing the dialog the instant `saved` flips true (the previous
+    // bug here) would hide it before it could ever be read.
+    if (state.saved && !state.notice) setOpen(false);
+  }, [state.saved, state.notice]);
 
-  if (!open) {
+  // The correction has landed and there's nothing left to tell the pilot —
+  // the row's own "· corrected" label already covers it.
+  if (wasCorrected && !notice) {
+    return null;
+  }
+
+  if (!open && !notice) {
     return (
       <Button type="button" variant="ghost" size="1" color="gray" onClick={() => setOpen(true)}>
         Correct
@@ -56,28 +81,48 @@ function CorrectPaymentForm({
       <input type="hidden" name="invoice_id" value={invoiceId} />
       <input type="hidden" name="payment_id" value={payment.id} />
       <Flex direction="column" gap="2" mt="2">
-        <Text size="1" color="gray">
-          {`This cancels the ${formatCents(payment.amount_cents)} entry with a matching
-            correction — both stay on the invoice, so the record shows what happened.
-            Enter the right payment afterwards.`}
-        </Text>
-        <TextField.Root
-          name="reversal_reason"
-          placeholder="Why? e.g. typo — meant 450.00"
-          aria-label="Why you're correcting this"
-        />
-        <Flex gap="2">
-          <Button type="submit" size="1" disabled={pending}>
-            {pending ? "Correcting…" : "Correct it"}
+        {!wasCorrected ? (
+          <>
+            <Text size="1" color="gray">
+              {`This cancels the ${formatCents(payment.amount_cents)} entry with a matching
+                correction — both stay on the invoice, so the record shows what happened.
+                Enter the right payment afterwards.`}
+            </Text>
+            <TextField.Root
+              name="reversal_reason"
+              placeholder="Why? e.g. typo — meant 450.00"
+              aria-label="Why you're correcting this"
+            />
+            <Flex gap="2">
+              <Button type="submit" size="1" disabled={pending}>
+                {pending ? "Correcting…" : "Correct it"}
+              </Button>
+              <Button type="button" size="1" variant="ghost" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+            </Flex>
+          </>
+        ) : (
+          // The correction already landed; this row is only still mounted
+          // to show the notice below. "Cancel" would be the wrong word for
+          // an action that already happened, so this dismisses instead.
+          <Button type="button" size="1" variant="ghost" onClick={() => setDismissed(true)}>
+            Dismiss
           </Button>
-          <Button type="button" size="1" variant="ghost" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-        </Flex>
+        )}
         {state.error ? (
           <Text size="1" color="red">
             {state.error}
           </Text>
+        ) : null}
+        {/* Mirrors recordPayment's own notice rendering below (~line 413)
+            — a side effect of a SUCCESSFUL correction, not a failure, so it
+            renders separately from `error`. See retirePaymentLink's doc
+            comment in actions.ts for what the two possible sentences mean. */}
+        {notice ? (
+          <Callout.Root color="amber" size="1">
+            <Callout.Text>{notice}</Callout.Text>
+          </Callout.Root>
         ) : null}
       </Flex>
     </form>
@@ -131,12 +176,18 @@ function PayOnlinePanel({
   const justCreated = Boolean(state.url);
   const url = state.url ?? existingLinkUrl;
   const linkAmountCents = justCreated ? balanceDueCents : existingLinkAmountCents;
+  // A null existingLinkAmountCents is a link generated before this column
+  // existed (20260810010000) and never regenerated — there's no way to know
+  // what it actually charges without a Stripe round trip this panel doesn't
+  // make. app/invoice/[token]/page.tsx's `linkCurrent` treats that same
+  // null identically to a mismatched amount, not as "unknown, so assume
+  // fine" — this has to agree, or the client reads "out of date, contact
+  // your pilot" while the pilot's own screen says nothing is wrong.
   const stale =
     !justCreated &&
     url !== null &&
-    existingLinkAmountCents !== null &&
     balanceDueCents !== null &&
-    existingLinkAmountCents !== balanceDueCents;
+    (existingLinkAmountCents === null || existingLinkAmountCents !== balanceDueCents);
 
   if (!connected) {
     return (
@@ -163,12 +214,12 @@ function PayOnlinePanel({
           </Text>
         </Flex>
       ) : null}
-      {stale && existingLinkAmountCents !== null && balanceDueCents !== null ? (
+      {stale && balanceDueCents !== null ? (
         <Callout.Root color="amber" size="1">
           <Callout.Text>
-            This link still charges {formatCents(existingLinkAmountCents)}, but
-            the balance due is now {formatCents(balanceDueCents)}. Generate a new
-            link before you send it.
+            {existingLinkAmountCents !== null
+              ? `This link still charges ${formatCents(existingLinkAmountCents)}, but the balance due is now ${formatCents(balanceDueCents)}. Generate a new link before you send it.`
+              : "This link predates this app tracking what it charges, so there's no way to confirm it still matches the balance due. Generate a new link before you send it."}
           </Callout.Text>
         </Callout.Root>
       ) : null}
@@ -311,8 +362,12 @@ export default function PaymentPanel({
                     >
                       {formatCents(payment.amount_cents)}
                     </Text>
-                    {!isCorrection && !wasCorrected ? (
-                      <CorrectPaymentForm invoiceId={invoiceId} payment={payment} />
+                    {!isCorrection ? (
+                      <CorrectPaymentForm
+                        invoiceId={invoiceId}
+                        payment={payment}
+                        wasCorrected={wasCorrected}
+                      />
                     ) : null}
                   </Flex>
                 </Flex>

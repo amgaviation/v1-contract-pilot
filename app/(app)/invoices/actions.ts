@@ -1994,11 +1994,14 @@ export async function recordPayment(
  * link columns. Returns the sentence to show the pilot, or undefined when
  * there is nothing worth saying.
  *
- * The two outcomes are deliberately different sentences, because they ask
- * different things of the pilot: a clean retirement is just information
- * ("that link is dead, make a new one if you need it"), while a failed
- * deactivation is a task only they can finish, in a dashboard this app
- * cannot reach.
+ * The Stripe outcome and the DB outcome are deliberately different
+ * sentences, because they ask different things of the pilot: a clean
+ * retirement is just information ("that link is dead, make a new one if
+ * you need it"); a failed Stripe deactivation is a task only they can
+ * finish, in a dashboard this app cannot reach; and a failed or zero-row
+ * clear of the four columns below means the app's OWN record of the link
+ * is now wrong regardless of what Stripe did, which is worth its own
+ * warning rather than silently trusting a screen that may be lying.
  */
 async function retirePaymentLink(params: {
   supabase: Awaited<ReturnType<typeof createClient>>;
@@ -2028,22 +2031,39 @@ async function retirePaymentLink(params: {
     notice = LINK_STILL_LIVE_WARNING;
   }
 
-  const { error } = await params.supabase
+  const { error, count } = await params.supabase
     .from("invoices")
-    .update({
-      stripe_payment_link_id: null,
-      stripe_payment_link_url: null,
-      stripe_payment_link_livemode: null,
-      stripe_payment_link_amount_cents: null,
-    } as never)
+    .update(
+      {
+        stripe_payment_link_id: null,
+        stripe_payment_link_url: null,
+        stripe_payment_link_livemode: null,
+        stripe_payment_link_amount_cents: null,
+      } as never,
+      { count: "exact" }
+    )
     .eq("id", params.invoiceId)
     .eq("account_id", params.accountId);
 
   if (error) {
-    // The link is off on Stripe but the row still points at it. Not worth
-    // failing the payment over — the screen would keep showing a dead
-    // link, which the next generate replaces anyway.
+    // Not worth failing the caller's payment/correction over — that already
+    // landed — but the row still points at a link this app can no longer
+    // manage, so the pilot needs telling, not just a server log.
     console.error(`[db] invoices.update(clear payment_link) ${error.message}`);
+    return `${notice} This invoice's own record of that link also failed to clear — reload the page before trusting what it shows.`;
+  }
+
+  if (count === 0) {
+    // PostgREST returns 200 even when the WHERE clause matches nothing —
+    // wrong account_id (RLS) or the row moved between the read that found
+    // paymentLinkId and this write. Either way the four columns above were
+    // NOT cleared, so the screen would otherwise keep offering a link that
+    // may already be dead on Stripe (or, if the Stripe call above also
+    // failed, one that's still live) with no way to tell which.
+    console.error(
+      `[db] invoices.update(clear payment_link) matched 0 rows for invoice ${params.invoiceId}`
+    );
+    return `${notice} This invoice's own record of that link couldn't be updated — reload the page before trusting what it shows.`;
   }
 
   return notice;

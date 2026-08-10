@@ -126,13 +126,18 @@ export default async function QuarterlyReportPage({
           </Text>
           <Text as="div" size="2">
             Net profit below is your own cash-basis income minus your own
-            deductible expenses, nothing more. It does not account for
-            self-employment tax, the QBI deduction, your filing status, a
-            spouse&rsquo;s withholding, or other income. The &ldquo;Set
-            aside&rdquo; column is simple arithmetic on a percentage you
-            choose — not a number this product is asserting as correct.
-            Confirm amounts and due dates with a tax professional or the
-            IRS before you pay.
+            deductible expenses, nothing more — it does NOT include the
+            standard-mileage deduction shown further down, which is
+            informational only (the standard rate and actual vehicle
+            expenses are alternative methods, never both). It also does
+            not account for self-employment tax, the QBI deduction, your
+            filing status, a spouse&rsquo;s withholding, or other income.
+            The &ldquo;Set aside&rdquo; column is simple arithmetic on a
+            percentage you choose, applied to that same mileage-free net
+            profit — not a number this product is asserting as correct. If
+            you claim standard mileage, what you actually owe is likely
+            lower than this column shows. Confirm amounts and due dates
+            with a tax professional or the IRS before you pay.
           </Text>
         </Callout.Text>
       </Callout.Root>

@@ -470,7 +470,7 @@ async function loadPeriodFigures(
   const invoiceClientById = new Map(invoiceRows.map((i) => [i.id, i.client_id]));
   // Defect 1: an invoice_payments row is never deleted when its parent
   // invoice transitions to 'void' (sent/partial -> void is a legal
-  // transition — see app/(app)/page.tsx's "Paid this year" KPI, which
+  // transition — see app/(app)/overview/page.tsx's "Paid this year" KPI, which
   // already does this same filter for the dashboard). A payment against a
   // now-void invoice is not income; skip it here too so this screen and
   // the dashboard's cash-basis figure for the same period can never

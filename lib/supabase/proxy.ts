@@ -83,6 +83,19 @@ async function refreshSession(
   // in depth, not the sole gate.
   const path = request.nextUrl.pathname;
   const isAuthSurface =
+    // The signed-out marketing surface: app/(marketing)/{page,pricing,
+    // terms,privacy}.tsx. All four are exact matches, not prefixes — none
+    // of the four has a planned subroute, and a stray prefix match here
+    // would silently wave through anything a future route nests under one
+    // of them. "/" itself moved out of the (app) route group precisely so
+    // it could be public; app/(marketing)/page.tsx does the further
+    // signed-in-vs-signed-out branch once it's actually rendering (the
+    // Overview dashboard now lives at /overview, gated the normal way
+    // below, not on this list).
+    path === "/" ||
+    path === "/pricing" ||
+    path === "/terms" ||
+    path === "/privacy" ||
     path === "/login" ||
     path === "/signup" ||
     path.startsWith("/welcome") ||

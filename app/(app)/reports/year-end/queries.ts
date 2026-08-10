@@ -237,17 +237,21 @@ export async function loadYearEndReport(
       )
       .eq("account_id", accountId)
       .eq("tax_year", year),
-    // F. Mileage — drove_on and miles ONLY, never the per-row snapshotted
+    // E. Mileage — drove_on and miles ONLY, never the per-row snapshotted
     // amount_cents: Schedule C wants total miles for the year x that
     // year's OWN rate on file (queried next), rounded once — see
     // lib/mileage.ts's header for why summing per-row amounts drifts from
-    // that figure.
+    // that figure. Ordered like every other list query in this file so a
+    // truncated read drops a deterministic tail instead of a
+    // server-arbitrary subset that would change the on-screen total on
+    // every reload.
     supabase
       .from("mileage_entries")
       .select("id, drove_on, miles")
       .eq("account_id", accountId)
       .gte("drove_on", start)
       .lte("drove_on", end)
+      .order("drove_on", { ascending: true })
       .limit(MILEAGE_LIMIT),
     // The pilot's own per-year IRS rate. Never hardcoded — see the
     // mileage_rates table comment for why a baked-in figure would silently
@@ -307,7 +311,7 @@ export async function loadYearEndReport(
   // about "what did I make this year"): sent -> partial -> void is a legal
   // transition and invoice_payments rows are never deleted, so a payment
   // against a now-void invoice sits in this table forever. It is not
-  // income. app/(app)/page.tsx's "Paid this year" KPI already filters this
+  // income. app/(app)/overview/page.tsx's "Paid this year" KPI already filters this
   // out; this report — the one a pilot hands their accountant — must too.
   const incomeMap = new Map<string, IncomeByClient>();
   const paymentRows: PaymentRow[] = [];

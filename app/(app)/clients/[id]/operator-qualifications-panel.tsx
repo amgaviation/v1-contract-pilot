@@ -100,8 +100,8 @@ export default function OperatorQualificationsPanel({
     [IPC_REQUIREMENT]:
       "135.297(e): if you're assigned more than one type for this operator, your IPC rotates " +
       "through your types (one flight check per 6-month period, not one per type per period). " +
-      "Record each check by the type it was flown in — only your most recently completed check, " +
-      "in whichever type, is weighed against the 6-month window below; older type rows show as " +
+      "Record each check by the type it was flown in — only the type currently providing your " +
+      "live 6-month coverage is weighed against the window below; older type rows show as " +
       "rotation history, not a lapse. This panel still does not determine whether your rotation " +
       "itself satisfies 297(e); that is on you and your chief pilot to track.",
   };
@@ -162,13 +162,17 @@ export default function OperatorQualificationsPanel({
               a.type_designator.localeCompare(b.type_designator)
             );
             // H-ipc-per-type fix: 135.297(e)'s rotation means only the
-            // most-recently-completed IPC row is "current" for 297(a)'s
+            // row with the latest expires_on is "current" for 297(a)'s
             // window — every other type a pilot has rotated through is
             // expected to show a lapsed row of its own, by design (see
-            // currentIpcRotationId's comment). Competency checks
-            // (135.293(b)) have no analogous rotation clause, so this
-            // stays null for that requirement and every row keeps
-            // judging its own expires_on, unchanged.
+            // currentIpcRotationId's comment for why expires_on, not
+            // completed_on, is the selection key). pilot.expirations
+            // (supabase/migrations/20260811020000_ipc_rotation_expiry.sql)
+            // applies the identical rule at the source, so this panel and
+            // the dashboard's Needs-attention list agree on which row is
+            // current. Competency checks (135.293(b)) have no analogous
+            // rotation clause, so this stays null for that requirement and
+            // every row keeps judging its own expires_on, unchanged.
             const currentIpcId =
               req.value === IPC_REQUIREMENT ? currentIpcRotationId(rows) : null;
             return (

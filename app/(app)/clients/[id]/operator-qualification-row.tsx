@@ -8,6 +8,7 @@ import {
   STATUS_OPTIONS,
   DERIVED_EXPIRY_REQUIREMENTS,
   OPERATOR_QUALIFICATION_REG_CITE,
+  ROTATION_HISTORY_COPY,
 } from "./operator-qualification-kinds";
 import {
   saveOperatorQualification,
@@ -94,11 +95,20 @@ export default function OperatorQualificationRow({
   /** H-ipc-per-type fix: whether THIS row's own expires_on should ever
    * drive the red/gray badge below. Defaults true — correct for every
    * requirement except ipc_135_297, where 135.297(e)'s rotation means
-   * only the most-recently-completed row across a client's types is
+   * only the row with the latest expires_on across a client's types is
    * "current" for 297(a)'s window; the panel computes that with
    * currentIpcRotationId() and passes false for every older type row,
    * since an older row's own lapse is the rotation working as designed,
-   * not something to flag red. See operator-qualification-kinds.ts. */
+   * not something to flag red. See operator-qualification-kinds.ts.
+   *
+   * This prop itself stays requirement-agnostic (it's just "is this row
+   * the current one"), but the copy it triggers is NOT hardcoded here —
+   * it's looked up from ROTATION_HISTORY_COPY[requirement] below, keyed
+   * to whichever requirement actually has a rotation clause. That keeps
+   * a future rotationCurrent={false} on some other TYPE_SPECIFIC
+   * requirement from rendering a 135.297(e) citation it has nothing to
+   * do with (REVIEW-ipc problem 6) — it would render that requirement's
+   * own entry, or the generic fallback below if none exists yet. */
   rotationCurrent?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(saveOperatorQualification, initialState);
@@ -237,10 +247,17 @@ export default function OperatorQualificationRow({
                   <Text size="1" color="gray">
                     {rotationCurrent
                       ? "Planning aid, not a determination of regulatory compliance."
-                      : "Rotation history, not a lapse — 135.297(e) allows one flight check per " +
-                        "6-month period across your assigned types; your most recently completed " +
-                        "check is the one judged against that window. Planning aid, not a " +
-                        "determination of regulatory compliance."}
+                      : ROTATION_HISTORY_COPY[requirement] ??
+                        // Defensive fallback, not expected to render today:
+                        // rotationCurrent is only ever false for a
+                        // TYPE_SPECIFIC_REQUIREMENTS row with a rotation
+                        // clause, and every such requirement has its own
+                        // entry in ROTATION_HISTORY_COPY (see that map's
+                        // comment). Generic on purpose — it must never
+                        // guess a citation for a requirement it wasn't
+                        // written for.
+                        "Rotation history, not currently judged against the expiry ladder. " +
+                          "Planning aid, not a determination of regulatory compliance."}
                   </Text>
                 </>
               ) : (

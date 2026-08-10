@@ -27,14 +27,64 @@ export const metadata = { title: "Trip drafts" };
  * without an error — the same cap app/(app)/trips/page.tsx guards against.
  * Asking for exactly that many and comparing the returned length is the
  * only way to detect it; a limit ABOVE the cap makes the check unfireable.
- * Every query below orders newest-first before capping, so if a pilot's
- * history is deep enough to hit the cap, it's the trips/legs they just
- * flew — the ones an unconfirmed draft is actually for — that survive,
- * not the ones from years ago they'd have no reason to go looking for.
+ * The trips and trip_legs queries below order newest-first before
+ * capping, so if a pilot's history is deep enough to hit the cap, it's
+ * the trips/legs they just flew — the ones an unconfirmed draft is
+ * actually for — that survive, not the ones from years ago they'd have
+ * no reason to go looking for.
+ *
+ * The already-confirmed-legs read (fetchAllConfirmedLegIds, below) is NOT
+ * part of that "cap + callout" group — it needs to be COMPLETE, not just
+ * recent, so it pages with .range() the way
+ * app/(app)/logbook/export/route.ts pages logbook_entries, instead of
+ * capping and disclosing.
+ *
+ * notYetFlownCount, further down, is exempt from all of this for a third
+ * reason: it's a head:true exact count, not a row fetch, so the row cap
+ * and the silent truncation this comment is about don't apply to it.
  */
 const TRIP_LIMIT = 1000;
 const LEG_LIMIT = 1000;
-const CONFIRMED_LIMIT = 1000;
+// Page size for fetchAllConfirmedLegIds — unrelated to the 1000-row cap
+// above; this is a normal, unbounded .range() page like export/route.ts
+// uses, sized for round trips rather than tuned to any API limit.
+const CONFIRMED_PAGE_SIZE = 500;
+
+/**
+ * Every already-confirmed trip_leg_id for these trips, unbounded. A
+ * pilot's confirmed-legs set is exactly the exclusion list this page uses
+ * to decide what's still a draft — capping it (the earlier version of
+ * this fix used a 1000-row cap here) means legs past the cap silently
+ * drop out of the exclusion set and get re-proposed as drafts. That is
+ * the confirmed-ids half of the original defect report's REPRO, and a
+ * cap-and-disclose Callout would only describe the bug, not close it.
+ * Paged with .range() until a short page comes back, same as
+ * app/(app)/logbook/export/route.ts does for the CSV export — the one
+ * other read in this feature directory that has to be complete rather
+ * than merely recent.
+ */
+async function fetchAllConfirmedLegIds(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  accountId: string,
+  tripIds: string[]
+): Promise<{ ids: Set<string>; error: { code?: string | null; message?: string | null } | null }> {
+  const ids = new Set<string>();
+  let offset = 0;
+  for (;;) {
+    const { data, error } = await logbookFrom(supabase, "logbook_entries")
+      .select("trip_leg_id")
+      .eq("account_id", accountId)
+      .in("trip_id", tripIds)
+      .not("trip_leg_id", "is", null)
+      .range(offset, offset + CONFIRMED_PAGE_SIZE - 1);
+    if (error) return { ids, error };
+    const rows = (data ?? []) as { trip_leg_id: string }[];
+    for (const row of rows) ids.add(row.trip_leg_id);
+    if (rows.length < CONFIRMED_PAGE_SIZE) break;
+    offset += rows.length;
+  }
+  return { ids, error: null };
+}
 
 export default async function LogbookDraftsPage() {
   const { account } = await requireAccount("/logbook/drafts");
@@ -83,9 +133,9 @@ export default async function LogbookDraftsPage() {
   const tripsTruncated = trips.length === TRIP_LIMIT;
   const tripIds = trips.map((trip) => trip.id);
 
-  const [{ data: legData, error: legsError }, { data: confirmedData, error: confirmedError }] =
+  const [{ data: legData, error: legsError }, { ids: confirmedLegIds, error: confirmedError }] =
     tripIds.length === 0
-      ? [{ data: [], error: null }, { data: [], error: null }]
+      ? [{ data: [], error: null }, { ids: new Set<string>(), error: null }]
       : await Promise.all([
           supabase
             .from("trip_legs")
@@ -101,21 +151,11 @@ export default async function LogbookDraftsPage() {
             // back to chronological order per-trip below, for display only.
             .order("leg_date", { ascending: false })
             .limit(LEG_LIMIT),
-          // Bounds which already-confirmed legs this page knows about, so
-          // it can exclude them from the draft list. Newest confirmations
-          // first: if this truncates, an old confirmed leg can reappear as
-          // an "unconfirmed" draft, but confirming it again is a no-op —
-          // confirmLegDraft/confirmTripDrafts turn the unique-constraint
-          // hit into "That leg was already confirmed to your logbook.",
-          // never a duplicate entry — so bounding this one the same way
-          // degrades to a clear message rather than corrupting the logbook.
-          logbookFrom(supabase, "logbook_entries")
-            .select("trip_leg_id")
-            .eq("account_id", account.id)
-            .in("trip_id", tripIds)
-            .not("trip_leg_id", "is", null)
-            .order("created_at", { ascending: false })
-            .limit(CONFIRMED_LIMIT),
+          // Which already-confirmed legs this page knows about, so it can
+          // exclude them from the draft list — read to completion, not
+          // capped. See fetchAllConfirmedLegIds's own comment for why a
+          // cap here is unsafe in a way the trips/legs caps above aren't.
+          fetchAllConfirmedLegIds(supabase, account.id, tripIds),
         ]);
 
   if (legsError) {
@@ -147,9 +187,6 @@ export default async function LogbookDraftsPage() {
   // tripIds.length === 0 short-circuits to an empty array above, so a
   // length exactly at the cap here always means a real fetch hit it.
   const legsTruncated = legs.length === LEG_LIMIT;
-  const confirmedRows = (confirmedData ?? []) as { trip_leg_id: string }[];
-  const confirmedTruncated = confirmedRows.length === CONFIRMED_LIMIT;
-  const confirmedLegIds = new Set(confirmedRows.map((row) => row.trip_leg_id));
 
   const legsByTrip = new Map<string, DraftLegRow[]>();
   for (const leg of legs) {
@@ -169,6 +206,17 @@ export default async function LogbookDraftsPage() {
     .map((trip) => ({ trip, legs: legsByTrip.get(trip.id) ?? [] }))
     .filter((entry) => entry.legs.length > 0);
 
+  // Whether the "every completed trip's legs are already in your logbook"
+  // claim below is actually true. It's true only if this page looked at
+  // every completed trip's every leg — if either query got capped, an
+  // empty pendingTrips list means "nothing found in what was checked," not
+  // "there is nothing." confirmedTruncated is deliberately not part of
+  // this: fetchAllConfirmedLegIds no longer caps, so it can't hide a real
+  // draft, only (if it somehow errored partway) risk re-proposing an
+  // already-confirmed leg — a case confirmedError already turns into a red
+  // Callout above, not a silent gap here.
+  const draftCheckIncomplete = tripsTruncated || legsTruncated;
+
   return (
     <PageShell
       title="Trip drafts"
@@ -178,7 +226,9 @@ export default async function LogbookDraftsPage() {
             ? `Nothing waiting here — but ${notYetFlownCount} trip${
                 notYetFlownCount === 1 ? " is" : "s are"
               } still marked Scheduled. Mark a trip flown and its legs show up here.`
-            : "Nothing waiting — every completed trip's legs are already in your logbook."
+            : draftCheckIncomplete
+              ? "Nothing waiting in what this screen checked — see the note below before assuming your logbook is fully caught up."
+              : "Nothing waiting — every completed trip's legs are already in your logbook."
           : `${pendingTrips.length} completed trip${pendingTrips.length === 1 ? "" : "s"} with unconfirmed legs`
       }
     >
@@ -195,30 +245,23 @@ export default async function LogbookDraftsPage() {
       {legsTruncated ? (
         <Callout.Root color="amber" mb="3">
           <Callout.Text>
-            {`Showing your ${LEG_LIMIT} most recently flown unconfirmed
-              legs. Older legs on these trips aren't on this screen — they're
-              still in your account, but this list can't reach that far back.`}
-          </Callout.Text>
-        </Callout.Root>
-      ) : null}
-      {confirmedTruncated ? (
-        <Callout.Root color="amber" mb="3">
-          <Callout.Text>
-            {`Only checked your ${CONFIRMED_LIMIT} most recently confirmed
-              legs against this list, so an older leg that's already in
-              your logbook could still show up below as a draft.
-              Confirming it again is safe — you'll see "already confirmed"
-              instead of a duplicate entry.`}
+            {`Checked your ${LEG_LIMIT} most recently flown legs on these
+              trips for unconfirmed ones. Older legs aren't checked by this
+              screen — they're still in your account, but this list can't
+              reach that far back.`}
           </Callout.Text>
         </Callout.Root>
       ) : null}
       {pendingTrips.length === 0 ? (
         <Card>
           <Flex direction="column" align="center" gap="2" py="6">
-            <Heading as="h3" size="4">Nothing to review</Heading>
+            <Heading as="h3" size="4">
+              {draftCheckIncomplete ? "Nothing found in what could be checked" : "Nothing to review"}
+            </Heading>
             <Text size="2" color="gray" align="center">
-              Complete a trip with legs and its proposed entries will show up here for you to
-              confirm — nothing reaches your logbook automatically.
+              {draftCheckIncomplete
+                ? "This screen only checked your most recent completed trips and legs (see the note above) — an older unconfirmed leg could still be out there."
+                : "Complete a trip with legs and its proposed entries will show up here for you to confirm — nothing reaches your logbook automatically."}
             </Text>
           </Flex>
         </Card>

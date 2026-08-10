@@ -113,6 +113,14 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
     setConfirmError(null);
     setExcluded(new Set());
     setFileName(file.name);
+    // Cleared here, unconditionally, before the read is even attempted —
+    // not just on the success paths below. Otherwise a failed read on a
+    // SECOND file (moved, permissions, IO error) would leave the FIRST
+    // file's ofxText/detectedFormat in place under the second file's name,
+    // and an account switch afterwards would resurrect that stale text as
+    // if it were a preview of the file currently attached.
+    setDetectedFormat(null);
+    setOfxText(null);
 
     let text: string;
     try {
@@ -233,6 +241,15 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
               value={bankAccountId}
               onValueChange={(v) => {
                 setBankAccountId(v);
+                // A completed import's success callout is keyed to the account
+                // that was selected when Import was clicked, not to whichever
+                // account is selected now — and step 4 no longer unmounts on
+                // an OFX/QFX switch (see below), so without this the pilot
+                // could switch from Chase to Amex and still see "Imported 42.
+                // Go review them →" left over from Chase, stacked above a
+                // live Amex preview with no Import button to act on it.
+                setConfirmResult(null);
+                setConfirmError(null);
                 // OFX/QFX has no re-parse button (step 3 below is CSV-only)
                 // and re-picking the identical file doesn't reliably re-fire
                 // <input type="file">'s change event in Chrome/Safari — so
@@ -419,18 +436,38 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                 afterwards does NOT collide, so the same charges get
                 recorded twice. Compared on the last four digits, which is
                 all the account picker shows and all a statement reliably
-                carries. */}
-            {parseResult.statementAccountId &&
-            selectedAccount?.last4 &&
-            parseResult.statementAccountId.slice(-4) !== selectedAccount.last4 ? (
+                carries.
+
+                last4 is optional on a saved account (step 1's "Last 4
+                (optional)" field), so the comparison can't always be run.
+                An absent last4 is NOT a match — it's an unknown — and the
+                guard has to say so rather than fall through silently: this
+                preview now survives an account switch (see the Select's
+                onValueChange above), so a bare account with no last4 would
+                otherwise be a clean, warning-free path to filing statement
+                A into account B. */}
+            {parseResult.statementAccountId && selectedAccount?.last4 ? (
+              parseResult.statementAccountId.slice(-4) !== selectedAccount.last4 ? (
+                <Callout.Root color="amber" size="1">
+                  <Callout.Text>
+                    This statement is for an account ending{" "}
+                    ···{parseResult.statementAccountId.slice(-4)}, but you picked{" "}
+                    {selectedAccount.label} ···{selectedAccount.last4}. Importing it
+                    would file these transactions against the wrong account — and a
+                    later import of the right statement wouldn&rsquo;t catch it as a
+                    duplicate. Check the account above before continuing.
+                  </Callout.Text>
+                </Callout.Root>
+              ) : null
+            ) : parseResult.statementAccountId && selectedAccount && !selectedAccount.last4 ? (
               <Callout.Root color="amber" size="1">
                 <Callout.Text>
                   This statement is for an account ending{" "}
-                  ···{parseResult.statementAccountId.slice(-4)}, but you picked{" "}
-                  {selectedAccount.label} ···{selectedAccount.last4}. Importing it
-                  would file these transactions against the wrong account — and a
-                  later import of the right statement wouldn&rsquo;t catch it as a
-                  duplicate. Check the account above before continuing.
+                  ···{parseResult.statementAccountId.slice(-4)}, but{" "}
+                  {selectedAccount.label} has no last 4 on file, so we can&rsquo;t
+                  confirm it&rsquo;s the same account. Add the last 4 to {selectedAccount.label}{" "}
+                  above, or double-check the statement yourself — a later import of
+                  the right statement wouldn&rsquo;t catch a mismatch as a duplicate.
                 </Callout.Text>
               </Callout.Root>
             ) : null}
