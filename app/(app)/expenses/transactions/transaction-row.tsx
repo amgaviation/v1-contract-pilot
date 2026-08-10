@@ -24,6 +24,23 @@ const TREATMENTS = [
 
 const NO_TRIP = "none";
 
+/**
+ * An expense already in the books that looks like this same spend — same
+ * amount, within a few days. Deliberately NOT matched on description: the
+ * imported row carries the raw bank descriptor ("SYNTH INN 88 SYNTHETIC
+ * RD") while a hand-entered one carries whatever the pilot typed ("SYNTH
+ * INN 88"), so descriptions are precisely what does NOT match on a real
+ * duplicate.
+ */
+export type DuplicateCandidate = {
+  incurredOn: string;
+  vendor: string | null;
+  amountCents: number;
+  treatment: string;
+  /** True when that expense also came from a bank import, not a receipt. */
+  fromBank: boolean;
+};
+
 export type TransactionRowData = {
   id: string;
   posted_on: string;
@@ -31,6 +48,7 @@ export type TransactionRowData = {
   amount_cents: number;
   bank_account_label: string;
   suggested_category: string | null;
+  duplicates: DuplicateCandidate[];
 };
 
 export type TripOption = { id: string; label: string };
@@ -43,6 +61,11 @@ export default function TransactionRow({ txn, trips }: { txn: TransactionRowData
   const [tripId, setTripId] = useState(NO_TRIP);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Gates "Confirm as expense" when this spend looks like one already in
+  // the books. Not a nag: the pilot has to say which it is before the
+  // second expense can exist, because the wrong answer is invisible here
+  // and shows up on a client's invoice.
+  const [acknowledgedDuplicate, setAcknowledgedDuplicate] = useState(false);
   const [done, setDone] = useState<"confirmed" | "ignored" | null>(null);
 
   const handleConfirm = async () => {
@@ -176,15 +199,59 @@ export default function TransactionRow({ txn, trips }: { txn: TransactionRowData
                   </Box>
                 ) : null}
               </Flex>
+              {/* ALREADY IN THE BOOKS. Warns, never blocks — two
+                  identical same-day charges are real. But the confirm is
+                  gated behind an explicit acknowledgement, because the
+                  failure this prevents is silent and lands on someone
+                  else: a duplicated rebill reaches the client as two
+                  invoice lines for one spend. */}
+              {txn.duplicates.length > 0 ? (
+                <Callout.Root color="amber" size="1">
+                  <Callout.Text>
+                    <Text as="div" weight="medium" mb="1">
+                      You may have already recorded this.
+                    </Text>
+                    {txn.duplicates.map((d, i) => (
+                      <Text as="div" size="1" key={`${d.incurredOn}-${i}`}>
+                        {formatCents(d.amountCents)} on {formatDate(d.incurredOn)}
+                        {d.vendor ? ` — ${d.vendor}` : ""}
+                        {d.treatment === "rebill" ? " (rebilled to a client)" : ""}
+                        {d.fromBank ? " (from another statement)" : " (entered by hand)"}
+                      </Text>
+                    ))}
+                    <Text as="div" size="1" mt="1">
+                      Confirming this makes a second expense. If it&rsquo;s the same
+                      spend, dismiss this row instead.
+                    </Text>
+                  </Callout.Text>
+                </Callout.Root>
+              ) : null}
               {error ? (
                 <Callout.Root>
                   <Callout.Text>{error}</Callout.Text>
                 </Callout.Root>
               ) : null}
               <Box>
-                <Button type="button" onClick={handleConfirm} disabled={pending}>
-                  {pending ? "Saving…" : "Confirm as expense"}
-                </Button>
+                {txn.duplicates.length > 0 && !acknowledgedDuplicate ? (
+                  <Flex gap="2" align="center" wrap="wrap">
+                    <Button
+                      type="button"
+                      variant="soft"
+                      color="amber"
+                      onClick={() => setAcknowledgedDuplicate(true)}
+                      disabled={pending}
+                    >
+                      It&rsquo;s a different charge — record it anyway
+                    </Button>
+                    <Button type="button" variant="soft" onClick={handleIgnore} disabled={pending}>
+                      Dismiss as a duplicate
+                    </Button>
+                  </Flex>
+                ) : (
+                  <Button type="button" onClick={handleConfirm} disabled={pending}>
+                    {pending ? "Saving…" : "Confirm as expense"}
+                  </Button>
+                )}
               </Box>
             </Flex>
           </Table.Cell>

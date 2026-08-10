@@ -3,7 +3,11 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatDateRange } from "@/lib/format";
 import PageShell from "../../page-shell";
-import TransactionRow, { type TransactionRowData, type TripOption } from "./transaction-row";
+import TransactionRow, {
+  type DuplicateCandidate,
+  type TransactionRowData,
+  type TripOption,
+} from "./transaction-row";
 
 export const metadata = { title: "Review transactions" };
 
@@ -17,6 +21,14 @@ type TxnRow = {
 };
 
 type BankAccountRow = { id: string; label: string; last4: string | null };
+type ExpenseCandidateRow = {
+  id: string;
+  incurred_on: string;
+  vendor: string | null;
+  amount_cents: number;
+  treatment: string;
+  bank_transaction_id: string | null;
+};
 type TripRow = { id: string; starts_on: string; ends_on: string; aircraft_ident: string | null };
 
 // Same silent-truncation guard as expenses/page.tsx's EXPENSES_LIMIT.
@@ -59,7 +71,72 @@ export default async function TransactionsPage() {
     label: `${formatDateRange(t.starts_on, t.ends_on)}${t.aircraft_ident ? ` · ${t.aircraft_ident}` : ""}`,
   }));
 
-  const rows: TransactionRowData[] = ((txnData ?? []) as TxnRow[]).map((t) => {
+  // -------------------------------------------------------------------
+  // DUPLICATE SPEND — the one that reaches a paying client
+  // -------------------------------------------------------------------
+  // A pilot photographs a $312.00 hotel folio and files it rebill; a month
+  // later the card statement imports the same charge. Nothing compared the
+  // two, so both counted — and on a rebill the client saw two lines
+  // totalling $624.00 for one night. They don't even read alike: the
+  // imported row carries the raw bank descriptor and the manual one
+  // whatever the pilot typed, so it looks like a two-night stay.
+  //
+  // Matched on AMOUNT and DATE, never on description, for exactly that
+  // reason — the descriptions are the part that does NOT match on a real
+  // duplicate. pilot.bank_transaction_duplicate_candidates is the
+  // authoritative single-row form of this rule (what bank-import:verify's
+  // DUP-1 proves); this is the same rule in one bounded query, so the
+  // queue costs two round trips rather than one per row.
+  //
+  // Advisory, never blocking. Two identical same-day charges are real —
+  // two crew meals at the same restaurant, a toll charged both ways — and
+  // nothing downstream can tell those from a duplicate either.
+  const txns = (txnData ?? []) as TxnRow[];
+  const DUP_WINDOW_DAYS = 4;
+  // Calendar arithmetic in UTC so a local timezone can never shift the
+  // window by a day — lib/format.ts's "a date is a calendar fact" rule.
+  const shiftDays = (iso: string, days: number) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    const t = Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1) + days * 86_400_000;
+    return new Date(t).toISOString().slice(0, 10);
+  };
+
+  const duplicatesByTxn = new Map<string, DuplicateCandidate[]>();
+  if (txns.length > 0) {
+    const dates = txns.map((t) => t.posted_on).sort();
+    const { data: candidateData } = await supabase
+      .from("expenses")
+      .select("id, incurred_on, vendor, amount_cents, treatment, bank_transaction_id")
+      .gte("incurred_on", shiftDays(dates[0]!, -DUP_WINDOW_DAYS))
+      .lte("incurred_on", shiftDays(dates[dates.length - 1]!, DUP_WINDOW_DAYS))
+      .limit(TXN_LIMIT);
+
+    const byAmount = new Map<number, ExpenseCandidateRow[]>();
+    for (const e of (candidateData ?? []) as ExpenseCandidateRow[]) {
+      const list = byAmount.get(e.amount_cents);
+      if (list) list.push(e);
+      else byAmount.set(e.amount_cents, [e]);
+    }
+
+    for (const t of txns) {
+      const from = shiftDays(t.posted_on, -DUP_WINDOW_DAYS);
+      const to = shiftDays(t.posted_on, DUP_WINDOW_DAYS);
+      const hits = (byAmount.get(Math.abs(t.amount_cents)) ?? [])
+        .filter((e) => e.incurred_on >= from && e.incurred_on <= to)
+        .filter((e) => e.bank_transaction_id !== t.id)
+        .slice(0, 3)
+        .map((e) => ({
+          incurredOn: e.incurred_on,
+          vendor: e.vendor,
+          amountCents: e.amount_cents,
+          treatment: e.treatment,
+          fromBank: e.bank_transaction_id !== null,
+        }));
+      if (hits.length > 0) duplicatesByTxn.set(t.id, hits);
+    }
+  }
+
+  const rows: TransactionRowData[] = txns.map((t) => {
     const acc = accountsById.get(t.bank_account_id);
     return {
       id: t.id,
@@ -68,6 +145,7 @@ export default async function TransactionsPage() {
       amount_cents: t.amount_cents,
       suggested_category: t.suggested_category,
       bank_account_label: acc ? `${acc.label}${acc.last4 ? ` ···${acc.last4}` : ""}` : "",
+      duplicates: duplicatesByTxn.get(t.id) ?? [],
     };
   });
 
