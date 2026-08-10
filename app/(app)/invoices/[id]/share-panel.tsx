@@ -66,17 +66,47 @@ export default function SharePanel({
         <Flex direction="column" gap="2" width="100%">
           <TextField.Root readOnly value={shareUrl} onFocus={(e) => e.currentTarget.select()} />
           <Flex gap="2">
-            <form action={createAction} style={{ flex: 1 }}>
-              <input type="hidden" name="invoice_id" value={invoiceId} />
-              <Button
-                type="submit"
-                variant="outline"
-                disabled={pending}
-                style={{ width: "100%" }}
-              >
-                {creating ? "Rotating…" : "Generate a new link"}
-              </Button>
-            </form>
+            {/* CONFIRMED, like Revoke beside it. Rotating is not a gentler
+                action than revoking — it revokes AND replaces in one press.
+                Whatever link the client already has stops working the
+                instant this is clicked, and the pilot has no way to know
+                the client had it open. An unconfirmed button that breaks
+                something on someone else's screen is the wrong shape. */}
+            <AlertDialog.Root>
+              <AlertDialog.Trigger>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={pending}
+                  style={{ flex: 1, width: "100%" }}
+                >
+                  {creating ? "Rotating…" : "Generate a new link"}
+                </Button>
+              </AlertDialog.Trigger>
+              <AlertDialog.Content maxWidth="420px">
+                <AlertDialog.Title>Replace this client link?</AlertDialog.Title>
+                <AlertDialog.Description size="2">
+                  The link you already sent stops working immediately — if your client
+                  has it bookmarked or in their inbox, it will 404 for them. You&rsquo;ll
+                  get a new link to send instead.
+                </AlertDialog.Description>
+                <Flex gap="3" mt="4" justify="end">
+                  <AlertDialog.Cancel>
+                    <Button variant="soft" color="gray">
+                      Keep the current link
+                    </Button>
+                  </AlertDialog.Cancel>
+                  <AlertDialog.Action>
+                    <form action={createAction}>
+                      <input type="hidden" name="invoice_id" value={invoiceId} />
+                      <Button type="submit" variant="solid" disabled={pending}>
+                        Replace it
+                      </Button>
+                    </form>
+                  </AlertDialog.Action>
+                </Flex>
+              </AlertDialog.Content>
+            </AlertDialog.Root>
             <AlertDialog.Root>
               <AlertDialog.Trigger>
                 <Button type="button" variant="outline" color="red" disabled={pending}>

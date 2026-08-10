@@ -54,6 +54,16 @@ const BILLING_BADGE: Record<string, BadgeInfo> = {
   written_off: { color: "gray", label: "Written off" },
 };
 
+/**
+ * The Supabase Data API clamps every response to 1000 rows and truncates
+ * without an error. Asking for exactly that many and comparing the
+ * returned length is the only way to detect it — a limit ABOVE the cap
+ * makes the check unfireable, which is how the tax reports came to hand a
+ * CPA a figure short by a sixth.
+ */
+const TRIP_LIMIT = 1000;
+const DAY_ROW_LIMIT = 1000;
+
 export default async function TripsPage() {
   await requireAccount("/trips");
 
@@ -64,11 +74,18 @@ export default async function TripsPage() {
       .select(
         "id, client_id, trip_kind, status, starts_on, ends_on, aircraft_ident, day_rate_cents, day_count, travel_day_count, travel_day_rate_cents, billing_state"
       )
-      .order("starts_on", { ascending: false }),
-    supabase.from("clients").select("id, name"),
+      .order("starts_on", { ascending: false })
+      .limit(TRIP_LIMIT),
+    supabase.from("clients").select("id, name").limit(TRIP_LIMIT),
   ]);
 
   const trips = (tripData ?? []) as TripListRow[];
+  // The Data API clamps a response to 1000 rows and truncates SILENTLY —
+  // no error, no flag. Asking for exactly the cap and comparing lengths is
+  // the only way to know it happened. A career pilot who quietly stopped
+  // seeing their oldest trips would have no reason to suspect the list
+  // was incomplete.
+  const tripsTruncated = trips.length === TRIP_LIMIT;
   // Resolved in memory rather than as a PostgREST embed: the embed's
   // return type resolves to `never` against the hand-authored types file
   // (same reason account.ts uses two queries), and a pilot's client list
@@ -98,11 +115,18 @@ export default async function TripsPage() {
         supabase
           .from("trip_days")
           .select("trip_id, day_type_id, rate_cents, quantity, units")
-          .in("trip_id", tripIds),
-        supabase.from("day_types").select("id, billable"),
+          .in("trip_id", tripIds)
+          .limit(DAY_ROW_LIMIT),
+        supabase.from("day_types").select("id, billable").limit(DAY_ROW_LIMIT),
       ]);
 
-    if (dayRowsError || dayTypeError) {
+    // A TRUNCATED day-grid read is exactly as dangerous as a failed one,
+    // and used to be invisible: the missing rows would simply not be
+    // counted, so the Value column would show a number lower than the
+    // trip actually bills. Same treatment as an error — hide the column
+    // rather than print a wrong figure.
+    const dayRowsTruncated = (dayRowsData?.length ?? 0) === DAY_ROW_LIMIT;
+    if (dayRowsError || dayTypeError || dayRowsTruncated) {
       dayGridError = true;
     } else {
       for (const row of (dayRowsData ?? []) as (TripDayValueRow & { trip_id: string })[]) {
@@ -136,6 +160,15 @@ export default async function TripsPage() {
         </Button>
       }
     >
+      {tripsTruncated ? (
+        <Callout.Root color="amber" mb="3">
+          <Callout.Text>
+            {`Showing your ${TRIP_LIMIT} most recent trips. Older ones aren't on this
+              screen — they're still in your account, and your invoices and reports
+              still count them.`}
+          </Callout.Text>
+        </Callout.Root>
+      ) : null}
       <Card>
         {error ? (
           <Callout.Root color="red" m="3">
