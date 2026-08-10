@@ -31,7 +31,17 @@ export type LogbookTableName =
   // A view, not a table — pilot.logbook_totals (20260810090000). Reached
   // through the same helper because it is subject to the same RLS and the
   // same hand-authored-types gap the helper exists to bridge.
-  | "logbook_totals";
+  | "logbook_totals"
+  // The aircraft registry and its two read-side views (20260810110000).
+  // Same reasoning again — and one more: adding tables to
+  // lib/supabase/database.types.ts is what pushed supabase-js past its
+  // generic-instantiation depth limit during Phase 10, after which
+  // `.from()` resolves to `never` inside that file and the failure reads
+  // as a type error in code nobody touched.
+  | "aircraft"
+  | "logbook_time_by_type"
+  | "aircraft_time_by_tail"
+  | "aircraft_unregistered_idents";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function logbookFrom(supabase: PilotClient, table: LogbookTableName): any {

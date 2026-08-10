@@ -1,0 +1,237 @@
+"use server";
+
+/**
+ * The pilot's fleet: register an airframe, correct it, retire it.
+ *
+ * There is no delete. pilot.aircraft has no DELETE grant and a
+ * `using (false)` policy behind it, because a registry row is what gives
+ * three years of logbook entries their type — deleting one would silently
+ * retype history that the pilot never touched. Retiring is `archived_at`,
+ * which takes the airframe out of the pickers and leaves the join alone.
+ * See the migration header.
+ */
+
+import { revalidatePath } from "next/cache";
+import { createClient } from "@/lib/supabase/server";
+import { requireAccount } from "@/lib/supabase/account";
+import { friendlyDbError } from "@/lib/db-errors";
+import { logbookFrom } from "../db";
+import {
+  normaliseTypeDesignator,
+  tailKey,
+  type AircraftGear,
+  type AircraftInsert,
+  type AircraftUpdate,
+} from "./db";
+
+/**
+ * `values` echoes what was submitted so the form can repopulate itself.
+ * React 19 calls native form.reset() on EVERY action dispatch, the error
+ * path included — without this, one bad character in the type designator
+ * blanks the whole form.
+ */
+export type AircraftFormState = {
+  error: string | null;
+  values?: Record<string, string>;
+  /**
+   * Set ONLY by a write that actually happened. The form uses it to close
+   * its panel, and it has to be an explicit flag rather than "no error and
+   * no echoed values" — that description is also true of the initial state,
+   * so the panel would have closed itself on mount, before the pilot typed
+   * anything.
+   */
+  saved?: true;
+};
+
+const FIELDS = [
+  "tail_number",
+  "type_designator",
+  "make_model",
+  "gear",
+  "category_class",
+  "notes",
+] as const;
+
+function echo(formData: FormData): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const field of FIELDS) out[field] = String(formData.get(field) ?? "");
+  return out;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const GEARS: readonly AircraftGear[] = ["tricycle", "tailwheel"];
+const TYPE_DESIGNATOR_RE = /^[A-Z0-9]{2,4}$/;
+
+function trimmedOrNull(formData: FormData, field: string): string | null {
+  const value = String(formData.get(field) ?? "").trim();
+  return value === "" ? null : value;
+}
+
+type Parsed =
+  | { ok: false; error: string }
+  | {
+      ok: true;
+      fields: {
+        tail_number: string;
+        type_designator: string | null;
+        make_model: string | null;
+        gear: AircraftGear | null;
+        category_class: string | null;
+        notes: string | null;
+      };
+    };
+
+function parse(formData: FormData): Parsed {
+  const tailNumber = String(formData.get("tail_number") ?? "").trim();
+  if (tailNumber.length < 2 || tailNumber.length > 12) {
+    return { ok: false, error: "A registration is between 2 and 12 characters — N447SP, G-ABCD." };
+  }
+  if (tailKey(tailNumber) === "") {
+    return { ok: false, error: "That registration has no letters or numbers in it." };
+  }
+
+  const designatorRaw = String(formData.get("type_designator") ?? "");
+  const designator = normaliseTypeDesignator(designatorRaw);
+  if (designator !== null && !TYPE_DESIGNATOR_RE.test(designator)) {
+    // Checked here as well as in the CHECK so the pilot gets the reason
+    // rather than "Some of those values aren't valid together" — the type
+    // designator is the field most likely to be filled in with a marketing
+    // name, and "Citation V" is a reasonable thing to have typed.
+    return {
+      ok: false,
+      error:
+        "The ICAO type designator is 2 to 4 letters or digits — C560 for a Citation V, BE40 for a Beechjet. Leave it blank if you're not sure.",
+    };
+  }
+
+  const gearRaw = String(formData.get("gear") ?? "").trim();
+  if (gearRaw !== "" && !GEARS.includes(gearRaw as AircraftGear)) {
+    return { ok: false, error: "Landing gear is either tricycle or tailwheel." };
+  }
+
+  return {
+    ok: true,
+    fields: {
+      tail_number: tailNumber,
+      type_designator: designator,
+      make_model: trimmedOrNull(formData, "make_model"),
+      // Left unstated rather than guessed. 61.57(a)(1)'s full-stop
+      // condition turns on this, and "nobody said" is a different fact
+      // from "tricycle".
+      gear: gearRaw === "" ? null : (gearRaw as AircraftGear),
+      category_class: trimmedOrNull(formData, "category_class"),
+      notes: trimmedOrNull(formData, "notes"),
+    },
+  };
+}
+
+export async function createAircraft(
+  _prev: AircraftFormState,
+  formData: FormData
+): Promise<AircraftFormState> {
+  const parsed = parse(formData);
+  if (!parsed.ok) return { error: parsed.error, values: echo(formData) };
+
+  const { account } = await requireAccount("/logbook/aircraft");
+  if (!account) return { error: "No account.", values: echo(formData) };
+
+  const supabase = await createClient();
+  const payload: AircraftInsert = { account_id: account.id, ...parsed.fields };
+
+  const { error } = await logbookFrom(supabase, "aircraft").insert(payload);
+
+  if (error) {
+    // 23505 is the unique key doing its job — the pilot already has this
+    // airframe under a different spelling. Name it, because "That already
+    // exists" leaves them hunting for something they wrote as N-447SP.
+    if (error.code === "23505") {
+      const key = tailKey(parsed.fields.tail_number);
+      // RLS already confines this SELECT to the pilot's own accounts, so
+      // the account_id filter is redundant — and stays anyway. This is the
+      // one read in the feature whose result is rendered back to a user as
+      // another row's content, which makes "confined by one mechanism" a
+      // worse answer than "confined by two".
+      const { data } = await logbookFrom(supabase, "aircraft")
+        .select("tail_number")
+        .eq("account_id", account.id)
+        .eq("tail_key", key)
+        .maybeSingle();
+      const existing = (data as { tail_number: string } | null)?.tail_number;
+      return {
+        error: existing
+          ? `You already have this aircraft — it's in your fleet as ${existing}.`
+          : "You already have this aircraft.",
+        values: echo(formData),
+      };
+    }
+    return { error: friendlyDbError(error, "aircraft.insert"), values: echo(formData) };
+  }
+
+  revalidatePath("/logbook/aircraft");
+  revalidatePath("/logbook");
+  return { error: null, saved: true };
+}
+
+export async function updateAircraft(
+  _prev: AircraftFormState,
+  formData: FormData
+): Promise<AircraftFormState> {
+  const id = String(formData.get("id") ?? "");
+  if (!UUID_RE.test(id)) return { error: "Missing aircraft.", values: echo(formData) };
+
+  const parsed = parse(formData);
+  if (!parsed.ok) return { error: parsed.error, values: echo(formData) };
+
+  const { account } = await requireAccount("/logbook/aircraft");
+  if (!account) return { error: "No account.", values: echo(formData) };
+
+  const supabase = await createClient();
+  const payload: AircraftUpdate = parsed.fields;
+
+  // PostgREST answers 200 for a write that matched no rows, so the count
+  // is the only thing that distinguishes "saved" from "silently did
+  // nothing because RLS filtered the row out".
+  const { error, count } = await logbookFrom(supabase, "aircraft")
+    .update(payload, { count: "exact" })
+    .eq("id", id)
+    .eq("account_id", account.id);
+
+  if (error) {
+    if (error.code === "23505") {
+      return {
+        error: "Another aircraft in your fleet already has that registration.",
+        values: echo(formData),
+      };
+    }
+    return { error: friendlyDbError(error, "aircraft.update"), values: echo(formData) };
+  }
+  if (count === 0) return { error: "That aircraft is no longer in your fleet.", values: echo(formData) };
+
+  revalidatePath("/logbook/aircraft");
+  revalidatePath("/logbook");
+  return { error: null, saved: true };
+}
+
+/**
+ * Retire an airframe, or bring it back. Not a delete — see the file
+ * header. `archived` is read from the form rather than toggled from the
+ * current value so a double-submit is idempotent instead of flipping.
+ */
+export async function setAircraftArchived(formData: FormData): Promise<void> {
+  const id = String(formData.get("id") ?? "");
+  if (!UUID_RE.test(id)) return;
+  const archived = String(formData.get("archived") ?? "") === "true";
+
+  const { account } = await requireAccount("/logbook/aircraft");
+  if (!account) return;
+
+  const supabase = await createClient();
+  const payload: AircraftUpdate = { archived_at: archived ? new Date().toISOString() : null };
+  await logbookFrom(supabase, "aircraft")
+    .update(payload)
+    .eq("id", id)
+    .eq("account_id", account.id);
+
+  revalidatePath("/logbook/aircraft");
+  revalidatePath("/logbook");
+}

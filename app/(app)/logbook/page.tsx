@@ -19,6 +19,7 @@ import { formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import PageShell from "../page-shell";
 import { logbookFrom, type LogbookEntryRow, type LogbookSource } from "./db";
+import type { TimeByTypeRow } from "./aircraft/db";
 
 export const metadata = { title: "Logbook" };
 
@@ -52,6 +53,13 @@ function landings(entry: LogbookEntryRow): number {
 /** One screenful. Entries beyond it are a page away, not unreachable. */
 const PAGE_SIZE = 200;
 
+/**
+ * Types shown in the hours-by-type panel. A career pilot might hold time in
+ * a couple of dozen; past that the panel stops being a summary, and the
+ * fleet screen is the place to go through them one at a time.
+ */
+const TYPE_ROW_LIMIT = 12;
+
 export default async function LogbookPage({
   searchParams,
 }: {
@@ -64,19 +72,31 @@ export default async function LogbookPage({
   const from = (page - 1) * PAGE_SIZE;
 
   const supabase = await createClient();
-  const [{ data, error, count }, { data: totalsData, error: totalsError }] =
-    await Promise.all([
-      logbookFrom(supabase, "logbook_entries")
-        .select("*", { count: "exact" })
-        .order("entry_date", { ascending: false })
-        .range(from, from + PAGE_SIZE - 1),
-      // TOTALS COME FROM THE DATABASE, over every entry the pilot owns.
-      // Summing the page would make total time — the number an employer
-      // and an underwriter ask for — a function of pagination. A career
-      // pilot with 8,000 entries used to see a figure computed from the
-      // most recent 1,000.
-      logbookFrom(supabase, "logbook_totals").select("*").maybeSingle(),
-    ]);
+  const [
+    { data, error, count },
+    { data: totalsData, error: totalsError },
+    { data: byTypeData },
+  ] = await Promise.all([
+    logbookFrom(supabase, "logbook_entries")
+      .select("*", { count: "exact" })
+      .order("entry_date", { ascending: false })
+      .range(from, from + PAGE_SIZE - 1),
+    // TOTALS COME FROM THE DATABASE, over every entry the pilot owns.
+    // Summing the page would make total time — the number an employer
+    // and an underwriter ask for — a function of pagination. A career
+    // pilot with 8,000 entries used to see a figure computed from the
+    // most recent 1,000.
+    logbookFrom(supabase, "logbook_totals").select("*").maybeSingle(),
+    // Time in type, from the same database rollup for the same reason.
+    // See supabase/migrations/20260810110000_aircraft_registry.sql: it
+    // matches the entry's free-text ident to the aircraft registry on a
+    // normalised key at READ time, and still counts entries that match
+    // nothing rather than dropping them.
+    logbookFrom(supabase, "logbook_time_by_type")
+      .select("*")
+      .order("total_time", { ascending: false })
+      .limit(TYPE_ROW_LIMIT),
+  ]);
 
   const entries = (data ?? []) as LogbookEntryRow[];
   const totalCount = count ?? entries.length;
@@ -102,6 +122,20 @@ export default async function LogbookPage({
         landings: Number(totalsRow.landings),
       }
     : null;
+
+  const byType = ((byTypeData ?? []) as TimeByTypeRow[]).map((row) => ({
+    label: row.type_label,
+    total: Number(row.total_time),
+    pic: Number(row.pic_time),
+    night: Number(row.night_time),
+    entries: Number(row.entry_count),
+    registered: row.has_registered_aircraft === true,
+  }));
+  // "Unspecified" only earns a row when it is not the ONLY row. A pilot who
+  // has never registered an airframe would otherwise get a table with one
+  // line reading "Unspecified — all your hours", which is noise dressed as
+  // a report; the prompt to build a fleet is the useful thing there.
+  const hasTypeBreakdown = byType.some((row) => row.label !== "Unspecified");
 
   return (
     <PageShell
@@ -185,6 +219,89 @@ export default async function LogbookPage({
               </Card>
             ))}
           </Grid>
+
+          {entries.length > 0 ? (
+            <Card>
+              <Flex direction="column" gap="3" p="1">
+                <Flex justify="between" align="center" gap="3" wrap="wrap">
+                  <Flex direction="column" gap="1">
+                    <Heading as="h2" size="4">
+                      Hours by type
+                    </Heading>
+                    <Text size="2" color="gray">
+                      What an insurance pilot-history form asks for, and what a chief
+                      pilot asks on the phone.
+                    </Text>
+                  </Flex>
+                  <Button asChild variant="outline">
+                    <NextLink href="/logbook/aircraft">Your aircraft</NextLink>
+                  </Button>
+                </Flex>
+
+                {hasTypeBreakdown ? (
+                  <Table.Root variant="ghost">
+                    <Table.Header>
+                      <Table.Row>
+                        <Table.ColumnHeaderCell>Type</Table.ColumnHeaderCell>
+                        <Table.ColumnHeaderCell justify="end">Total</Table.ColumnHeaderCell>
+                        <Table.ColumnHeaderCell justify="end">PIC</Table.ColumnHeaderCell>
+                        <Table.ColumnHeaderCell justify="end">Night</Table.ColumnHeaderCell>
+                        <Table.ColumnHeaderCell justify="end">Entries</Table.ColumnHeaderCell>
+                      </Table.Row>
+                    </Table.Header>
+                    <Table.Body>
+                      {byType.map((row) => (
+                        <Table.Row key={row.label}>
+                          <Table.RowHeaderCell>
+                            <Flex align="center" gap="2">
+                              <Text weight="medium">{row.label}</Text>
+                              {/* Says WHY a row reads the way it does: these
+                                  hours are grouped by what the pilot typed on
+                                  each entry, not by a registered airframe, so
+                                  the same aeroplane spelled two ways is still
+                                  two rows here. */}
+                              {row.registered ? null : (
+                                <Badge color="gray" variant="outline">
+                                  No aircraft on file
+                                </Badge>
+                              )}
+                            </Flex>
+                          </Table.RowHeaderCell>
+                          <Table.Cell justify="end">
+                            <Text weight="medium" className="tnum">
+                              {row.total.toFixed(1)}
+                            </Text>
+                          </Table.Cell>
+                          <Table.Cell justify="end">
+                            <Text color="gray" className="tnum">
+                              {row.pic.toFixed(1)}
+                            </Text>
+                          </Table.Cell>
+                          <Table.Cell justify="end">
+                            <Text color="gray" className="tnum">
+                              {row.night.toFixed(1)}
+                            </Text>
+                          </Table.Cell>
+                          <Table.Cell justify="end">
+                            <Text color="gray" className="tnum">
+                              {row.entries}
+                            </Text>
+                          </Table.Cell>
+                        </Table.Row>
+                      ))}
+                    </Table.Body>
+                  </Table.Root>
+                ) : (
+                  <Text size="2" color="gray">
+                    Your entries aren&rsquo;t grouped by type yet. Add the airframes you
+                    fly and every hour you&rsquo;ve already logged in them gets counted
+                    under a make and model — including entries where you wrote the
+                    registration differently.
+                  </Text>
+                )}
+              </Flex>
+            </Card>
+          ) : null}
 
           <Card>
             {entries.length === 0 ? (
