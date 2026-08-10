@@ -9,8 +9,15 @@ type Supa = Awaited<ReturnType<typeof createClient>>;
 // silently truncates an unbounded select, and a partial period total
 // presented as complete would misstate what a pilot sets aside for a
 // payment the IRS actually expects on time.
-const PAYMENTS_LIMIT = 2000;
-const EXPENSES_LIMIT = 2000;
+// 1000, not 2000. Every other call site in this codebase uses 1000 with a
+// comment saying that is the Data API's cap — and truncation here is
+// detected by exact equality (`payments.length === PAYMENTS_LIMIT`).
+// PostgREST clamps a client limit to db-max-rows, so with the cap at 1000
+// the array is 1000 long and `1000 === 2000` is false FOREVER: the guard
+// could never fire, and the export routes that key their "refuse rather
+// than ship a partial total" behaviour off these flags were dead code.
+const PAYMENTS_LIMIT = 1000;
+const EXPENSES_LIMIT = 1000;
 
 export type UnassignedRow = {
   id: string;
@@ -26,7 +33,13 @@ export type PeriodFigures = {
   paymentCount: number;
   deductibleCents: number;
   expenseCount: number;
-  /** incomeCents - deductibleCents. Can be negative. */
+  /**
+   * Expenses the client reimbursed. Not a Schedule C deduction, but a real
+   * cost whose matching income is already inside incomeCents — so it is
+   * subtracted from net profit. Same treatment as /reports/profit-loss.
+   */
+  rebilledCostCents: number;
+  /** incomeCents - deductibleCents - rebilledCostCents. Can be negative. */
   netProfitCents: number;
   unassigned: UnassignedRow[];
   unassignedTotalCents: number;
@@ -85,6 +98,8 @@ export async function loadQuarterlyReport(
   const [
     { data: paymentData, error: paymentsError },
     { data: deductData, error: deductError },
+    { data: invoiceData, error: invoiceError },
+    { data: rebillData, error: rebillError },
     { data: unassignedData, error: unassignedError },
   ] = await Promise.all([
     // CASH-BASIS income: one row per pilot.invoice_payments payment whose
@@ -94,7 +109,7 @@ export async function loadQuarterlyReport(
     // reasoning, as app/(app)/reports/year-end/queries.ts section A.
     supabase
       .from("invoice_payments")
-      .select("id, paid_on, amount_cents")
+      .select("id, invoice_id, paid_on, amount_cents")
       .eq("account_id", accountId)
       .gte("paid_on", yearStart)
       .lte("paid_on", yearEnd)
@@ -111,6 +126,27 @@ export async function loadQuarterlyReport(
       .gte("incurred_on", yearStart)
       .lte("incurred_on", yearEnd)
       .order("incurred_on", { ascending: true })
+      .limit(EXPENSES_LIMIT),
+    // Invoices, so a payment against a VOIDED one can be excluded below.
+    supabase
+      .from("invoices")
+      .select("id, status")
+      .eq("account_id", accountId)
+      .limit(PAYMENTS_LIMIT),
+    // REBILLED expenses. These are not deductions in the Schedule C sense
+    // — the client reimbursed them — but the reimbursement is already
+    // inside incomeCents above, because a payment pays the whole invoice
+    // including its rebilled lines. Counting the income and not the cost
+    // overstates profit by exactly this figure. /reports/profit-loss
+    // reached the same conclusion under a long comment and fixed it there;
+    // this report was the earlier version and never got the correction.
+    supabase
+      .from("expenses")
+      .select("id, incurred_on, amount_cents")
+      .eq("account_id", accountId)
+      .eq("treatment", "rebill")
+      .gte("incurred_on", yearStart)
+      .lte("incurred_on", yearEnd)
       .limit(EXPENSES_LIMIT),
     // Unassigned receipts — the actionable surface per the task brief: an
     // unassigned receipt inside a period that has already closed is a
@@ -130,6 +166,11 @@ export async function loadQuarterlyReport(
   const firstError =
     paymentsError?.message ??
     deductError?.message ??
+    // A failed invoice or rebill read is not "nothing to exclude" and not
+    // "no reimbursed costs" — both would silently overstate the figure a
+    // pilot sets aside for the IRS. Surfaced with the others.
+    invoiceError?.message ??
+    rebillError?.message ??
     unassignedError?.message ??
     null;
 
@@ -137,15 +178,41 @@ export async function loadQuarterlyReport(
     id: string;
     paid_on: string;
     amount_cents: number;
+    invoice_id: string;
   }[];
   const paymentsTruncated = payments.length === PAYMENTS_LIMIT;
+
+  // A payment against a VOIDED invoice is not income. sent -> partial ->
+  // void is a legal transition and invoice_payments rows are never
+  // deleted, so such a payment sits in that table forever. The dashboard
+  // KPI, /reports/profit-loss and /reports/year-end all already filter it
+  // — this report did not, and it is the one wired to the "set aside this
+  // much for the IRS" figure. A voided $10,825 invoice told a pilot to set
+  // aside $3,247.50 for a quarter in which they collected nothing.
+  const voidInvoiceIds = new Set(
+    ((invoiceData ?? []) as { id: string; status: string }[])
+      .filter((i) => i.status === "void")
+      .map((i) => i.id)
+  );
+  const livePayments = payments.filter((p) => !voidInvoiceIds.has(p.invoice_id));
+
+  const rebilled = (rebillData ?? []) as {
+    id: string;
+    incurred_on: string;
+    amount_cents: number;
+  }[];
+  const rebilledTruncated = rebilled.length === EXPENSES_LIMIT;
 
   const deductible = (deductData ?? []) as {
     id: string;
     incurred_on: string;
     amount_cents: number;
   }[];
-  const deductibleTruncated = deductible.length === EXPENSES_LIMIT;
+  // Folded together: both feed the same "your costs are incomplete"
+  // warning, and a partial rebill read understates costs exactly as a
+  // partial deduct read does.
+  const deductibleTruncated =
+    deductible.length === EXPENSES_LIMIT || rebilledTruncated;
 
   const unassignedAll = (unassignedData ?? []) as {
     id: string;
@@ -164,7 +231,8 @@ export async function loadQuarterlyReport(
     dateIso >= period.start && dateIso <= period.end;
 
   const periodFigures: PeriodFigures[] = periods.map((period) => {
-    const periodPayments = payments.filter((p) => inPeriod(p.paid_on, period));
+    const periodPayments = livePayments.filter((p) => inPeriod(p.paid_on, period));
+    const periodRebilled = rebilled.filter((e) => inPeriod(e.incurred_on, period));
     const periodDeductible = deductible.filter((e) =>
       inPeriod(e.incurred_on, period)
     );
@@ -180,6 +248,12 @@ export async function loadQuarterlyReport(
       (sum, e) => sum + e.amount_cents,
       0
     );
+    // The cost side of a reimbursement. Its matching income is already in
+    // incomeCents, so leaving this out overstates profit by exactly this.
+    const rebilledCostCents = periodRebilled.reduce(
+      (sum, e) => sum + e.amount_cents,
+      0
+    );
     const unassignedTotalCents = periodUnassignedRaw.reduce(
       (sum, e) => sum + e.amount_cents,
       0
@@ -191,7 +265,8 @@ export async function loadQuarterlyReport(
       paymentCount: periodPayments.length,
       deductibleCents,
       expenseCount: periodDeductible.length,
-      netProfitCents: incomeCents - deductibleCents,
+      rebilledCostCents,
+      netProfitCents: incomeCents - deductibleCents - rebilledCostCents,
       unassigned: periodUnassignedRaw.map((e) => ({
         id: e.id,
         incurredOn: e.incurred_on,

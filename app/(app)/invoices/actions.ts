@@ -1803,12 +1803,28 @@ export async function recordPayment(
   // Only attempted from 'sent'/'partial': invoices_protect_issued already
   // refuses 'draft' -> 'paid'/'partial' and 'paid' has no outbound
   // transition, so there is nothing to advance in either of those states.
-  const { data: invoiceData } = await supabase
+  // The `error` is READ, not discarded. Dropping it made a failed read
+  // indistinguishable from "this invoice isn't in an advanceable state":
+  // `status` came back undefined, the whole advance block below was
+  // skipped, and the function still returned saved: true. The payment had
+  // landed, so the invoice stayed 'sent' — counted as awaiting payment and
+  // rendered red as overdue by pilot.invoices_overdue (which filters on
+  // status in ('sent','partial')) for an invoice that was fully paid. That
+  // is the precise outcome the comment below this block says must not
+  // happen; it guarded the UPDATE and not the two reads gating it.
+  const { data: invoiceData, error: invoiceReadError } = await supabase
     .from("invoices")
     .select("status, stripe_payment_link_id")
     .eq("id", invoiceId)
     .eq("account_id", account.id)
     .maybeSingle();
+  if (invoiceReadError) {
+    return {
+      error:
+        "The payment was recorded, but the invoice's status couldn't be updated — reopen it and check whether it still shows as awaiting payment.",
+      saved: true,
+    };
+  }
   const invoiceRow = invoiceData as {
     status: string;
     stripe_payment_link_id: string | null;
@@ -1816,11 +1832,18 @@ export async function recordPayment(
   const status = invoiceRow?.status;
 
   if (status === "sent" || status === "partial") {
-    const { data: totalsData } = await supabase
+    const { data: totalsData, error: totalsReadError } = await supabase
       .from("invoice_totals")
       .select("balance_due_cents")
       .eq("invoice_id", invoiceId)
       .maybeSingle();
+    if (totalsReadError) {
+      return {
+        error:
+          "The payment was recorded, but the invoice's status couldn't be updated — reopen it and check whether it still shows as awaiting payment.",
+        saved: true,
+      };
+    }
     const balance = (totalsData as { balance_due_cents: number } | null)
       ?.balance_due_cents;
 
