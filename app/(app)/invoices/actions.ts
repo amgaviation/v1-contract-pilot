@@ -1962,3 +1962,84 @@ async function retirePaymentLink(params: {
 
   return notice;
 }
+
+/**
+ * Correct a mistyped payment.
+ *
+ * NOT AN EDIT. pilot.invoice_payments has no UPDATE and no DELETE grant,
+ * and this deliberately does not add one: the correction is a new row
+ * carrying exactly the negative of the one it names, so the ledger shows
+ * both what was recorded and what corrected it. If a client ever disputes
+ * what they paid, that is evidence; a number that changed silently is not.
+ * All of the arithmetic — same invoice, exact negative, not a correction
+ * of a correction, only once — is enforced by the trigger and the unique
+ * index in supabase/migrations/20260810120000_payment_reversals.sql, and
+ * this function's job is to turn a form submission into that INSERT.
+ *
+ * The invoice's own status walks itself back (paid -> partial/sent) from
+ * an AFTER trigger on the insert, so there is nothing to update here — and
+ * nothing here can move an invoice's status by hand.
+ */
+export async function correctPayment(
+  _prev: InvoiceFormState,
+  formData: FormData
+): Promise<InvoiceFormState> {
+  const invoiceId = String(formData.get("invoice_id") ?? "");
+  const paymentId = String(formData.get("payment_id") ?? "");
+  if (!UUID_RE.test(invoiceId) || !UUID_RE.test(paymentId)) {
+    return { error: "Missing payment." };
+  }
+
+  const { account } = await requireAccount(`/invoices/${invoiceId}`);
+  const supabase = await createClient();
+
+  // The amount is read back rather than taken from the form. The trigger
+  // would reject a wrong one anyway, but a hidden input carrying the
+  // figure a correction must equal is a field worth not having.
+  const { data: original, error: readError } = await supabase
+    .from("invoice_payments")
+    .select("amount_cents")
+    .eq("account_id", account.id)
+    .eq("invoice_id", invoiceId)
+    .eq("id", paymentId)
+    .maybeSingle();
+
+  if (readError) return { error: friendlyDbError(readError, "invoice_payments.select") };
+  if (!original) return { error: "That payment is no longer on this invoice." };
+
+  const reason = optional(formData, "reversal_reason");
+  const payload = {
+    account_id: account.id,
+    invoice_id: invoiceId,
+    // Today, not the original's date: the correction happened now, and
+    // back-dating it would put a change to the books in a period that may
+    // already have been reported.
+    paid_on: new Date().toISOString().slice(0, 10),
+    amount_cents: -(original as { amount_cents: number }).amount_cents,
+    reverses_payment_id: paymentId,
+    reversal_reason: reason,
+  };
+
+  const { error } = await supabase.from("invoice_payments").insert(payload as never);
+
+  if (error) {
+    // The trigger's own refusals are already written for a pilot to read.
+    if (
+      typeof error.message === "string" &&
+      /cannot be corrected|cannot have a payment corrected|same invoice|exactly the negative|no such payment/.test(
+        error.message
+      )
+    ) {
+      return { error: error.message };
+    }
+    if (error.code === "23505") {
+      return { error: "That payment has already been corrected." };
+    }
+    return { error: friendlyDbError(error, "invoice_payments.correct") };
+  }
+
+  revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath("/invoices");
+  revalidatePath("/reports");
+  return { error: null, saved: true };
+}

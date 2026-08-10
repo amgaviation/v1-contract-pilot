@@ -22,7 +22,8 @@
     "prebuild": "node scripts/sync-ocr-assets.mjs",
     "receipt-ocr:verify": "node scripts/receipt-ocr-verify.mjs",
     "estimates:verify": "node scripts/estimates-verify.mjs",
-    "aircraft:verify": "node scripts/aircraft-verify.mjs"
+    "aircraft:verify": "node scripts/aircraft-verify.mjs",
+    "payment-reversal:verify": "node scripts/payment-reversal-verify.mjs"
   },
   "dependencies": {
     "@radix-ui/colors": "^3.0.0",

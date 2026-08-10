@@ -3,16 +3,86 @@
 import { useActionState, useEffect, useState } from "react";
 import { Button, Callout, Card, Flex, Select, Separator, Text, TextField } from "@/components/ui";
 import { formatCents, formatDate } from "@/lib/format";
-import { recordPayment, type InvoiceFormState } from "../actions";
+import { correctPayment, recordPayment, type InvoiceFormState } from "../actions";
 import { createInvoicePaymentLink, type CreateLinkState } from "../payment-link-actions";
 
 export type PaymentRow = {
   id: string;
   paid_on: string;
+  /** Negative on a correction row. See reverses_payment_id. */
   amount_cents: number;
   method: "ach" | "check" | "wire" | "card" | "cash" | "other" | null;
   notes: string | null;
+  /**
+   * Set on a CORRECTION, naming the payment it cancels. The ledger is
+   * append-only: a mistyped payment is never edited or deleted, it is
+   * negated by a row like this one and both stay on the invoice.
+   */
+  reverses_payment_id?: string | null;
+  reversal_reason?: string | null;
 };
+
+/**
+ * "That was a typo" — the one thing a pilot could not do until now.
+ *
+ * Deliberately a disclosure rather than a button that fires on click. A
+ * correction is permanent (it cannot itself be corrected) and it changes
+ * what an invoice says was paid, so it asks once and takes a reason.
+ */
+function CorrectPaymentForm({
+  invoiceId,
+  payment,
+}: {
+  invoiceId: string;
+  payment: PaymentRow;
+}) {
+  const [open, setOpen] = useState(false);
+  const [state, formAction, pending] = useActionState(correctPayment, initialState);
+
+  useEffect(() => {
+    if (state.saved) setOpen(false);
+  }, [state.saved]);
+
+  if (!open) {
+    return (
+      <Button type="button" variant="ghost" size="1" color="gray" onClick={() => setOpen(true)}>
+        Correct
+      </Button>
+    );
+  }
+
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="invoice_id" value={invoiceId} />
+      <input type="hidden" name="payment_id" value={payment.id} />
+      <Flex direction="column" gap="2" mt="2">
+        <Text size="1" color="gray">
+          {`This cancels the ${formatCents(payment.amount_cents)} entry with a matching
+            correction — both stay on the invoice, so the record shows what happened.
+            Enter the right payment afterwards.`}
+        </Text>
+        <TextField.Root
+          name="reversal_reason"
+          placeholder="Why? e.g. typo — meant 450.00"
+          aria-label="Why you're correcting this"
+        />
+        <Flex gap="2">
+          <Button type="submit" size="1" disabled={pending}>
+            {pending ? "Correcting…" : "Correct it"}
+          </Button>
+          <Button type="button" size="1" variant="ghost" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+        </Flex>
+        {state.error ? (
+          <Text size="1" color="red">
+            {state.error}
+          </Text>
+        ) : null}
+      </Flex>
+    </form>
+  );
+}
 
 const initialLinkState: CreateLinkState = { error: null };
 
@@ -200,6 +270,12 @@ export default function PaymentPanel({
   // database would refuse it (draft has nothing committed to pay yet,
   // paid/void are settled/dead).
   const canRecordPayment = status === "sent" || status === "partial";
+  // Which payments already carry a correction. Built from the rows
+  // themselves rather than fetched — the correction names its target, so
+  // the answer is already on this screen.
+  const corrected = new Set(
+    payments.map((p) => p.reverses_payment_id).filter((id): id is string => Boolean(id))
+  );
 
   return (
     <Card size="3">
@@ -210,18 +286,44 @@ export default function PaymentPanel({
       {payments.length === 0 ? (
         <Text color="gray">No payments recorded yet.</Text>
       ) : (
-        <Flex direction="column" gap="2" mb={canRecordPayment ? "4" : "0"}>
-          {payments.map((payment) => (
-            <Flex key={payment.id} justify="between">
-              <Text color="gray">
-                {formatDate(payment.paid_on)}
-                {payment.method ? ` · ${METHOD_LABEL[payment.method] ?? payment.method}` : ""}
-              </Text>
-              <Text weight="medium" className="tnum">
-                {formatCents(payment.amount_cents)}
-              </Text>
-            </Flex>
-          ))}
+        <Flex direction="column" gap="3" mb={canRecordPayment ? "4" : "0"}>
+          {payments.map((payment) => {
+            const isCorrection = Boolean(payment.reverses_payment_id);
+            // A payment that has already been cancelled keeps its row —
+            // that is the point of an append-only ledger — but it must not
+            // offer to be cancelled again, and it should read as settled
+            // rather than as money outstanding.
+            const wasCorrected = corrected.has(payment.id);
+            return (
+              <Flex key={payment.id} direction="column">
+                <Flex justify="between" align="center" gap="3">
+                  <Text color="gray">
+                    {formatDate(payment.paid_on)}
+                    {payment.method ? ` · ${METHOD_LABEL[payment.method] ?? payment.method}` : ""}
+                    {isCorrection ? " · correction" : ""}
+                    {wasCorrected ? " · corrected" : ""}
+                  </Text>
+                  <Flex align="center" gap="2">
+                    <Text
+                      weight="medium"
+                      className="tnum"
+                      color={isCorrection || wasCorrected ? "gray" : undefined}
+                    >
+                      {formatCents(payment.amount_cents)}
+                    </Text>
+                    {!isCorrection && !wasCorrected ? (
+                      <CorrectPaymentForm invoiceId={invoiceId} payment={payment} />
+                    ) : null}
+                  </Flex>
+                </Flex>
+                {payment.reversal_reason ? (
+                  <Text size="1" color="gray">
+                    {payment.reversal_reason}
+                  </Text>
+                ) : null}
+              </Flex>
+            );
+          })}
         </Flex>
       )}
 
