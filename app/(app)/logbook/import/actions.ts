@@ -203,6 +203,21 @@ function isDateString(v: unknown): v is string {
   if (day < 1 || day > maxDay) return false;
   return true;
 }
+/**
+ * The one case a logbook entry may carry no crew role: every hour on it is
+ * simulator time. Deliberately re-derived here from the raw payload rather
+ * than imported from lib/logbook-import/resolve-row.ts's isWhollySimulator
+ * — that module is client-side and a crafted request never runs it, so
+ * this file has to be able to reach the same verdict on its own. Both
+ * mirror the second arm of
+ * logbook_entries_role_required_unless_simulator (20260810020000), which
+ * is the actual enforcement.
+ */
+function isWhollySimulatorEntry(values: LogbookEntryFlightFields): boolean {
+  const sim = values.simulator_time ?? 0;
+  return sim > 0 && values.total_time === sim;
+}
+
 function isIcaoOrNull(v: unknown): v is string | null {
   if (v === null) return true;
   return typeof v === "string" && /^[A-Z0-9]{3,4}$/.test(v);
@@ -279,7 +294,17 @@ type ImportRowInsert = ImportEntryInsert & { trip_id: null; trip_leg_id: null };
 function validateRow(values: LogbookEntryFlightFields): string | null {
   if (!isDateString(values.entry_date)) return "invalid entry_date";
   if (!isTenth(values.total_time, 999)) return "invalid total_time";
-  if (!isRole(values.role)) return "missing or invalid role";
+  // A wholly-simulator entry may carry no role — an FFS/FTD/ATD session
+  // has no pilot in command, because there is no aircraft. Mirrors
+  // logbook_entries_role_required_unless_simulator (20260810020000)
+  // independently of resolve-row.ts, which is a client-side module a
+  // crafted request could skip entirely.
+  if (values.role === null) {
+    if (!isWhollySimulatorEntry(values)) return "missing or invalid role";
+    if (!values.simulator_device_type) return "simulator time without a device type";
+  } else if (!isRole(values.role)) {
+    return "missing or invalid role";
+  }
   const optionalTimes: (keyof LogbookEntryFlightFields)[] = [
     "pic_time",
     "sic_time",
@@ -367,7 +392,11 @@ function validateRow(values: LogbookEntryFlightFields): string | null {
 function explainValidationFailure(problem: string, values: LogbookEntryFlightFields): string {
   if (problem.startsWith("missing or invalid role")) {
     if ((values.simulator_time ?? 0) > 0) {
-      return "This is a simulator session with no PIC, SIC, solo or dual-received time on it, so there's no way to tell which role to log it under. Add it by hand from the logbook, choosing the role yourself.";
+      // Reaches here only for a MIXED entry — part flight, part sim. A
+      // wholly-simulator entry no longer needs a role at all
+      // (20260810020000); one that also carries real flight time still
+      // has to say who was flying it.
+      return "This entry mixes real flight time with simulator time but records no PIC, SIC, solo or dual-received time, so there's no way to tell who was flying the aircraft part. Split it into two entries, or add it by hand from the logbook.";
     }
     return "No PIC, SIC, solo or dual-received time is recorded on this flight, so there's no way to tell which role to log it under. Add it by hand from the logbook, choosing the role yourself.";
   }

@@ -91,7 +91,15 @@ export type LogbookEntryRow = {
   aircraft_type: string | null;
   from_icao: string | null;
   to_icao: string | null;
-  role: LogbookRole;
+  /**
+   * NULL only for an entry whose time is entirely simulator time — an
+   * FFS/FTD/ATD session has no crew role in the FAA's sense, because
+   * there is no aircraft to be pilot in command of. A FLIGHT always has
+   * one, and logbook_entries_role_required_unless_simulator
+   * (20260810020000) is what enforces the difference — so nullable in
+   * this type does not mean optional in practice.
+   */
+  role: LogbookRole | null;
   total_time: number;
   pic_time: number | null;
   sic_time: number | null;

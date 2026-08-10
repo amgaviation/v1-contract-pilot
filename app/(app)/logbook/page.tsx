@@ -210,7 +210,14 @@ export default async function LogbookPage() {
                         </Table.Cell>
                         <Table.Cell>
                           <Text size="2" color="gray">
-                            {entry.role}
+                            {/* A wholly-simulator entry carries no crew role
+                                (20260810020000). Showing the device says WHY
+                                the role is absent, which is more use to a
+                                pilot scanning the column than a bare dash. */}
+                            {entry.role ??
+                              (entry.simulator_device_type
+                                ? entry.simulator_device_type.toUpperCase()
+                                : "—")}
                           </Text>
                         </Table.Cell>
                         <Table.Cell justify="end">
