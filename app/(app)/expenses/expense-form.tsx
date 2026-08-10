@@ -41,6 +41,14 @@ const CATEGORIES = [
   { value: "meals", label: "Meals" },
   { value: "parking", label: "Parking" },
   { value: "other", label: "Other" },
+  // Travel above; below, the costs a freelance pilot carries themselves.
+  { value: "training", label: "Training / recurrent" },
+  { value: "medical", label: "Medical exam" },
+  { value: "insurance", label: "Insurance (own)" },
+  { value: "charts", label: "Charts / EFB subscription" },
+  { value: "equipment", label: "Equipment" },
+  { value: "uniform", label: "Uniform" },
+  { value: "dues", label: "Dues / publications" },
 ];
 
 const TREATMENTS = [

@@ -527,6 +527,13 @@ export type Database = {
             | "fuel"
             | "meals"
             | "parking"
+            | "training"
+            | "medical"
+            | "insurance"
+            | "charts"
+            | "equipment"
+            | "uniform"
+            | "dues"
             | "other";
           vendor: string | null;
           amount_cents: number;
@@ -553,6 +560,13 @@ export type Database = {
             | "fuel"
             | "meals"
             | "parking"
+            | "training"
+            | "medical"
+            | "insurance"
+            | "charts"
+            | "equipment"
+            | "uniform"
+            | "dues"
             | "other";
           vendor?: string | null;
           amount_cents: number;
@@ -576,6 +590,13 @@ export type Database = {
             | "fuel"
             | "meals"
             | "parking"
+            | "training"
+            | "medical"
+            | "insurance"
+            | "charts"
+            | "equipment"
+            | "uniform"
+            | "dues"
             | "other";
           vendor?: string | null;
           amount_cents?: number;
@@ -1515,9 +1536,11 @@ export type Database = {
           fingerprint: string;
           review_state: "unreviewed" | "reviewed" | "ignored";
           suggested_category:
-            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other" | null;
+            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other"
+            | "training" | "medical" | "insurance" | "charts" | "equipment" | "uniform" | "dues" | null;
           category:
-            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other" | null;
+            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other"
+            | "training" | "medical" | "insurance" | "charts" | "equipment" | "uniform" | "dues" | null;
           treatment: "rebill" | "deduct" | "unassigned" | null;
           trip_id: string | null;
           expense_id: string | null;
@@ -1539,9 +1562,11 @@ export type Database = {
           fingerprint: string;
           review_state?: "unreviewed" | "reviewed" | "ignored";
           suggested_category?:
-            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other" | null;
+            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other"
+            | "training" | "medical" | "insurance" | "charts" | "equipment" | "uniform" | "dues" | null;
           category?:
-            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other" | null;
+            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other"
+            | "training" | "medical" | "insurance" | "charts" | "equipment" | "uniform" | "dues" | null;
           treatment?: "rebill" | "deduct" | "unassigned" | null;
           trip_id?: string | null;
           expense_id?: string | null;
@@ -1558,9 +1583,11 @@ export type Database = {
         Update: {
           review_state?: "unreviewed" | "reviewed" | "ignored";
           suggested_category?:
-            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other" | null;
+            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other"
+            | "training" | "medical" | "insurance" | "charts" | "equipment" | "uniform" | "dues" | null;
           category?:
-            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other" | null;
+            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other"
+            | "training" | "medical" | "insurance" | "charts" | "equipment" | "uniform" | "dues" | null;
           treatment?: "rebill" | "deduct" | "unassigned" | null;
           trip_id?: string | null;
           expense_id?: string | null;

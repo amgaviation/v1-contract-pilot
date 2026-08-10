@@ -84,6 +84,13 @@ export type ExpenseCategory =
   | "fuel"
   | "meals"
   | "parking"
+  | "training"
+  | "medical"
+  | "insurance"
+  | "charts"
+  | "equipment"
+  | "uniform"
+  | "dues"
   | "other";
 
 /**
@@ -132,6 +139,36 @@ const CATEGORY_HINTS: ReadonlyArray<readonly [ExpenseCategory, readonly string[]
   [
     "parking",
     ["parking", "park n fly", "airport garage", "valet", "long term lot"],
+  ],
+  [
+    "training",
+    ["flightsafety", "cae training", "simcom", "recurrent training", "type rating",
+     "initial training", "simulator", "checkride", "proficiency check",
+     "ground school"],
+  ],
+  [
+    "medical",
+    // NOT "ame " — hints are plain substring matches, and "ame " matches
+    // "NAME " on essentially every receipt ever printed. Caught by a test
+    // before it shipped. Every hint here has to survive being read as a
+    // substring of ordinary English.
+    ["aviation medical examiner", "faa medical", "first class medical",
+     "second class medical", "third class medical", "flight physical",
+     "airman medical"],
+  ],
+  [
+    "charts",
+    ["foreflight", "jeppesen", "garmin pilot", "navigraph", "chart subscription",
+     "efb subscription"],
+  ],
+  [
+    "dues",
+    ["nbaa", "aopa", "eaa", "alpa", "association dues", "membership dues"],
+  ],
+  [
+    "equipment",
+    ["bose a20", "bose a30", "lightspeed zulu", "david clark", "headset",
+     "flight bag", "kneeboard"],
   ],
   [
     "meals",

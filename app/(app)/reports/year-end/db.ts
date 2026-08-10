@@ -107,4 +107,16 @@ export const CATEGORY_LABEL: Record<string, string> = {
   meals: "Meals",
   parking: "Parking",
   other: "Other",
+  // The self-funded side. These used to fall through to the raw key, and
+  // before the categories existed at all they were filed as "other" — so
+  // the largest line on the report a pilot hands their accountant could
+  // literally read "Other". Recurrent training alone is commonly a
+  // freelance pilot's biggest annual deduction.
+  training: "Training / recurrent",
+  medical: "Medical exam",
+  insurance: "Insurance (own)",
+  charts: "Charts / EFB subscription",
+  equipment: "Equipment",
+  uniform: "Uniform",
+  dues: "Dues / publications",
 };

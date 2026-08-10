@@ -47,6 +47,15 @@ const CATEGORIES = [
   "meals",
   "parking",
   "other",
+  // What a contract pilot self-funds — see
+  // 20260810070000_pilot_expense_categories.sql.
+  "training",
+  "medical",
+  "insurance",
+  "charts",
+  "equipment",
+  "uniform",
+  "dues",
 ] as const;
 
 const TREATMENTS = ["rebill", "deduct", "unassigned"] as const;

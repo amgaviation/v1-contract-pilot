@@ -18,6 +18,15 @@ const CATEGORIES: readonly Category[] = [
   "meals",
   "parking",
   "other",
+  // What a contract pilot self-funds — see
+  // 20260810070000_pilot_expense_categories.sql.
+  "training",
+  "medical",
+  "insurance",
+  "charts",
+  "equipment",
+  "uniform",
+  "dues",
 ];
 const TREATMENTS: readonly Treatment[] = ["rebill", "deduct", "unassigned"];
 

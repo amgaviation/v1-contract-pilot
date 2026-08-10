@@ -266,6 +266,31 @@ test("a tail number is recognised but an invoice number is not", async (t) => {
   });
 });
 
+test("the costs a pilot self-funds get their own category, not Other", async (t) => {
+  // Recurrent training is commonly a freelance pilot's single largest
+  // annual deduction, and every one of these used to land in "other" —
+  // which the year-end report then grouped under that name, so the biggest
+  // line on the report handed to an accountant read "Other".
+  await t.test("the ones that matter most", () => {
+    assert.equal(extractReceipt("FLIGHTSAFETY INTERNATIONAL\nRecurrent training\nTotal 18,500.00").category, "training");
+    assert.equal(extractReceipt("ForeFlight\nPerformance Plus annual\nTotal 299.99").category, "charts");
+    assert.equal(extractReceipt("NBAA\nMembership dues 2026\nTotal 495.00").category, "dues");
+    assert.equal(extractReceipt("Aviation Medical Examiner\nFirst class medical\nTotal 175.00").category, "medical");
+  });
+
+  await t.test("a hint must survive being read as a substring of ordinary English", () => {
+    // "ame " was in the medical list for about a minute. Hints are plain
+    // substring matches, so it fired on "NAME: JOHN SMITH" — which is on
+    // essentially every receipt ever printed.
+    assert.equal(extractReceipt("SYNTHETIC WIDGET CO\nNAME: JOHN SMITH\nTotal 12.00").category, null);
+    assert.equal(extractReceipt("PANCAKE HOUSE\nTotal 18.00").category, null);
+    // And the hint that IS legitimate still fires: "SYNTHETIC CAFE" is a
+    // meal, and this fixture originally used it by mistake — the test was
+    // wrong, not the code.
+    assert.equal(extractReceipt("SYNTHETIC CAFE\nTotal 12.00").category, "meals");
+  });
+});
+
 test("the vendor survives the edge of a photographed receipt", async (t) => {
   // Observed in a real browser run of the engine over a rotated, noisy
   // render: the shadow at the edge of the paper OCRs as a leading pipe,
