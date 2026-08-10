@@ -3,12 +3,20 @@
 /**
  * The pilot's fleet: register an airframe, correct it, retire it.
  *
- * There is no delete. pilot.aircraft has no DELETE grant and a
+ * A PILOT CANNOT DELETE ONE. pilot.aircraft has no DELETE grant and a
  * `using (false)` policy behind it, because a registry row is what gives
  * three years of logbook entries their type — deleting one would silently
  * retype history that the pilot never touched. Retiring is `archived_at`,
  * which takes the airframe out of the pickers and leaves the join alone.
  * See the migration header.
+ *
+ * That is a statement about tenants, NOT about the row. The account FK is
+ * `on delete cascade`, and referential-integrity actions bypass both RLS
+ * and grants — closing an account takes its fleet with it. Nothing closes
+ * an account today (only service_role can, and the Stripe webhook updates
+ * status rather than deleting), so this is dormant teardown semantics and
+ * the right shape. Whoever builds account closure should know the fleet
+ * goes silently.
  */
 
 import { revalidatePath } from "next/cache";

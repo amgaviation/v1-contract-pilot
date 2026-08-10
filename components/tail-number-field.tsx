@@ -42,7 +42,9 @@ export default function TailNumberField({
 
   // The same normalisation pilot.aircraft's generated tail_key applies, so
   // typing "n-447sp" matches the registry row stored as "N447SP".
-  const normalise = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  // Strip then uppercase, in that order — see tailKey() in
+  // app/(app)/logbook/aircraft/db.ts for why the other order is wrong.
+  const normalise = (value: string) => value.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
 
   function fillType(value: string) {
     if (!typeFieldId) return;

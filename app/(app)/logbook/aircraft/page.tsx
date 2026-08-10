@@ -32,19 +32,31 @@ const FLEET_LIMIT = 500;
 const SUGGESTION_LIMIT = 24;
 
 export default async function AircraftPage() {
-  await requireAccount("/logbook/aircraft");
+  const { account } = await requireAccount("/logbook/aircraft");
   const supabase = await createClient();
+  if (!account) return null;
 
+  // Every read below carries .eq("account_id", …) even though RLS already
+  // confines it. current_account_ids() returns EVERY account a user
+  // belongs to, and createAircraft writes to exactly one of them — so on
+  // the day a business account has two members, reads that trusted RLS
+  // alone would show a merged fleet while "Add an aircraft" quietly filed
+  // into a single account. Reads match writes.
   const [{ data: fleetData, error }, { data: timeData }, { data: suggestionData }] =
     await Promise.all([
       logbookFrom(supabase, "aircraft")
         .select("*")
+        .eq("account_id", account.id)
         .order("archived_at", { ascending: true, nullsFirst: true })
         .order("tail_key", { ascending: true })
         .limit(FLEET_LIMIT),
-      logbookFrom(supabase, "aircraft_time_by_tail").select("*").limit(FLEET_LIMIT),
+      logbookFrom(supabase, "aircraft_time_by_tail")
+        .select("*")
+        .eq("account_id", account.id)
+        .limit(FLEET_LIMIT),
       logbookFrom(supabase, "aircraft_unregistered_idents")
         .select("*")
+        .eq("account_id", account.id)
         .order("total_time", { ascending: false })
         .limit(SUGGESTION_LIMIT),
     ]);

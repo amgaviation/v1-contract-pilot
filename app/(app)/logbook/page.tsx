@@ -65,7 +65,7 @@ export default async function LogbookPage({
 }: {
   searchParams: Promise<{ page?: string }>;
 }) {
-  await requireAccount("/logbook");
+  const { account } = await requireAccount("/logbook");
   const { page: pageParam } = await searchParams;
   const parsed = Number(pageParam ?? "1");
   const page = Number.isInteger(parsed) && parsed >= 1 ? parsed : 1;
@@ -92,8 +92,14 @@ export default async function LogbookPage({
     // matches the entry's free-text ident to the aircraft registry on a
     // normalised key at READ time, and still counts entries that match
     // nothing rather than dropping them.
+    // .eq on account_id as well as RLS: current_account_ids() spans every
+    // account a user belongs to, and this view groups by account_id — so a
+    // future two-account membership would produce two rows with the same
+    // type_label, a duplicate React key, and two half-totals presented as
+    // if they were the whole career.
     logbookFrom(supabase, "logbook_time_by_type")
       .select("*")
+      .eq("account_id", account?.id ?? "")
       .order("total_time", { ascending: false })
       .limit(TYPE_ROW_LIMIT),
   ]);

@@ -296,6 +296,17 @@ note("\nWhat the schema refuses to record");
      values ('${A.account}', '     ');`,
     "23514"
   );
+  // Two characters, so the length CHECK is happy — but it normalises to
+  // nothing. One such row takes the account's single `unique (account_id,
+  // '')` slot, matches no logbook entry ever, and makes the NEXT one fail
+  // with a duplicate error naming an aircraft the pilot cannot find.
+  refuses(
+    "a tail number that normalises to nothing, however long it is",
+    A.user,
+    `insert into pilot.aircraft (account_id, tail_number)
+     values ('${A.account}', '--');`,
+    "23514"
+  );
 
   // gear is nullable ON PURPOSE. A currency engine must be able to tell
   // "this is a tricycle-gear airplane" from "nobody said" — reading the

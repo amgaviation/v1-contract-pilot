@@ -45,6 +45,14 @@ create table if not exists pilot.aircraft (
   tail_key text generated always as (
     upper(regexp_replace(tail_number, '[^A-Za-z0-9]', '', 'g'))
   ) stored,
+  -- A tail number of nothing but punctuation and non-Latin letters passes
+  -- the length CHECK above and normalises to ''. One such row would take
+  -- the account's single `unique (account_id, '')` slot, match no logbook
+  -- entry ever, and make the NEXT one fail with a duplicate error naming
+  -- an aircraft the pilot cannot find. Refused here rather than left to
+  -- the app: the app's own guard has to reimplement this normalisation in
+  -- JavaScript, and the two implementations have already disagreed once.
+  constraint aircraft_tail_key_not_empty check (tail_key <> ''),
 
   -- ICAO type designator (C560, BE40, PC12). Optional: a pilot may add an
   -- aircraft before they know it, and a wrong designator is worse than a

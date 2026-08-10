@@ -104,5 +104,13 @@ export function normaliseTypeDesignator(raw: string): string | null {
  * name the aircraft they already have, which a 23505 cannot.
  */
 export function tailKey(raw: string): string {
-  return raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  // STRIP FIRST, THEN UPPERCASE — the order the generated column uses, and
+  // the two orders are not equivalent. `'\u00df'.toUpperCase()` is "SS", so
+  // uppercasing first PROMOTES a character Postgres strips: for the tail
+  // number "\u00df\u00df" this function used to answer "SSSS" while the
+  // database stored an empty key. That passed the length CHECK and the
+  // empty-key guard in actions.ts, silently consumed the account's one
+  // `unique (account_id, '')` slot, and produced a row that could never
+  // match a logbook entry.
+  return raw.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
 }
