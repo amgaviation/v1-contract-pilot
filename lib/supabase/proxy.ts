@@ -81,6 +81,33 @@ async function refreshSession(
   // /welcome's own page handles the no-session case, so there is no
   // loop. app/(app)/layout.tsx re-checks server-side, so this is defense
   // in depth, not the sole gate.
+  //
+  // WHY AN UNMATCHED PATH ALSO REDIRECTS TO /login RATHER THAN REACHING
+  // app/not-found.tsx: this check runs before Next's router has tried to
+  // match anything, so there is no way from here to ask "does a page
+  // exist at this path" — only "is this path on the public allow-list
+  // below". Everything else, real gated feature or pure typo alike, gets
+  // the identical /login redirect. That is a deliberate choice, not a
+  // gap: a uniform response for anything not on this list means a
+  // stranger poking at paths can never learn which ones are real
+  // (gated) features and which are nothing at all — a plain 404 would
+  // hand them that distinction for free. The cost lands on exactly one
+  // visitor class: a pilot's CLIENT (no account, never will have one)
+  // whose invoice or packet link got mangled badly enough to lose the
+  // whole "/invoice/" or "/packet/" stem, not just part of the token.
+  // Ordinary truncation — an email client cutting a long URL from the
+  // end — never does that: /invoice/<anything> and /packet/<anything>
+  // are already below, unconditionally, so a partially-cut link still
+  // reaches its own route and its own client-tailored not-found copy
+  // (app/invoice/[token]/not-found.tsx, app/packet/[token]/not-found.tsx),
+  // never this redirect. The bare `normalizedPath === "/invoice"` /
+  // `"/packet"` lines below exist for the narrower remainder — a link
+  // cut at exactly the stem — so at least that much of a destroyed link
+  // still reads as "not found" instead of "sign in to a product you've
+  // never heard of". Both are exact matches, not prefixes: neither has a
+  // page behind it (only the [token] child route does), so allowing them
+  // through exposes nothing — Next's router still renders the ordinary
+  // root 404 for both, same as any other path that resolves to no page.
   const path = request.nextUrl.pathname;
   // Strip a single trailing slash before matching the allow-list below, so
   // "/pricing/" still matches "/pricing" instead of falling through to the
@@ -130,6 +157,9 @@ async function refreshSession(
     // signed-out visitor to /login here would break the entire feature:
     // the client has no login to redirect to.
     path.startsWith("/invoice/") ||
+    // See the comment above `const path` on this one: a link truncated
+    // down to the bare stem, token and all, has nowhere else to match.
+    normalizedPath === "/invoice" ||
     // The client-facing credential packet (app/packet/[token]/page.tsx),
     // same shape and same reasoning as /invoice/ above: authenticated by
     // an unguessable 256-bit token in the URL, opened by someone who has
@@ -137,7 +167,8 @@ async function refreshSession(
     // clicks the link they were sent and lands on a login form — the
     // whole feature, silently dead. Caught before shipping only because
     // /ocr had exactly this bug an hour earlier.
-    path.startsWith("/packet/");
+    path.startsWith("/packet/") ||
+    normalizedPath === "/packet";
   if (!user && !isAuthSurface) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";

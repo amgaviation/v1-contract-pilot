@@ -25,6 +25,26 @@ export const dynamic = "force-dynamic";
  * paths go through the identical SECURITY DEFINER function, so a pilot
  * previewing sees byte-for-byte what their client will.
  *
+ * NO loading.tsx IN THIS DIRECTORY, DELIBERATELY (there used to be one).
+ * A loading.tsx wraps a route's async Server Component in an automatic
+ * Suspense boundary, which makes Next start STREAMING the response: the
+ * shell flushes with an HTTP 200 before this function has run far enough
+ * to reach either notFound() call below. Once that 200 is on the wire it
+ * cannot become the 404 an invalid token deserves — the not-found copy
+ * still streams in and renders correctly (Suspense delivers the
+ * replacement content the moment it resolves, exactly as designed), only
+ * the STATUS CODE is stuck at 200 for the rest of that response, which is
+ * what a link-checker, monitoring probe, or crawler sees regardless of
+ * what the rendered page says. Removing loading.tsx makes the whole
+ * render synchronous — nothing reaches the client until this function
+ * returns — so notFound() below can still set the real status. The cost
+ * is that a client with a slow connection sees nothing at all, rather
+ * than a spinner, while pilot.invoice_public resolves; accepted on
+ * purpose, because this page is opened once from an emailed link and a
+ * correct HTTP status matters more here than perceived latency on an RPC
+ * that is ordinarily fast. app/packet/[token]/page.tsx makes the same
+ * trade for the same reason and never had a loading.tsx to remove.
+ *
  * FIELD-BY-FIELD JUSTIFICATION for every field `pilot.invoice_public`
  * returns and this page renders — the promised companion to that
  * migration's own header comment:
