@@ -219,8 +219,21 @@ end $$;
 
 -- A table with RLS on and NO policy is closed to "authenticated" (deny by
 -- default), which is safe but almost always unintentional — it usually
--- means a policy was meant to exist. pilot.stripe_events is the one place
--- it IS intentional, so it is named here rather than silently tolerated.
+-- means a policy was meant to exist. Two tables are deliberate, and are
+-- named here rather than silently tolerated:
+--   - pilot.stripe_events — the platform webhook's idempotency ledger,
+--     written only through service_role. No pilot ever reads it.
+--   - pilot.connect_oauth_states (20260810010000) — in-flight Stripe
+--     Connect OAuth attempts. A state token that any signed-in user could
+--     SELECT is a token they could lift from another user mid-flow, which
+--     would defeat the entire purpose of the table. It is written and
+--     consumed only by two SECURITY DEFINER functions, and that migration
+--     additionally REVOKEs the schema-wide default SELECT grant — asserted
+--     positively as CONNECT-3e in scripts/connect-verify.mjs, so the
+--     lockout is proven somewhere rather than merely excused here.
+-- Adding a name to this list is a security decision: it needs the reason
+-- written above and a positive assertion elsewhere that the lockout is
+-- the intended one.
 do $$
 declare policyless text[];
 begin
@@ -231,7 +244,7 @@ begin
     where n.nspname = 'pilot'
       and c.relkind in ('r', 'p')
       and c.relrowsecurity
-      and c.relname <> 'stripe_events'
+      and c.relname not in ('stripe_events', 'connect_oauth_states')
       and not exists (
         select 1 from pg_policies p
         where p.schemaname = 'pilot' and p.tablename = c.relname
@@ -239,7 +252,7 @@ begin
   if policyless is not null then
     raise exception 'F1b FAILURE: pilot tables with RLS on but no policy at all (unreachable by any pilot — a missing policy, not a deliberate lockout): %', policyless;
   end if;
-  raise notice 'PASS F1b: every RLS-enabled pilot table has at least one policy (stripe_events deliberately excepted)';
+  raise notice 'PASS F1b: every RLS-enabled pilot table has at least one policy (stripe_events and connect_oauth_states deliberately excepted — see the comment above)';
 end $$;
 
 -- =====================================================================

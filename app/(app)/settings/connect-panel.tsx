@@ -78,11 +78,20 @@ export default function ConnectPanel({
                 </Button>
               </form>
             ) : null}
-            <Flex role="alert" aria-live="polite">
+            <Flex direction="column" gap="2" role="alert" aria-live="polite">
               {state.error ? (
                 <Text size="1" color="red">
                   {state.error}
                 </Text>
+              ) : null}
+              {/* The disconnect landed here, but Stripe wouldn't confirm the
+                  grant was removed on their side. Amber, not red: what the
+                  pilot asked for did happen locally; what's left is a task
+                  only they can finish, in their own dashboard. */}
+              {state.warning ? (
+                <Callout.Root color="amber" size="1">
+                  <Callout.Text>{state.warning}</Callout.Text>
+                </Callout.Root>
               ) : null}
             </Flex>
           </Flex>

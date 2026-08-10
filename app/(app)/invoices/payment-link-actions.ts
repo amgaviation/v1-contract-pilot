@@ -3,7 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
-import { createPaymentLinkForInvoice } from "@/lib/stripe/connect";
+import {
+  createPaymentLinkForInvoice,
+  deactivatePaymentLink,
+  LINK_STILL_LIVE_WARNING,
+} from "@/lib/stripe/connect";
 import { friendlyDbError } from "@/lib/db-errors";
 
 /**
@@ -12,9 +16,22 @@ import { friendlyDbError } from "@/lib/db-errors";
  * supabase/migrations/20260809040000_connect_payments.sql's header for
  * why this stops at generating a link rather than auto-recording a
  * payment: no new service_role caller is added anywhere in this file.
+ *
+ * ONE LIVE LINK PER INVOICE (added after review). "Generate a new link"
+ * used to leave the previous one live on Stripe and simply overwrite the
+ * stored id — so an invoice regenerated after a partial payment had two
+ * working links at two different amounts, and the pilot could only see
+ * the newer one. Regenerating now deactivates the old link before
+ * creating the replacement, so the stored id is always the ONLY payable
+ * link for that invoice.
  */
 
-export type CreateLinkState = { error: string | null; url?: string };
+export type CreateLinkState = {
+  error: string | null;
+  url?: string;
+  /** Set when the new link was created but the old one couldn't be killed. */
+  warning?: string;
+};
 
 export async function createInvoicePaymentLink(
   _prevState: CreateLinkState,
@@ -34,11 +51,16 @@ export async function createInvoicePaymentLink(
   // another-tenant's id both come back as no row, same as invoices/[id]/page.tsx.
   const { data: invoiceData, error: invoiceError } = await supabase
     .from("invoices")
-    .select("id, invoice_number, status")
+    .select("id, invoice_number, status, stripe_payment_link_id")
     .eq("id", invoiceId)
     .maybeSingle();
   if (invoiceError) return { error: friendlyDbError(invoiceError, "invoices.select") };
-  const invoice = invoiceData as { id: string; invoice_number: string | null; status: string } | null;
+  const invoice = invoiceData as {
+    id: string;
+    invoice_number: string | null;
+    status: string;
+    stripe_payment_link_id: string | null;
+  } | null;
   if (!invoice) return { error: "Invoice not found." };
 
   // Matches invoice_payments_validate and the new
@@ -63,6 +85,27 @@ export async function createInvoicePaymentLink(
     return { error: "This invoice has no balance due." };
   }
 
+  // Kill the previous link BEFORE minting its replacement. Order matters:
+  // if the create then fails, the invoice is left with no payable link
+  // (recoverable — the pilot presses the button again) rather than two,
+  // which is the state nobody can see or reason about.
+  let warning: string | undefined;
+  if (invoice.stripe_payment_link_id) {
+    try {
+      await deactivatePaymentLink({
+        connectAccountId: account.connect_account_id,
+        paymentLinkId: invoice.stripe_payment_link_id,
+      });
+    } catch (err) {
+      console.error(
+        `deactivatePaymentLink failed for invoice ${invoiceId}: ${
+          err instanceof Error ? err.message : "unknown error"
+        }`
+      );
+      warning = LINK_STILL_LIVE_WARNING;
+    }
+  }
+
   let link;
   try {
     link = await createPaymentLinkForInvoice({
@@ -76,7 +119,7 @@ export async function createInvoicePaymentLink(
         err instanceof Error ? err.message : "unknown error"
       }`
     );
-    return { error: "Couldn't create a Stripe payment link. Try again." };
+    return { error: "Couldn't create a Stripe payment link. Try again.", warning };
   }
 
   const { error: updateError } = await supabase
@@ -85,10 +128,13 @@ export async function createInvoicePaymentLink(
       stripe_payment_link_id: link.id,
       stripe_payment_link_url: link.url,
       stripe_payment_link_livemode: link.livemode,
+      // What the link is priced at, so the invoice screen can say so and
+      // can spot a link that no longer matches the balance due.
+      stripe_payment_link_amount_cents: balanceDueCents,
     } as never)
     .eq("id", invoiceId);
   if (updateError) return { error: friendlyDbError(updateError, "invoices.update(payment_link)") };
 
   revalidatePath(`/invoices/${invoiceId}`);
-  return { error: null, url: link.url };
+  return { error: null, url: link.url, warning };
 }

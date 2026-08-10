@@ -885,13 +885,16 @@ export type Database = {
           tax_rate_bps: number;
           delivery_method: "platform_email" | "manual_download" | null;
           notes: string | null;
-          // 20260809040000_connect_payments.sql. Ordinary tenant business
-          // data, not a billing/entitlement column — see that migration's
-          // header for why these three are authenticated-writable while
-          // accounts.connect_account_id is not.
+          // 20260809040000_connect_payments.sql (+ the amount column, from
+          // 20260810010000). Ordinary tenant business data, not a
+          // billing/entitlement column — see that migration's header for
+          // why these are authenticated-writable while
+          // accounts.connect_account_id is not. They move as a set: every
+          // writer sets all four or clears all four.
           stripe_payment_link_id: string | null;
           stripe_payment_link_url: string | null;
           stripe_payment_link_livemode: boolean | null;
+          stripe_payment_link_amount_cents: number | null;
           created_at: string;
           updated_at: string;
         };
@@ -915,6 +918,7 @@ export type Database = {
           stripe_payment_link_id?: string | null;
           stripe_payment_link_url?: string | null;
           stripe_payment_link_livemode?: boolean | null;
+          stripe_payment_link_amount_cents?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -941,6 +945,7 @@ export type Database = {
           stripe_payment_link_id?: string | null;
           stripe_payment_link_url?: string | null;
           stripe_payment_link_livemode?: boolean | null;
+          stripe_payment_link_amount_cents?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1536,14 +1541,26 @@ export type Database = {
         Args: { p_account_id: string; p_trip_id: string };
         Returns: string | null;
       };
-      // Added by 20260809040000_connect_payments.sql. Both are SECURITY
-      // DEFINER, owner-gated, and derive the caller from auth.uid()
-      // internally rather than trusting anything about "who's calling" —
-      // see that migration's header for why these exist instead of
-      // widening lib/supabase/service-role.ts.
+      // Added by 20260809040000_connect_payments.sql. All three are
+      // SECURITY DEFINER, owner-gated, and derive the caller from
+      // auth.uid() internally rather than trusting anything about "who's
+      // calling" — see that migration's header for why these exist
+      // instead of widening lib/supabase/service-role.ts.
+      //
+      // 20260810010000 then CHANGED connect_account_link's signature: it
+      // now takes the single-use OAuth state minted by
+      // connect_oauth_state_begin and reads the account off the consumed
+      // state row, returning that account id. The old
+      // (p_account_id, p_connect_account_id) shape was callable straight
+      // over PostgREST by any signed-in owner, with no OAuth round trip
+      // and no livemode check — it is dropped, not overloaded.
+      connect_oauth_state_begin: {
+        Args: { p_account_id: string };
+        Returns: string;
+      };
       connect_account_link: {
-        Args: { p_account_id: string; p_connect_account_id: string };
-        Returns: undefined;
+        Args: { p_connect_account_id: string; p_state: string };
+        Returns: string;
       };
       connect_account_unlink: {
         Args: { p_account_id: string };

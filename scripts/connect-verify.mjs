@@ -21,9 +21,20 @@
  * against a real HTTP server rather than only asserting database shape.
  * What IS fully verified here is the entire database-side contract every
  * Stripe-facing code path in this feature depends on: the format guard,
- * the owner-only RPC gate, the billing-column trigger's exception, and
- * the "unsent invoice is not payable" rule — all provable without a
- * network call.
+ * the owner-only RPC gate, the single-use OAuth state gate, the
+ * billing-column trigger's exception, the "unsent invoice is not payable"
+ * rule, and the void-with-a-link path — all provable without a network
+ * call.
+ *
+ * STILL NOT VERIFIED HERE, AND SAID PLAINLY RATHER THAN IMPLIED: the two
+ * Stripe-side behaviours this feature now leans on —
+ * `restrictions.completed_sessions.limit = 1` actually deactivating a
+ * Payment Link after one payment, and `paymentLinks.update(active:false)`
+ * actually taking a link out of service on a CONNECTED account. Both are
+ * documented Stripe behaviour and both are typed by the installed SDK,
+ * but neither is exercised by this script, because neither can be without
+ * a Stripe test-mode Connect application. They would be proven by running
+ * the OAuth flow against one and paying a link twice.
  *
  *   DATABASE_URL="postgresql://..." npm run connect:verify
  */
@@ -132,30 +143,38 @@ end $$;
 reset role;
 
 -- ===========================================================================
--- ASSERTION 3 — pilot.connect_account_link is owner-gated (not merely
--- membership-gated) and format-gated, and actually works for the real
--- caller shape it exists for.
+-- ASSERTION 3 — the OAuth state gate. 20260810010000 replaced
+-- pilot.connect_account_link's signature: it no longer takes an account
+-- id, it consumes a single-use pilot.connect_oauth_states row and reads
+-- the account off that. These assertions cover BOTH the gates the old
+-- signature had (owner-only, format-checked) and the one it was missing —
+-- proof that the OAuth round trip actually started here.
 --
--- FAIL-PROOF: a non-owner member of the SAME tenant (UM, real membership
--- row, not a stranger) is rejected with the function's own explicit
--- P0001 message — proving the "role = 'owner'" clause is load-bearing,
--- not merely "any member of this account_id can act". If that clause
--- were ever dropped, this would flip from PASS to a silent UPDATE
--- succeeding, which the raise exception below turns back into a loud
--- failure.
+-- WHY THIS MATTERS AND WHY THE OLD VERSION WAS NOT ENOUGH: the previous
+-- shape was reachable straight over PostgREST by any signed-in owner
+-- (grant execute ... to authenticated is exactly that), so a pilot could
+-- POST /rest/v1/rpc/connect_account_link with any well-formed acct_ id and
+-- skip both the authorization-code exchange and the livemode agreement
+-- check. CONNECT-3d below is the assertion that would catch a regression
+-- to that shape.
+--
+-- FAIL-PROOF for the owner gate: a non-owner member of the SAME tenant
+-- (UM, real membership row, not a stranger) is rejected with the
+-- function's own explicit P0001 message — proving "role = 'owner'" is
+-- load-bearing, not merely "any member of this account_id can act".
 -- ===========================================================================
 set local role authenticated;
 select set_config('request.jwt.claims', json_build_object('sub', '${UM}', 'role', 'authenticated')::text, true);
 do $$
 begin
   begin
-    perform pilot.connect_account_link('${A}', 'acct_1ValidShape000');
-    raise exception 'CONNECT-3a FAILURE: a non-owner member connected Stripe for the account';
+    perform pilot.connect_oauth_state_begin('${A}');
+    raise exception 'CONNECT-3a FAILURE: a non-owner member started a Stripe Connect flow for the account';
   exception when others then
     if sqlerrm not like 'only an account owner may connect Stripe%' then
       raise exception 'CONNECT-3a FAILURE: rejected for the wrong reason: %', sqlerrm;
     end if;
-    raise notice 'PASS (CONNECT-3a): non-owner member is rejected by pilot.connect_account_link''s own owner check';
+    raise notice 'PASS (CONNECT-3a): non-owner member is rejected by pilot.connect_oauth_state_begin''s owner check';
   end;
 end $$;
 reset role;
@@ -165,23 +184,25 @@ select set_config('request.jwt.claims', json_build_object('sub', '${UB}', 'role'
 do $$
 begin
   begin
-    perform pilot.connect_account_link('${A}', 'acct_1ValidShape000');
-    raise exception 'CONNECT-3b FAILURE: tenant B''s owner connected Stripe for tenant A''s account';
+    perform pilot.connect_oauth_state_begin('${A}');
+    raise exception 'CONNECT-3b FAILURE: tenant B''s owner started a Connect flow for tenant A''s account';
   exception when others then
     if sqlerrm not like 'only an account owner may connect Stripe%' then
       raise exception 'CONNECT-3b FAILURE: rejected for the wrong reason: %', sqlerrm;
     end if;
-    raise notice 'PASS (CONNECT-3b): a different tenant''s owner cannot connect Stripe onto this account (cross-tenant write rejected)';
+    raise notice 'PASS (CONNECT-3b): a different tenant''s owner cannot start a Connect flow onto this account (cross-tenant write rejected)';
   end;
 end $$;
 reset role;
 
 set local role authenticated;
 select set_config('request.jwt.claims', json_build_object('sub', '${UA}', 'role', 'authenticated')::text, true);
+
+-- 3c — malformed account id, rejected before the state is even consulted.
 do $$
 begin
   begin
-    perform pilot.connect_account_link('${A}', 'not-a-real-account-id');
+    perform pilot.connect_account_link('not-a-real-account-id', 'irrelevant');
     raise exception 'CONNECT-3c FAILURE: a malformed connected-account id was accepted';
   exception when others then
     if sqlerrm not like 'invalid Stripe connected account id%' then
@@ -191,17 +212,130 @@ begin
   end;
 end $$;
 
-select pilot.connect_account_link('${A}', 'acct_1RealOwnerLink0');
+-- 3d — THE FINDING. A well-formed acct id, from the account's own OWNER,
+-- with no OAuth flow ever started: exactly the direct-PostgREST call the
+-- old signature accepted. It must be refused for want of a state.
 do $$
-declare v text;
+declare
+  v_before text;
+  v_after text;
 begin
-  select connect_account_id into v from pilot.accounts where id = '${A}';
-  if v is distinct from 'acct_1RealOwnerLink0' then
-    raise exception 'CONNECT-3d FAILURE: the legitimate owner path did not persist connect_account_id';
+  select connect_account_id into v_before from pilot.accounts where id = '${A}';
+  begin
+    perform pilot.connect_account_link('acct_1DirectCall0000', 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+    raise exception 'CONNECT-3d FAILURE: an owner linked a Stripe account with no OAuth state — the RPC is directly callable';
+  exception when others then
+    if sqlerrm not like 'that Stripe connection attempt has expired or was already used%' then
+      raise exception 'CONNECT-3d FAILURE: rejected for the wrong reason: %', sqlerrm;
+    end if;
+  end;
+  select connect_account_id into v_after from pilot.accounts where id = '${A}';
+  if v_after is distinct from v_before then
+    raise exception 'CONNECT-3d FAILURE: connect_account_id changed despite the rejection (was %, now %)', v_before, v_after;
   end if;
-  raise notice 'PASS (CONNECT-3d): the account''s own owner, through pilot.connect_account_link, connects Stripe successfully';
+  raise notice 'PASS (CONNECT-3d): a signed-in OWNER cannot link an arbitrary acct_ id without a state minted by a real OAuth start — and nothing was written';
+end $$;
+
+-- 3e — the state table is unreadable. If authenticated could select it,
+-- a signed-in user could lift another user's in-flight state and the whole
+-- proof collapses. RLS with no policies would return zero rows; NO GRANT
+-- at all is stronger and is what this asserts (42501).
+do $$
+begin
+  begin
+    perform 1 from pilot.connect_oauth_states;
+    raise exception 'CONNECT-3e FAILURE: authenticated can read pilot.connect_oauth_states';
+  exception when insufficient_privilege then
+    raise notice 'PASS (CONNECT-3e, sqlstate confirmed 42501): pilot.connect_oauth_states is unreadable to authenticated — the state exists only in the response to the caller that minted it';
+  end;
+end $$;
+
+-- 3f — the legitimate path, end to end: mint a state, consume it, and the
+-- account id comes back from the function (read off the state row, never
+-- passed in).
+do $$
+declare
+  v_state text;
+  v_linked uuid;
+  v_connect text;
+begin
+  v_state := pilot.connect_oauth_state_begin('${A}');
+  if v_state !~ '^[A-Za-z0-9_-]{43}$' then
+    raise exception 'CONNECT-3f FAILURE: minted state has the wrong shape: %', v_state;
+  end if;
+  v_linked := pilot.connect_account_link('acct_1RealOwnerLink0', v_state);
+  if v_linked is distinct from '${A}'::uuid then
+    raise exception 'CONNECT-3f FAILURE: the RPC linked the wrong account (%)', v_linked;
+  end if;
+  select connect_account_id into v_connect from pilot.accounts where id = '${A}';
+  if v_connect is distinct from 'acct_1RealOwnerLink0' then
+    raise exception 'CONNECT-3f FAILURE: the legitimate owner path did not persist connect_account_id';
+  end if;
+  raise notice 'PASS (CONNECT-3f): mint-then-consume connects Stripe, and the account written is the one the state was minted for';
+
+  -- 3g — replay. The same state a second time (a captured callback URL
+  -- re-opened) must be refused: DELETE ... RETURNING is the single-use
+  -- guarantee, and this is what proves it rather than assuming it.
+  begin
+    perform pilot.connect_account_link('acct_1ReplayAttempt0', v_state);
+    raise exception 'CONNECT-3g FAILURE: the same OAuth state was accepted twice';
+  exception when others then
+    if sqlerrm not like 'that Stripe connection attempt has expired or was already used%' then
+      raise exception 'CONNECT-3g FAILURE: rejected for the wrong reason: %', sqlerrm;
+    end if;
+    raise notice 'PASS (CONNECT-3g): an OAuth state is single-use — a replayed callback is refused';
+  end;
 end $$;
 reset role;
+
+-- 3h — a state minted by one user cannot be consumed by another, even
+-- another owner. This is the check that keeps the grant attached to the
+-- session that actually completed the Stripe hop.
+set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', '${UA}', 'role', 'authenticated')::text, true);
+-- Carried across the role switch in a transaction-local GUC rather than a
+-- temp table: the point of the probe is that UB has the string, and the
+-- only place the string legitimately exists is UA's own response.
+select set_config('connect_verify.state', pilot.connect_oauth_state_begin('${A}'), true);
+reset role;
+
+set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', '${UB}', 'role', 'authenticated')::text, true);
+do $$
+declare v_state text;
+begin
+  v_state := current_setting('connect_verify.state', true);
+  if v_state is null then
+    raise exception 'CONNECT-3h FAILURE: the probe could not carry the minted state across the role switch';
+  end if;
+  begin
+    perform pilot.connect_account_link('acct_1StolenState000', v_state);
+    raise exception 'CONNECT-3h FAILURE: a state minted by another user was accepted';
+  exception when others then
+    if sqlerrm not like 'that Stripe connection attempt belongs to a different sign-in%' then
+      raise exception 'CONNECT-3h FAILURE: rejected for the wrong reason: %', sqlerrm;
+    end if;
+    raise notice 'PASS (CONNECT-3h): a state minted by one signed-in user cannot be consumed by another';
+  end;
+end $$;
+reset role;
+
+-- 3i — the old, proof-free signature is GONE, not merely unused. An
+-- overload left in place would still be callable over PostgREST, which
+-- would make every assertion above decorative.
+do $$
+declare n int;
+begin
+  select count(*) into n
+  from pg_proc p join pg_namespace ns on ns.oid = p.pronamespace
+  where ns.nspname = 'pilot'
+    and p.proname = 'connect_account_link'
+    and pg_get_function_identity_arguments(p.oid) = 'uuid, text';
+  if n <> 0 then
+    raise exception 'CONNECT-3i FAILURE: the old pilot.connect_account_link(uuid, text) still exists and is still callable';
+  end if;
+  raise notice 'PASS (CONNECT-3i): the pre-hardening connect_account_link(uuid, text) signature no longer exists';
+end $$;
 
 -- ===========================================================================
 -- ASSERTION 4 — disconnect clears connect_account_id AND every stored
@@ -223,7 +357,8 @@ insert into pilot.invoice_lines (account_id, invoice_id, line_type, description,
   values ('${A}', '00000000-0000-0000-0000-00000000d1e1', 'flight_day', 'seed line', 100000);
 update pilot.invoices set status = 'sent' where id = '00000000-0000-0000-0000-00000000d1e1' and account_id = '${A}';
 update pilot.invoices
-  set stripe_payment_link_id = 'plink_test_1', stripe_payment_link_url = 'https://buy.stripe.com/test_1', stripe_payment_link_livemode = false
+  set stripe_payment_link_id = 'plink_test_1', stripe_payment_link_url = 'https://buy.stripe.com/test_1',
+      stripe_payment_link_livemode = false, stripe_payment_link_amount_cents = 100000
   where id = '00000000-0000-0000-0000-00000000d1e1' and account_id = '${A}';
 reset role;
 
@@ -250,9 +385,11 @@ do $$
 declare
   v_connect text;
   v_link text;
+  v_amount bigint;
 begin
   select connect_account_id into v_connect from pilot.accounts where id = '${A}';
-  select stripe_payment_link_id into v_link from pilot.invoices
+  select stripe_payment_link_id, stripe_payment_link_amount_cents into v_link, v_amount
+    from pilot.invoices
     where id = '00000000-0000-0000-0000-00000000d1e1' and account_id = '${A}';
   if v_connect is not null then
     raise exception 'CONNECT-4b FAILURE: connect_account_id survived disconnect';
@@ -260,7 +397,13 @@ begin
   if v_link is not null then
     raise exception 'CONNECT-4b FAILURE: a stored payment link survived disconnect';
   end if;
-  raise notice 'PASS (CONNECT-4b): disconnect clears connect_account_id and every stored payment-link reference for the tenant';
+  -- The amount column was added later (20260810010000); a disconnect that
+  -- cleared the id but left the amount behind would leave the screen
+  -- claiming a price for a link that no longer exists.
+  if v_amount is not null then
+    raise exception 'CONNECT-4b FAILURE: a stored payment-link amount survived disconnect';
+  end if;
+  raise notice 'PASS (CONNECT-4b): disconnect clears connect_account_id and every stored payment-link reference (all four columns) for the tenant';
 end $$;
 reset role;
 
@@ -310,6 +453,86 @@ begin
   exception when check_violation then
     raise notice 'PASS (CONNECT-5b, sqlstate confirmed 23514): a payment link cannot be stored against a draft (unsent) invoice';
   end;
+end $$;
+reset role;
+
+-- ===========================================================================
+-- ASSERTION 6 — VOIDING A LINKED INVOICE. This is the bug review found and
+-- this script did not: invoices_payment_link_requires_sendable_status
+-- refuses to let a stored link survive into status='void', so the old
+-- voidInvoice() — which sent { status: 'void' } and nothing else — failed
+-- with 23514 on every invoice that had ever had a link generated.
+--
+-- 6a proves the failure still happens for the naive write (so the
+-- constraint is real and still doing its job), and 6b proves the shape the
+-- fixed action uses — clear all four link columns in the SAME update that
+-- sets the status — actually works. Testing only 6b would leave the
+-- regression free to come back the moment someone "simplifies" the action
+-- back to a status-only write.
+--
+-- 6c covers the other new constraint: the id and url move together, so a
+-- half-clear (which would leave a link the app can render but cannot
+-- deactivate, or vice versa) is refused.
+-- ===========================================================================
+set local role service_role;
+insert into pilot.invoices (id, account_id, client_id, status)
+  values ('00000000-0000-0000-0000-00000000d1e3', '${A}', '00000000-0000-0000-0000-00000000d1c1', 'draft');
+insert into pilot.invoice_lines (account_id, invoice_id, line_type, description, unit_amount_cents)
+  values ('${A}', '00000000-0000-0000-0000-00000000d1e3', 'flight_day', 'seed line', 250000);
+update pilot.invoices set status = 'sent' where id = '00000000-0000-0000-0000-00000000d1e3' and account_id = '${A}';
+update pilot.invoices
+  set stripe_payment_link_id = 'plink_test_3', stripe_payment_link_url = 'https://buy.stripe.com/test_3',
+      stripe_payment_link_livemode = false, stripe_payment_link_amount_cents = 250000
+  where id = '00000000-0000-0000-0000-00000000d1e3' and account_id = '${A}';
+reset role;
+
+set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', '${UA}', 'role', 'authenticated')::text, true);
+
+do $$
+begin
+  begin
+    update pilot.invoices set status = 'void'
+      where id = '00000000-0000-0000-0000-00000000d1e3' and account_id = '${A}';
+    raise exception 'CONNECT-6a FAILURE: a status-only void left the payment link in place — the constraint is gone';
+  exception when check_violation then
+    raise notice 'PASS (CONNECT-6a, sqlstate confirmed 23514): a status-only void of a linked invoice is still refused, which is exactly the failure the fixed voidInvoice() works around by clearing the link columns';
+  end;
+end $$;
+
+do $$
+begin
+  begin
+    update pilot.invoices set stripe_payment_link_id = null
+      where id = '00000000-0000-0000-0000-00000000d1e3' and account_id = '${A}';
+    raise exception 'CONNECT-6c FAILURE: the link id was cleared while the url was left behind';
+  exception when check_violation then
+    raise notice 'PASS (CONNECT-6c, sqlstate confirmed 23514): the payment-link id and url move together — a half-clear is refused';
+  end;
+end $$;
+
+update pilot.invoices
+  set status = 'void',
+      stripe_payment_link_id = null,
+      stripe_payment_link_url = null,
+      stripe_payment_link_livemode = null,
+      stripe_payment_link_amount_cents = null
+  where id = '00000000-0000-0000-0000-00000000d1e3' and account_id = '${A}';
+
+do $$
+declare
+  v_status text;
+  v_link text;
+begin
+  select status, stripe_payment_link_id into v_status, v_link from pilot.invoices
+    where id = '00000000-0000-0000-0000-00000000d1e3' and account_id = '${A}';
+  if v_status is distinct from 'void' then
+    raise exception 'CONNECT-6b FAILURE: the invoice did not reach status=void (got %)', v_status;
+  end if;
+  if v_link is not null then
+    raise exception 'CONNECT-6b FAILURE: a payment link survived the void';
+  end if;
+  raise notice 'PASS (CONNECT-6b): voiding a linked invoice succeeds when the link columns are cleared in the same UPDATE — the shape voidInvoice() now uses';
 end $$;
 reset role;
 

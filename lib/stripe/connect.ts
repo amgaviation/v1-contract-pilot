@@ -1,6 +1,5 @@
 import "server-only";
 import { getStripe, isLiveMode } from "@/lib/stripe/server";
-import { createClient } from "@/lib/supabase/server";
 
 /**
  * Stripe Connect (Standard) — integration #2 (docs/PLAN.md decision #8),
@@ -114,28 +113,53 @@ export async function exchangeConnectCode(code: string): Promise<ConnectExchange
   return { connectAccountId, livemode };
 }
 
+export type DeauthorizeResult = {
+  /** True when the grant is definitely gone on Stripe's side. */
+  revoked: boolean;
+  /** True when Stripe says there was no grant to revoke in the first place. */
+  alreadyRevoked: boolean;
+};
+
 /**
  * Revokes the platform's OAuth grant on the connected account
- * (`stripe.oauth.deauthorize`). This is best-effort: if the pilot already
- * revoked access from their own Stripe Dashboard, or the account is gone,
- * Stripe returns an error for a grant that no longer exists — the caller
- * (connect-actions.ts) proceeds to clear connect_account_id either way,
- * because the thing that actually matters (the platform no longer being
- * able to act for this account) is already true in both cases.
+ * (`stripe.oauth.deauthorize`).
+ *
+ * WHY THIS RETURNS A RESULT INSTEAD OF SWALLOWING FAILURES (fixed after
+ * review): the previous version caught every error, logged it, and
+ * returned void — so the caller cleared connect_account_id and told the
+ * pilot "Stripe disconnected" whether or not the grant still existed. A
+ * pilot who reads that and moves on has been told something we do not
+ * know to be true, about the one thing disconnecting is FOR. Clearing
+ * locally regardless is still correct — the pilot asked to disconnect and
+ * the app must stop offering to act for that account — but the pilot has
+ * to be told when the Stripe side is unconfirmed so they can finish the
+ * job in their own dashboard.
+ *
+ * `invalid_grant` is not a failure: Stripe raises it when the grant does
+ * not exist, which happens when the pilot already revoked access from
+ * their own dashboard. That is the desired end state, so it reports as
+ * revoked (with alreadyRevoked set) rather than as an error the pilot
+ * needs to act on. Every other error rethrows to the caller, which
+ * decides what to tell the pilot.
  */
-export async function deauthorizeConnectAccount(connectAccountId: string): Promise<void> {
+export async function deauthorizeConnectAccount(
+  connectAccountId: string
+): Promise<DeauthorizeResult> {
   const stripe = getStripe();
   try {
     await stripe.oauth.deauthorize({
       client_id: connectClientId(),
       stripe_user_id: connectAccountId,
     });
+    return { revoked: true, alreadyRevoked: false };
   } catch (err) {
-    console.error(
-      `Stripe deauthorize failed for ${connectAccountId} (proceeding to clear locally): ${
-        err instanceof Error ? err.message : "unknown error"
-      }`
-    );
+    // `rawType` is the wire value Stripe sent ("invalid_grant"), not a
+    // stripe-node class name — the durable thing to match on.
+    const rawType = (err as { rawType?: string }).rawType;
+    if (rawType === "invalid_grant") {
+      return { revoked: true, alreadyRevoked: true };
+    }
+    throw err;
   }
 }
 
@@ -159,6 +183,27 @@ export type CreatePaymentLinkResult = {
  *     PLATFORM the merchant of record or the settlement party, which
  *     decision #8 explicitly rules out ("the pilot is the merchant of
  *     record").
+ *
+ * SINGLE USE, ENFORCED BY STRIPE (added after review). A Payment Link is
+ * reusable by default — it is built for "sell this thing to anyone, over
+ * and over", which is the opposite of an invoice. Left as-is, a client
+ * who bookmarks the link, or forwards the email to accounts payable a
+ * second time, pays the same invoice twice, and the pilot finds out by
+ * reconciling their Stripe balance against invoices that only ever needed
+ * one payment. `restrictions.completed_sessions.limit = 1` makes Stripe
+ * deactivate the link after one completed Checkout Session; a second
+ * visitor sees Stripe's own "this link is no longer active" page rather
+ * than a payment form. Verified against the current API via the Stripe
+ * MCP docs tool (2026-08-10) and against the installed SDK's own types
+ * (stripe@22.4.0, PaymentLinkCreateParams.Restrictions.CompletedSessions)
+ * — not written from memory.
+ *
+ * That covers the double-payment case. It does NOT cover the stale-amount
+ * case (a link created for a $5,000 balance that a $2,000 cheque has
+ * since reduced) — the link is still live and still charges $5,000. That
+ * is handled where the balance actually changes: recordPayment and
+ * voidInvoice call deactivatePaymentLink below and clear the stored
+ * columns, so a link never outlives the balance it was priced against.
  */
 export async function createPaymentLinkForInvoice(params: {
   connectAccountId: string;
@@ -181,6 +226,7 @@ export async function createPaymentLinkForInvoice(params: {
     {
       line_items: [{ price: price.id, quantity: 1 }],
       // No application_fee_amount. No on_behalf_of. No transfer_data.
+      restrictions: { completed_sessions: { limit: 1 } },
       metadata: { invoice_number: params.invoiceNumber },
     },
     { stripeAccount }
@@ -189,11 +235,62 @@ export async function createPaymentLinkForInvoice(params: {
   return { id: link.id, url: link.url, livemode: isLiveMode() };
 }
 
-/** The signed-in user's id, for the OAuth `state` cookie/session check. */
-export async function currentUserId(): Promise<string | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user?.id ?? null;
+export type DeactivateLinkResult = {
+  /** True when the link is definitely not payable any more. */
+  deactivated: boolean;
+  /** True when Stripe says the link no longer exists at all. */
+  alreadyGone: boolean;
+};
+
+/**
+ * Turns a Payment Link off (`active: false`), on the pilot's own connected
+ * account. Stripe then serves its "no longer active" page instead of a
+ * payment form.
+ *
+ * This is the other half of the stale-link problem: the app clears its own
+ * three columns whenever an invoice's balance changes or it is voided, but
+ * clearing a row here does nothing to a URL a client already has in their
+ * inbox. The only thing that stops that URL taking money is this call.
+ * Callers therefore deactivate FIRST and clear second, and tell the pilot
+ * when the deactivation could not be confirmed — the same honesty rule as
+ * deauthorizeConnectAccount above.
+ *
+ * `resource_missing` counts as success: the link is gone (deleted from the
+ * dashboard, or the account disconnected), which is the end state asked
+ * for.
+ */
+export async function deactivatePaymentLink(params: {
+  connectAccountId: string;
+  paymentLinkId: string;
+}): Promise<DeactivateLinkResult> {
+  const stripe = getStripe();
+  try {
+    await stripe.paymentLinks.update(
+      params.paymentLinkId,
+      { active: false },
+      { stripeAccount: params.connectAccountId }
+    );
+    return { deactivated: true, alreadyGone: false };
+  } catch (err) {
+    if ((err as { code?: string }).code === "resource_missing") {
+      return { deactivated: true, alreadyGone: true };
+    }
+    throw err;
+  }
 }
+
+/**
+ * The wording every caller uses when a Stripe-side deactivation could not
+ * be confirmed. One string, because the pilot needs the same instruction
+ * (go finish it in your own dashboard) regardless of which action they
+ * were taking, and because a sentence this consequential should not be
+ * re-improvised at three call sites.
+ */
+export const LINK_STILL_LIVE_WARNING =
+  "We couldn't confirm with Stripe that the old payment link was switched off. It may still accept a card payment — deactivate it under Payment Links in your Stripe Dashboard.";
+
+// A `currentUserId()` helper used to live here, documented as being "for
+// the OAuth `state` cookie/session check". Nothing ever imported it — the
+// callback route reads the session directly — and the check it claimed to
+// serve is now done in the database by pilot.connect_account_link. Removed
+// rather than left as a comment describing a job no code does.

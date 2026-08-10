@@ -29,6 +29,7 @@ type InvoiceRow = {
   notes: string | null;
   stripe_payment_link_url: string | null;
   stripe_payment_link_livemode: boolean | null;
+  stripe_payment_link_amount_cents: number | null;
 };
 
 type TotalsRow = {
@@ -252,6 +253,17 @@ export default async function InvoicePage({
                 ? invoice.stripe_payment_link_url
                 : null
             }
+            // What that link is priced at, so the panel can say so and can
+            // flag a link that no longer matches the balance due. A link is
+            // a snapshot of a Stripe Price; the app retires one whenever a
+            // payment lands, but this is what makes a mismatch visible
+            // rather than a thing the pilot finds out from their client.
+            existingPaymentLinkAmountCents={
+              invoice.stripe_payment_link_url && invoice.stripe_payment_link_livemode === isLiveMode()
+                ? invoice.stripe_payment_link_amount_cents
+                : null
+            }
+            balanceDueCents={totals?.balance_due_cents ?? null}
           />
         </Flex>
       </Grid>
