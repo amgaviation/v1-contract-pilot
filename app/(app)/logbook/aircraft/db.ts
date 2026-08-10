@@ -19,12 +19,40 @@
  * as "tricycle": a currency engine that assumed the common case would tell
  * a tailwheel pilot they are current on touch-and-goes that do not count.
  */
-export type AircraftGear = "tricycle" | "tailwheel";
+export type AircraftGear = "tricycle" | "tailwheel" | "skid" | "float" | "ski";
 
 export const GEAR_LABEL: Record<AircraftGear, string> = {
   tricycle: "Tricycle",
   tailwheel: "Tailwheel",
+  skid: "Skids",
+  float: "Floats",
+  ski: "Skis",
 };
+
+/**
+ * The category and class vocabulary of 61.5(b). Offered as suggestions,
+ * not enforced as a CHECK: the column is free text so a pilot is never
+ * blocked by a list that is wrong for their aircraft, but a rollup that
+ * has to treat "AMEL", "amel", "Multi" and "Multi-Engine Land" as four
+ * different classes is no rollup at all. Suggestions get convergence
+ * without the refusal.
+ */
+export const CATEGORY_CLASS_SUGGESTIONS = [
+  "ASEL",
+  "AMEL",
+  "ASES",
+  "AMES",
+  "Rotorcraft — Helicopter",
+  "Rotorcraft — Gyroplane",
+  "Glider",
+  "Lighter-than-air — Airship",
+  "Lighter-than-air — Balloon",
+  "Powered-lift",
+  "Powered parachute — Land",
+  "Powered parachute — Sea",
+  "Weight-shift-control — Land",
+  "Weight-shift-control — Sea",
+] as const;
 
 /** Mirrors pilot.aircraft exactly — keep in lockstep with the migration. */
 export type AircraftRow = {
@@ -35,6 +63,8 @@ export type AircraftRow = {
   /** GENERATED. Case-folded and punctuation-stripped; never writable. */
   tail_key: string;
   type_designator: string | null;
+  /** The FAA type rating — see the migration's column comment. */
+  type_rating: string | null;
   make_model: string | null;
   gear: AircraftGear | null;
   category_class: string | null;
@@ -47,7 +77,13 @@ export type AircraftRow = {
 /** The columns the fleet form is allowed to write. */
 export type AircraftFields = Pick<
   AircraftRow,
-  "tail_number" | "type_designator" | "make_model" | "gear" | "category_class" | "notes"
+  | "tail_number"
+  | "type_designator"
+  | "type_rating"
+  | "make_model"
+  | "gear"
+  | "category_class"
+  | "notes"
 >;
 
 export type AircraftInsert = AircraftFields & { account_id: string };
@@ -57,9 +93,12 @@ export type AircraftUpdate = Partial<AircraftFields> & { archived_at?: string | 
 export type TimeByTypeRow = {
   type_label: string;
   entry_count: number;
+  /** AIRCRAFT time. Simulator hours are in simulator_time, never added here. */
   total_time: number;
   pic_time: number;
+  sic_time: number;
   night_time: number;
+  simulator_time: number;
   has_registered_aircraft: boolean;
 };
 
@@ -67,10 +106,16 @@ export type TimeByTypeRow = {
 export type TimeByTailRow = {
   aircraft_id: string;
   entry_count: number;
+  /** AIRCRAFT time. Simulator hours are in simulator_time, never added here. */
   total_time: number;
   pic_time: number;
+  sic_time: number;
   night_time: number;
-  /** null for an airframe registered but not yet flown. */
+  simulator_time: number;
+  /**
+   * null for an airframe registered but not yet flown — and unmoved by a
+   * simulator session, which is not a day the airframe flew.
+   */
   last_flown_on: string | null;
 };
 
@@ -94,6 +139,15 @@ export type UnregisteredIdentRow = {
  * fragmentation this registry exists to end.
  */
 export function normaliseTypeDesignator(raw: string): string | null {
+  const trimmed = raw.trim().toUpperCase();
+  return trimmed === "" ? null : trimmed;
+}
+
+/**
+ * FAA type ratings are written with a hyphen — CE-500, B-737, CE-560XL,
+ * LR-JET. Same normalisation, a wider shape.
+ */
+export function normaliseTypeRating(raw: string): string | null {
   const trimmed = raw.trim().toUpperCase();
   return trimmed === "" ? null : trimmed;
 }

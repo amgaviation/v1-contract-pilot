@@ -22,13 +22,15 @@
 -- READ time, in the view at the bottom, by matching on a canonical key.
 -- A registry row is an annotation on history, never an edit to it.
 --
--- The gear column is not decoration. 61.57(a)(1) requires the three
--- takeoffs and landings to be made TO A FULL STOP "if the aircraft to be
+-- The gear column is not decoration. 61.57(a)(1)(ii) requires the three
+-- takeoffs AND landings to be made TO A FULL STOP "if the aircraft to be
 -- flown is an airplane with a tailwheel" — verified against the current
--- CFR text (govinfo, 14 CFR part 61, retrieved 2026-08-10). Day currency
--- therefore depends on a fact about the airframe that nothing in this
--- schema recorded. Phase 7's engine will need it; capturing it now costs
--- one column and avoids asking a pilot to re-annotate their fleet later.
+-- CFR text (eCFR, 14 CFR 61.57, issue date 2026-08-01). Note what the reg
+-- does NOT say: (a) is not day-scoped, and the full-stop condition binds
+-- the takeoffs as well as the landings. General experience therefore
+-- depends on a fact about the airframe that nothing in this schema
+-- recorded. Phase 7's engine will need it; capturing it now costs one
+-- column and avoids asking a pilot to re-annotate their fleet later.
 -- ===========================================================================
 
 create table if not exists pilot.aircraft (
@@ -58,13 +60,43 @@ create table if not exists pilot.aircraft (
   -- aircraft before they know it, and a wrong designator is worse than a
   -- blank one on a form an underwriter reads.
   type_designator text check (type_designator is null or type_designator ~ '^[A-Z0-9]{2,4}$'),
+
+  -- THE FAA TYPE RATING, which is NOT the ICAO designator and is the unit
+  -- both of this feature's stated questions are actually asked in.
+  --
+  -- One CE-500 rating covers the Cessna 500, 501, 550, 551, S550, 552 AND
+  -- 560 (FAA FSB report CE-500). ICAO splits those across C500 / C501 /
+  -- C550 / C551 / C560. Group on the designator alone and a pilot with
+  -- 1,200 hours on one rating sees five short rows and no total — which is
+  -- the fragmentation this whole table exists to end, reintroduced one
+  -- level up. Same story for B737 / B738 / B739 under one B-737 rating.
+  --
+  -- It also matters to Phase 7: 61.57(a)(1)(ii) requires the takeoffs and
+  -- landings to be in an aircraft of the same category, class, and TYPE
+  -- (if a class or type rating is required). Grouping on ICAO would tell a
+  -- CE-500 pilot their Citation Bravo landings do not count toward their
+  -- Citation V. They do.
+  --
+  -- Nullable, and the rollup falls back to the designator when it is
+  -- absent, so a pilot who does not know or does not care loses nothing.
+  type_rating text check (type_rating is null or type_rating ~ '^[A-Z0-9-]{2,10}$'),
+
   make_model text,
 
   -- 61.57(a)(1)'s tailwheel full-stop condition. Null means "not recorded"
   -- and must never be read as "tricycle" — a currency engine that assumes
   -- the common case would tell a tailwheel pilot they are current on
   -- touch-and-goes that do not count.
-  gear text check (gear is null or gear in ('tricycle', 'tailwheel')),
+  --
+  -- 'tailwheel' is the only value that changes what 61.57(a)(1) requires.
+  -- The others exist so the field is TRUTHFUL for the aircraft a pilot
+  -- actually flies — a helicopter on skids and a Super Cub on floats are
+  -- neither tricycle nor tailwheel, and forcing them blank would make
+  -- "not recorded" mean two different things.
+  gear text check (
+    gear is null
+    or gear in ('tricycle', 'tailwheel', 'skid', 'float', 'ski')
+  ),
 
   -- Free text on purpose. The category/class vocabulary (ASEL, AMEL, ASES,
   -- rotorcraft-helicopter, glider...) is long, and a CHECK that is wrong
@@ -85,7 +117,9 @@ create table if not exists pilot.aircraft (
 comment on table pilot.aircraft is
   'The pilot''s own fleet: one row per airframe, keyed on a normalised tail number so N447SP / N-447SP / n447sp cannot become three aircraft. Annotates history — it never rewrites pilot.logbook_entries, which is a legal record under 61.51.';
 comment on column pilot.aircraft.gear is
-  '61.57(a)(1) requires day takeoffs and landings to be made to a FULL STOP for a tailwheel airplane. NULL means not recorded and must not be read as tricycle.';
+  '14 CFR 61.57(a)(1)(ii): if the airplane to be flown is an airplane with a tailwheel, the three required takeoffs AND landings must have been made to a full stop in a tailwheel airplane. Not day-scoped — (a) says nothing about day, and the takeoffs carry the condition as well as the landings. NULL means not recorded and must not be read as tricycle.';
+comment on column pilot.aircraft.type_rating is
+  'The FAA type rating, which is not the ICAO designator: one CE-500 rating covers the Cessna 500/501/550/551/S550/552/560, which ICAO splits five ways. pilot.logbook_time_by_type groups on this in preference to type_designator, and 61.57(a)(1)(ii) is written in these terms.';
 
 create index if not exists aircraft_account_idx on pilot.aircraft (account_id, tail_key);
 
@@ -102,20 +136,48 @@ create trigger aircraft_set_updated_at before update on pilot.aircraft
 -- pilot typed on the entry itself, or "Unspecified". Dropping unmatched
 -- entries would understate a pilot's hours, which is the one thing a
 -- time-in-type table must never do.
+--
+-- SIMULATOR TIME IS NOT AIRCRAFT TIME, and this view kept them in one
+-- column until a review caught it. logbook_entries stores a wholly-
+-- simulator session with its hours in total_time (that is what
+-- 20260810020000's CHECK requires), and a real ForeFlight export in that
+-- migration's own header had 18 such rows in 221. Summing total_time
+-- therefore credited a C560 with four hours it never flew, on a table
+-- captioned as the answer to an underwriter's pilot-history form — which
+-- asks for simulator time separately, precisely because it is not the
+-- same thing.
+--
+-- So aircraft time is total_time MINUS simulator_time, and simulator time
+-- gets its own column rather than being discarded. Nothing is dropped;
+-- the two facts are just no longer added together.
+--
+-- The grouping key prefers the FAA type rating over the ICAO designator —
+-- see the type_rating column's comment. One CE-500 rating covering seven
+-- Citation models is the difference between one honest row and five
+-- fragments.
 -- ---------------------------------------------------------------------------
 create or replace view pilot.logbook_time_by_type
 with (security_invoker = true) as
   select
     e.account_id,
     coalesce(
+      nullif(btrim(a.type_rating), ''),
       nullif(btrim(a.type_designator), ''),
       nullif(btrim(e.aircraft_type), ''),
       'Unspecified'
     )                                                   as type_label,
     count(*)::bigint                                    as entry_count,
-    coalesce(sum(e.total_time), 0)::numeric             as total_time,
+    coalesce(sum(greatest(e.total_time - coalesce(e.simulator_time, 0), 0)), 0)::numeric
+                                                        as total_time,
     coalesce(sum(e.pic_time), 0)::numeric               as pic_time,
+    -- SIC in type is what a 135 operator and an underwriter ask a
+    -- freelancer building time toward an upgrade in a two-crew jet. It was
+    -- missing while PIC was present, so a pilot with 800 SIC hours in the
+    -- 560 read "Total 800.0 / PIC 0.0" and could not show the number that
+    -- mattered.
+    coalesce(sum(e.sic_time), 0)::numeric               as sic_time,
     coalesce(sum(e.night_time), 0)::numeric             as night_time,
+    coalesce(sum(e.simulator_time), 0)::numeric         as simulator_time,
     -- Whether any of this type's time is in a registered airframe, so the
     -- UI can tell "you have 412 hours in the 560" from "you have 412 hours
     -- in something you never told us about".
@@ -127,13 +189,14 @@ with (security_invoker = true) as
   group by
     e.account_id,
     coalesce(
+      nullif(btrim(a.type_rating), ''),
       nullif(btrim(a.type_designator), ''),
       nullif(btrim(e.aircraft_type), ''),
       'Unspecified'
     );
 
 comment on view pilot.logbook_time_by_type is
-  'Hours by aircraft type — what an insurance pilot-history form asks for. Matches the logbook''s free-text ident to the registry on a normalised key at READ time; unmatched entries are still counted, under the type the pilot typed, because a time-in-type table that silently drops hours is worse than none.';
+  'Hours by aircraft type — what an insurance pilot-history form asks for. Matches the logbook''s free-text ident to the registry on a normalised key at READ time; unmatched entries are still counted, under the type the pilot typed, because a time-in-type table that silently drops hours is worse than none. total_time is AIRCRAFT time: simulator hours are reported in their own column, never added to it.';
 
 -- ---------------------------------------------------------------------------
 -- Hours in each registered airframe.
@@ -141,12 +204,19 @@ comment on view pilot.logbook_time_by_type is
 -- "How much time do you have in the 560?" is the type question, answered
 -- above. "How much time in N447SP?" is the OTHER one an open-pilot
 -- warranty is written against, and it is a different number when a pilot
--- flies two of the same type for two different owners.
+-- flies two of the same type for two different owners. Those warranties
+-- read "X total, Y in make and model, Z as PIC", so PIC is carried here
+-- rather than left for the caller to guess.
 --
 -- A LEFT JOIN, not an inner one: an aircraft registered today has no
 -- hours yet and must still appear in the pilot's fleet. Reporting it as
 -- absent rather than as zero would make the fleet list disagree with
 -- itself the moment a pilot adds an airframe before flying it.
+--
+-- Simulator time is excluded from total_time for the same reason as in
+-- the type view — and last_flown_on is FILTERED to entries with real
+-- aircraft time, because a recurrent session in a box does not mean the
+-- airframe moved that day.
 -- ---------------------------------------------------------------------------
 create or replace view pilot.aircraft_time_by_tail
 with (security_invoker = true) as
@@ -154,10 +224,15 @@ with (security_invoker = true) as
     a.account_id,
     a.id                                                as aircraft_id,
     count(e.id)::bigint                                 as entry_count,
-    coalesce(sum(e.total_time), 0)::numeric             as total_time,
+    coalesce(sum(greatest(e.total_time - coalesce(e.simulator_time, 0), 0)), 0)::numeric
+                                                        as total_time,
     coalesce(sum(e.pic_time), 0)::numeric               as pic_time,
+    coalesce(sum(e.sic_time), 0)::numeric               as sic_time,
     coalesce(sum(e.night_time), 0)::numeric             as night_time,
-    max(e.entry_date)                                   as last_flown_on
+    coalesce(sum(e.simulator_time), 0)::numeric         as simulator_time,
+    max(e.entry_date) filter (
+      where e.total_time - coalesce(e.simulator_time, 0) > 0
+    )                                                   as last_flown_on
   from pilot.aircraft a
   left join pilot.logbook_entries e
     on e.account_id = a.account_id
@@ -165,7 +240,7 @@ with (security_invoker = true) as
   group by a.account_id, a.id;
 
 comment on view pilot.aircraft_time_by_tail is
-  'Hours logged against each registered airframe, matched on the normalised tail key at READ time. LEFT JOIN so an aircraft added before it is flown reports zero hours rather than vanishing from the pilot''s own fleet list.';
+  'Hours logged against each registered airframe, matched on the normalised tail key at READ time. LEFT JOIN so an aircraft added before it is flown reports zero hours rather than vanishing from the pilot''s own fleet list. total_time excludes simulator hours, and last_flown_on ignores simulator sessions — a session in a box is not a day the airframe moved.';
 
 -- ---------------------------------------------------------------------------
 -- What the pilot has flown but never told us about.
@@ -176,26 +251,51 @@ comment on view pilot.aircraft_time_by_tail is
 -- newest first, with enough hours attached that the pilot can tell the
 -- airframe they fly weekly from the one they rode in once.
 --
--- Idents that normalise to nothing (a blank, a lone hyphen, a stray
--- punctuation mark from a CSV import) are excluded — offering to register
--- '' helps nobody and the unique key would collapse them all into one row.
+-- Three exclusions, each of which produced a bad suggestion in review:
+--
+--   * Idents that normalise to nothing (a blank, a lone hyphen, a stray
+--     punctuation mark from a CSV import). Offering to register '' helps
+--     nobody and the registry now refuses the row anyway.
+--   * Keys longer than the tail_number CHECK allows. A hand-typed
+--     "SIMULATOR SESSION" was offered as a tail, prefilled a 17-character
+--     registration, and was then rejected on submit — permanently
+--     un-actionable and permanently re-offered.
+--   * Wholly-simulator entries. 61.51(b)(1)(iv) puts the FFS/FTD/ATD
+--     identification in this same field, so without this the fleet screen
+--     invited a pilot to add their simulator to their fleet.
 -- ---------------------------------------------------------------------------
 create or replace view pilot.aircraft_unregistered_idents
 with (security_invoker = true) as
   select
     e.account_id,
     -- Shown back as the pilot most recently wrote it, not as the key.
-    (array_agg(e.aircraft_ident order by e.entry_date desc, e.created_at desc))[1]
+    -- e.id is the final tiebreaker: created_at defaults to the transaction
+    -- timestamp, so every row of one CSV import shares it exactly, and
+    -- without a deterministic third key the label flips between renders.
+    (array_agg(e.aircraft_ident order by e.entry_date desc, e.created_at desc, e.id desc))[1]
                                                         as aircraft_ident,
     upper(regexp_replace(e.aircraft_ident, '[^A-Za-z0-9]', '', 'g'))
                                                         as tail_key,
-    max(nullif(btrim(e.aircraft_type), ''))             as aircraft_type,
+    -- The type the pilot typed MOST RECENTLY, not the lexical maximum. A
+    -- pilot who wrote "C560" nine times and "Citation V" once got
+    -- "Citation V" back (digits sort before letters), which the fleet
+    -- screen then filed as a make and model — discarding the correct
+    -- designator they had already typed nine times.
+    (array_agg(nullif(btrim(e.aircraft_type), '')
+       order by e.entry_date desc, e.created_at desc, e.id desc)
+       filter (where nullif(btrim(e.aircraft_type), '') is not null))[1]
+                                                        as aircraft_type,
     count(*)::bigint                                    as entry_count,
-    coalesce(sum(e.total_time), 0)::numeric             as total_time,
+    coalesce(sum(greatest(e.total_time - coalesce(e.simulator_time, 0), 0)), 0)::numeric
+                                                        as total_time,
     max(e.entry_date)                                   as last_flown_on
   from pilot.logbook_entries e
   where e.aircraft_ident is not null
-    and upper(regexp_replace(e.aircraft_ident, '[^A-Za-z0-9]', '', 'g')) <> ''
+    and length(upper(regexp_replace(e.aircraft_ident, '[^A-Za-z0-9]', '', 'g'))) between 2 and 12
+    and not (
+      coalesce(e.simulator_time, 0) > 0
+      and e.total_time = e.simulator_time
+    )
     and not exists (
       select 1
       from pilot.aircraft a
@@ -207,7 +307,7 @@ with (security_invoker = true) as
     upper(regexp_replace(e.aircraft_ident, '[^A-Za-z0-9]', '', 'g'));
 
 comment on view pilot.aircraft_unregistered_idents is
-  'Tails the pilot has logged time in that have no pilot.aircraft row yet — the fleet screen''s seed list, so building a registry is confirming what you already flew rather than retyping it. NOT EXISTS, never NOT IN: a null on either side of NOT IN fails open and would hide every suggestion.';
+  'Tails the pilot has logged time in that have no pilot.aircraft row yet — the fleet screen''s seed list, so building a registry is confirming what you already flew rather than retyping it. NOT EXISTS, never NOT IN: a null on either side of NOT IN fails open and would hide every suggestion. Excludes keys the registry would refuse and wholly-simulator sessions, so every suggestion offered is one the pilot can actually accept.';
 
 -- ---------------------------------------------------------------------------
 -- RLS and grants.
@@ -230,11 +330,11 @@ create policy aircraft_delete on pilot.aircraft for delete to authenticated
 grant select on pilot.aircraft to authenticated;
 -- Column-scoped, like every other table here: tail_key is GENERATED and
 -- cannot be written, and account_id is set on insert but never changed.
-grant insert (account_id, tail_number, type_designator, make_model, gear,
-              category_class, notes)
+grant insert (account_id, tail_number, type_designator, type_rating, make_model,
+              gear, category_class, notes)
   on pilot.aircraft to authenticated;
-grant update (tail_number, type_designator, make_model, gear, category_class,
-              notes, archived_at)
+grant update (tail_number, type_designator, type_rating, make_model, gear,
+              category_class, notes, archived_at)
   on pilot.aircraft to authenticated;
 
 grant select on pilot.logbook_time_by_type to authenticated, service_role;

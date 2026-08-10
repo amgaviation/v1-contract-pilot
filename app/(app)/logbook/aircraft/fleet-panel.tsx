@@ -22,6 +22,7 @@ export type FleetAircraft = {
   id: string;
   tail_number: string;
   type_designator: string | null;
+  type_rating: string | null;
   make_model: string | null;
   gear: AircraftGear | null;
   category_class: string | null;
@@ -29,6 +30,8 @@ export type FleetAircraft = {
   archived_at: string | null;
   entryCount: number;
   totalTime: number;
+  picTime: number;
+  simulatorTime: number;
   lastFlownOn: string | null;
 };
 
@@ -48,9 +51,15 @@ function hours(value: number): string {
 export default function FleetPanel({
   aircraft,
   suggestions,
+  moreSuggestions = false,
+  hoursUnavailable = false,
 }: {
   aircraft: FleetAircraft[];
   suggestions: Suggestion[];
+  /** More unregistered tails exist than are shown. Said out loud, not implied. */
+  moreSuggestions?: boolean;
+  /** The hours query failed. Columns read blank, never zero. */
+  hoursUnavailable?: boolean;
 }) {
   // `null` = closed, "new" = the blank add form, otherwise an aircraft id.
   const [open, setOpen] = useState<string | null>(null);
@@ -77,11 +86,16 @@ export default function FleetPanel({
           <Flex direction="column" gap="3" p="1">
             <Flex direction="column" gap="1">
               <Heading as="h2" size="4">
-                {`${suggestions.length} tail${suggestions.length === 1 ? "" : "s"} you've flown but haven't added`}
+                {moreSuggestions
+                  ? `${suggestions.length} of the tails you've flown but haven't added`
+                  : `${suggestions.length} tail${suggestions.length === 1 ? "" : "s"} you've flown but haven't added`}
               </Heading>
               <Text size="2" color="gray">
                 Adding one groups every entry you already logged in it — however you
                 spelled the registration at the time — under a make and model.
+                {moreSuggestions
+                  ? " There are more than fit here; add these and the next few will appear."
+                  : ""}
               </Text>
             </Flex>
             <Flex gap="2" wrap="wrap">
@@ -179,6 +193,7 @@ export default function FleetPanel({
                 <Table.ColumnHeaderCell>Registration</Table.ColumnHeaderCell>
                 <Table.ColumnHeaderCell>Type</Table.ColumnHeaderCell>
                 <Table.ColumnHeaderCell justify="end">Hours</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell justify="end">PIC</Table.ColumnHeaderCell>
                 <Table.ColumnHeaderCell>Last flown</Table.ColumnHeaderCell>
                 <Table.ColumnHeaderCell />
               </Table.Row>
@@ -203,7 +218,7 @@ export default function FleetPanel({
                   </Table.RowHeaderCell>
                   <Table.Cell>
                     <Flex direction="column">
-                      <Text>{item.type_designator ?? "—"}</Text>
+                      <Text>{item.type_rating ?? item.type_designator ?? "—"}</Text>
                       {item.make_model ? (
                         <Text size="1" color="gray">
                           {item.make_model}
@@ -212,11 +227,33 @@ export default function FleetPanel({
                     </Flex>
                   </Table.Cell>
                   <Table.Cell justify="end">
-                    <Text className="tnum">{hours(item.totalTime)}</Text>
+                    <Flex direction="column" align="end">
+                      <Text className="tnum">
+                        {hoursUnavailable ? "—" : hours(item.totalTime)}
+                      </Text>
+                      {/* Simulator hours are not aircraft hours and are
+                          never added into the figure above — an
+                          underwriter's form asks for them separately. Shown
+                          here so they are not simply missing. */}
+                      {!hoursUnavailable && item.simulatorTime > 0 ? (
+                        <Text size="1" color="gray" className="tnum">
+                          {`+${hours(item.simulatorTime)} sim`}
+                        </Text>
+                      ) : null}
+                    </Flex>
+                  </Table.Cell>
+                  <Table.Cell justify="end">
+                    <Text color="gray" className="tnum">
+                      {hoursUnavailable ? "—" : hours(item.picTime)}
+                    </Text>
                   </Table.Cell>
                   <Table.Cell>
                     <Text color="gray">
-                      {item.lastFlownOn ? formatDate(item.lastFlownOn) : "Not yet"}
+                      {hoursUnavailable
+                        ? "—"
+                        : item.lastFlownOn
+                          ? formatDate(item.lastFlownOn)
+                          : "Not yet"}
                     </Text>
                   </Table.Cell>
                   <Table.Cell justify="end">

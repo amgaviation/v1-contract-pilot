@@ -26,6 +26,7 @@ import { friendlyDbError } from "@/lib/db-errors";
 import { logbookFrom } from "../db";
 import {
   normaliseTypeDesignator,
+  normaliseTypeRating,
   tailKey,
   type AircraftGear,
   type AircraftInsert,
@@ -54,6 +55,7 @@ export type AircraftFormState = {
 const FIELDS = [
   "tail_number",
   "type_designator",
+  "type_rating",
   "make_model",
   "gear",
   "category_class",
@@ -67,8 +69,9 @@ function echo(formData: FormData): Record<string, string> {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const GEARS: readonly AircraftGear[] = ["tricycle", "tailwheel"];
+const GEARS: readonly AircraftGear[] = ["tricycle", "tailwheel", "skid", "float", "ski"];
 const TYPE_DESIGNATOR_RE = /^[A-Z0-9]{2,4}$/;
+const TYPE_RATING_RE = /^[A-Z0-9-]{2,10}$/;
 
 function trimmedOrNull(formData: FormData, field: string): string | null {
   const value = String(formData.get(field) ?? "").trim();
@@ -82,6 +85,7 @@ type Parsed =
       fields: {
         tail_number: string;
         type_designator: string | null;
+        type_rating: string | null;
         make_model: string | null;
         gear: AircraftGear | null;
         category_class: string | null;
@@ -112,9 +116,18 @@ function parse(formData: FormData): Parsed {
     };
   }
 
+  const rating = normaliseTypeRating(String(formData.get("type_rating") ?? ""));
+  if (rating !== null && !TYPE_RATING_RE.test(rating)) {
+    return {
+      ok: false,
+      error:
+        "A type rating is 2 to 10 letters, digits or hyphens — CE-500 for the Citation series, B-737, LR-JET. Leave it blank if you don't hold one.",
+    };
+  }
+
   const gearRaw = String(formData.get("gear") ?? "").trim();
   if (gearRaw !== "" && !GEARS.includes(gearRaw as AircraftGear)) {
-    return { ok: false, error: "Landing gear is either tricycle or tailwheel." };
+    return { ok: false, error: "That isn't one of the landing gear options." };
   }
 
   return {
@@ -122,6 +135,7 @@ function parse(formData: FormData): Parsed {
     fields: {
       tail_number: tailNumber,
       type_designator: designator,
+      type_rating: rating,
       make_model: trimmedOrNull(formData, "make_model"),
       // Left unstated rather than guessed. 61.57(a)(1)'s full-stop
       // condition turns on this, and "nobody said" is a different fact

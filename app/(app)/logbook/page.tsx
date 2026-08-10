@@ -54,9 +54,12 @@ function landings(entry: LogbookEntryRow): number {
 const PAGE_SIZE = 200;
 
 /**
- * Types shown in the hours-by-type panel. A career pilot might hold time in
- * a couple of dozen; past that the panel stops being a summary, and the
- * fleet screen is the place to go through them one at a time.
+ * Types shown in the hours-by-type panel. A career pilot who imported
+ * twenty years of history can hold time in forty, and a panel with forty
+ * rows stops being a summary — but a panel that shows twelve of forty and
+ * says nothing is a pilot transcribing an incomplete pilot-history form.
+ * One more than this is fetched so the shortfall can be STATED, and the
+ * full table lives on the fleet screen.
  */
 const TYPE_ROW_LIMIT = 12;
 
@@ -75,7 +78,7 @@ export default async function LogbookPage({
   const [
     { data, error, count },
     { data: totalsData, error: totalsError },
-    { data: byTypeData },
+    { data: byTypeData, error: byTypeError },
   ] = await Promise.all([
     logbookFrom(supabase, "logbook_entries")
       .select("*", { count: "exact" })
@@ -101,7 +104,8 @@ export default async function LogbookPage({
       .select("*")
       .eq("account_id", account?.id ?? "")
       .order("total_time", { ascending: false })
-      .limit(TYPE_ROW_LIMIT),
+      .order("type_label", { ascending: true })
+      .limit(TYPE_ROW_LIMIT + 1),
   ]);
 
   const entries = (data ?? []) as LogbookEntryRow[];
@@ -129,11 +133,19 @@ export default async function LogbookPage({
       }
     : null;
 
-  const byType = ((byTypeData ?? []) as TimeByTypeRow[]).map((row) => ({
+  const byTypeRows = (byTypeData ?? []) as TimeByTypeRow[];
+  const moreTypes = byTypeRows.length > TYPE_ROW_LIMIT;
+  const byType = byTypeRows.slice(0, TYPE_ROW_LIMIT).map((row) => ({
     label: row.type_label,
+    // AIRCRAFT time. The view reports simulator hours in their own column
+    // and never adds them here — a pilot-history form asks for the two
+    // separately, and a C560 credited with a recurrent session is the one
+    // number this panel must not get wrong.
     total: Number(row.total_time),
     pic: Number(row.pic_time),
+    sic: Number(row.sic_time),
     night: Number(row.night_time),
+    simulator: Number(row.simulator_time),
     entries: Number(row.entry_count),
     registered: row.has_registered_aircraft === true,
   }));
@@ -244,15 +256,26 @@ export default async function LogbookPage({
                   </Button>
                 </Flex>
 
-                {hasTypeBreakdown ? (
+                {byTypeError ? (
+                  <Callout.Root color="amber" size="1">
+                    <Callout.Icon>
+                      <ExclamationTriangleIcon />
+                    </Callout.Icon>
+                    <Callout.Text>
+                      Your time in type couldn&rsquo;t be loaded just now, so
+                      it isn&rsquo;t shown. Nothing is wrong with your entries.
+                    </Callout.Text>
+                  </Callout.Root>
+                ) : hasTypeBreakdown ? (
                   <Table.Root variant="ghost">
                     <Table.Header>
                       <Table.Row>
                         <Table.ColumnHeaderCell>Type</Table.ColumnHeaderCell>
                         <Table.ColumnHeaderCell justify="end">Total</Table.ColumnHeaderCell>
                         <Table.ColumnHeaderCell justify="end">PIC</Table.ColumnHeaderCell>
+                        <Table.ColumnHeaderCell justify="end">SIC</Table.ColumnHeaderCell>
                         <Table.ColumnHeaderCell justify="end">Night</Table.ColumnHeaderCell>
-                        <Table.ColumnHeaderCell justify="end">Entries</Table.ColumnHeaderCell>
+                        <Table.ColumnHeaderCell justify="end">Sim</Table.ColumnHeaderCell>
                       </Table.Row>
                     </Table.Header>
                     <Table.Body>
@@ -285,12 +308,21 @@ export default async function LogbookPage({
                           </Table.Cell>
                           <Table.Cell justify="end">
                             <Text color="gray" className="tnum">
-                              {row.night.toFixed(1)}
+                              {row.sic.toFixed(1)}
                             </Text>
                           </Table.Cell>
                           <Table.Cell justify="end">
                             <Text color="gray" className="tnum">
-                              {row.entries}
+                              {row.night.toFixed(1)}
+                            </Text>
+                          </Table.Cell>
+                          {/* Its own column, never folded into Total. An
+                              underwriter's pilot-history form asks for
+                              simulator time separately, because it is not
+                              time in the aircraft. */}
+                          <Table.Cell justify="end">
+                            <Text color="gray" className="tnum">
+                              {row.simulator.toFixed(1)}
                             </Text>
                           </Table.Cell>
                         </Table.Row>
@@ -305,6 +337,19 @@ export default async function LogbookPage({
                     registration differently.
                   </Text>
                 )}
+
+                {/* Said out loud rather than left to be noticed. Twelve rows
+                    of forty, with the career total sitting directly above,
+                    is how a pilot copies an incomplete pilot-history form
+                    without ever seeing anything was missing. */}
+                {moreTypes && !byTypeError ? (
+                  <Text size="1" color="gray">
+                    {`Showing the ${TYPE_ROW_LIMIT} types you have the most time in. `}
+                    <Link asChild>
+                      <NextLink href="/logbook/aircraft">See every type</NextLink>
+                    </Link>
+                  </Text>
+                ) : null}
               </Flex>
             </Card>
           ) : null}
@@ -322,6 +367,14 @@ export default async function LogbookPage({
                   </Button>
                   <Button asChild variant="outline">
                     <NextLink href="/logbook/drafts">Review trip drafts</NextLink>
+                  </Button>
+                  {/* Reachable before the first entry exists. The Hours by
+                      type panel is the only other link to the fleet screen
+                      and it renders only when there ARE entries, so a pilot
+                      who wanted to set their aircraft up first had no path
+                      to it at all. */}
+                  <Button asChild variant="outline">
+                    <NextLink href="/logbook/aircraft">Your aircraft</NextLink>
                   </Button>
                 </Flex>
               </Flex>

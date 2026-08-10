@@ -4,12 +4,13 @@ import { useActionState, useEffect, useState } from "react";
 import { Button, Callout, Flex, Grid, Select, Text, TextArea, TextField } from "@/components/ui";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import type { AircraftFormState } from "./actions";
-import { GEAR_LABEL, type AircraftGear } from "./db";
+import { CATEGORY_CLASS_SUGGESTIONS, GEAR_LABEL, type AircraftGear } from "./db";
 
 export type AircraftFormValues = {
   id?: string;
   tail_number?: string | null;
   type_designator?: string | null;
+  type_rating?: string | null;
   make_model?: string | null;
   gear?: AircraftGear | null;
   category_class?: string | null;
@@ -93,17 +94,42 @@ export default function AircraftForm({
             <Text as="label" size="1" color="gray" htmlFor="type_designator">
               ICAO type designator
             </Text>
+            {/* No maxLength. Truncating at 4 turned "Citation V" into
+                "CITA" — which passes the 2-4 character rule, so the
+                server's explanatory error never fired and 412 hours
+                silently grouped under a type that does not exist. Better
+                to accept it and say why it is wrong. */}
             <TextField.Root
               id="type_designator"
               name="type_designator"
               autoCapitalize="characters"
               spellCheck={false}
               placeholder="C560"
-              maxLength={4}
               defaultValue={initial("type_designator", values.type_designator)}
             />
             <Text size="1" color="gray">
-              Optional. This is what your hours get grouped under — C560, BE40, PC12.
+              Optional — C560, BE40, PC12.
+            </Text>
+          </Flex>
+        </Grid>
+
+        <Grid columns={{ initial: "1", sm: "2" }} gap="3">
+          <Flex direction="column" gap="1">
+            <Text as="label" size="1" color="gray" htmlFor="type_rating">
+              Type rating
+            </Text>
+            <TextField.Root
+              id="type_rating"
+              name="type_rating"
+              autoCapitalize="characters"
+              spellCheck={false}
+              placeholder="CE-500"
+              defaultValue={initial("type_rating", values.type_rating)}
+            />
+            <Text size="1" color="gray">
+              Your hours group under this when you set it. Worth doing: one CE-500
+              rating covers the Citation 500, 501, 550, 551, S550, 552 and 560, which
+              ICAO splits into five separate designators.
             </Text>
           </Flex>
         </Grid>
@@ -132,10 +158,21 @@ export default function AircraftForm({
               id="category_class"
               name="category_class"
               placeholder="AMEL"
+              list="aircraft-category-class"
               defaultValue={initial("category_class", values.category_class)}
             />
+            {/* Suggestions, not a picker. The 61.5(b) list is closed, but a
+                CHECK that is wrong for one pilot's aircraft is worse than a
+                field they fill in themselves — and a rollup that sees
+                "AMEL", "amel" and "Multi-Engine Land" as three classes is
+                no rollup, so nudging toward one spelling is worth doing. */}
+            <datalist id="aircraft-category-class">
+              {CATEGORY_CLASS_SUGGESTIONS.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
             <Text size="1" color="gray">
-              ASEL, AMEL, ASES, rotorcraft-helicopter — whatever fits.
+              Pick one, or type your own.
             </Text>
           </Flex>
         </Grid>
@@ -157,9 +194,11 @@ export default function AircraftForm({
           </Select.Root>
           <input type="hidden" name="gear" value={gear === GEAR_UNSTATED ? "" : gear} />
           <Text size="1" color="gray">
-            Worth setting on a taildragger: 14 CFR 61.57(a)(1) only counts your three
-            day landings toward currency if they were to a full stop in a tailwheel
-            airplane. Leaving it unrecorded is fine — nothing will assume tricycle.
+            Worth setting on a taildragger. Under 14 CFR 61.57(a)(1)(ii), if the
+            airplane to be flown is an airplane with a tailwheel, the three required
+            takeoffs and landings must have been made to a full stop in a tailwheel
+            airplane. Leaving this unrecorded is fine — nothing here will assume
+            tricycle.
           </Text>
         </Flex>
 

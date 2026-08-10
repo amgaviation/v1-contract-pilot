@@ -191,17 +191,35 @@ insert into pilot.account_members (account_id, user_id, role) values
   ('${A.account}', '${A.user}', 'owner'),
   ('${B.account}', '${B.user}', 'owner');
 
--- Tenant A: one airframe, three spellings, plus a tail that will never be
--- registered, plus a row whose ident is punctuation only (the shape a CSV
--- import leaves behind) to prove the suggestion list drops it.
+-- Tenant A's history is deliberately shaped like real history:
+--   * one airframe written three ways
+--   * a tail that is never registered, whose type the pilot typed one way
+--     and then another (so "most recent" and "lexical max" disagree)
+--   * a row whose ident is punctuation only, the shape a CSV import leaves
+--   * a full-flight-simulator session logged against a real tail, which
+--     61.51(b)(1)(iv) puts in this same field
+--   * a session logged under a DEVICE identifier too long to be a
+--     registration
 insert into pilot.logbook_entries
-  (account_id, source, airman_user_id, entry_date, aircraft_ident, aircraft_type, role, total_time, pic_time)
+  (account_id, source, airman_user_id, entry_date, aircraft_ident, aircraft_type, role, total_time, pic_time, sic_time)
 values
-  ('${A.account}', 'manual', '${A.user}', '2026-01-05', 'N447SP',  'C560', 'PIC', 3.2, 3.2),
-  ('${A.account}', 'manual', '${A.user}', '2026-02-11', 'N-447SP', 'C560', 'PIC', 2.4, 2.4),
-  ('${A.account}', 'manual', '${A.user}', '2026-03-19', 'n447sp',  null,   'PIC', 1.4, 1.4),
-  ('${A.account}', 'manual', '${A.user}', '2026-04-02', 'N912XT',  'BE40', 'SIC', 5.0, null),
-  ('${A.account}', 'manual', '${A.user}', '2026-04-09', '  -  ',   null,   'PIC', 1.1, 1.1);
+  ('${A.account}', 'manual', '${A.user}', '2026-01-05', 'N447SP',  'C560',          'PIC', 3.2, 3.2, null),
+  ('${A.account}', 'manual', '${A.user}', '2026-02-11', 'N-447SP', 'C560',          'PIC', 2.4, 2.4, null),
+  ('${A.account}', 'manual', '${A.user}', '2026-03-19', 'n447sp',  null,            'PIC', 1.4, 1.4, null),
+  ('${A.account}', 'manual', '${A.user}', '2026-04-02', 'N912XT',  'Beechjet 400A', 'SIC', 5.0, null, 5.0),
+  ('${A.account}', 'manual', '${A.user}', '2026-04-20', 'N912XT',  'BE40',          'SIC', 3.0, null, 3.0),
+  ('${A.account}', 'manual', '${A.user}', '2026-04-09', '  -  ',   null,            'PIC', 1.1, 1.1, null),
+  ('${A.account}', 'manual', '${A.user}', '2026-05-11', 'FRASCA TRUFLITE 142', null, 'PIC', 1.5, 1.5, null);
+
+-- A wholly-simulator session: role is null and every hour is simulator
+-- time, which is the shape 20260810020000's CHECK requires. Logged
+-- against N447SP, the way a pilot records recurrent in their own aircraft
+-- type.
+insert into pilot.logbook_entries
+  (account_id, source, airman_user_id, entry_date, aircraft_ident, aircraft_type, role,
+   total_time, simulator_time, simulator_device_type)
+values
+  ('${A.account}', 'manual', '${A.user}', '2026-05-04', 'N447SP', 'C560', null, 4.0, 4.0, 'ffs');
 
 -- Tenant B flies a tail with the SAME normalised key. Two accounts holding
 -- one registration is ordinary — the unique key is per account, and if it
@@ -336,11 +354,29 @@ note("\nThe fleet a pilot already has");
   // Before anything is registered: both real tails are offered, the
   // punctuation-only ident is not, and N447SP is offered ONCE despite
   // being written three ways — which is the reason the registry exists.
+  // Before anything is registered: both real tails are offered, once each
+  // despite N447SP being written three ways. What is NOT offered is the
+  // point — the punctuation-only ident (no key), the "FRASCA TRUFLITE 142"
+  // device identifier (too long to be a registration, so registering it
+  // would fail on submit and it would be re-offered forever), and the
+  // wholly-simulator session, which 61.51(b)(1)(iv) puts in this same
+  // field and which is not an airframe at all.
   equals(
-    "every unregistered tail is offered once, with the hours behind it",
+    "every unregistered tail is offered once, and nothing is offered that could not be accepted",
     suggestions.out.split("\n").join(" | "),
-    "N447SP=3/7.0/2026-03-19 | N912XT=1/5.0/2026-04-02"
+    "N447SP=3/7.0/2026-03-19 | N912XT=2/8.0/2026-04-20"
   );
+
+  const suggestedType = asTenant(
+    A.user,
+    `select coalesce(aircraft_type, '(none)') from pilot.aircraft_unregistered_idents
+      where tail_key = 'N912XT';`
+  );
+  // The type the pilot typed MOST RECENTLY. The lexical maximum here is
+  // "Beechjet 400A", which the fleet screen would have filed as a make and
+  // model — throwing away the correct ICAO designator the pilot had
+  // already typed on the newer entry.
+  equals("with the type they typed most recently, not the alphabetical one", suggestedType.out, "BE40");
 
   const label = asTenant(
     A.user,
@@ -435,22 +471,48 @@ note("\nHours by type");
 {
   const grouped = asTenant(
     A.user,
-    `select type_label || '=' || total_time || '/' || entry_count || '/' || has_registered_aircraft
+    `select type_label || '=' || total_time || '/sim ' || simulator_time
+            || '/pic ' || pic_time || '/sic ' || sic_time
+            || '/' || entry_count || '/' || has_registered_aircraft
      from pilot.logbook_time_by_type order by type_label;`
   );
-  // N447SP's three entries (3.2 + 2.4 + 1.4 = 7.0) collapse under the
+  // N447SP's three flights (3.2 + 2.4 + 1.4 = 7.0) collapse under the
   // registry's C560 — INCLUDING the third, which the pilot left without an
   // aircraft_type at all. That is the whole point: the registry supplies a
   // type the entry never carried.
   //
-  // N912XT is unregistered, so its 5.0 hours group under the type the
-  // pilot typed on the entry (BE40). The punctuation-only ident carries no
-  // type either and lands under Unspecified. Nothing is dropped.
+  // The FFS session is in that group too, and contributes ZERO to
+  // total_time while reporting its 4.0 hours as simulator time. Summing
+  // total_time would have credited the airframe with four hours it never
+  // flew, on the table a pilot copies onto an underwriter's form.
+  //
+  // N912XT is unregistered, so its hours group under what the pilot typed
+  // — TWICE, because they typed two different things. That is the
+  // fragmentation the registry exists to end, shown working as designed
+  // for a tail nobody has registered yet.
+  //
+  // The punctuation-only ident and the device identifier both land under
+  // Unspecified. Nothing is dropped.
   equals(
-    "registered hours group under the registry's type; unregistered hours are still counted",
+    "hours group by type, simulator time is reported separately, nothing is dropped",
     grouped.out.split("\n").join(" | "),
-    "BE40=5.0/1/false | C560=7.0/3/true | Unspecified=1.1/1/false"
+    "BE40=3.0/sim 0/pic 0/sic 3.0/1/false | " +
+      "Beechjet 400A=5.0/sim 0/pic 0/sic 5.0/1/false | " +
+      "C560=7.0/sim 4.0/pic 7.0/sic 0/4/true | " +
+      "Unspecified=2.6/sim 0/pic 2.6/sic 0/2/false"
   );
+
+  const rated = asTenant(
+    A.user,
+    `update pilot.aircraft set type_rating = 'CE-500' where account_id = '${A.account}';
+     select type_label || '=' || total_time from pilot.logbook_time_by_type
+      where has_registered_aircraft;`
+  );
+  // One CE-500 rating covers the Cessna 500/501/550/551/S550/552/560. A
+  // pilot who states the rating gets one row for all of it instead of one
+  // per ICAO designator — which is how an underwriter and 61.57(a)(1)(ii)
+  // both ask the question.
+  equals("the FAA type rating wins over the ICAO designator when stated", rated.out, "CE-500=7.0");
 
   const isolated = asTenant(
     B.user,
@@ -460,13 +522,20 @@ note("\nHours by type");
 
   const byTail = asTenant(
     A.user,
-    `select entry_count || '/' || total_time || '/' || coalesce(last_flown_on::text, 'never')
+    `select entry_count || '/' || total_time || '/sim ' || simulator_time
+            || '/pic ' || pic_time || '/' || coalesce(last_flown_on::text, 'never')
      from pilot.aircraft_time_by_tail;`
   );
-  // The three spellings of N447SP again, this time asked per airframe
-  // rather than per type — the number an open-pilot warranty is written
-  // against when a pilot flies two of the same type for two owners.
-  equals("hours attach to the airframe, however the tail was written", byTail.out, "3/7.0/2026-03-19");
+  // The three spellings again, this time asked per airframe rather than
+  // per type — the number an open-pilot warranty is written against when a
+  // pilot flies two of the same type for two owners. last_flown_on is
+  // 19 MAR, not 04 MAY: a recurrent session in a box is not a day the
+  // airframe moved.
+  equals(
+    "hours attach to the airframe, however the tail was written, and a sim session is not a flight",
+    byTail.out,
+    "4/7.0/sim 4.0/pic 7.0/2026-03-19"
+  );
 
   const neverFlown = asTenant(
     A.user,
@@ -478,6 +547,17 @@ note("\nHours by type");
   // Registered this morning, not flown yet. It must still be in the
   // pilot's own fleet list — an inner join would have made it vanish.
   equals("an airframe added before it is flown reports zero, not nothing", neverFlown.out, "0/0/never");
+
+  // Both tenants hold a registration with the same normalised key, and
+  // tenant B has flown theirs. If the join predicate ever loses its
+  // account_id term, B's 9.9 hours land on A's airframe and nobody
+  // notices, because both numbers stay plausible.
+  const sharedKey = asTenant(
+    B.user,
+    `insert into pilot.aircraft (account_id, tail_number) values ('${B.account}', 'N447SP');
+     select total_time from pilot.aircraft_time_by_tail;`
+  );
+  equals("two accounts, one registration, and neither sees the other's hours", sharedKey.out, "9.9");
 
   const archivedStillCounts = asTenant(
     A.user,
