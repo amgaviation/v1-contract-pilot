@@ -11,21 +11,23 @@
  * internal helper, not a public entry point. Every export here is pure.
  */
 import { withinInclusive } from "./window";
-import { sameCategoryClassAndType } from "./match";
+import { gearMatches, sameCategoryClassAndType } from "./match";
 import type { AircraftFacts, CountedEntry, CurrencyEntry, DateWindow, IsoDate, MissingInput } from "./types";
 
 /**
- * match.ts's sameCategoryClassAndType only compares type when the
- * intended aircraft carries a recorded type rating. Disclosed here as a
- * shared assumption string so general.ts, night.ts and part135.ts render
- * identical wording rather than three hand-copied sentences drifting
- * apart — a pilot reading it should understand why an entry from a
- * different-looking aircraft counted.
+ * When the intended aircraft carries no recorded type rating, match.ts's
+ * sameCategoryClassAndType does NOT read that as "no rating required" —
+ * a blank rating is not evidence a rating isn't needed (REGU-3). An entry
+ * of the SAME type as intended still counts; a DIFFERENT type is treated
+ * as unresolved (insufficient_data), not a silent pass on category/class
+ * alone. Disclosed here as a shared assumption string so general.ts,
+ * night.ts and part135.ts render identical wording rather than three
+ * hand-copied sentences drifting apart.
  */
 export function typeMatchAssumption(intended: AircraftFacts): string | null {
   const required = intended.typeRating !== null && intended.typeRating.trim() !== "";
   if (required) return null;
-  return "No type rating is recorded for the intended aircraft, so entries are matched on category and class only — see match.ts for why an absent type rating is read as \"not required,\" not \"unrecorded.\"";
+  return "No type rating is recorded for the intended aircraft, so an entry in a different type of aircraft is not counted here — only entries of the SAME type as the intended aircraft resolve without one; see match.ts for why an absent rating is not read as \"none required.\"";
 }
 
 export const NINETY_DAYS = 90;
@@ -114,6 +116,41 @@ export function matchGates(
   }
   return gates;
 }
+
+/**
+ * 61.57(a)(1)(ii) / 135.247(b) ONLY — see match.ts's gearMatches. NOT
+ * called by night.ts: 61.57(b) has no tailwheel clause of its own (see
+ * that module's header), so calling this there would gate/exclude
+ * entries on a fact the rule never conditions on. Scoped to entries that
+ * actually contribute a takeoff or landing, same as aircraftUnregisteredGate
+ * above — an entry with no movements can't change the answer regardless
+ * of its aircraft's gear.
+ */
+export function gearGates(
+  inWindow: readonly CurrencyEntry[],
+  intendedAircraft: AircraftFacts,
+  takeoffs: (e: CurrencyEntry) => number,
+  landings: (e: CurrencyEntry) => number
+): Set<MissingInput> {
+  const gates = new Set<MissingInput>();
+  if (intendedAircraft.gear !== "tailwheel") return gates;
+  for (const e of inWindow) {
+    if (e.aircraft === null) continue; // handled by aircraftUnregisteredGate
+    if (takeoffs(e) <= 0 && landings(e) <= 0) continue;
+    const { missing } = gearMatches(e.aircraft, intendedAircraft);
+    for (const m of missing) gates.add(m);
+  }
+  return gates;
+}
+
+/**
+ * One shared sentence for general.ts, night.ts and part135.ts's
+ * `assumptions[]` so the 90-day boundary choice reaches every 90-day
+ * card, not just window.ts's own comment — REGU-7: the choice was
+ * disclosed in code but never on the card a pilot actually reads.
+ */
+export const NINETY_DAY_BOUNDARY_ASSUMPTION =
+  "The 90-day window runs from this date back through the 89 days before it — a takeoff or landing made exactly 90 days before this date falls one day outside the window and does not count.";
 
 export function eligibleEntries(
   inWindow: readonly CurrencyEntry[],

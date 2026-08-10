@@ -38,16 +38,18 @@
 import { rollingDayWindow } from "./window";
 import {
   NINETY_DAYS,
+  NINETY_DAY_BOUNDARY_ASSUMPTION,
   aircraftUnregisteredGate,
   baseGates,
   countedFrom,
   eligibleEntries,
+  gearGates,
   inWindowEntries,
   limitingDateFor,
   matchGates,
   typeMatchAssumption,
 } from "./passenger-shared";
-import { categoryKey, typeKey } from "./match";
+import { categoryKey, gearMatches, typeKey } from "./match";
 import { MISSING_INPUT_ORDER } from "./types";
 import type { TripOperatingRule } from "@/lib/operating-rule";
 import type { AircraftFacts, CurrencyEntry, CurrencyResult, IsoDate, MissingInput } from "./types";
@@ -63,12 +65,20 @@ function nightTakeoffs(e: CurrencyEntry): number {
 }
 
 /**
- * 135.247(b): a tailwheel airplane's landings count only to a full stop,
- * in BOTH variants — the day variant already only had full-stop and
- * touch-and-go columns to choose from; the night variant is where this
- * actually changes behaviour from what 61.57(b)(1) alone would produce
- * (which already requires full stop) versus what 135.247(a)(2) alone
- * would produce (which does not, absent (b)).
+ * 135.247(b)'s FULL-STOP half: a tailwheel airplane's landings count only
+ * to a full stop, in BOTH variants — the day variant already only had
+ * full-stop and touch-and-go columns to choose from; the night variant is
+ * where this actually changes behaviour from what 61.57(b)(1) alone would
+ * produce (which already requires full stop) versus what 135.247(a)(2)
+ * alone would produce (which does not, absent (b)).
+ *
+ * The OTHER half of (b) — each takeoff and landing must be MADE IN a
+ * tailwheel airplane, not merely counted from the right columns — is not
+ * a column-selection question and is not handled here: see gearGates/
+ * gearMatches below and in evaluateVariant, which gate on and filter by
+ * the LOGGED entry's own gear (REGU-2 — this column selection alone
+ * previously let a tricycle Skyhawk's landings credit a taildragger's
+ * currency).
  */
 function landingsFor(intended: AircraftFacts, variant: "day" | "night"): (e: CurrencyEntry) => number {
   const tailwheel = intended.gear === "tailwheel";
@@ -137,6 +147,7 @@ function evaluateVariant(
   if (aircraftUnregisteredGate(inWindow, takeoffs, landings)) gates.add("aircraft_unregistered");
   if (intendedAircraft) {
     for (const g of matchGates(inWindow, intendedAircraft)) gates.add(g);
+    for (const g of gearGates(inWindow, intendedAircraft, takeoffs, landings)) gates.add(g);
   }
   if (variant === "night") {
     for (const e of inWindow) {
@@ -152,7 +163,13 @@ function evaluateVariant(
   }
 
   const aircraft = intendedAircraft as AircraftFacts; // non-null: no gates fired
-  const eligible = eligibleEntries(inWindow, airmanUserId, aircraft);
+  // REGU-2: 135.247(b) reaches back into paragraph (a) as a whole, so a
+  // tailwheel intended aircraft requires the LOGGED aircraft's own gear
+  // to be tailwheel too — see gearGates above, which would already have
+  // gated a null gear here to insufficient_data.
+  const eligible = eligibleEntries(inWindow, airmanUserId, aircraft).filter(
+    (e) => e.aircraft !== null && gearMatches(e.aircraft, aircraft).matches
+  );
   const totalTakeoffs = eligible.reduce((sum, e) => sum + takeoffs(e), 0);
   const totalLandings = eligible.reduce((sum, e) => sum + landings(e), 0);
   const status =
@@ -164,7 +181,7 @@ function evaluateVariant(
       ? limitingDateFor(eligible, takeoffs, landings, TAKEOFF_THRESHOLD, LANDING_THRESHOLD)
       : null;
 
-  const assumptions: string[] = [];
+  const assumptions: string[] = [NINETY_DAY_BOUNDARY_ASSUMPTION];
   if (aircraft.gear === "tailwheel") {
     assumptions.push(
       "135.247(b): because this is a tailwheel airplane, only full-stop landings count toward both the day and night variants — touch-and-goes are excluded, including for the night variant, where 61.57(b)(1) alone already requires full stop but 135.247(a)(2) alone would not."

@@ -324,3 +324,28 @@ grant update (is_turbine, certificated_more_than_one_pilot) on pilot.aircraft to
 grant update (completed_on, airman_user_id) on pilot.documents to authenticated;
 -- service_role already holds table-level grants on all three tables from
 -- their original migrations; no new statement needed here.
+
+-- CORR-4: the grant just above lets an `authenticated` caller WRITE
+-- pilot.documents.airman_user_id, but documents_insert/documents_update
+-- (20260805070000)'s WITH CHECK only tests account_id — any member of a
+-- multi-seat account could POST or PATCH a flight_review/medical row with
+-- airman_user_id set to a co-member's uuid, forging the attribution
+-- lib/currency/read.ts now trusts to decide whose 61.56/61.23 card a
+-- document belongs to. ALTER POLICY, not drop/create: same doctrine
+-- pilot.logbook_entries.airman_user_id already enforces on its own INSERT
+-- (20260807050000) and currency_snapshots_insert enforces above in this
+-- file — a write may assert only the CALLER's own identity, or leave the
+-- column unset for the account-level rows (insurance, W-9s, aircraft
+-- paperwork) that are not any one airman's. Not a privilege removal: the
+-- account_id predicate these policies already enforced is unchanged, and
+-- no GRANT is touched.
+alter policy documents_insert on pilot.documents
+  with check (
+    account_id in (select pilot.current_account_ids())
+    and (airman_user_id is null or airman_user_id = auth.uid())
+  );
+alter policy documents_update on pilot.documents
+  with check (
+    account_id in (select pilot.current_account_ids())
+    and (airman_user_id is null or airman_user_id = auth.uid())
+  );

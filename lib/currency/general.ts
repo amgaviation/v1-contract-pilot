@@ -21,16 +21,18 @@
 import { rollingDayWindow } from "./window";
 import {
   NINETY_DAYS,
+  NINETY_DAY_BOUNDARY_ASSUMPTION,
   aircraftUnregisteredGate,
   baseGates,
   countedFrom,
   eligibleEntries,
+  gearGates,
   inWindowEntries,
   limitingDateFor,
   matchGates,
   typeMatchAssumption,
 } from "./passenger-shared";
-import { categoryKey, typeKey } from "./match";
+import { categoryKey, gearMatches, typeKey } from "./match";
 import { MISSING_INPUT_ORDER } from "./types";
 import type { AircraftFacts, CurrencyEntry, CurrencyResult, IsoDate, MissingInput } from "./types";
 
@@ -45,10 +47,15 @@ function takeoffs(e: CurrencyEntry): number {
 /**
  * (a)(1)(ii)'s full-stop condition binds ONLY for a tailwheel airplane —
  * everything else, a touch-and-go counts. Full stop for a takeoff has no
- * meaning; the operative half of that clause for takeoffs is "in an
- * airplane with a tailwheel," which the type/category match already
- * enforces (typeKey/categoryKey via sameCategoryClassAndType), so
- * takeoffs() above needs no tailwheel branch of its own.
+ * meaning, so takeoffs() above needs no tailwheel branch of its own. The
+ * OTHER half of that clause — the takeoffs AND landings must have been
+ * made IN AN AIRPLANE WITH A TAILWHEEL, not merely to a full stop in
+ * whatever was flown — is NOT a column-selection question and is not
+ * enforced here: see gearGates/gearMatches below and in
+ * evaluateGeneralExperience, which gate on and filter by the LOGGED
+ * entry's own gear (REGU-1 — category/type matching alone does not touch
+ * gear at all, and previously let a tricycle Skyhawk's landings credit a
+ * taildragger's currency).
  */
 function landingsFor(intended: AircraftFacts): (e: CurrencyEntry) => number {
   const tailwheel = intended.gear === "tailwheel";
@@ -83,6 +90,7 @@ export function evaluateGeneralExperience(input: {
   if (aircraftUnregisteredGate(inWindow, takeoffs, landings)) gates.add("aircraft_unregistered");
   if (intendedAircraft) {
     for (const g of matchGates(inWindow, intendedAircraft)) gates.add(g);
+    for (const g of gearGates(inWindow, intendedAircraft, takeoffs, landings)) gates.add(g);
   }
 
   const missing = MISSING_INPUT_ORDER.filter((m) => gates.has(m));
@@ -106,7 +114,13 @@ export function evaluateGeneralExperience(input: {
   }
 
   const aircraft = intendedAircraft as AircraftFacts; // non-null: no gates fired
-  const eligible = eligibleEntries(inWindow, airmanUserId, aircraft);
+  // REGU-1: eligibleEntries alone only checks category/class/type — a
+  // tailwheel intended aircraft additionally requires the LOGGED
+  // aircraft's own gear to be tailwheel (see gearGates above, which would
+  // already have gated a null gear here to insufficient_data).
+  const eligible = eligibleEntries(inWindow, airmanUserId, aircraft).filter(
+    (e) => e.aircraft !== null && gearMatches(e.aircraft, aircraft).matches
+  );
   const eligibleLandings = landingsFor(aircraft);
   const totalTakeoffs = eligible.reduce((sum, e) => sum + takeoffs(e), 0);
   const totalLandings = eligible.reduce((sum, e) => sum + eligibleLandings(e), 0);
@@ -122,6 +136,7 @@ export function evaluateGeneralExperience(input: {
   const assumptions = [
     "61.57(a) has no time-of-day limit — night takeoffs and night landings count toward this total, not only day ones.",
     "Whether 61.57(a) applies to this flight at all — carrying persons, or an aircraft certificated for more than one pilot flight crewmember — is not evaluated here.",
+    NINETY_DAY_BOUNDARY_ASSUMPTION,
   ];
   const typeAssumption = typeMatchAssumption(aircraft);
   if (typeAssumption) assumptions.push(typeAssumption);

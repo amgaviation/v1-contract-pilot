@@ -189,17 +189,30 @@ test("sameCategoryClassAndType: a null on either side is a MISSING INPUT, never 
   assert.deepEqual(mismatch.missing, [], "a genuine mismatch is NOT a missing input");
 });
 
-test("sameCategoryClassAndType, REG-7: type compares only when the intended aircraft requires a type rating", () => {
-  // 61.57(a)(1)(ii)/135.247(a)(1) condition the type limb on whether a
-  // type rating is required FOR THE AIRCRAFT TO BE FLOWN. Neither a C172
-  // nor a PA-28 carries one, so category and class (both ASEL) alone
-  // govern the match — comparing ICAO designators unconditionally told a
-  // legally current pilot they were not.
+test("sameCategoryClassAndType, REGU-3: a blank type rating is NOT evidence one isn't required — same type still matches, a different type is unresolved", () => {
+  // A blank intended.typeRating used to be read as "no rating required,"
+  // so category/class alone governed the match — which is how a Citation
+  // 560's landings (typeRating blank, typeDesignator C560) ended up
+  // crediting a Beech Baron's currency (both AMEL, REGU-3's proof). The
+  // one thing a blank rating resolves without guessing is an entry logged
+  // in the SAME type as intended: that still matches, whether or not a
+  // rating turns out to be required for it.
   const c172 = aircraft({ typeRating: null, typeDesignator: "C172", categoryClass: "ASEL" });
+  const anotherC172 = aircraft({ typeRating: null, typeDesignator: "C172", categoryClass: "ASEL" });
+  const same = sameCategoryClassAndType(c172, anotherC172);
+  assert.equal(same.matches, true, "identical logged type still matches with no type rating recorded");
+  assert.deepEqual(same.missing, []);
+
+  // A DIFFERENT type, with the intended aircraft's rating blank, is now
+  // an unresolved fact, not a pass — REGU-3 superseded the earlier REG-7
+  // reading that let two differently-typed, equally-unrated aircraft
+  // (e.g. a C172 and a PA-28) match on category/class alone: this schema
+  // cannot tell that case apart from the Citation/Baron one, since both
+  // are "a blank typeRating and a different type."
   const pa28 = aircraft({ typeRating: null, typeDesignator: "PA28", categoryClass: "ASEL" });
-  const r = sameCategoryClassAndType(c172, pa28);
-  assert.equal(r.matches, true, "neither aircraft requires a type rating, so a C172 landing counts toward PA-28 currency");
-  assert.deepEqual(r.missing, []);
+  const differentType = sameCategoryClassAndType(c172, pa28);
+  assert.equal(differentType.matches, false, "a different type under an unrecorded rating is unresolved, not a silent pass");
+  assert.deepEqual(differentType.missing, ["aircraft_type_unrecorded"]);
 
   // The same C172 entry does NOT satisfy an intended aircraft that DOES
   // carry a type rating — type comparison is keyed off the intended
@@ -326,13 +339,28 @@ test("61.57(a), REG-9: a null role is a missing input, not a silent exclusion", 
   assert.deepEqual(r.missing, ["role_unrecorded"]);
 });
 
-test("61.57(a), REG-7: entries in a different, equally-unrated aircraft of the same category and class still count", () => {
+test("61.57(a), REGU-3: entries in the SAME, equally-unrated type still count with no type rating recorded", () => {
+  const pa28 = aircraft({ typeRating: null, typeDesignator: "PA28", categoryClass: "ASEL", gear: "tricycle" });
+  const anotherPa28 = aircraft({ typeRating: null, typeDesignator: "PA28", categoryClass: "ASEL", gear: "tricycle" });
+  const entries = [entry({ entryDate: "2026-07-01", dayTakeoffs: 3, dayLandingsFullStop: 3, aircraft: anotherPa28 })];
+  const r = evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: pa28, entries });
+  assert.equal(r.status, "estimated_current");
+  assert.ok(r.assumptions.some((a) => a.includes("No type rating is recorded")));
+});
+
+test("61.57(a), REGU-3: a DIFFERENT, equally-unrated type is now insufficient_data, not a silent pass (supersedes REG-7's reading)", () => {
+  // REG-7 originally let a C172 entry count toward a PA-28 card because
+  // neither aircraft requires a type rating — but a blank typeRating on
+  // the intended aircraft is not evidence a rating ISN'T required (it is
+  // equally consistent with an unrecorded rating on a jet, REGU-3), so a
+  // genuinely different type under an unrecorded rating is now an
+  // unresolved fact rather than a pass.
   const pa28 = aircraft({ typeRating: null, typeDesignator: "PA28", categoryClass: "ASEL", gear: "tricycle" });
   const c172 = aircraft({ typeRating: null, typeDesignator: "C172", categoryClass: "ASEL", gear: "tricycle" });
   const entries = [entry({ entryDate: "2026-07-01", dayTakeoffs: 3, dayLandingsFullStop: 3, aircraft: c172 })];
   const r = evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: pa28, entries });
-  assert.equal(r.status, "estimated_current", "neither aircraft requires a type rating, so a C172 landing counts toward PA-28 currency");
-  assert.ok(r.assumptions.some((a) => a.includes("No type rating is recorded")));
+  assert.equal(r.status, "insufficient_data");
+  assert.ok(r.missing.includes("aircraft_type_unrecorded"));
 });
 
 test("61.57(a): tailwheel requires full-stop landings only; touch-and-go does not count", () => {
@@ -343,6 +371,42 @@ test("61.57(a): tailwheel requires full-stop landings only; touch-and-go does no
   const r = evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: tw, entries });
   assert.equal(r.status, "estimated_not_current");
   assert.equal(r.observed.landings, 0);
+});
+
+test("61.57(a), REGU-1: takeoffs and landings must be MADE IN a tailwheel airplane, not merely enforced by category/type match", () => {
+  const tw = aircraft({ gear: "tailwheel" });
+  const sameTypeTricycle = aircraft({ gear: "tricycle" }); // same category/type/rating as tw, different gear
+  const entries = [
+    entry({ entryDate: "2026-07-01", dayTakeoffs: 3, dayLandingsFullStop: 3, aircraft: sameTypeTricycle }),
+  ];
+  const r = evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: tw, entries });
+  // PROVEN BUG: 3 day takeoffs and 3 day full-stop landings in a tricycle
+  // Skyhawk of the SAME category/type as the intended tailwheel aircraft
+  // used to read estimated_current — the comment this fix replaces
+  // claimed the type/category match "already enforced" the tailwheel
+  // half of 61.57(a)(1)(ii); it did not, because gear is not part of
+  // category, class, or type.
+  assert.equal(r.status, "estimated_not_current");
+  assert.equal(r.observed.takeoffs, 0);
+  assert.equal(r.observed.landings, 0);
+});
+
+test("61.57(a), REGU-5: an unrecorded gear on the LOGGED (not intended) aircraft is a missing input, not a silent pass", () => {
+  const tw = aircraft({ gear: "tailwheel" });
+  const nullGear = aircraft({ gear: null });
+  const entries = [entry({ entryDate: "2026-07-01", dayTakeoffs: 3, dayLandingsFullStop: 3, aircraft: nullGear })];
+  const r = evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: tw, entries });
+  assert.equal(r.status, "insufficient_data");
+  assert.ok(r.missing.includes("aircraft_gear_unrecorded"));
+});
+
+test("61.57(a): a tailwheel entry flown in an ACTUAL tailwheel aircraft of the same type still counts (control case for REGU-1)", () => {
+  const tw = aircraft({ gear: "tailwheel" });
+  const entries = [entry({ entryDate: "2026-07-01", dayTakeoffs: 3, dayLandingsFullStop: 3, aircraft: tw })];
+  const r = evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: tw, entries });
+  assert.equal(r.status, "estimated_current");
+  assert.equal(r.observed.takeoffs, 3);
+  assert.equal(r.observed.landings, 3);
 });
 
 test("61.57(a): a missing intended aircraft is insufficient_data with intended_aircraft_absent, not a guess", () => {
@@ -488,6 +552,57 @@ test("61.57(c): device class 'other' is unresolvable, the one exception (c) does
   assert.ok(r.missing.includes("unresolvable_simulator_row"));
 });
 
+test("61.57(c), REGU-4/CORR-1: a device row has NO tail number by design and must still credit (c)(2)", () => {
+  // A simulator session has no aircraft in pilot.aircraft — that is the
+  // whole point of the simulator-role migration. Routing it through the
+  // aircraft registry (categoryMatches) made every FFS/FTD/ATD row
+  // uncreditable and, worse, fired aircraft_unregistered for the whole
+  // card with a remedy ("register the aircraft") no pilot can act on for
+  // a device session.
+  const entries = [
+    entry({
+      entryDate: "2026-07-01",
+      approachesCount: 6,
+      approachType: "ils",
+      approachCondition: "simulated",
+      simulatorTime: 1.0,
+      simulatorDeviceType: "atd",
+      holds: 1,
+      coursesInterceptedTracked: true,
+      aircraft: null,
+    }),
+  ];
+  const r = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
+  assert.equal(r.status, "estimated_current");
+  assert.deepEqual(r.missing, []);
+  assert.ok(!r.missing.includes("aircraft_unregistered"));
+});
+
+test("61.57(c), REGU-4/CORR-1: an unrelated device row with no aircraft must not poison an otherwise-current instrument card", () => {
+  const entries = [
+    entry({
+      entryDate: "2026-07-01",
+      approachesCount: 6,
+      approachType: "ils",
+      approachCondition: "actual",
+      holds: 1,
+      coursesInterceptedTracked: true,
+    }),
+    entry({
+      entryDate: "2026-07-05",
+      approachesCount: 2,
+      approachType: "ils",
+      approachCondition: "simulated",
+      simulatorTime: 1.0,
+      simulatorDeviceType: "atd",
+      aircraft: null,
+    }),
+  ];
+  const r = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
+  assert.equal(r.status, "estimated_current");
+  assert.deepEqual(r.missing, []);
+});
+
 test("61.57(c): approach_condition unrecorded on a counted-approach row forces insufficient_data", () => {
   const entries = [entry({ entryDate: "2026-07-01", approachesCount: 6, approachType: "ils", approachCondition: null })];
   const r = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
@@ -542,6 +657,24 @@ test("61.57(c), REG-3: instrument time logged in a different-category aircraft d
   const r = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: airplane, entries });
   assert.equal(r.status, "estimated_not_current", "helicopter instrument time must not manufacture airplane instrument currency");
   assert.equal(r.observed.approaches, 0);
+});
+
+test("61.57(c), CORR-2: category_class is matched as one field, so a different CLASS of the same category does not count — disclosed, not silent", () => {
+  // 61.57(c) itself conditions only on CATEGORY (airplane vs helicopter,
+  // etc). This schema's category_class column is one free-text field
+  // with no separate category slot, so comparing it whole also requires
+  // the CLASS to match (ASEL vs AMEL) — stricter than the text, in the
+  // conservative direction (understates real currency, never manufactures
+  // it), and it must say so on the card rather than claim "category only."
+  const amel = aircraft({ typeRating: null, typeDesignator: "BE58", categoryClass: "AMEL", gear: "tricycle" });
+  const asel = aircraft({ typeRating: null, typeDesignator: "C172", categoryClass: "ASEL", gear: "tricycle" });
+  const entries = [
+    entry({ entryDate: "2026-07-01", approachesCount: 6, approachType: "ils", approachCondition: "actual", holds: 1, coursesInterceptedTracked: true, aircraft: amel }),
+  ];
+  const r = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: asel, entries });
+  assert.equal(r.status, "estimated_not_current", "same category (airplane), different class (AMEL vs ASEL) does not count under this schema's category_class field");
+  assert.equal(r.observed.approaches, 0);
+  assert.ok(r.assumptions.some((a) => a.includes("category/class field")), "the class-vs-category-only deviation must be disclosed on the card");
 });
 
 test("61.57(c), REG-3: a hold on an unregistered aircraft is a missing input, not silently dropped", () => {
@@ -700,6 +833,45 @@ test("135.247(b), fixture P-3: a tailwheel airplane requires full-stop landings 
   assert.equal(withFullStop.night.status, "estimated_current");
 });
 
+test("135.247(b), REGU-2: takeoffs and landings must be MADE IN a tailwheel airplane, not merely counted from full-stop columns", () => {
+  const tw = aircraft({ gear: "tailwheel" });
+  const sameTypeTricycle = aircraft({ gear: "tricycle" }); // same category/type/rating as tw, different gear
+  const entries = [
+    entry({ entryDate: "2026-07-01", dayTakeoffs: 3, dayLandingsFullStop: 3, nightTakeoffs: 3, nightLandingsFullStop: 3, nightWindowAsserted: true, aircraft: sameTypeTricycle }),
+  ];
+  const { day, night } = evaluatePart135Recency({
+    asOf: "2026-08-07",
+    airmanUserId: AIRMAN,
+    operatingRule: "part_135",
+    exemptionAsserted: false,
+    intendedAircraft: tw,
+    entries,
+  });
+  // PROVEN BUG (REGU-2): full-stop landings in a tricycle Skyhawk of the
+  // same type/category used to credit a taildragger's currency — 135.247(b)
+  // requires the LOGGED aircraft to be a tailwheel airplane, not merely
+  // the landing to be full stop.
+  assert.equal(night.status, "estimated_not_current");
+  assert.equal(night.observed.landings, 0);
+  assert.equal(night.observed.takeoffs, 0);
+  assert.equal(day.status, "estimated_not_current");
+  assert.equal(day.observed.takeoffs, 0);
+
+  const nullGear = aircraft({ gear: null });
+  const gapResult = evaluatePart135Recency({
+    asOf: "2026-08-07",
+    airmanUserId: AIRMAN,
+    operatingRule: "part_135",
+    exemptionAsserted: false,
+    intendedAircraft: tw,
+    entries: [entry({ entryDate: "2026-07-01", nightTakeoffs: 3, nightLandingsFullStop: 3, nightWindowAsserted: true, aircraft: nullGear })],
+  });
+  // REGU-5: an unrecorded gear on the LOGGED aircraft is a missing input,
+  // not a silent pass.
+  assert.equal(gapResult.night.status, "insufficient_data");
+  assert.ok(gapResult.night.missing.includes("aircraft_gear_unrecorded"));
+});
+
 test("135.247(a), fixture P-4: complying with the night variant satisfies the day variant too", () => {
   const entries = [
     entry({ entryDate: "2026-07-01", nightTakeoffs: 3, nightLandingsFullStop: 3, nightWindowAsserted: true }),
@@ -823,6 +995,45 @@ test("evaluateCurrency: unspecified operating rule leaves 61.57 unmodified, no (
   const day = results.find((r) => r.currencyType === "passenger_day");
   assert.equal(day.ruleBasis, "61.57(a)");
   assert.ok(!day.notes.some((n) => n.includes("61.57(e)(3)")));
+});
+
+test("evaluateCurrency, REGU-8: operating rule unspecified gets no (e)(3) note EVEN WHEN the exemption is asserted anyway", () => {
+  // index.ts's own branch table says 'unspecified' never gets the (e)(3)
+  // note — the certificate-holder relationship it describes cannot be
+  // reasoned about when the operating rule itself is unknown. The old
+  // `else if (exemptionAsserted)` branch did not exclude 'unspecified'
+  // and rendered permissive-leaning (e)(3) copy on the one branch the
+  // engine says it knows nothing about that relationship.
+  const results = evaluateCurrency({
+    asOf: "2026-08-07",
+    airmanUserId: AIRMAN,
+    intendedAircraft: aircraft(),
+    operatingRule: "unspecified",
+    exemptionAsserted: true,
+    flightReviewCompletedOn: null,
+    medicalExpiresOn: null,
+    entries: [],
+  });
+  const day = results.find((r) => r.currencyType === "passenger_day");
+  const night = results.find((r) => r.currencyType === "passenger_night");
+  assert.equal(day.ruleBasis, "61.57(a)");
+  assert.ok(!day.notes.some((n) => n.includes("61.57(e)(3)")));
+  assert.ok(!night.notes.some((n) => n.includes("61.57(e)(3)")));
+});
+
+test("evaluateCurrency, REGU-6: the (e)(3) exemption does not touch the instrument (61.57(c)) result — documented, not fixed", () => {
+  const results = evaluateCurrency({
+    asOf: "2026-08-07",
+    airmanUserId: AIRMAN,
+    intendedAircraft: aircraft(),
+    operatingRule: "part_135",
+    exemptionAsserted: true,
+    flightReviewCompletedOn: null,
+    medicalExpiresOn: null,
+    entries: [],
+  });
+  const instrument = results.find((r) => r.currencyType === "instrument");
+  assert.equal(instrument.ruleBasis, "61.57(c)", "no 135-based instrument substitute exists to swap in");
 });
 
 test("evaluateCurrency, REG-8: the 135.247 substitution note discloses that 135.243 compliance is a separate, unevaluated condition", () => {

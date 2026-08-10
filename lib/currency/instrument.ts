@@ -26,15 +26,26 @@ const SIX_CALENDAR_MONTHS = 6;
 const APPROACH_THRESHOLD = 6;
 
 /**
- * category-of-aircraft match for 61.57(c)(1)/(c)(2) — "in an airplane,
+ * category-of-aircraft match for 61.57(c)(1) — "in an airplane,
  * powered-lift, helicopter, or airship, as appropriate, for the
- * instrument rating privileges to be maintained" / "the device represents
- * the category of aircraft for the instrument rating privileges to be
- * maintained." CATEGORY only, never class or type — (c) is not written in
- * those terms the way 61.57(a)/(b)/135.247(a) are. A null category on
- * either side is a MISSING INPUT, never a non-match — same discipline as
- * match.ts's sameCategoryClassAndType, which this does not reuse because
- * that function also compares class and type, neither relevant here.
+ * instrument rating privileges to be maintained." The regulation
+ * conditions this on CATEGORY alone, never class or type — but
+ * pilot.aircraft.category_class is ONE free-text column a pilot fills in
+ * as a single value ('ASEL', 'AMEL', 'HELICOPTER', ...), with no fixed
+ * vocabulary to parse a bare category out of (see that column's own
+ * comment: a CHECK that is wrong for a pilot's aircraft is worse than a
+ * field they fill in themselves). This compares the WHOLE field, exactly
+ * as match.ts's sameCategoryClassAndType does for the other rules — which
+ * means it ALSO requires the class to match (ASEL vs AMEL), not category
+ * alone. That is stricter than the text: an instrument-current AMEL
+ * pilot's approaches will not count toward an ASEL card even though both
+ * are the "airplane" category the reg actually conditions on. Deliberate
+ * and disclosed in `assumptions` below — it can only understate an
+ * actually-current pilot's approaches, never manufacture currency they do
+ * not have. A null category_class on either side is a MISSING INPUT,
+ * never a non-match, same discipline as everywhere else in this engine.
+ * Only ever called for a REAL AIRCRAFT row — see the device branch of
+ * qualifiesOnConditionDeviceAndCategory below.
  */
 function categoryMatches(e: CurrencyEntry, intendedAircraft: AircraftFacts): boolean {
   if (e.aircraft === null) return false;
@@ -59,7 +70,16 @@ function categoryMatches(e: CurrencyEntry, intendedAircraft: AircraftFacts): boo
  * 61.57(c)(2) accepts ALL THREE device classes (FFS, FTD, ATD) and
  * imposes NO part 142 condition — unlike (a)(3) and (b)(2). Do not copy
  * general.ts/night.ts's simulator gate here: an ATD session is real (c)
- * credit. 'other' is the one device value that satisfies nothing, so a
+ * credit. A DEVICE ROW NEVER CALLS categoryMatches(): (c)(2) requires the
+ * DEVICE, not a tail-numbered aircraft, to represent the category, and
+ * this schema has no field recording what category a device represents.
+ * Routing a device row through the aircraft registry is exactly the
+ * REGU-4/CORR-1 regression — a simulator session has no tail number by
+ * design (20260810020000_logbook_simulator_role_optional.sql), so
+ * categoryMatches() always failed it, and the aircraft_unregistered gate
+ * below then poisoned the whole card. A qualifying device row (valid
+ * device class, condition 'simulated') is credited unconditionally
+ * instead. 'other' is the one device value that satisfies nothing, so a
  * simulated-condition row on an 'other' device does not qualify.
  */
 function qualifiesOnConditionDeviceAndCategory(e: CurrencyEntry, intendedAircraft: AircraftFacts): boolean {
@@ -67,9 +87,9 @@ function qualifiesOnConditionDeviceAndCategory(e: CurrencyEntry, intendedAircraf
   if ((e.simulatorTime ?? 0) > 0) {
     if (e.simulatorDeviceType === null || e.simulatorDeviceType === "other") return false;
     if (e.approachCondition !== "simulated") return false;
+    return true;
   }
-  if (!categoryMatches(e, intendedAircraft)) return false;
-  return true;
+  return categoryMatches(e, intendedAircraft);
 }
 
 /**
@@ -118,8 +138,13 @@ export function evaluateInstrumentExperience(input: {
     // (c)(1)/(c)(2) condition on the CATEGORY of aircraft for the
     // instrument rating being maintained — a hold or intercept flown in
     // an aircraft outside the pilot's registry, or one whose category is
-    // unrecorded, is a missing input, never a silent non-match.
-    if (hasInstrumentActivity && intendedAircraft) {
+    // unrecorded, is a missing input, never a silent non-match. EXCEPT a
+    // device row (simulatorTime > 0): a device has no tail number by
+    // design, so it is never checked against the aircraft registry at all
+    // — routing it through this gate is REGU-4/CORR-1's regression, where
+    // a simulator entry poisoned the whole card with a remedy ("register
+    // the aircraft") no pilot can act on for a session with no aircraft.
+    if (hasInstrumentActivity && intendedAircraft && (e.simulatorTime ?? 0) <= 0) {
       if (e.aircraft === null) gates.add("aircraft_unregistered");
       else if (categoryKey(e.aircraft) === null) gates.add("aircraft_category_class_unrecorded");
     }
@@ -129,6 +154,7 @@ export function evaluateInstrumentExperience(input: {
   const assumptions = intendedAircraft
     ? [
         "Assumes you hold the instrument rating for the intended aircraft's category — this engine has no airman/ratings record and gates on the aircraft instead.",
+        "Matched on the intended aircraft's full category/class field (e.g. \"ASEL\" vs \"AMEL\"), not category alone — this schema has no separate category field, so an approach flown in a different class of the same category will not count here even though 61.57(c) itself conditions only on category.",
       ]
     : [];
 

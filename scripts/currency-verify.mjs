@@ -287,6 +287,11 @@ var N3V = { tailKey: "N3V", typeRating: "CE-500", typeDesignator: "C560", catego
 var N4V = { tailKey: "N4V", typeRating: "BE-40", typeDesignator: "BE40", categoryClass: "AMEL", gear: "tricycle" };
 var N5V = { tailKey: "N5V", typeRating: "CE-500", typeDesignator: "C550", categoryClass: "AMEL", gear: "tricycle" };
 var N1V_ASEL = { tailKey: "N1V", typeRating: "CE-500", typeDesignator: "C560", categoryClass: "ASEL", gear: "tricycle" };
+// Same category/class/type as N2V (the tailwheel fixture above) — isolates
+// REGU-1/REGU-2's gear-only defect from a category/type mismatch, which
+// A-11/A-12/A-13 above already cover.
+var N2V_TRI = { tailKey: "N2VT", typeRating: "CE-500", typeDesignator: "C560", categoryClass: "AMEL", gear: "tricycle" };
+var N2V_NULLGEAR = { tailKey: "N2VN", typeRating: "CE-500", typeDesignator: "C560", categoryClass: "AMEL", gear: null };
 
 function mkEntry(id, overrides) {
   var base = {
@@ -496,6 +501,18 @@ section("A — 61.57(a) general experience");
   var a14 = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
     entries: [mkEntry("a14-0", { entryDate: "2026-06-01", dayLandingsFullStop: 1, nightLandingsTouchGo: 2, dayTakeoffs: 1, nightTakeoffs: 2 })] });
   checkResult("A-14", "(a) has no time-of-day limit", a14, { status: "estimated_current", observed: { takeoffs: 3, landings: 3 }, missing: [] });
+
+  var a15 = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N2V,
+    entries: [mkEntry("a15-0", { entryDate: "2026-06-01", dayTakeoffs: 3, dayLandingsFullStop: 3, aircraft: N2V_TRI })] });
+  checkResult("A-15", "REGU-1: same category/class/type as the tailwheel intended aircraft, but flown in a TRICYCLE airplane — must not count", a15, {
+    status: "estimated_not_current", observed: { takeoffs: 0, landings: 0 }, missing: [],
+  });
+
+  var a16 = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N2V,
+    entries: [mkEntry("a16-0", { entryDate: "2026-06-01", dayTakeoffs: 3, dayLandingsFullStop: 3, aircraft: N2V_NULLGEAR })] });
+  checkResult("A-16", "REGU-5: the LOGGED aircraft's own gear unrecorded is a missing input, not a silent pass", a16, {
+    status: "insufficient_data", missing: ["aircraft_gear_unrecorded"],
+  });
 }
 
 // =============================================================================
@@ -638,6 +655,27 @@ section("I — 61.57(c) instrument experience");
     status: "estimated_current", observed: { approaches: 6, holds: 1, intercepts: 1 }, countedIds: ["i13-0", "i13-1"], missing: [],
   });
 
+  var i15 = evaluateInstrumentExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
+    entries: [mkEntry("i15-0", { entryDate: "2026-03-01", simulatorTime: 2.0, simulatorDeviceType: "atd", approachCondition: "simulated", approachType: "ils", approachesCount: 6, holds: 1, coursesInterceptedTracked: true, aircraft: null })] });
+  checkResult("I-15", "REGU-4/CORR-1: a device row has NO tail number by design and must still credit (c)(2)", i15, {
+    status: "estimated_current", observed: { approaches: 6, holds: 1, intercepts: 1 }, missing: [],
+  });
+
+  var i16entries = [
+    mkEntry("i16-0", { entryDate: "2026-03-01", approachesCount: 6, approachType: "ils", approachCondition: "actual", holds: 1, coursesInterceptedTracked: true }),
+    mkEntry("i16-1", { entryDate: "2026-03-05", simulatorTime: 1.0, simulatorDeviceType: "atd", approachCondition: "simulated", approachType: "ils", approachesCount: 2, aircraft: null }),
+  ];
+  var i16 = evaluateInstrumentExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V, entries: i16entries });
+  checkResult("I-16", "REGU-4/CORR-1: an unrelated device row with no aircraft must not poison an otherwise-current instrument card", i16, {
+    status: "estimated_current", missing: [],
+  });
+
+  var i17 = evaluateInstrumentExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V_ASEL,
+    entries: [mkEntry("i17-0", { entryDate: "2026-03-01", approachesCount: 6, approachType: "ils", approachCondition: "actual", holds: 1, coursesInterceptedTracked: true, aircraft: N1V })] });
+  checkResult("I-17", "CORR-2: category_class is matched whole, so an AMEL entry does not count toward an ASEL card even though both are the airplane category", i17, {
+    status: "estimated_not_current", observed: { approaches: 0 }, missing: [],
+  });
+
   // I-14b (SEC-13) used to assert allResults.every(r => !r.ruleBasis.includes("(d)")) —
   // the RuleBasis union (types.ts) has seven literals, none containing "(d)", and every
   // module returns one of those literals, so the check could not fail for any input;
@@ -726,6 +764,18 @@ section("P — 135.247");
     status: "estimated_not_current", ruleBasis: "135.247(a)(2)",
   });
 
+  var p3bEntries = threeDated("p3b", ["2026-06-01", "2026-06-02", "2026-06-03"], { nightTakeoffs: 1, nightLandingsFullStop: 1, nightWindowAsserted: true, aircraft: N2V_TRI });
+  var p3b = evaluatePart135Recency({ asOf: ASOF, airmanUserId: AIRMAN, operatingRule: "part_135", exemptionAsserted: false, intendedAircraft: N2V, entries: p3bEntries });
+  checkResult("P-3b", "REGU-2: full-stop landings in a TRICYCLE airplane of the same category/class/type as the tailwheel intended aircraft must not count", p3b.night, {
+    status: "estimated_not_current", observed: { takeoffs: 0, landings: 0 }, missing: [],
+  });
+
+  var p3cEntries = threeDated("p3c", ["2026-06-01", "2026-06-02", "2026-06-03"], { nightTakeoffs: 1, nightLandingsFullStop: 1, nightWindowAsserted: true, aircraft: N2V_NULLGEAR });
+  var p3c = evaluatePart135Recency({ asOf: ASOF, airmanUserId: AIRMAN, operatingRule: "part_135", exemptionAsserted: false, intendedAircraft: N2V, entries: p3cEntries });
+  checkResult("P-3c", "REGU-5: the LOGGED aircraft's own gear unrecorded is a missing input under 135.247(b) too", p3c.night, {
+    status: "insufficient_data", missing: ["aircraft_gear_unrecorded"],
+  });
+
   checkResult("P-4", "the trailing sentence of (a) — night recency satisfies the day variant too", p2[0], {
     status: "estimated_current", ruleBasis: "135.247(a)(2)",
   });
@@ -751,6 +801,15 @@ section("P — 135.247");
     status: "estimated_current", ruleBasis: "61.57(a)",
     notesInclude: ["under parts 91 or 135 for the certificate holder you asserted the exemption for"],
   });
+
+  var p8 = trackRun(evaluateCurrency(baseCurrencyInput({ operatingRule: "unspecified", exemptionAsserted: true, entries: [] })));
+  p8.forEach(track);
+  checkField("P-8 day no (e)(3) note", "REGU-8: 'unspecified' gets no (e)(3) note even when exemptionAsserted is true", p8[0].notes.join(" | ").indexOf("61.57(e)(3)") !== -1, false);
+  checkField("P-8 night no (e)(3) note", "", p8[1].notes.join(" | ").indexOf("61.57(e)(3)") !== -1, false);
+
+  var p9 = trackRun(evaluateCurrency(baseCurrencyInput({ operatingRule: "part_135", exemptionAsserted: true, entries: [] })));
+  p9.forEach(track);
+  checkField("P-9 instrument untouched by (e)(3)", "REGU-6: no Part 135 instrument substitute exists, so 61.57(c) is left as-is", p9[2].ruleBasis, "61.57(c)");
 }
 
 // =============================================================================

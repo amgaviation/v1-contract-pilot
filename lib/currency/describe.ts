@@ -75,7 +75,7 @@ const MISSING_INPUT_COPY: Record<MissingInput, { label: string; href: string }> 
     href: "/logbook/aircraft",
   },
   aircraft_gear_unrecorded: {
-    label: "Record whether the intended aircraft is tailwheel — it changes which landings count.",
+    label: "Record whether the intended aircraft is tailwheel, and the gear on any aircraft flown in this window — it changes which takeoffs and landings count.",
     href: "/logbook/aircraft",
   },
   aircraft_category_class_unrecorded: {

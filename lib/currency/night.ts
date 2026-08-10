@@ -27,6 +27,7 @@
 import { rollingDayWindow } from "./window";
 import {
   NINETY_DAYS,
+  NINETY_DAY_BOUNDARY_ASSUMPTION,
   aircraftUnregisteredGate,
   baseGates,
   countedFrom,
@@ -133,6 +134,7 @@ export function evaluateNightExperience(input: {
 
   const assumptions = [
     "Full-stop landings only — 61.57(b)(1) requires a full stop for every aircraft, not only tailwheel; touch-and-go night landings never count here.",
+    NINETY_DAY_BOUNDARY_ASSUMPTION,
   ];
   const typeAssumption = typeMatchAssumption(aircraft);
   if (typeAssumption) assumptions.push(typeAssumption);

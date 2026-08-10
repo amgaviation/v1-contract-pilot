@@ -8,25 +8,27 @@
  * instrument.ts, flight-review.ts, medical.ts, part135.ts, match.ts,
  * window.ts, passenger-shared.ts) are PURE — no I/O, no Supabase — and
  * carry neither `import "server-only"` nor a CURRENCY_ENGINE_ENABLED
- * runtime check. That is deliberate, not an oversight: `import
- * "server-only"` throws unconditionally outside Next's own
- * server-compilation context (the "react-server" resolve condition it
- * needs is a bundler feature, not something plain Node sets), which is
- * exactly the context this repo's own unit tests run these modules under
- * — adding it here would make evaluateCurrency (and every function it
- * calls) unimportable by tests/currency.test.mjs and
- * scripts/currency-verify.mjs, both of which call these functions
- * directly, deliberately, with the flag off, to exercise the pure
- * arithmetic on its own. The actual protection this flag exists for —
- * aviation counsel reviewing CURRENCY_DISCLAIMER before a real pilot's
- * data reaches a real card — is enforced where a real pilot's data
- * actually enters the system: lib/currency/read.ts, gated by
- * assertCurrencyEngineEnabled() on every exported function, and the only
- * module in lib/currency/** that touches Supabase. A component that wants
- * a real "Estimated current" verdict still has to go through read.ts;
- * calling evaluateCurrency directly with fabricated entries is no more of
- * a bypass than fabricating any other input to any other pure function in
- * this codebase.
+ * runtime check. That is deliberate, but NOT because plain Node cannot
+ * load "server-only" (CORR-6: it can, via `--conditions=react-server` —
+ * that condition is a real Node flag, not only a bundler feature, and
+ * scripts/currency-verify.mjs already passes it to its own runner today,
+ * which is how that script successfully imports gate.ts, a module that
+ * already carries `import "server-only"` at its own top). The real,
+ * narrower reason is tests/currency.test.mjs: it is run via `npm run
+ * test:unit`, and that package.json script does NOT pass
+ * `--conditions=react-server` (out of this phase's scope to change) — so
+ * adding `import "server-only"` here would make evaluateCurrency (and
+ * every function it calls) unimportable by tests/currency.test.mjs
+ * specifically, not by scripts/currency-verify.mjs. The actual protection
+ * this flag exists for — aviation counsel reviewing CURRENCY_DISCLAIMER
+ * before a real pilot's data reaches a real card — is enforced where a
+ * real pilot's data actually enters the system: lib/currency/read.ts,
+ * gated by assertCurrencyEngineEnabled() on every exported function, and
+ * the only module in lib/currency/** that touches Supabase. A component
+ * that wants a real "Estimated current" verdict still has to go through
+ * read.ts; calling evaluateCurrency directly with fabricated entries is
+ * no more of a bypass than fabricating any other input to any other pure
+ * function in this codebase.
  */
 import { isWellFormedIsoDate } from "./window";
 import { evaluateGeneralExperience } from "./general";
@@ -140,13 +142,23 @@ function truncatedResult(r: CurrencyResult): CurrencyResult {
  * operations under part 135 when the pilot is engaged in a flight
  * operation under parts 91 or 135 for that certificate holder if the
  * pilot in command is in compliance with §§ 135.243 and 135.247." The
- * exemption disapplies THE WHOLE of 61.57 (not just (a) and (b), unlike
- * the part 125 case at (e)(1)) — but it is ASSERTED, never inferred (see
- * docs/CURRENCY-SPEC.md §2.5, counsel question C-2: whether "employed by"
- * reaches a 1099 contract pilot is a question this product does not
- * answer), and this function never suppresses a not-current 61.57
- * verdict; it relabels it and keeps the underlying number visible in
- * notes[].
+ * exemption TEXTUALLY disapplies THE WHOLE of 61.57, including (c)
+ * instrument experience — not just (a) and (b), unlike the part 125 case
+ * at (e)(1). THIS FUNCTION ONLY REACHES (a) AND (b): applyPart135Exemption
+ * below relabels/substitutes the passenger_day/passenger_night results.
+ * The instrument (61.57(c)) result is untouched, by this function and by
+ * evaluateCurrency generally — a pilot who asserted this exemption still
+ * gets a plain 61.57(c) verdict, with no note that the paragraph
+ * producing it may not bind them (REGU-6). Not fixed here: this engine
+ * has no Part 135 instrument-experience rule (e.g. 135.297) to compute as
+ * a substitute the way 135.247 substitutes for (a)/(b). A known,
+ * documented gap, not a silent one.
+ *
+ * It is ASSERTED, never inferred (see docs/CURRENCY-SPEC.md §2.5, counsel
+ * question C-2: whether "employed by" reaches a 1099 contract pilot is a
+ * question this product does not answer), and this function never
+ * suppresses a not-current 61.57 verdict; it relabels it and keeps the
+ * underlying number visible in notes[].
  *
  * BRANCHING (docs/CURRENCY-SPEC.md §2.5's table):
  *   part_135 + asserted    -> 135.247 SUBSTITUTES for 61.57(a)/(b), with
@@ -183,11 +195,15 @@ function applyPart135Exemption(args: {
   if (operatingRule === "part_135" && !exemptionAsserted) {
     note =
       "61.57(e)(3) may be available: if you assert your Part 135 exemption for this client, 135.247 recency is computed instead of this result.";
-  } else if (exemptionAsserted) {
-    // part_91 (or unspecified) with the exemption asserted anyway — (e)(3)
-    // reaches "a flight operation under parts 91 or 135 for that
-    // certificate holder," so the note still applies even off a Part 135
-    // leg.
+  } else if (exemptionAsserted && operatingRule !== "unspecified") {
+    // part_91 with the exemption asserted anyway — (e)(3) reaches "a
+    // flight operation under parts 91 or 135 for that certificate
+    // holder," so the note still applies even off a Part 135 leg.
+    // EXCLUDES 'unspecified' (REGU-8): the branch table above says
+    // unspecified gets no (e)(3) note at all, because the
+    // certificate-holder relationship the note describes cannot be
+    // reasoned about when the operating rule itself is unknown — a bare
+    // `exemptionAsserted` check does not exclude it.
     note =
       "Under 61.57(e)(3), this requirement may not apply while you are engaged in a flight operation under parts 91 or 135 for the certificate holder you asserted the exemption for.";
   }
