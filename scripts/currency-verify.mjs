@@ -292,6 +292,14 @@ var N1V_ASEL = { tailKey: "N1V", typeRating: "CE-500", typeDesignator: "C560", c
 // A-11/A-12/A-13 above already cover.
 var N2V_TRI = { tailKey: "N2VT", typeRating: "CE-500", typeDesignator: "C560", categoryClass: "AMEL", gear: "tricycle" };
 var N2V_NULLGEAR = { tailKey: "N2VN", typeRating: "CE-500", typeDesignator: "C560", categoryClass: "AMEL", gear: null };
+// P1: a blank-typeRating intended aircraft — no verify fixture exercised
+// this alongside more than one entry before this pass, which is precisely
+// why the third review round's critical finding shipped green through 492
+// checks and 200 tests.
+var NBLANK = { tailKey: "NBL", typeRating: null, typeDesignator: "PA28", categoryClass: "ASEL", gear: "tricycle" };
+var NBLANK_SAME = { tailKey: "NBL2", typeRating: null, typeDesignator: "PA28", categoryClass: "ASEL", gear: "tricycle" };
+var NBLANK_DIFF = { tailKey: "NBL3", typeRating: null, typeDesignator: "C172", categoryClass: "ASEL", gear: "tricycle" };
+var NHELI = { tailKey: "NHEL", typeRating: null, typeDesignator: "B407", categoryClass: "HELICOPTER", gear: "skid" };
 
 function mkEntry(id, overrides) {
   var base = {
@@ -513,6 +521,48 @@ section("A — 61.57(a) general experience");
   checkResult("A-16", "REGU-5: the LOGGED aircraft's own gear unrecorded is a missing input, not a silent pass", a16, {
     status: "insufficient_data", missing: ["aircraft_gear_unrecorded"],
   });
+
+  // A-17..A-20 — P1: matchGates's "could this change the answer" scoping,
+  // the highest-severity finding of the third review round.
+  var a17 = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: NBLANK,
+    entries: threeDated("a17", ["2026-06-01", "2026-06-02", "2026-06-03"], { dayTakeoffs: 1, dayLandingsFullStop: 1, aircraft: NBLANK_SAME })
+      .concat([mkEntry("a17-3", { entryDate: "2026-06-04", dayTakeoffs: 3, dayLandingsFullStop: 3, aircraft: NBLANK_DIFF })]) });
+  checkResult("A-17", "P1: three CERTAIN qualifying entries already answer this card — the fourth entry's unresolvable type could never change it and must not gate", a17, {
+    status: "estimated_current", observed: { takeoffs: 3, landings: 3 }, missing: [],
+  });
+
+  var a18 = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: NBLANK,
+    entries: threeDated("a18", ["2026-06-01", "2026-06-02"], { dayTakeoffs: 1, dayLandingsFullStop: 1, aircraft: NBLANK_SAME })
+      .concat([mkEntry("a18-2", { entryDate: "2026-06-03", dayTakeoffs: 3, dayLandingsFullStop: 3, aircraft: NBLANK_DIFF })]) });
+  checkResult("A-18", "P1: only 2/2 CERTAIN — the ambiguous entry COULD make up the difference, so this is insufficient_data (naming the entry), not a false not-current", a18, {
+    status: "insufficient_data", missing: ["aircraft_type_unrecorded"],
+  });
+  var a18remedyNotes = a18.notes.join(" | ");
+  checkField("A-18 notes name the entry", "the card must say which entry is unresolved, not just that one is", a18remedyNotes.indexOf("2026-06-03") !== -1, true);
+
+  var a19 = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: NBLANK,
+    entries: [mkEntry("a19-0", { entryDate: "2026-06-01", dayTakeoffs: 2, dayLandingsFullStop: 2, aircraft: NBLANK_DIFF })] });
+  checkResult("A-19", "P1: short even in the BEST case (2 of 3, alone) — the ambiguous entry could not have changed a not-current answer either, so it must not gate", a19, {
+    status: "estimated_not_current", missing: [],
+  });
+
+  var a20zero = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: NBLANK,
+    entries: [mkEntry("a20zero-0", { entryDate: "2026-06-01", dayTakeoffs: 0, dayLandingsFullStop: 0, aircraft: NBLANK_DIFF })] });
+  checkResult("A-20 zero movements", "an entry that could never contribute never gates, even alone", a20zero, { status: "estimated_not_current", missing: [] });
+
+  var a20other = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: NBLANK,
+    entries: [mkEntry("a20other-0", { entryDate: "2026-06-01", dayTakeoffs: 3, dayLandingsFullStop: 3, aircraft: NBLANK_DIFF, airmanUserId: OTHER_AIRMAN })] });
+  checkResult("A-20 other airman", "another airman's entry never gates this pilot's card", a20other, { status: "estimated_not_current", missing: [] });
+
+  var a20dual = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: NBLANK,
+    entries: [mkEntry("a20dual-0", { entryDate: "2026-06-01", dayTakeoffs: 3, dayLandingsFullStop: 3, aircraft: NBLANK_DIFF, role: "DUAL_RECEIVED" })] });
+  checkResult("A-20 DUAL_RECEIVED", "DUAL_RECEIVED never gates — it could never have counted regardless of type", a20dual, { status: "estimated_not_current", missing: [] });
+
+  var a20heli = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: NBLANK,
+    entries: [mkEntry("a20heli-0", { entryDate: "2026-06-01", dayTakeoffs: 3, dayLandingsFullStop: 3, aircraft: NHELI })] });
+  checkResult("A-20 unrelated category", "a KNOWN different category (helicopter vs. ASEL) is a decisive non-match, not an unresolved type — match.ts's short-circuit", a20heli, {
+    status: "estimated_not_current", missing: [],
+  });
 }
 
 // =============================================================================
@@ -636,29 +686,40 @@ section("I — 61.57(c) instrument experience");
     entries: [mkEntry("i10-0", { entryDate: "2026-03-01", approachesCount: 6, approachType: "visual", approachCondition: "neither", holds: 1, coursesInterceptedTracked: true })] });
   checkResult("I-10", "visual/neither, the only pairing the CHECK permits", i10, { status: "estimated_not_current", observed: { approaches: 0 }, missing: [] });
 
+  // P2: a device row can never be CERTAIN — this schema has no field
+  // recording whether a device "represents the category of aircraft for
+  // the instrument rating privileges to be maintained" (61.57(c)(2)'s own
+  // predicate) — so a LONE device row that is the ONLY source of currency
+  // must ask, not answer. This replaced an earlier, permissive fixture
+  // that asserted estimated_current here; that assertion was the P2 bug.
   var i11 = evaluateInstrumentExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
     entries: [mkEntry("i11-0", { entryDate: "2026-03-01", simulatorTime: 2.0, simulatorDeviceType: "atd", approachCondition: "simulated", approachType: "ils", approachesCount: 6, holds: 1, coursesInterceptedTracked: true })] });
-  checkResult("I-11", "61.57(c)(2) accepts FFS/FTD/ATD with no part 142 condition — the (a)/(b) simulator gate is not copied here", i11, {
-    status: "estimated_current", observed: { approaches: 6, holds: 1, intercepts: 1 }, missing: [],
+  checkResult("I-11", "P2: a lone device row is never CERTAIN — 61.57(c)(2)'s own device-represents-category predicate is unconfirmable, so it can gate, not silently credit", i11, {
+    status: "insufficient_data", missing: ["device_category_unconfirmed"],
   });
 
   var i12 = evaluateInstrumentExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
     entries: [mkEntry("i12-0", { entryDate: "2026-03-01", simulatorTime: 2.0, simulatorDeviceType: "other", approachCondition: "simulated", approachType: "ils", approachesCount: 6, holds: 1, coursesInterceptedTracked: true })] });
   checkResult("I-12", "'other' satisfies no row of the device matrix", i12, { status: "insufficient_data", missing: ["unresolvable_simulator_row"] });
 
+  // I-13 previously asserted this NEEDED device row was credited
+  // unconditionally (the P2 permissive bug); now it correctly asks.
   var i13entries = [
     mkEntry("i13-0", { entryDate: "2026-03-01", approachesCount: 3, approachType: "ils", approachCondition: "actual", holds: 1 }),
     mkEntry("i13-1", { entryDate: "2026-04-01", simulatorTime: 1.5, simulatorDeviceType: "ffs", approachesCount: 3, approachType: "ils", approachCondition: "simulated", coursesInterceptedTracked: true }),
   ];
   var i13 = evaluateInstrumentExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V, entries: i13entries });
-  checkResult("I-13", "any combination of aircraft, FFS, FTD, or ATD", i13, {
-    status: "estimated_current", observed: { approaches: 6, holds: 1, intercepts: 1 }, countedIds: ["i13-0", "i13-1"], missing: [],
+  checkResult("I-13", "P2: 3 certain approaches from the real aircraft + a NEEDED FFS row to reach 6 — the device row is the difference, so this asks rather than answers", i13, {
+    status: "insufficient_data", missing: ["device_category_unconfirmed"],
   });
 
+  // I-15 still pins REGU-4/CORR-1's reachability fix (aircraft: null must
+  // NOT fall back to the registry gate — see the missing[] assertion) —
+  // but P2 means the answer is now insufficient_data, not credit.
   var i15 = evaluateInstrumentExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
     entries: [mkEntry("i15-0", { entryDate: "2026-03-01", simulatorTime: 2.0, simulatorDeviceType: "atd", approachCondition: "simulated", approachType: "ils", approachesCount: 6, holds: 1, coursesInterceptedTracked: true, aircraft: null })] });
-  checkResult("I-15", "REGU-4/CORR-1: a device row has NO tail number by design and must still credit (c)(2)", i15, {
-    status: "estimated_current", observed: { approaches: 6, holds: 1, intercepts: 1 }, missing: [],
+  checkResult("I-15", "REGU-4/CORR-1 + P2: a device row with no tail number is gated by NAME (device_category_unconfirmed), never by falling back to aircraft_unregistered", i15, {
+    status: "insufficient_data", missing: ["device_category_unconfirmed"],
   });
 
   var i16entries = [
@@ -666,8 +727,8 @@ section("I — 61.57(c) instrument experience");
     mkEntry("i16-1", { entryDate: "2026-03-05", simulatorTime: 1.0, simulatorDeviceType: "atd", approachCondition: "simulated", approachType: "ils", approachesCount: 2, aircraft: null }),
   ];
   var i16 = evaluateInstrumentExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V, entries: i16entries });
-  checkResult("I-16", "REGU-4/CORR-1: an unrelated device row with no aircraft must not poison an otherwise-current instrument card", i16, {
-    status: "estimated_current", missing: [],
+  checkResult("I-16", "P1/ambiguous-facts.ts generalized to instrument.ts: the real aircraft alone already reaches 6/6, so the unneeded, unconfirmable device row must not gate or be credited", i16, {
+    status: "estimated_current", observed: { approaches: 6, holds: 1, intercepts: 1 }, missing: [],
   });
 
   var i17 = evaluateInstrumentExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V_ASEL,
@@ -809,7 +870,19 @@ section("P — 135.247");
 
   var p9 = trackRun(evaluateCurrency(baseCurrencyInput({ operatingRule: "part_135", exemptionAsserted: true, entries: [] })));
   p9.forEach(track);
-  checkField("P-9 instrument untouched by (e)(3)", "REGU-6: no Part 135 instrument substitute exists, so 61.57(c) is left as-is", p9[2].ruleBasis, "61.57(c)");
+  // P7: p9[2].ruleBasis === "61.57(c)" cannot fail — evaluateInstrumentExperience
+  // hard-codes that string literal in both of its return statements, and
+  // index.ts never rewrites it, so the check was true for every possible
+  // input. REGU-6's real claim is that applyPart135Exemption's (e)(3)
+  // substitution reaches ONLY passenger_day/passenger_night, never
+  // instrument — so this instead computes the instrument card TWICE, once
+  // under the Part 135 exemption and once without it, and asserts they
+  // are byte-for-byte identical. A regression that made the exemption
+  // touch instrument in ANY way — ruleBasis, a note, a status change —
+  // would make this fail; the old assertion could not have caught any of
+  // those.
+  var p9NoExemption = trackRun(evaluateCurrency(baseCurrencyInput({ operatingRule: "part_91", exemptionAsserted: false, entries: [] })));
+  checkField("P-9 instrument untouched by (e)(3)", "REGU-6: the instrument card is byte-for-byte identical whether or not the Part 135 exemption is asserted", JSON.stringify(p9[2]), JSON.stringify(p9NoExemption[2]));
 }
 
 // =============================================================================
@@ -876,8 +949,8 @@ section("D — insufficient_data is the default posture");
   checkResult("D-10a", "an FFS row in the (a) window", d10a, { status: "insufficient_data", missing: ["unresolvable_simulator_row"] });
   var d10b = evaluateInstrumentExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
     entries: [mkEntry("d10b-0", { entryDate: "2026-03-01", simulatorTime: 1.0, simulatorDeviceType: "ffs", approachesCount: 6, approachType: "ils", approachCondition: "simulated", holds: 1, coursesInterceptedTracked: true })] });
-  checkResult("D-10b", "the IDENTICAL row shape, in the (c) window — the device matrix is per-requirement", d10b, {
-    status: "estimated_current", countedIds: ["d10b-0"], missing: [],
+  checkResult("D-10b", "the IDENTICAL row shape, in the (c) window — (c) does not copy (a)/(b)'s blanket unresolvable_simulator_row gate, but a device row still can't singlehandedly prove currency (P2): it gates by the more specific device_category_unconfirmed instead", d10b, {
+    status: "insufficient_data", missing: ["device_category_unconfirmed"],
   });
 
   var d11 = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN,

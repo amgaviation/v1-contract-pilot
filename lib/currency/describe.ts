@@ -79,11 +79,24 @@ const MISSING_INPUT_COPY: Record<MissingInput, { label: string; href: string }> 
     href: "/logbook/aircraft",
   },
   aircraft_category_class_unrecorded: {
-    label: "Record the intended aircraft's category and class.",
+    // Two distinct causes share this code: the INTENDED aircraft's own
+    // category/class is blank (this card's notes will be empty), or an
+    // entry whose ambiguous category could be the difference between
+    // current and not (that entry is named in this card's notes). Worded
+    // to be true in EITHER case — never claiming a note exists when it
+    // does not (P4).
+    label: "Record the intended aircraft's category and class — or, if those are already recorded, check this card's notes for an entry whose category could not be matched against it.",
     href: "/logbook/aircraft",
   },
   aircraft_type_unrecorded: {
-    label: "Record the intended aircraft's type rating or type designator.",
+    // Same two-cause shape as aircraft_category_class_unrecorded above:
+    // the INTENDED aircraft's own type rating/designator is blank (no
+    // note), or a SPECIFIC entry's type is unresolved and could change
+    // the answer (named in this card's notes). P4: the old wording named
+    // only the first cause, which cannot be fixed by "recording the
+    // intended aircraft's type" when it is already recorded and a
+    // different entry is the actual reason.
+    label: "Record the intended aircraft's type rating or type designator — or, if those are already recorded, check this card's notes for an entry whose type could not be matched against it.",
     href: "/logbook/aircraft",
   },
   night_window_unasserted: {
@@ -96,6 +109,10 @@ const MISSING_INPUT_COPY: Record<MissingInput, { label: string; href: string }> 
   },
   unresolvable_simulator_row: {
     label: "A simulator session in this window can't be credited without its device class and course details.",
+    href: "/logbook",
+  },
+  device_category_unconfirmed: {
+    label: "A simulator/device session named in this card's notes could be the difference between current and not, and this schema has no field recording whether the device represents the category of aircraft for the instrument rating being maintained (61.57(c)(2)) — resolve it manually.",
     href: "/logbook",
   },
   operating_rule_unspecified: {

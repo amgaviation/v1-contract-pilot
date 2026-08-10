@@ -19,6 +19,7 @@
  */
 import { calendarMonthLookback, withinInclusive } from "./window";
 import { categoryKey } from "./match";
+import { missingFactCouldChangeAnswer } from "./ambiguous-facts";
 import { MISSING_INPUT_ORDER } from "./types";
 import type { AircraftFacts, CountedEntry, CurrencyEntry, CurrencyResult, IsoDate, MissingInput } from "./types";
 
@@ -44,8 +45,7 @@ const APPROACH_THRESHOLD = 6;
  * actually-current pilot's approaches, never manufacture currency they do
  * not have. A null category_class on either side is a MISSING INPUT,
  * never a non-match, same discipline as everywhere else in this engine.
- * Only ever called for a REAL AIRCRAFT row — see the device branch of
- * qualifiesOnConditionDeviceAndCategory below.
+ * Only ever called for a REAL AIRCRAFT row — see isDeviceRow below.
  */
 function categoryMatches(e: CurrencyEntry, intendedAircraft: AircraftFacts): boolean {
   if (e.aircraft === null) return false;
@@ -55,40 +55,61 @@ function categoryMatches(e: CurrencyEntry, intendedAircraft: AircraftFacts): boo
 }
 
 /**
- * The condition/device/category test shared by approaches, holds, AND
- * course intercept/tracking — 61.57(c)(1)'s own text: "...performed and
- * logged at least the following tasks and iterations in an airplane,
- * powered-lift, helicopter, or airship, as appropriate, for the
- * instrument rating privileges to be maintained in actual weather
- * conditions, or under simulated conditions using a view-limiting
- * device..." governs ALL THREE of (c)(1)(i)-(iii), not only the
- * approaches in (i) — verified against the live section text. A hold or
- * an intercept flown in VMC on a row the pilot affirmatively logged as
+ * A 61.57(c)(2) DEVICE row: condition 'simulated', simulatorTime > 0, and
+ * a device class this rule accepts (FFS, FTD, or ATD — 'other' satisfies
+ * no row of the device matrix and is caught unconditionally by the
+ * unresolvable_simulator_row gate below, since NO device class at all is
+ * knowable there).
+ *
+ * A row that logs simulatorTime but was flown in ACTUAL conditions is NOT
+ * a device row — actual weather conditions cannot happen in a device, so
+ * its approaches were flown for real and go through categoryMatches like
+ * any other real-aircraft row. P9: this used to be routed into the device
+ * branch by simulatorTime alone, regardless of condition, which silently
+ * zeroed out a mixed entry's real-aircraft approaches (logged in ACTUAL
+ * conditions, in the registered aircraft) with no count, no gate, and no
+ * note — the device branch's own `approachCondition !== "simulated"` test
+ * failed it, and the aircraft-registry gate below was, at the time,
+ * exempting every simulatorTime > 0 row from ever being checked at all.
+ */
+function isDeviceRow(e: CurrencyEntry): boolean {
+  return (
+    e.approachCondition === "simulated" &&
+    (e.simulatorTime ?? 0) > 0 &&
+    e.simulatorDeviceType !== null &&
+    e.simulatorDeviceType !== "other"
+  );
+}
+
+/**
+ * The condition/category test for a REAL AIRCRAFT row, shared by
+ * approaches, holds, AND course intercept/tracking — 61.57(c)(1)'s own
+ * text: "...performed and logged at least the following tasks and
+ * iterations in an airplane, powered-lift, helicopter, or airship, as
+ * appropriate, for the instrument rating privileges to be maintained in
+ * actual weather conditions, or under simulated conditions using a
+ * view-limiting device..." governs ALL THREE of (c)(1)(i)-(iii), not only
+ * the approaches in (i) — verified against the live section text. A hold
+ * or an intercept flown in VMC on a row the pilot affirmatively logged as
  * 'neither' actual nor simulated does not satisfy (c)(1)(ii)/(iii) any
  * more than a visual approach satisfies (i).
  *
- * 61.57(c)(2) accepts ALL THREE device classes (FFS, FTD, ATD) and
- * imposes NO part 142 condition — unlike (a)(3) and (b)(2). Do not copy
- * general.ts/night.ts's simulator gate here: an ATD session is real (c)
- * credit. A DEVICE ROW NEVER CALLS categoryMatches(): (c)(2) requires the
- * DEVICE, not a tail-numbered aircraft, to represent the category, and
- * this schema has no field recording what category a device represents.
- * Routing a device row through the aircraft registry is exactly the
- * REGU-4/CORR-1 regression — a simulator session has no tail number by
- * design (20260810020000_logbook_simulator_role_optional.sql), so
- * categoryMatches() always failed it, and the aircraft_unregistered gate
- * below then poisoned the whole card. A qualifying device row (valid
- * device class, condition 'simulated') is credited unconditionally
- * instead. 'other' is the one device value that satisfies nothing, so a
- * simulated-condition row on an 'other' device does not qualify.
+ * Device rows never reach this function — see evaluateInstrumentExperience,
+ * where they are tracked separately as AMBIGUOUS, never as certain. A
+ * device row has no tail number by design
+ * (20260810020000_logbook_simulator_role_optional.sql), and 61.57(c)(2)'s
+ * own predicate — "provided the device represents the category of
+ * aircraft for the instrument rating privileges to be maintained" — is a
+ * fact about the DEVICE, not a tail-numbered aircraft, that this schema
+ * has no field recording. Routing a device row through categoryMatches
+ * anyway (checking whatever e.aircraft happens to hold) would be the
+ * REGU-4/CORR-1 regression in a new guise; crediting it unconditionally
+ * with no predicate at all was the P2 regression this file now avoids —
+ * see the device-handling block below for how it is actually gated.
  */
-function qualifiesOnConditionDeviceAndCategory(e: CurrencyEntry, intendedAircraft: AircraftFacts): boolean {
+function realAircraftQualifies(e: CurrencyEntry, intendedAircraft: AircraftFacts): boolean {
   if (e.approachCondition !== "actual" && e.approachCondition !== "simulated") return false;
-  if ((e.simulatorTime ?? 0) > 0) {
-    if (e.simulatorDeviceType === null || e.simulatorDeviceType === "other") return false;
-    if (e.approachCondition !== "simulated") return false;
-    return true;
-  }
+  if (isDeviceRow(e)) return false;
   return categoryMatches(e, intendedAircraft);
 }
 
@@ -102,12 +123,16 @@ function qualifiesOnConditionDeviceAndCategory(e: CurrencyEntry, intendedAircraf
  * approaches here without this module also changing.
  *
  * approachType === null (untyped) is never counted — an untyped approach
- * cannot be shown to qualify.
+ * cannot be shown to qualify. Applies to a device row's approach count
+ * exactly as it does to a real-aircraft row's — see how the caller uses
+ * this for both.
  */
+function hasQualifyingApproachShape(e: CurrencyEntry): boolean {
+  return e.approachesCount > 0 && e.approachType !== null && e.approachType !== "visual";
+}
+
 function isQualifyingApproachRow(e: CurrencyEntry, intendedAircraft: AircraftFacts): boolean {
-  if (e.approachesCount <= 0) return false;
-  if (e.approachType === null || e.approachType === "visual") return false;
-  return qualifiesOnConditionDeviceAndCategory(e, intendedAircraft);
+  return hasQualifyingApproachShape(e) && realAircraftQualifies(e, intendedAircraft);
 }
 
 export function evaluateInstrumentExperience(input: {
@@ -130,34 +155,31 @@ export function evaluateInstrumentExperience(input: {
     if (e.airmanUserId === null) gates.add("airman_unattributed");
     const hasInstrumentActivity = e.approachesCount > 0 || e.holds > 0 || e.coursesInterceptedTracked === true;
     // (c)(1)'s condition clause governs approaches, holds, AND course
-    // intercept/tracking alike (see qualifiesOnConditionDeviceAndCategory)
-    // — a hold or intercept on a row with no recorded condition is
-    // exactly as unusable as an approach on one.
+    // intercept/tracking alike (see realAircraftQualifies) — a hold or
+    // intercept on a row with no recorded condition is exactly as
+    // unusable as an approach on one.
     if (hasInstrumentActivity && e.approachCondition === null) gates.add("approach_condition_unrecorded");
     if ((e.simulatorTime ?? 0) > 0 && e.simulatorDeviceType === "other") gates.add("unresolvable_simulator_row");
-    // (c)(1)/(c)(2) condition on the CATEGORY of aircraft for the
-    // instrument rating being maintained — a hold or intercept flown in
-    // an aircraft outside the pilot's registry, or one whose category is
-    // unrecorded, is a missing input, never a silent non-match. EXCEPT a
-    // device row (simulatorTime > 0): a device has no tail number by
-    // design, so it is never checked against the aircraft registry at all
-    // — routing it through this gate is REGU-4/CORR-1's regression, where
-    // a simulator entry poisoned the whole card with a remedy ("register
-    // the aircraft") no pilot can act on for a session with no aircraft.
-    if (hasInstrumentActivity && intendedAircraft && (e.simulatorTime ?? 0) <= 0) {
+    // (c)(1) conditions on the CATEGORY of aircraft for the instrument
+    // rating being maintained — a hold or intercept flown in an aircraft
+    // outside the pilot's registry, or one whose category is unrecorded,
+    // is a missing input, never a silent non-match. EXCEPT a device row
+    // (see isDeviceRow): a device has no tail number by design, so it is
+    // never checked against the aircraft registry at all — routing it
+    // through this gate is REGU-4/CORR-1's regression, where a simulator
+    // entry poisoned the whole card with a remedy ("register the
+    // aircraft") no pilot can act on for a session with no aircraft. P9:
+    // this used to exempt every simulatorTime > 0 row, not just device
+    // rows, which is what let a MIXED row's real-aircraft approaches
+    // (actual condition, real aircraft, alongside some unrelated
+    // simulator time on the same entry) silently skip this gate too.
+    if (hasInstrumentActivity && intendedAircraft && !isDeviceRow(e)) {
       if (e.aircraft === null) gates.add("aircraft_unregistered");
       else if (categoryKey(e.aircraft) === null) gates.add("aircraft_category_class_unrecorded");
     }
   }
 
   const missing = MISSING_INPUT_ORDER.filter((m) => gates.has(m));
-  const assumptions = intendedAircraft
-    ? [
-        "Assumes you hold the instrument rating for the intended aircraft's category — this engine has no airman/ratings record and gates on the aircraft instead.",
-        "Matched on the intended aircraft's full category/class field (e.g. \"ASEL\" vs \"AMEL\"), not category alone — this schema has no separate category field, so an approach flown in a different class of the same category will not count here even though 61.57(c) itself conditions only on category.",
-      ]
-    : [];
-
   if (missing.length > 0) {
     return {
       currencyType: "instrument",
@@ -172,17 +194,72 @@ export function evaluateInstrumentExperience(input: {
       displayDate: null,
       missing,
       notes: [],
-      assumptions,
+      assumptions: [],
     };
   }
 
   const aircraft = intendedAircraft as AircraftFacts; // non-null: no gates fired
   const myEntries = inWindow.filter((e) => e.airmanUserId === airmanUserId);
-  const qualifyingRows = myEntries.filter((e) => isQualifyingApproachRow(e, aircraft));
-  const approaches = qualifyingRows.reduce((sum, e) => sum + e.approachesCount, 0);
-  const holding = myEntries.some((e) => e.holds > 0 && qualifiesOnConditionDeviceAndCategory(e, aircraft));
-  const intercept = myEntries.some((e) => e.coursesInterceptedTracked === true && qualifiesOnConditionDeviceAndCategory(e, aircraft));
-  const status = approaches >= APPROACH_THRESHOLD && holding && intercept ? "estimated_current" : "estimated_not_current";
+
+  // CERTAIN: real-aircraft rows whose category is confirmed to match the
+  // intended aircraft.
+  const certainRows = myEntries.filter((e) => isQualifyingApproachRow(e, aircraft));
+  const certainApproaches = certainRows.reduce((sum, e) => sum + e.approachesCount, 0);
+  const certainHolds = myEntries.some((e) => e.holds > 0 && realAircraftQualifies(e, aircraft));
+  const certainIntercepts = myEntries.some((e) => e.coursesInterceptedTracked === true && realAircraftQualifies(e, aircraft));
+  const certainlyMeets = certainApproaches >= APPROACH_THRESHOLD && certainHolds && certainIntercepts;
+
+  // AMBIGUOUS: device rows (61.57(c)(2)) — see isDeviceRow's header. The
+  // regulation requires the device to "represent the category of aircraft
+  // for the instrument rating privileges to be maintained," and this
+  // schema has no field recording what a device represents, so a device
+  // row can NEVER be certain — only its BEST CASE (assume it represents
+  // the right category) can be computed, and lib/currency/ambiguous-facts.ts's
+  // rule decides whether that best case is worth asking the pilot about.
+  const deviceApproachRows = myEntries.filter((e) => isDeviceRow(e) && hasQualifyingApproachShape(e));
+  const deviceHoldRows = myEntries.filter((e) => isDeviceRow(e) && e.holds > 0);
+  const deviceInterceptRows = myEntries.filter((e) => isDeviceRow(e) && e.coursesInterceptedTracked === true);
+  const deviceApproaches = deviceApproachRows.reduce((sum, e) => sum + e.approachesCount, 0);
+
+  const bestApproaches = certainApproaches + deviceApproaches;
+  const bestHolds = certainHolds || deviceHoldRows.length > 0;
+  const bestIntercepts = certainIntercepts || deviceInterceptRows.length > 0;
+  const bestCaseMeets = bestApproaches >= APPROACH_THRESHOLD && bestHolds && bestIntercepts;
+
+  const contributingDeviceRows = new Map<string, CurrencyEntry>();
+  for (const e of [...deviceApproachRows, ...deviceHoldRows, ...deviceInterceptRows]) contributingDeviceRows.set(e.id, e);
+
+  if (contributingDeviceRows.size > 0 && missingFactCouldChangeAnswer(certainlyMeets, bestCaseMeets)) {
+    const notes = [...contributingDeviceRows.values()].map(
+      (e) =>
+        `Entry ${e.entryDate}: this device session's approaches/holds/course intercept could be the difference between current and not, and this schema has no field recording whether the device represents the category of aircraft for the instrument rating being maintained (61.57(c)(2)) — resolve it manually.`
+    );
+    return {
+      currencyType: "instrument",
+      ruleBasis: "61.57(c)",
+      status: "insufficient_data",
+      window,
+      required: { approaches: APPROACH_THRESHOLD },
+      observed: {},
+      counted: [],
+      limitingDate: null,
+      throughDate: null,
+      displayDate: null,
+      missing: ["device_category_unconfirmed"],
+      notes,
+      assumptions: [],
+    };
+  }
+
+  // Either there is no ambiguity, or resolving it could not change the
+  // answer either way (already met on certain alone, or still short on
+  // best case) — the card answers from CERTAIN alone. An unresolved
+  // device row is never credited, only ever asked about.
+  const qualifyingRows = certainRows;
+  const approaches = certainApproaches;
+  const holding = certainHolds;
+  const intercept = certainIntercepts;
+  const status = certainlyMeets ? "estimated_current" : "estimated_not_current";
 
   const counted: CountedEntry[] = qualifyingRows.map((e) => ({
     entryId: e.id,
@@ -224,6 +301,11 @@ export function evaluateInstrumentExperience(input: {
       }
     }
   }
+
+  const assumptions = [
+    "Assumes you hold the instrument rating for the intended aircraft's category — this engine has no airman/ratings record and gates on the aircraft instead.",
+    "Matched on the intended aircraft's full category/class field (e.g. \"ASEL\" vs \"AMEL\"), not category alone — this schema has no separate category field, so an approach flown in a different class of the same category will not count here even though 61.57(c) itself conditions only on category.",
+  ];
 
   return {
     currencyType: "instrument",

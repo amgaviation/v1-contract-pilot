@@ -73,9 +73,6 @@ export function evaluateNightExperience(input: {
   }
   for (const g of baseGates(inWindow)) gates.add(g);
   if (aircraftUnregisteredGate(inWindow, takeoffs, landings)) gates.add("aircraft_unregistered");
-  if (intendedAircraft) {
-    for (const g of matchGates(inWindow, intendedAircraft)) gates.add(g);
-  }
 
   // The 1.1-vs-(b)(1) clock: any entry contributing a night takeoff or
   // full-stop night landing must have asserted it was inside the (b)(1)
@@ -86,13 +83,31 @@ export function evaluateNightExperience(input: {
     }
   }
 
+  // matchGates (P1/ambiguous-facts.ts): only evaluated once every other,
+  // unconditional gate above is clear — see general.ts's identical
+  // comment for why. No gear filter here (see the module header), so
+  // `eligible` is just eligibleEntries — unlike general.ts/part135.ts.
+  let matchNotes: string[] = [];
+  let eligible: CurrencyEntry[] = [];
+  if (intendedAircraft && gates.size === 0) {
+    eligible = eligibleEntries(inWindow, airmanUserId, intendedAircraft);
+    const certainTakeoffs = eligible.reduce((sum, e) => sum + takeoffs(e), 0);
+    const certainLandings = eligible.reduce((sum, e) => sum + landings(e), 0);
+    const m = matchGates(
+      inWindow, airmanUserId, intendedAircraft, takeoffs, landings, TAKEOFF_THRESHOLD, LANDING_THRESHOLD,
+      certainTakeoffs, certainLandings
+    );
+    for (const g of m.gates) gates.add(g);
+    matchNotes = m.notes;
+  }
+
   const missing = MISSING_INPUT_ORDER.filter((m) => gates.has(m));
 
   // A NOTE, NOT A GATE: a night flight with a daytime landing is
   // legitimate and common; treating it as missing data would make this
   // result permanently unresolvable for most pilots. See the module list
   // in docs/CURRENCY-SPEC.md §2.2.
-  const notes: string[] = [];
+  const notes: string[] = [...matchNotes];
   for (const e of inWindow) {
     if ((e.nightTime ?? 0) > 0 && e.nightTakeoffs === 0 && e.nightLandingsFullStop === 0) {
       notes.push(
@@ -120,7 +135,7 @@ export function evaluateNightExperience(input: {
   }
 
   const aircraft = intendedAircraft as AircraftFacts; // non-null: no gates fired
-  const eligible = eligibleEntries(inWindow, airmanUserId, aircraft);
+  // `eligible` was already computed above.
   const totalTakeoffs = eligible.reduce((sum, e) => sum + takeoffs(e), 0);
   const totalLandings = eligible.reduce((sum, e) => sum + landings(e), 0);
   const status =

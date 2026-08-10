@@ -80,6 +80,7 @@ export type MissingInput =
   | "night_window_unasserted"
   | "approach_condition_unrecorded"
   | "unresolvable_simulator_row"
+  | "device_category_unconfirmed"
   | "operating_rule_unspecified"
   | "flight_review_completion_absent"
   | "flight_review_completion_in_future"
@@ -99,6 +100,7 @@ export const MISSING_INPUT_ORDER: readonly MissingInput[] = [
   "night_window_unasserted",
   "approach_condition_unrecorded",
   "unresolvable_simulator_row",
+  "device_category_unconfirmed",
   "operating_rule_unspecified",
   "flight_review_completion_absent",
   "flight_review_completion_in_future",

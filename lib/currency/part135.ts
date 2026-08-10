@@ -146,7 +146,6 @@ function evaluateVariant(
   const landings = intendedAircraft ? landingsFor(intendedAircraft, variant) : () => 0;
   if (aircraftUnregisteredGate(inWindow, takeoffs, landings)) gates.add("aircraft_unregistered");
   if (intendedAircraft) {
-    for (const g of matchGates(inWindow, intendedAircraft)) gates.add(g);
     for (const g of gearGates(inWindow, intendedAircraft, takeoffs, landings)) gates.add(g);
   }
   if (variant === "night") {
@@ -157,19 +156,38 @@ function evaluateVariant(
     }
   }
 
+  // matchGates (P1/ambiguous-facts.ts): only evaluated once every other,
+  // unconditional gate above is clear — see general.ts's identical
+  // comment for why. `eligible` is computed here (gear-filtered — REGU-2)
+  // rather than after the gate check so matchGates' "certain" total is
+  // the SAME total the arithmetic below uses.
+  let matchNotes: string[] = [];
+  let eligible: CurrencyEntry[] = [];
+  if (intendedAircraft && gates.size === 0) {
+    const aircraft = intendedAircraft;
+    const gearOk = (e: CurrencyEntry) => e.aircraft !== null && gearMatches(e.aircraft, aircraft).matches;
+    eligible = eligibleEntries(inWindow, airmanUserId, aircraft).filter(gearOk);
+    const certainTakeoffs = eligible.reduce((sum, e) => sum + takeoffs(e), 0);
+    const certainLandings = eligible.reduce((sum, e) => sum + landings(e), 0);
+    const m = matchGates(
+      inWindow, airmanUserId, aircraft, takeoffs, landings, TAKEOFF_THRESHOLD, LANDING_THRESHOLD,
+      certainTakeoffs, certainLandings, gearOk
+    );
+    for (const g of m.gates) gates.add(g);
+    matchNotes = m.notes;
+  }
+
   const missing = MISSING_INPUT_ORDER.filter((m) => gates.has(m));
   if (missing.length > 0) {
-    return insufficientVariant(currencyType, ruleBasis, window, missing);
+    return insufficientVariant(currencyType, ruleBasis, window, missing, matchNotes);
   }
 
   const aircraft = intendedAircraft as AircraftFacts; // non-null: no gates fired
   // REGU-2: 135.247(b) reaches back into paragraph (a) as a whole, so a
   // tailwheel intended aircraft requires the LOGGED aircraft's own gear
   // to be tailwheel too — see gearGates above, which would already have
-  // gated a null gear here to insufficient_data.
-  const eligible = eligibleEntries(inWindow, airmanUserId, aircraft).filter(
-    (e) => e.aircraft !== null && gearMatches(e.aircraft, aircraft).matches
-  );
+  // gated a null gear here to insufficient_data. `eligible` was already
+  // computed, gear-filtered, above.
   const totalTakeoffs = eligible.reduce((sum, e) => sum + takeoffs(e), 0);
   const totalLandings = eligible.reduce((sum, e) => sum + landings(e), 0);
   const status =

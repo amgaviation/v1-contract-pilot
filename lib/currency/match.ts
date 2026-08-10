@@ -42,6 +42,20 @@ export function categoryKey(a: AircraftFacts): string | null {
  * they are not, because one of their qualifying entries has an aircraft
  * record with a blank category field).
  *
+ * A KNOWN, DIFFERENT CATEGORY SHORT-CIRCUITS TO A SILENT NON-MATCH,
+ * before the type limb is even looked at. Category alone conclusively
+ * rules a row out — a helicopter entry can never become the same type as
+ * an ASEL intended aircraft no matter how its type rating or designator
+ * would have resolved — so returning early here is what keeps an
+ * unrelated-category row from ever being read as an "unresolved type"
+ * fact. Before this short-circuit existed, a row like that fell through
+ * to the type check below and picked up aircraft_type_unrecorded on the
+ * blank-rating path purely because the code hadn't yet noticed the
+ * category already decided the answer — passenger-shared.ts's matchGates
+ * depends on a decisive non-match never adding to `missing`, or an
+ * irrelevant entry (wrong category, wrong airman, no movements — see that
+ * module) ends up gating a card it could never have changed.
+ *
  * TYPE COMPARES WHEN A TYPE RATING IS REQUIRED — 61.57(a)(1)(ii)
  * ("...and, if a class or type rating is required for that aircraft...")
  * and 135.247(a)(1) ("...and, if a type rating is required, of the same
@@ -53,14 +67,20 @@ export function categoryKey(a: AircraftFacts): string | null {
  * twin) that legally needs one, and reading it as "not required" is how a
  * Citation's landings ended up crediting a Baron's currency (REGU-3). The
  * one case a blank typeRating resolves cleanly, without guessing at a
- * fact this schema does not record, is an entry logged in the SAME type
- * as intended (by typeKey, rating-or-designator): that is a match no
- * matter whether a rating turns out to be required for it. Any other
- * combination — a different type, or either side's type entirely
- * unrecorded — is an UNRESOLVED FACT, not a pass; three full-stop
- * landings in a C172 no longer count toward a PA-28 on category/class
- * alone, because this schema cannot tell that case apart from the
- * Citation/Baron one.
+ * fact this schema does not record, is an entry logged in the SAME
+ * RECORDED type as intended (by typeKey, rating-or-designator, both
+ * non-null): that is a match no matter whether a rating turns out to be
+ * required for it. If the intended aircraft's own type is entirely
+ * unrecorded (neither typeRating nor typeDesignator), NO entry resolves
+ * here this way — not even one logged in the identical aircraft — because
+ * there is no known type value on the intended side to compare against;
+ * general.ts/night.ts/part135.ts already gate that case upstream, from
+ * the intended aircraft's own blank fields, before any entry is ever
+ * checked against it. Any other combination — a different recorded type,
+ * or either side's type entirely unrecorded — is an UNRESOLVED FACT, not
+ * a pass; three full-stop landings in a C172 no longer count toward a
+ * PA-28 on category/class alone, because this schema cannot tell that
+ * case apart from the Citation/Baron one.
  */
 export function sameCategoryClassAndType(
   entry: AircraftFacts,
@@ -72,6 +92,8 @@ export function sameCategoryClassAndType(
   const intendedCategory = categoryKey(intended);
   if (entryCategory === null || intendedCategory === null) {
     missing.push("aircraft_category_class_unrecorded");
+  } else if (entryCategory !== intendedCategory) {
+    return { matches: false, missing: [] };
   }
 
   const entryType = typeKey(entry);
@@ -99,10 +121,9 @@ export function sameCategoryClassAndType(
 
   if (missing.length > 0) return { matches: false, missing };
 
-  return {
-    matches: entryCategory === intendedCategory && typeMatches,
-    missing: [],
-  };
+  // Category is known-equal here (a known mismatch already returned
+  // above; an unknown category already added to `missing` above).
+  return { matches: typeMatches, missing: [] };
 }
 
 /**

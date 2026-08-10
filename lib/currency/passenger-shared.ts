@@ -12,22 +12,30 @@
  */
 import { withinInclusive } from "./window";
 import { gearMatches, sameCategoryClassAndType } from "./match";
+import { missingFactCouldChangeAnswer } from "./ambiguous-facts";
 import type { AircraftFacts, CountedEntry, CurrencyEntry, DateWindow, IsoDate, MissingInput } from "./types";
 
 /**
  * When the intended aircraft carries no recorded type rating, match.ts's
  * sameCategoryClassAndType does NOT read that as "no rating required" —
  * a blank rating is not evidence a rating isn't needed (REGU-3). An entry
- * of the SAME type as intended still counts; a DIFFERENT type is treated
- * as unresolved (insufficient_data), not a silent pass on category/class
- * alone. Disclosed here as a shared assumption string so general.ts,
- * night.ts and part135.ts render identical wording rather than three
- * hand-copied sentences drifting apart.
+ * of the SAME type as intended still counts; a DIFFERENT (or unrecorded)
+ * type is excluded from this total UNLESS resolving it could change
+ * whether you are current — see matchGates below, which only asks you to
+ * resolve a specific entry's type when it could actually be the
+ * difference, not merely because it exists in the window (P1/P3: an
+ * earlier version of this sentence claimed a silent exclusion in every
+ * case, which was only ever true when the described case had not
+ * occurred — supplying the fact matters, or it doesn't, and only the
+ * first case reaches a card at all). Disclosed here as a shared
+ * assumption string so general.ts, night.ts and part135.ts render
+ * identical wording rather than three hand-copied sentences drifting
+ * apart.
  */
 export function typeMatchAssumption(intended: AircraftFacts): string | null {
   const required = intended.typeRating !== null && intended.typeRating.trim() !== "";
   if (required) return null;
-  return "No type rating is recorded for the intended aircraft, so an entry in a different type of aircraft is not counted here — only entries of the SAME type as the intended aircraft resolve without one; see match.ts for why an absent rating is not read as \"none required.\"";
+  return "No type rating is recorded for the intended aircraft, so a different (or unrecorded) type of aircraft is not read as \"no rating required\" — an entry of the SAME type as the intended aircraft still counts; a different type is excluded from this total unless it could be the difference between current and not, in which case this card asks you to resolve it rather than guessing. See match.ts for why an absent rating is not read as \"none required.\"";
 }
 
 export const NINETY_DAYS = 90;
@@ -103,18 +111,106 @@ export function aircraftUnregisteredGate(
  * window — see match.ts's header: a null category/type on an entry's
  * registered aircraft is a missing input, never silently treated as "not
  * this type," which would tell a current pilot they are not.
+ *
+ * SCOPED BY lib/currency/ambiguous-facts.ts's RULE (P1): a missing type or
+ * category on one entry gates the card ONLY IF resolving it could change
+ * whether the pilot is current. Two things follow, and both are load-
+ * bearing — an earlier version of this function got neither right, and
+ * turned one unrelated logbook entry into a whole-card gate for every
+ * pilot whose intended aircraft carries no recorded type rating:
+ *
+ *   1. RELEVANCE FIRST. An entry that could never contribute regardless
+ *      of how its ambiguous fact resolved — wrong airman, a role that
+ *      never counts (DUAL_RECEIVED), sole manipulator not affirmed, no
+ *      aircraft on record, zero takeoffs or landings, or (via match.ts's
+ *      own short-circuit) a KNOWN different category — is never even
+ *      considered here. `eligibleEntries` below already applies every one
+ *      of those filters for the CERTAIN count; `ambiguousMatchEntries`
+ *      applies the identical filters, minus the one fact actually in
+ *      question, for the entries whose ambiguity might matter.
+ *   2. ARITHMETIC SECOND. Among the entries that survive #1, the fact
+ *      only gates if the pilot is short on the CERTAIN total but would
+ *      clear it on the BEST-CASE total (certain + every ambiguous entry
+ *      counted as if it matched) — missingFactCouldChangeAnswer's own
+ *      comparison. If certain alone already clears the bar, the
+ *      ambiguity is moot and the card answers from certain alone. If even
+ *      best-case falls short, the ambiguity is ALSO moot — the pilot is
+ *      not current regardless — and the card again answers from certain
+ *      alone (never from best-case: an unresolved fact is never credited,
+ *      only ever asked about).
+ */
+function ambiguousMatchEntries(
+  inWindow: readonly CurrencyEntry[],
+  airmanUserId: string,
+  intendedAircraft: AircraftFacts,
+  takeoffs: (e: CurrencyEntry) => number,
+  landings: (e: CurrencyEntry) => number,
+  isOtherwiseEligible: (e: CurrencyEntry) => boolean
+): { entry: CurrencyEntry; missing: MissingInput[] }[] {
+  const out: { entry: CurrencyEntry; missing: MissingInput[] }[] = [];
+  for (const e of inWindow) {
+    if (e.airmanUserId !== airmanUserId) continue;
+    if (!actingRoleAllowed(e.role)) continue;
+    if (e.soleManipulator !== true) continue;
+    if (e.aircraft === null) continue; // handled by aircraftUnregisteredGate
+    if (takeoffs(e) <= 0 && landings(e) <= 0) continue; // cannot contribute either way
+    // A caller-supplied fact besides type/category can ALSO conclusively
+    // rule an entry out — general.ts/part135.ts pass a gear-compatibility
+    // check here so a tricycle entry's ambiguous TYPE never gets asked
+    // about when its already-KNOWN gear mismatch means it could never
+    // have contributed regardless of how the type resolved.
+    if (!isOtherwiseEligible(e)) continue;
+    const { matches, missing } = sameCategoryClassAndType(e.aircraft, intendedAircraft);
+    if (!matches && missing.length > 0) out.push({ entry: e, missing });
+  }
+  return out;
+}
+
+/**
+ * `certainTakeoffs`/`certainLandings` are the CALLER's own already-computed
+ * certain total — general.ts/part135.ts's is gear-filtered on top of
+ * `eligibleEntries`, night.ts's is `eligibleEntries` alone (see each
+ * module's own gear-gate header for why they differ) — passed in rather
+ * than recomputed here so this function can never silently use a
+ * DIFFERENT "certain" than the one the card's own arithmetic will use.
+ * `isOtherwiseEligible` is that same additional filter, applied to the
+ * AMBIGUOUS side for the identical reason (see ambiguousMatchEntries
+ * above); omit it where there is no such additional fact (night.ts).
  */
 export function matchGates(
   inWindow: readonly CurrencyEntry[],
-  intendedAircraft: AircraftFacts
-): Set<MissingInput> {
+  airmanUserId: string,
+  intendedAircraft: AircraftFacts,
+  takeoffs: (e: CurrencyEntry) => number,
+  landings: (e: CurrencyEntry) => number,
+  takeoffThreshold: number,
+  landingThreshold: number,
+  certainTakeoffs: number,
+  certainLandings: number,
+  isOtherwiseEligible: (e: CurrencyEntry) => boolean = () => true
+): { gates: Set<MissingInput>; notes: string[] } {
+  const noGate = { gates: new Set<MissingInput>(), notes: [] as string[] };
+
+  const ambiguous = ambiguousMatchEntries(inWindow, airmanUserId, intendedAircraft, takeoffs, landings, isOtherwiseEligible);
+  if (ambiguous.length === 0) return noGate;
+
+  const certainlyMeets = certainTakeoffs >= takeoffThreshold && certainLandings >= landingThreshold;
+
+  const bestTakeoffs = certainTakeoffs + ambiguous.reduce((sum, a) => sum + takeoffs(a.entry), 0);
+  const bestLandings = certainLandings + ambiguous.reduce((sum, a) => sum + landings(a.entry), 0);
+  const bestCaseMeets = bestTakeoffs >= takeoffThreshold && bestLandings >= landingThreshold;
+
+  if (!missingFactCouldChangeAnswer(certainlyMeets, bestCaseMeets)) return noGate;
+
   const gates = new Set<MissingInput>();
-  for (const e of inWindow) {
-    if (e.aircraft === null) continue; // handled by aircraftUnregisteredGate
-    const { missing } = sameCategoryClassAndType(e.aircraft, intendedAircraft);
-    for (const m of missing) gates.add(m);
+  const notes: string[] = [];
+  for (const a of ambiguous) {
+    for (const m of a.missing) gates.add(m);
+    notes.push(
+      `Entry ${a.entry.entryDate}: its aircraft's type or category could not be matched against the intended aircraft, and its takeoffs/landings could be the difference between current and not current — resolving the aircraft's type rating, type designator, or category/class would settle it.`
+    );
   }
-  return gates;
+  return { gates, notes };
 }
 
 /**

@@ -441,6 +441,94 @@ test("61.57(a): any simulator row in the window is unresolvable, never counted a
 });
 
 // ---------------------------------------------------------------------------
+// P1: matchGates's "could this change the answer" scoping — the highest-
+// severity finding of the third review round. A single unrelated entry
+// with an unresolvable type must never empty the whole card when the
+// pilot's certain entries already answer it, or when they never could.
+// ---------------------------------------------------------------------------
+
+test("61.57(a), P1: a blank-typeRating intended aircraft with THREE CERTAIN qualifying entries is estimated_current even with an unrelated, unresolvable-type entry in the window", () => {
+  const blank = aircraft({ typeRating: null, typeDesignator: "PA28", categoryClass: "ASEL", gear: "tricycle" });
+  const sameType = aircraft({ typeRating: null, typeDesignator: "PA28", categoryClass: "ASEL", gear: "tricycle" });
+  const differentType = aircraft({ typeRating: null, typeDesignator: "C172", categoryClass: "ASEL", gear: "tricycle" });
+  const entries = [
+    entry({ entryDate: "2026-07-01", dayTakeoffs: 1, dayLandingsFullStop: 1, aircraft: sameType }),
+    entry({ entryDate: "2026-07-10", dayTakeoffs: 1, dayLandingsFullStop: 1, aircraft: sameType }),
+    entry({ entryDate: "2026-07-20", dayTakeoffs: 1, dayLandingsFullStop: 1, aircraft: sameType }),
+    // Ambiguous type, but the three entries above already reach 3/3 —
+    // this entry could never change the answer and must not gate.
+    entry({ entryDate: "2026-07-15", dayTakeoffs: 3, dayLandingsFullStop: 3, aircraft: differentType }),
+  ];
+  const r = evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: blank, entries });
+  assert.equal(r.status, "estimated_current");
+  assert.equal(r.observed.takeoffs, 3, "the ambiguous entry's takeoffs are not credited either — it is excluded, not resolved");
+  assert.deepEqual(r.missing, []);
+});
+
+test("61.57(a), P1: the SAME shape, but short by one entry — the ambiguous entry COULD make up the difference, so this is insufficient_data, not estimated_not_current", () => {
+  const blank = aircraft({ typeRating: null, typeDesignator: "PA28", categoryClass: "ASEL", gear: "tricycle" });
+  const sameType = aircraft({ typeRating: null, typeDesignator: "PA28", categoryClass: "ASEL", gear: "tricycle" });
+  const differentType = aircraft({ typeRating: null, typeDesignator: "C172", categoryClass: "ASEL", gear: "tricycle" });
+  const entries = [
+    entry({ entryDate: "2026-07-01", dayTakeoffs: 1, dayLandingsFullStop: 1, aircraft: sameType }),
+    entry({ entryDate: "2026-07-10", dayTakeoffs: 1, dayLandingsFullStop: 1, aircraft: sameType }),
+    // Only 2/2 certain — this ambiguous entry could be the difference.
+    entry({ entryDate: "2026-07-15", dayTakeoffs: 3, dayLandingsFullStop: 3, aircraft: differentType }),
+  ];
+  const r = evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: blank, entries });
+  assert.equal(r.status, "insufficient_data");
+  assert.ok(r.missing.includes("aircraft_type_unrecorded"));
+  assert.ok(r.notes.some((n) => n.includes("2026-07-15")), "the card must name which entry is unresolved");
+});
+
+test("61.57(a), P1: short even in the BEST case — the ambiguous entry could not have changed a not-current answer either, so it must not gate", () => {
+  const blank = aircraft({ typeRating: null, typeDesignator: "PA28", categoryClass: "ASEL", gear: "tricycle" });
+  const differentType = aircraft({ typeRating: null, typeDesignator: "C172", categoryClass: "ASEL", gear: "tricycle" });
+  const entries = [
+    // Zero certain entries, and the one ambiguous entry alone is short
+    // (2 of 3) even if it resolved in the pilot's favor.
+    entry({ entryDate: "2026-07-15", dayTakeoffs: 2, dayLandingsFullStop: 2, aircraft: differentType }),
+  ];
+  const r = evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: blank, entries });
+  assert.equal(r.status, "estimated_not_current");
+  assert.deepEqual(r.missing, []);
+});
+
+test("61.57(a), P1: an entry that could never contribute — zero movements, another airman, DUAL_RECEIVED, or an unrelated CATEGORY — never gates, even when the pilot is short", () => {
+  const blank = aircraft({ typeRating: null, typeDesignator: "PA28", categoryClass: "ASEL", gear: "tricycle" });
+  const differentType = aircraft({ typeRating: null, typeDesignator: "C172", categoryClass: "ASEL", gear: "tricycle" });
+  const helicopter = aircraft({ typeRating: null, typeDesignator: "B407", categoryClass: "HELICOPTER", gear: "skid" });
+
+  const zeroMovement = evaluateGeneralExperience({
+    asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: blank,
+    entries: [entry({ entryDate: "2026-07-15", dayTakeoffs: 0, dayLandingsFullStop: 0, aircraft: differentType })],
+  });
+  assert.equal(zeroMovement.status, "estimated_not_current");
+  assert.deepEqual(zeroMovement.missing, []);
+
+  const otherAirman = evaluateGeneralExperience({
+    asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: blank,
+    entries: [entry({ entryDate: "2026-07-15", dayTakeoffs: 3, dayLandingsFullStop: 3, aircraft: differentType, airmanUserId: OTHER_AIRMAN })],
+  });
+  assert.equal(otherAirman.status, "estimated_not_current");
+  assert.deepEqual(otherAirman.missing, []);
+
+  const dualReceived = evaluateGeneralExperience({
+    asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: blank,
+    entries: [entry({ entryDate: "2026-07-15", dayTakeoffs: 3, dayLandingsFullStop: 3, aircraft: differentType, role: "DUAL_RECEIVED" })],
+  });
+  assert.equal(dualReceived.status, "estimated_not_current");
+  assert.deepEqual(dualReceived.missing, []);
+
+  const unrelatedCategory = evaluateGeneralExperience({
+    asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: blank,
+    entries: [entry({ entryDate: "2026-07-15", dayTakeoffs: 3, dayLandingsFullStop: 3, aircraft: helicopter })],
+  });
+  assert.equal(unrelatedCategory.status, "estimated_not_current");
+  assert.deepEqual(unrelatedCategory.missing, [], "a KNOWN different category is a decisive non-match, not an unresolved type");
+});
+
+// ---------------------------------------------------------------------------
 // night.ts — 61.57(b). Fixture named first in the task brief.
 // ---------------------------------------------------------------------------
 
@@ -484,16 +572,28 @@ test("61.57(b): a night flight with a daytime landing is a NOTE, not a missing-d
   assert.ok(r.notes.some((n) => n.includes("night time with no night takeoff")));
 });
 
-test("61.57(b) has no tailwheel gate of its own: a tailwheel intended aircraft changes nothing about the arithmetic here", () => {
+test("61.57(b) has no tailwheel gate of its own: entries flown in a TRICYCLE aircraft still count toward a tailwheel intended aircraft, because (b) never conditions on gear", () => {
+  // P6: the old version of this fixture built every entry in the SAME
+  // tailwheel aircraft as intended, so a mutation that made night.ts
+  // adopt general.ts's gear gate/filter (gearGates + the gearMatches
+  // eligible filter) would still pass — gearMatches(tw, tw) is a trivial
+  // match either way. This version is the discriminating case: if night.ts
+  // ever adopted that gate, these tricycle-flown entries would be
+  // EXCLUDED and the status would flip to estimated_not_current with 0
+  // landings, exactly as general.ts's own A-15-equivalent fixture behaves.
   const tw = aircraft({ gear: "tailwheel" });
+  const tri = aircraft({ gear: "tricycle" });
   const entries = [
-    entry({ entryDate: "2026-07-01", nightTakeoffs: 1, nightLandingsFullStop: 1, nightWindowAsserted: true, aircraft: tw }),
-    entry({ entryDate: "2026-07-10", nightTakeoffs: 1, nightLandingsFullStop: 1, nightWindowAsserted: true, aircraft: tw }),
-    entry({ entryDate: "2026-07-20", nightTakeoffs: 1, nightLandingsFullStop: 1, nightWindowAsserted: true, aircraft: tw }),
+    entry({ entryDate: "2026-07-01", nightTakeoffs: 1, nightLandingsFullStop: 1, nightWindowAsserted: true, aircraft: tri }),
+    entry({ entryDate: "2026-07-10", nightTakeoffs: 1, nightLandingsFullStop: 1, nightWindowAsserted: true, aircraft: tri }),
+    entry({ entryDate: "2026-07-20", nightTakeoffs: 1, nightLandingsFullStop: 1, nightWindowAsserted: true, aircraft: tri }),
   ];
   const r = evaluateNightExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: tw, entries });
   assert.equal(r.status, "estimated_current");
-  assert.ok(!r.missing.includes("aircraft_gear_unrecorded"));
+  assert.equal(r.observed.takeoffs, 3);
+  assert.equal(r.observed.landings, 3, "a tricycle-flown entry's landings must still count — (b) has no gear predicate to exclude them");
+  assert.deepEqual(r.missing, []);
+  assert.ok(!r.missing.includes("aircraft_gear_unrecorded"), "night.ts must never gate on the LOGGED aircraft's gear either");
 });
 
 // ---------------------------------------------------------------------------
@@ -517,26 +617,34 @@ test("61.57(c): an untyped approach (approach_type IS NULL) is not counted", () 
   assert.equal(r.observed.approaches, 0);
 });
 
-test("61.57(c): all three device classes (FFS/FTD/ATD) count, unlike (a)/(b) — no part 142 condition here", () => {
+test("61.57(c): all three device classes (FFS/FTD/ATD) are accepted device classes, unlike (a)/(b) — no part 142 condition here — and don't poison an otherwise-sufficient card", () => {
+  // P2: a device row can never be CERTAIN (this schema has no field
+  // recording what category a device represents, so 61.57(c)(2)'s own
+  // "the device represents the category of aircraft" predicate can never
+  // be confirmed) — but it also must not gate when it isn't needed. Real
+  // aircraft entries alone already clear all three thresholds here, so
+  // the paired ffs/ftd/atd row (unlike 'other', tested below) must not
+  // change the answer.
   for (const device of ["ffs", "ftd", "atd"]) {
     const entries = [
+      entry({ entryDate: "2026-07-01", approachesCount: 6, approachType: "ils", approachCondition: "actual", holds: 1, coursesInterceptedTracked: true }),
       entry({
-        entryDate: "2026-07-01",
-        approachesCount: 6,
+        entryDate: "2026-07-05",
+        approachesCount: 2,
         approachType: "ils",
         approachCondition: "simulated",
         simulatorTime: 1.0,
         simulatorDeviceType: device,
-        holds: 1,
-        coursesInterceptedTracked: true,
       }),
     ];
     const r = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
-    assert.equal(r.status, "estimated_current", `device ${device} should count toward (c)`);
+    assert.equal(r.status, "estimated_current", `an unneeded device row (${device}) must not gate an otherwise-sufficient card`);
+    assert.equal(r.observed.approaches, 6, `the unneeded device row's approaches are not credited (${device})`);
+    assert.deepEqual(r.missing, []);
   }
 });
 
-test("61.57(c): device class 'other' is unresolvable, the one exception (c) does not extend to", () => {
+test("61.57(c): device class 'other' is unresolvable, unconditionally — the one exception (c) does not extend to", () => {
   const entries = [
     entry({
       entryDate: "2026-07-01",
@@ -552,13 +660,16 @@ test("61.57(c): device class 'other' is unresolvable, the one exception (c) does
   assert.ok(r.missing.includes("unresolvable_simulator_row"));
 });
 
-test("61.57(c), REGU-4/CORR-1: a device row has NO tail number by design and must still credit (c)(2)", () => {
+test("61.57(c), P2: a device row has NO tail number by design (REGU-4/CORR-1) but STILL can't singlehandedly prove currency — the device-represents-category predicate is unconfirmable, not unconditional credit", () => {
   // A simulator session has no aircraft in pilot.aircraft — that is the
-  // whole point of the simulator-role migration. Routing it through the
-  // aircraft registry (categoryMatches) made every FFS/FTD/ATD row
-  // uncreditable and, worse, fired aircraft_unregistered for the whole
-  // card with a remedy ("register the aircraft") no pilot can act on for
-  // a device session.
+  // whole point of the simulator-role migration, and routing it through
+  // the aircraft registry (categoryMatches) is the REGU-4/CORR-1
+  // regression this must NOT reintroduce (no aircraft_unregistered here).
+  // But crediting it unconditionally, with no test of 61.57(c)(2)'s own
+  // "represents the category of aircraft" predicate, was the OPPOSITE
+  // regression (P2) — this schema cannot confirm that predicate for any
+  // device row, ever, so a lone device row that is the ONLY source of
+  // currency must ask, not answer.
   const entries = [
     entry({
       entryDate: "2026-07-01",
@@ -573,9 +684,28 @@ test("61.57(c), REGU-4/CORR-1: a device row has NO tail number by design and mus
     }),
   ];
   const r = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
-  assert.equal(r.status, "estimated_current");
+  assert.equal(r.status, "insufficient_data");
+  assert.deepEqual(r.missing, ["device_category_unconfirmed"]);
+  assert.ok(!r.missing.includes("aircraft_unregistered"), "must never fall back to the registry gate for a device row");
+});
+
+test("61.57(c), P9: a MIXED row (real approaches in ACTUAL conditions, alongside unrelated simulator time on the same entry) counts its real-aircraft approaches — simulatorTime alone must not route it into the device branch", () => {
+  const entries = [
+    entry({
+      entryDate: "2026-07-01",
+      approachesCount: 6,
+      approachType: "ils",
+      approachCondition: "actual", // actual weather cannot happen in a device — this is a REAL aircraft row
+      simulatorTime: 0.5, // e.g. a debrief session logged on the same entry — irrelevant to the ACTUAL approaches
+      simulatorDeviceType: "ffs",
+      holds: 1,
+      coursesInterceptedTracked: true,
+    }),
+  ];
+  const r = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
+  assert.equal(r.status, "estimated_current", "the real-aircraft approaches must not be silently zeroed out by the unrelated simulatorTime field");
+  assert.equal(r.observed.approaches, 6);
   assert.deepEqual(r.missing, []);
-  assert.ok(!r.missing.includes("aircraft_unregistered"));
 });
 
 test("61.57(c), REGU-4/CORR-1: an unrelated device row with no aircraft must not poison an otherwise-current instrument card", () => {
