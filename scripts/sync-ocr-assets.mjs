@@ -16,9 +16,15 @@
  *   2. It is a runtime dependency on someone else's uptime for a feature a
  *      pilot uses standing at a fuel desk. Self-hosted, the assets are as
  *      available as the app itself.
- *   3. The version is resolved from a semver range in tesseract.js's own
- *      package.json, so the bytes executed could change without a commit
- *      here.
+ *   3. It removes a second, independent version resolution. tesseract.js
+ *      builds its CDN URL from the `^7.0.0` range in its own package.json,
+ *      so jsdelivr could serve different bytes on two different days with
+ *      no change here. Copying from node_modules means the bytes are
+ *      whatever install produced — which package-lock.json plus CI's
+ *      `npm ci` pin, and which nothing else can move. Worth stating
+ *      precisely: it is the LOCKFILE that pins the version, not this
+ *      script. Self-hosting removes the runtime resolution; it does not by
+ *      itself guarantee a fixed version.
  *
  * WHY IT IS A COPY AND NOT A COMMIT. These are ~11 MB of binaries whose
  * source of truth is package-lock.json. Committing them would put a
@@ -107,16 +113,48 @@ bytes += copy(
   "eng language model"
 );
 
-// A wrong-variant guess would surface as a 404 inside a web worker in
-// front of a pilot, which is close to undiagnosable. Assert the coupling
-// here instead: engine.ts must not ask for a core this script didn't copy.
+// A regression to a CDN default would surface as remote code executing in
+// the pilot's session, or as a 404 inside a web worker — neither of which
+// is diagnosable from the outside. Assert the coupling here instead.
+//
+// ALL THREE PATHS, not just one. This check used to test `corePath` alone,
+// and a security review demonstrated the hole by deleting the workerPath
+// and langPath lines from engine.ts and running this script against that
+// tree: it printed its success line and exited 0. Each path has its own
+// independent jsdelivr fallback —
+//   workerPath  src/worker/browser/defaultOptions.js
+//   corePath    src/worker-script/browser/getCore.js
+//   langPath    src/worker-script/index.js
+// — and `workerPath` is the one that matters most: spawnWorker.js feeds it
+// to importScripts() inside a worker that inherits this document's origin,
+// so losing it means CDN-served JavaScript running with the pilot's
+// session, not in a sandbox.
 const engineSource = readFileSync(join(ROOT, "lib", "receipt-ocr", "engine.ts"), "utf8");
-if (!engineSource.includes('corePath: "/ocr/core"')) {
+const REQUIRED_PATHS = [
+  ['workerPath: "/ocr/worker.min.js"', "the worker script"],
+  ['corePath: "/ocr/core"', "the WebAssembly core"],
+  ['langPath: "/ocr/lang"', "the language model"],
+];
+for (const [needle, what] of REQUIRED_PATHS) {
+  if (engineSource.includes(needle)) continue;
   console.error(
-    "sync-ocr-assets: lib/receipt-ocr/engine.ts no longer points corePath at\n" +
-      "/ocr/core. Either it regressed to the jsdelivr default (see the header\n" +
-      "of this file for why that is not allowed) or the layout changed and\n" +
-      "this script needs updating."
+    `sync-ocr-assets: lib/receipt-ocr/engine.ts no longer self-hosts ${what}.\n` +
+      `  expected to find: ${needle}\n` +
+      "Without it tesseract.js falls back to jsdelivr — see the header of this\n" +
+      "file for why that is not allowed. If the layout changed deliberately,\n" +
+      "update REQUIRED_PATHS here to match."
+  );
+  process.exit(1);
+}
+// The blob indirection exists in tesseract.js only to work around loading a
+// worker from a cross-origin CDN. Same-origin, it buys nothing and costs
+// `blob:` in script-src forever — a standard CSP-bypass primitive, and
+// next.config.ts already owes this app a CSP.
+if (!/workerBlobURL:\s*false/.test(engineSource)) {
+  console.error(
+    "sync-ocr-assets: engine.ts must pass workerBlobURL: false. The default\n" +
+      "wraps the worker in a blob: URL, which would force `script-src blob:`\n" +
+      "into the Content-Security-Policy this app still owes."
   );
   process.exit(1);
 }

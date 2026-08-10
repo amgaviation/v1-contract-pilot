@@ -56,6 +56,27 @@ const MAX_EDGE = 2200;
 /** Below this, upscaling buys the segmenter more than it costs in blur. */
 const MIN_EDGE = 1200;
 
+/**
+ * Mirrors MAX_RECEIPT_BYTES in app/(app)/expenses/actions.ts and the
+ * bucket's own file_size_limit. Checked here as well as there because a
+ * scan happens BEFORE the save: without it a pilot learns their photo was
+ * too big only after sitting through a read and pressing save.
+ */
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+
+/**
+ * A decode bound, which the MAX_EDGE cap below cannot provide.
+ *
+ * `createImageBitmap` decodes the WHOLE image before `prepare()` gets a
+ * chance to scale anything, so the canvas cap bounds the OCR work but not
+ * the allocation in front of it. A PNG decompression bomb — tens of
+ * kilobytes on the wire, 30000x30000 on decode — is ~3.6 GB of RGBA and
+ * takes the tab down with the half-filled expense form in it. 40 Mpx is
+ * about four times the largest phone sensor a pilot will point at a
+ * receipt, so nothing real trips it.
+ */
+const MAX_DECODED_PIXELS = 40_000_000;
+
 export class ReceiptOcrError extends Error {
   constructor(message: string) {
     super(message);
@@ -77,6 +98,12 @@ async function decode(file: File): Promise<ImageBitmap | HTMLImageElement> {
   if (file.type === "application/pdf") {
     throw new ReceiptOcrError(
       "Scanning reads photos and images, not PDFs. Attach the PDF to the expense and type the amounts, or photograph the printed copy."
+    );
+  }
+
+  if (file.size > MAX_FILE_BYTES) {
+    throw new ReceiptOcrError(
+      "That photo is over 10 MB, which is more than a receipt needs. Take it again at a lower resolution, or crop it to the receipt."
     );
   }
 
@@ -174,6 +201,13 @@ function prepare(source: ImageBitmap | HTMLImageElement): HTMLCanvasElement {
   if (!width || !height) {
     throw new ReceiptOcrError("That image came through empty. Try taking the photo again.");
   }
+  if (width * height > MAX_DECODED_PIXELS) {
+    // Refused rather than scaled down: an image this size is not a photo
+    // of a receipt, and scaling it means having already allocated it.
+    throw new ReceiptOcrError(
+      "That image is far too large to be a receipt photo. Crop it to the receipt and try again."
+    );
+  }
 
   const longEdge = Math.max(width, height);
   const scale = longEdge > MAX_EDGE ? MAX_EDGE / longEdge : longEdge < MIN_EDGE ? MIN_EDGE / longEdge : 1;
@@ -246,25 +280,62 @@ export async function readReceipt(
 ): Promise<OcrResult> {
   onProgress({ message: "Opening the photo", fraction: null });
   const decoded = await decode(file);
-  const canvas = prepare(decoded);
-  if ("close" in decoded) decoded.close();
-  if (signal?.aborted) throw new ReceiptOcrError("Scan cancelled.");
+  let canvas: HTMLCanvasElement;
+  try {
+    canvas = prepare(decoded);
+  } finally {
+    // Released even when prepare() throws — which it does on the oversize
+    // and empty-image paths. Leaked across a few retries on a phone, a
+    // decoded ImageBitmap is tens of megabytes of GPU-backed memory.
+    if ("close" in decoded) decoded.close();
+  }
+  const release = () => {
+    canvas.width = 0;
+    canvas.height = 0;
+  };
+  if (signal?.aborted) {
+    release();
+    throw new ReceiptOcrError("Scan cancelled.");
+  }
 
   onProgress({ message: "Loading the reader", fraction: null });
-  const worker = await (await resolveCreateWorker())("eng", undefined, {
-    // Self-hosted, never the jsdelivr default. scripts/sync-ocr-assets.mjs
-    // puts these here and asserts this line still points at them.
-    workerPath: "/ocr/worker.min.js",
-    corePath: "/ocr/core",
-    langPath: "/ocr/lang",
-    logger: (m: { status: string; progress: number }) => {
-      if (m.status === "recognizing text") {
-        onProgress({ message: "Reading the receipt", fraction: m.progress });
-      } else if (m.status.startsWith("loading") || m.status.startsWith("initializ")) {
-        onProgress({ message: "Loading the reader", fraction: null });
-      }
-    },
-  });
+  let worker: Awaited<ReturnType<typeof import("tesseract.js").createWorker>>;
+  try {
+    worker = await (await resolveCreateWorker())("eng", undefined, {
+      // Self-hosted, never the jsdelivr default. scripts/sync-ocr-assets.mjs
+      // puts these here and asserts all three still point at them.
+      workerPath: "/ocr/worker.min.js",
+      corePath: "/ocr/core",
+      langPath: "/ocr/lang",
+      // tesseract.js defaults this TRUE: it fetches the worker script and
+      // re-serves it as a blob: URL, which exists purely to work around
+      // loading a worker from a cross-origin CDN. Same-origin it buys
+      // nothing, and it is not free — a blob worker inherits this
+      // document's origin and CSP, so allowing it means `script-src blob:`
+      // in the Content-Security-Policy next.config.ts already says this app
+      // owes. `script-src blob:` is a standard way to defeat a nonce
+      // policy: any future XSS can createObjectURL a Blob of JavaScript and
+      // run it.
+      workerBlobURL: false,
+      logger: (m: { status: string; progress: number }) => {
+        if (m.status === "recognizing text") {
+          onProgress({ message: "Reading the receipt", fraction: m.progress });
+        } else if (m.status.startsWith("loading") || m.status.startsWith("initializ")) {
+          onProgress({ message: "Loading the reader", fraction: null });
+        }
+      },
+    });
+  } catch (cause) {
+    // The worker never came up — a dead connection mid-download, or the
+    // interop guard above. Release the canvas before rethrowing: on bad FBO
+    // wifi a pilot retries this several times, and each failed attempt
+    // otherwise leaves a full-size canvas behind.
+    release();
+    if (cause instanceof ReceiptOcrError) throw cause;
+    throw new ReceiptOcrError(
+      "Couldn't start the reader. Check your connection and try again — the first scan downloads about 6 MB."
+    );
+  }
 
   // Recognition itself has no abort hook — tesseract.js exposes no way to
   // interrupt a running recognize(). Killing the worker is the only real
@@ -290,7 +361,6 @@ export async function readReceipt(
     // pilot sees. Calling it twice after an abort is harmless for the same
     // reason.
     void worker.terminate().catch(() => {});
-    canvas.width = 0;
-    canvas.height = 0;
+    release();
   }
 }

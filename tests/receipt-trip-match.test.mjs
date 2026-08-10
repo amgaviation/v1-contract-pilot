@@ -83,6 +83,39 @@ test("a day either side of the trip still counts as during it", async (t) => {
   });
 });
 
+test("one candidate is still checked against the date", async (t) => {
+  // THE REGRESSION THIS BLOCK EXISTS FOR. The single-candidate branch used
+  // to return before the date window was consulted, which made the window
+  // effectively infinite in exactly the common case — a contract pilot
+  // usually has ONE logged trip per tail, not two. A March trip in N447SP
+  // took an August receipt, auto-selected the trip, and through the
+  // client's default treatment flipped it to "rebill": a client invoiced
+  // for a charge from five months outside their trip.
+  await t.test("a receipt months outside the only trip is not that trip", () => {
+    const m = matchTrip([TETERBORO], { aircraftIdent: "N447SP", date: "2026-08-09" });
+    assert.equal(m.kind, "several");
+    assert.match(m.because, /but not on 2026-08-09/);
+  });
+
+  await t.test("nor is one from before the pilot ever flew it", () => {
+    assert.equal(
+      matchTrip([TETERBORO], { aircraftIdent: "N447SP", date: "2025-01-01" }).kind,
+      "several"
+    );
+  });
+
+  await t.test("in period, one candidate is still matched", () => {
+    const m = matchTrip([TETERBORO], { aircraftIdent: "N447SP", date: "2026-03-15" });
+    assert.equal(m.kind, "one");
+  });
+
+  await t.test("no date at all: offered, but the missing evidence is said out loud", () => {
+    const m = matchTrip([TETERBORO], { aircraftIdent: "N447SP", date: null });
+    assert.equal(m.kind, "one", "one candidate is still the only candidate");
+    assert.match(m.because, /couldn't read a date/);
+  });
+});
+
 test("it refuses to guess rather than attaching a charge to the wrong trip", async (t) => {
   await t.test("two trips on the same aircraft in the same window", () => {
     const a = trip("a", "N447SP", "2026-03-14", "2026-03-16");

@@ -100,15 +100,17 @@ export function matchTrip(
 
   const shown = receipt.aircraftIdent.toUpperCase();
 
-  if (sameAircraft.length === 1) {
-    return {
-      kind: "one",
-      trip: sameAircraft[0]!,
-      because: `${shown} is on the receipt, and you flew it on one trip.`,
-    };
-  }
-
+  // No date to check against. One candidate is still the only candidate,
+  // so it is offered — but the missing evidence is said out loud rather
+  // than presented as a confirmed match.
   if (!receipt.date) {
+    if (sameAircraft.length === 1) {
+      return {
+        kind: "one",
+        trip: sameAircraft[0]!,
+        because: `${shown} is on the receipt and you flew it on one trip — but the scan couldn't read a date, so check this is the right one.`,
+      };
+    }
     return {
       kind: "several",
       trips: sameAircraft,
@@ -116,6 +118,16 @@ export function matchTrip(
     };
   }
 
+  // THE DATE IS CHECKED EVEN WHEN THERE IS ONLY ONE CANDIDATE.
+  //
+  // This branch used to return early on `sameAircraft.length === 1`,
+  // before the window was ever consulted — which made the date window
+  // effectively infinite in the single-trip case, and the single-trip case
+  // is the COMMON one: a contract pilot usually has one logged trip per
+  // tail, not two. A March trip in N447SP would take an August receipt for
+  // the same aircraft, auto-select the trip, and — through the client's
+  // default treatment — flip it to "rebill". Two money decisions from a
+  // receipt five months out of period, disclosed by one line of grey text.
   const day = receipt.date;
   const overlapping = sameAircraft.filter((trip) =>
     within(day, shifted(trip.startsOn, -EDGE_DAYS), shifted(trip.endsOn, EDGE_DAYS))
@@ -132,7 +144,10 @@ export function matchTrip(
     return {
       kind: "several",
       trips: sameAircraft,
-      because: `You flew ${shown}, but not on ${day} — pick the trip this belongs to.`,
+      because:
+        sameAircraft.length === 1
+          ? `You flew ${shown}, but not on ${day} — this receipt doesn't fall in that trip, so pick one yourself.`
+          : `You flew ${shown}, but not on ${day} — pick the trip this belongs to.`,
     };
   }
   return {

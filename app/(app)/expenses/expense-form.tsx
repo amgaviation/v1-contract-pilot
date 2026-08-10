@@ -77,6 +77,14 @@ export default function ExpenseForm({
   const [state, formAction, pending] = useActionState(action, initialState);
 
   const submitted = state.values;
+  // Reads the echoed value from a rejected submit if there is one, else
+  // the stored row. Only meaningful for fields that are UNCONTROLLED
+  // (`notes`, below) and for the mount-time seed of the controlled ones:
+  // a useState initialiser runs once, at mount, when `submitted` is always
+  // undefined. For a controlled field the state IS the echo — it survives
+  // the action dispatch because React re-renders rather than remounting.
+  // Kept explicit because the next reader will otherwise "fix" this into
+  // an effect and reintroduce the reset bug it exists to avoid.
   const initial = (key: string, stored: unknown, fallback = "") => {
     const echoed = submitted?.[key];
     if (echoed !== undefined) return echoed;
@@ -99,6 +107,13 @@ export default function ExpenseForm({
   // pilot actually sees is what's actually posted, regardless of what the
   // native <select> reverted to.
   const [category, setCategory] = useState(() => initial("category", values.category, "other"));
+  // "other" is not a proxy for "untouched" — it is a real answer a pilot
+  // picks deliberately, and a Signature Flight Support HANGAR RENTAL filed
+  // as Other used to flip silently to Fuel the moment they scanned it.
+  // Tracked the same way `treatmentTouched` already is.
+  const [categoryTouched, setCategoryTouched] = useState(
+    () => submitted?.category !== undefined
+  );
   const tripsById = new Map(trips.map((trip) => [trip.id, trip]));
 
   // The three free-text fields are controlled for the same reason the
@@ -203,7 +218,9 @@ export default function ExpenseForm({
     // rather than "empty" is the test: overwriting a real choice would be
     // wrong, but leaving a receipt that plainly says Signature Flight
     // Support filed as Other would be worse.
-    if (extraction.category && category === "other") setCategory(extraction.category);
+    if (extraction.category && !categoryTouched && category === "other") {
+      setCategory(extraction.category);
+    }
 
     setConflicts(found);
 
@@ -261,7 +278,18 @@ export default function ExpenseForm({
           Attach the photo first and the fields below fill themselves in.
         </Text>
 
-        <ReceiptScan hasExistingReceipt={Boolean(values.receipt_path)} onExtracted={handleScan} />
+        <ReceiptScan
+          hasExistingReceipt={Boolean(values.receipt_path)}
+          onExtracted={handleScan}
+          // Swapping the file makes everything the last scan said describe
+          // a different receipt. The values it wrote stay — they may be
+          // right, and silently blanking a pilot's form is its own defect —
+          // but the explanations attached to them do not.
+          onFileChanged={() => {
+            setConflicts([]);
+            setTripHint(null);
+          }}
+        />
 
         {conflicts.length > 0 ? (
           <Box mt="3">
@@ -307,7 +335,13 @@ export default function ExpenseForm({
             <Text as="label" size="2" weight="medium" id="category-label">
               Category
             </Text>
-            <Select.Root value={category} onValueChange={setCategory}>
+            <Select.Root
+              value={category}
+              onValueChange={(next) => {
+                setCategory(next);
+                setCategoryTouched(true);
+              }}
+            >
               <Select.Trigger aria-labelledby="category-label" />
               <Select.Content>
                 {CATEGORIES.map((option) => (

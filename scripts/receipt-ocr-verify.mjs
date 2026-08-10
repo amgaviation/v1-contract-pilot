@@ -321,6 +321,15 @@ try {
   // is that self-hosting closes every CDN fallback in tesseract.js. This
   // is the only thing that can actually prove it.
   check("zero off-origin requests during a scan", offOrigin, []);
+  // tesseract.js defaults to re-serving the worker from a blob: URL, which
+  // would force `script-src blob:` into the CSP this app owes. Turned off
+  // in engine.ts; asserted here because "the option is set" and "the
+  // browser therefore loads the worker directly" are different claims.
+  check(
+    "the worker is loaded from its real URL, not a blob:",
+    requested.filter((u) => u.startsWith("blob:")),
+    []
+  );
   for (const url of requested.filter((u) => u.includes("/ocr/"))) {
     say(`  info  ${url.replace(`http://127.0.0.1:${PORT}`, "")}`);
   }

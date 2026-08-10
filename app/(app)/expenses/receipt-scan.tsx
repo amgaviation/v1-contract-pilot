@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Box, Button, Callout, Flex, Spinner, Text } from "@/components/ui";
 import type { ReceiptExtraction } from "@/lib/receipt-ocr/extract";
 
@@ -27,6 +27,22 @@ import type { ReceiptExtraction } from "@/lib/receipt-ocr/extract";
  * front, and a pilot who never taps it never downloads any of it: the
  * engine module is dynamically imported inside the click handler, so it is
  * not in this route's bundle at all.
+ *
+ * ***************************************************************************
+ * THE FILE INPUT SURVIVES A REJECTED SUBMIT, AND THAT TAKES WORK
+ * ***************************************************************************
+ * React 19 calls the native form.reset() after EVERY action dispatch,
+ * including one that came back with an error — `startHostTransition`
+ * requests it unconditionally and `recursivelyResetForms` performs it. For
+ * a file input, reset means the selected file is GONE.
+ *
+ * Left alone that produces a quiet data-loss bug with a lie on top: the
+ * pilot picks a photo, scans it, saves, gets "Pick the trip this gets
+ * rebilled to", fixes the trip, saves again — and the expense is created
+ * with NO RECEIPT, while this component is still cheerfully saying one
+ * will be attached. So the File is held in a ref and put back into the
+ * input after the reset. If the browser won't allow that, the pilot is
+ * told to pick it again rather than left to find out later.
  */
 
 export type ScanOutcome = {
@@ -49,9 +65,12 @@ type Status =
 export default function ReceiptScan({
   hasExistingReceipt,
   onExtracted,
+  onFileChanged,
 }: {
   hasExistingReceipt: boolean;
   onExtracted: (outcome: ScanOutcome) => void;
+  /** Fires when the pilot swaps the file, so a stale scan can be cleared. */
+  onFileChanged: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   // A scan is the one thing in this form that can take real time on a bad
@@ -59,23 +78,82 @@ export default function ReceiptScan({
   // the button just greys out and the pilot's only option is to reload the
   // page, losing everything they had already typed.
   const abortRef = useRef<AbortController | null>(null);
+  // Monotonic scan id. Changing the file mid-scan used to re-enable the
+  // button (the disabled state was derived from `status`, which
+  // handleChange reset to idle), so a second worker could be started while
+  // the first was still running — and whichever finished LAST wrote the
+  // form. That put the fuel invoice's total on the form with the hotel
+  // folio attached. A superseded scan now writes nothing.
+  const scanIdRef = useRef(0);
+  const fileRef = useRef<File | null>(null);
+
   const [status, setStatus] = useState<Status>({ phase: "idle" });
+  const [inFlight, setInFlight] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
   const [scannable, setScannable] = useState(false);
+  const [fileLost, setFileLost] = useState(false);
+
+  // Put the file back after React 19's post-action form.reset(). See the
+  // header — without this a rejected submit silently drops the receipt.
+  useEffect(() => {
+    const form = inputRef.current?.form;
+    if (!form) return;
+    const restore = () => {
+      // The `reset` event fires BEFORE the form is actually reset, so the
+      // repopulation has to wait for the current task to finish.
+      queueMicrotask(() => {
+        const held = fileRef.current;
+        const input = inputRef.current;
+        if (!held || !input || (input.files?.length ?? 0) > 0) return;
+        try {
+          const transfer = new DataTransfer();
+          transfer.items.add(held);
+          input.files = transfer.files;
+        } catch {
+          // Assigning input.files is not universally permitted. Say so
+          // rather than letting the pilot save without their receipt.
+          fileRef.current = null;
+          setFileName(null);
+          setScannable(false);
+          setFileLost(true);
+        }
+      });
+    };
+    form.addEventListener("reset", restore);
+    return () => form.removeEventListener("reset", restore);
+  }, []);
 
   function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
+    fileRef.current = file;
     setFileName(file?.name ?? null);
     setScannable(Boolean(file) && file!.type !== "application/pdf");
     setStatus({ phase: "idle" });
+    setFileLost(false);
+    // Anything a previous scan wrote describes a DIFFERENT receipt now.
+    // Without this, scanning a fuel invoice and then swapping in a hotel
+    // folio saved the fuel invoice's amount, vendor, date and trip with
+    // the folio's image attached.
+    scanIdRef.current++;
+    abortRef.current?.abort();
+    onFileChanged();
   }
 
   async function scan() {
-    const file = inputRef.current?.files?.[0];
-    if (!file) return;
+    const file = inputRef.current?.files?.[0] ?? fileRef.current;
+    if (!file) {
+      setStatus({
+        phase: "failed",
+        message: "No photo is selected any more — pick the receipt again.",
+      });
+      return;
+    }
 
+    const scanId = ++scanIdRef.current;
+    const current = () => scanIdRef.current === scanId;
     const controller = new AbortController();
     abortRef.current = controller;
+    setInFlight(true);
     setStatus({ phase: "scanning", message: "Opening the photo", fraction: null });
 
     // Both modules load here and nowhere else, so the ~6 MB engine and its
@@ -91,20 +169,26 @@ export default function ReceiptScan({
         import("@/lib/receipt-ocr/extract"),
       ]);
     } catch {
-      setStatus({
-        phase: "failed",
-        message:
-          "Couldn't download the reader. Check your connection and try again, or just fill the fields in below.",
-      });
+      if (current()) {
+        setInFlight(false);
+        setStatus({
+          phase: "failed",
+          message:
+            "Couldn't download the reader. Check your connection and try again, or just fill the fields in below.",
+        });
+      }
       return;
     }
 
     try {
       const { text, confidence } = await engine.readReceipt(
         file,
-        (progress) => setStatus({ phase: "scanning", ...progress }),
+        (progress) => {
+          if (current()) setStatus({ phase: "scanning", ...progress });
+        },
         controller.signal
       );
+      if (!current()) return;
       const extraction = extract.extractReceipt(text, { confidence });
 
       if (extraction.filled.length === 0) {
@@ -120,9 +204,14 @@ export default function ReceiptScan({
       setStatus({
         phase: "read",
         summary: describe(extraction),
-        shaky: confidence > 0 && confidence < SHAKY_CONFIDENCE,
+        // An UNKNOWN confidence is a shaky read, not a good one. This used
+        // to read `confidence > 0 && confidence < SHAKY`, so a missing or
+        // zero confidence produced the reassuring green callout — exactly
+        // backwards for the case with the least evidence behind it.
+        shaky: confidence < SHAKY_CONFIDENCE,
       });
     } catch (cause) {
+      if (!current()) return;
       // A cancel is the pilot's own decision, not a failure to report back
       // to them. Straight to idle, with the button ready to try again.
       if (controller.signal.aborted) {
@@ -138,6 +227,7 @@ export default function ReceiptScan({
       });
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
+      if (current()) setInFlight(false);
     }
   }
 
@@ -166,16 +256,12 @@ export default function ReceiptScan({
 
       {scannable ? (
         <Flex mt="3" gap="3" align="center" wrap="wrap">
-          <Button type="button" variant="soft" onClick={() => void scan()} disabled={scanning}>
-            {scanning ? <Spinner /> : null}
-            {scanning ? "Reading…" : "Read this receipt"}
+          <Button type="button" variant="soft" onClick={() => void scan()} disabled={inFlight}>
+            {inFlight ? <Spinner /> : null}
+            {inFlight ? "Reading…" : "Read this receipt"}
           </Button>
-          {scanning ? (
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => abortRef.current?.abort()}
-            >
+          {inFlight ? (
+            <Button type="button" variant="ghost" onClick={() => abortRef.current?.abort()}>
               Cancel
             </Button>
           ) : null}
@@ -191,6 +277,17 @@ export default function ReceiptScan({
         <Text as="div" size="1" color="gray" mt="3">
           {`${fileName} will be attached. PDFs are stored as-is — type the amounts below.`}
         </Text>
+      ) : null}
+
+      {fileLost ? (
+        <Box mt="3">
+          <Callout.Root color="amber" size="1">
+            <Callout.Text>
+              This browser cleared your photo when the form came back. Choose it again before you
+              save, or the expense saves without a receipt.
+            </Callout.Text>
+          </Callout.Root>
+        </Box>
       ) : null}
 
       {status.phase === "read" ? (

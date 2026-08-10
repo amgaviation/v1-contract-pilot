@@ -228,44 +228,108 @@ export function extractDate(text: string): string | null {
   return null;
 }
 
-/** "1,234.56" / "1234.56" / "$1,234.56" -> cents, or undefined. */
-function moneyToCents(raw: string): number | undefined {
-  const cleaned = raw.replace(/[$\s]/g, "").replace(/,/g, "");
-  if (!/^\d+\.\d{2}$/.test(cleaned) && !/^\d+$/.test(cleaned)) return undefined;
-  const [whole, fraction = ""] = cleaned.split(".");
-  if ((whole ?? "").length > 7) return undefined; // a receipt is not $10m
-  return Number(whole) * 100 + Number(fraction.padEnd(2, "0") || "0");
+/**
+ * What a dollar figure has to look like to be read as one.
+ *
+ * ***************************************************************************
+ * WHY CENTS ARE MANDATORY, EVEN THOUGH REAL RECEIPTS PRINT "TOTAL 125"
+ * ***************************************************************************
+ * This used to accept a bare integer as whole dollars, and combined with
+ * "last money token on the line wins" that produced the single worst class
+ * of bug this product can have — a confidently wrong amount, on the exact
+ * lines a real receipt prints. Every one of these was reproduced against
+ * the module before this rewrite:
+ *
+ *     TOTAL DUE $3,371.90  INV 884213        ->  $884,213.00
+ *     TOTAL DUE $3,371.90  VISA 4242         ->    $4,242.00
+ *     Total $61.50  Auth 004532              ->    $4,532.00
+ *     TOTAL DUE 3,371.90 on 03/15/26         ->       $26.00
+ *     TOTAL PETROLEUM PLAZA, 1200 AIRPORT RD ->    $1,200.00
+ *     Total Nights 3                         ->        $3.00
+ *
+ * Tesseract routinely merges the columns of a multi-column receipt onto
+ * one line, so an invoice number, a card mask or an auth code sitting to
+ * the right of the total is the normal case, not a corner case. Requiring
+ * an explicit two-decimal fraction disqualifies all of them, because none
+ * of those trailing numbers is written with cents.
+ *
+ * The cost is real and accepted: a receipt that genuinely prints "TOTAL
+ * 125" now returns nothing and the pilot types 125. That is the trade this
+ * whole module is built on — nothing gets typed, wrong gets confirmed.
+ *
+ * It also disposes of European formats for free. "1.234,56" and
+ * "1 240,55" produce no match at all rather than $56.00 and $24,055.00,
+ * which is what they used to return.
+ *
+ * The lookarounds matter: without them "1,234.567" would match the
+ * "1,234.56" prefix and silently drop a digit.
+ */
+const MONEY = /(?<![\d.,])(-?)\(?\s*\$?\s*(\d{1,3}(?:,\d{3})+|\d+)\.(\d{2})\s*(\)?)(?![\d.])/g;
+
+/** Currencies this product cannot represent. The field is labelled USD. */
+const NOT_USD = /\b(?:EUR|GBP|CAD|AUD|NZD|CHF|JPY|MXN|SEK|NOK|DKK)\b|[€£¥₹]|\b[CA]\$/i;
+
+/** Lines whose figure is money going the other way. */
+const MONEY_BACK = /\b(?:refund|credit|change due|amount returned|reversal)\b/i;
+
+/** A strictly-shaped dollar figure -> integer cents, or undefined. */
+function moneyToCents(whole: string, fraction: string): number | undefined {
+  const digits = whole.replace(/,/g, "");
+  if (digits.length > 7) return undefined; // a receipt is not $10m
+  return Number(digits) * 100 + Number(fraction);
 }
 
 /**
  * The amount, from a LABELLED total line and nowhere else.
  *
- * When several total-ish lines appear (a folio often prints "Total" per
- * day and once at the end), the LAST one wins — receipts total at the
- * bottom, and the final figure is the one that was charged.
+ * When several total-ish lines appear (a folio prints "Total" per day and
+ * once at the end), the LAST one wins — receipts total at the bottom, and
+ * the final figure is the one that was charged.
+ *
+ * Three refusals, each of which used to be a wrong number:
+ *
+ *   - TWO DIFFERENT FIGURES ON ONE TOTAL LINE is ambiguous, not a race to
+ *     be won by whichever is further right. A merged "Total 61.50 Tip
+ *     12.00" has no single answer and gets none.
+ *   - A NEGATIVE OR PARENTHESISED TOTAL is a credit memo, and an FBO does
+ *     issue those for a mis-billed uplift. Read as a positive expense it
+ *     would be attached to a trip and rebilled to a client — the client
+ *     invoiced for their own refund. Refused outright rather than turned
+ *     into a negative expense, which the schema does not accept either.
+ *   - A NON-USD FIGURE is not this field. "TOTAL CAD 1,240.55" used to
+ *     store $1,240.55.
+ *
+ * Zero is a real answer and is kept: a direct-billed hotel folio ends
+ * "BALANCE DUE 0.00", and discarding that used to fall back to a mid-stay
+ * "Total 189.00" line — a $189 room charge the operator had already paid,
+ * offered to the pilot to rebill.
  */
 export function extractAmountCents(text: string): number | null {
-  const lines = text.split(/\r?\n/);
   let found: number | null = null;
 
-  for (const line of lines) {
+  for (const line of text.split(/\r?\n/)) {
     const lower = line.toLowerCase();
+    // Tested against the whole line, so a merged "Subtotal 100.00  Total
+    // 125.00" is skipped entirely. That loses a readable total, and does
+    // so in the safe direction — null, not a guess.
     if (NOT_A_TOTAL.some((bad) => lower.includes(bad))) continue;
     if (!TOTAL_LABELS.some((label) => lower.includes(label))) continue;
+    if (NOT_USD.test(line) || MONEY_BACK.test(line)) return null;
 
-    // The last money-looking token on the line — receipts put the label
-    // left and the figure right.
-    //
-    // The fraction is matched as `\.\d+`, NOT `\.\d{2}`, so a malformed
-    // amount is consumed WHOLE and then rejected by moneyToCents. Matching
-    // only two decimals let "1,234.5" tokenise as "1,234" and "5", and
-    // last-token-wins then returned $5.00 for a $1,234.50 line — a
-    // confidently wrong amount, which is the one outcome worse than
-    // returning nothing. Caught by its own unit test before it shipped.
-    const monies = Array.from(line.matchAll(/\$?\s*\d[\d,]*(?:\.\d+)?/g))
-      .map((m) => moneyToCents(m[0]))
-      .filter((c): c is number => c !== undefined && c > 0);
-    if (monies.length > 0) found = monies[monies.length - 1]!;
+    const candidates: number[] = [];
+    let negative = false;
+    for (const match of line.matchAll(MONEY)) {
+      const [, sign, whole, fraction, close] = match;
+      const cents = moneyToCents(whole ?? "", fraction ?? "");
+      if (cents === undefined) continue;
+      if (sign === "-" || close === ")") negative = true;
+      candidates.push(cents);
+    }
+
+    if (negative) return null;
+    const distinct = Array.from(new Set(candidates));
+    if (distinct.length === 1) found = distinct[0]!;
+    else if (distinct.length > 1) return null;
   }
 
   return found;
@@ -285,13 +349,31 @@ export function extractVendor(text: string): string | null {
     // "| SYNTHETIC AVIATION SERVICES". Trimmed to the first and last
     // alphanumeric character, which no real merchant name starts or ends
     // outside of.
-    const line = raw.trim().replace(/^[^\p{L}\p{N}]+/u, "").replace(/[^\p{L}\p{N}.]+$/u, "");
+    const trimmed = raw.trim();
+    // Bound the input to the two anchored strips below before running
+    // them. An end-anchored `[^X]+$` backtracks quadratically over a long
+    // run of class members, and while OCR line length is bounded in
+    // practice by the canvas width, that is a property of the current
+    // caller rather than of this function. No receipt header is 200
+    // characters; a line that long is a table row or a scan artifact.
+    if (trimmed.length > 200) continue;
+    const line = trimmed.replace(/^[^\p{L}\p{N}]+/u, "").replace(/[^\p{L}\p{N}.]+$/u, "");
     if (line.length < 3 || line.length > 60) continue;
     // Skip lines that are mostly numbers/punctuation — a header rule, a
-    // phone number, a card mask.
-    const letters = (line.match(/[A-Za-z]/g) ?? []).length;
-    if (letters < line.length * 0.5) continue;
+    // phone number, a card mask. Measured against NON-SPACE characters:
+    // counting spaces in the denominator let "TOTAL DUE 100.00" through at
+    // 8 letters of 16 characters, and it was returned as the merchant.
+    const dense = line.replace(/\s/g, "");
+    const letters = (dense.match(/[A-Za-z]/g) ?? []).length;
+    if (letters < dense.length * 0.5) continue;
     if (/^(receipt|invoice|customer copy|merchant copy|thank you)\b/i.test(line)) continue;
+    // A street number leading the line means this is the address block,
+    // not the name — "1200 AIRPORT RD" was being returned as the vendor of
+    // a receipt whose next line said SYNTHETIC FBO.
+    if (/^\d+\s+\p{L}/u.test(line)) continue;
+    // And a total line is never the merchant, however word-like it looks.
+    const lower = line.toLowerCase();
+    if (TOTAL_LABELS.some((label) => lower.includes(label))) continue;
     return line.replace(/\s{2,}/g, " ").slice(0, 60);
   }
   return null;
@@ -311,17 +393,33 @@ export function extractCategory(text: string): ExpenseCategory | null {
  * boundaries so an invoice number like "INV-N12345" doesn't match.
  */
 export function extractAircraftIdent(text: string): string | null {
-  const patterns = [
-    /\bN[1-9]\d{0,4}[A-Z]{0,2}\b/g, // US: N123AB, N9, N12345
-    /\b(?:C|G|M|VH|ZK|VP-[A-Z]|HB|OE|D)-[A-Z]{2,5}\b/g,
-  ];
-  for (const re of patterns) {
-    for (const m of text.toUpperCase().matchAll(re)) {
-      const candidate = m[0];
-      // "NOTE", "NOV" etc. are not tail numbers; a real N-number has a
-      // digit right after the N.
-      if (/^N/.test(candidate) && !/^N\d/.test(candidate)) continue;
+  const upper = text.toUpperCase();
+  // Words that mean "the thing after this is an aircraft". A short or
+  // foreign-shaped candidate is only believed when one of these is on the
+  // same line — see WEAK below.
+  const CONTEXT = /\b(?:AIRCRAFT|TAIL|REG|REGISTRATION|A\/C|SHIP|N-?NUMBER)\b/;
+
+  for (const line of upper.split(/\r?\n/)) {
+    const hasContext = CONTEXT.test(line);
+
+    // A full US N-number: N plus at least two more characters. Common
+    // enough in shape that it can stand on its own anywhere on the page.
+    for (const m of line.matchAll(/\bN[1-9]\d{0,4}[A-Z]{0,2}\b/g)) {
+      const candidate = m[0]!;
+      // WEAK: "N2", "N4". Legal registrations, and also what "PUMP N2
+      // SELECTED" and "ROOM N4" look like — which is what a fuel desk
+      // receipt and a hotel folio actually print. Believed only in
+      // context.
+      if (candidate.length < 3 && !hasContext) continue;
       return candidate;
+    }
+
+    // Foreign registrations are a letter-hyphen-letters shape that ordinary
+    // English hits constantly: C-STORE, G-FORCE, M-CLASS, D-RATE were all
+    // being reported to the pilot as their aircraft. Context required.
+    if (!hasContext) continue;
+    for (const m of line.matchAll(/\b(?:C|G|M|VH|ZK|VP-[A-Z]|HB|OE|D)-[A-Z]{2,5}\b/g)) {
+      return m[0]!;
     }
   }
   return null;

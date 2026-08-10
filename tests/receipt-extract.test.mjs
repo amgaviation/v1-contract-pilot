@@ -120,6 +120,97 @@ test("subtotal and gallon lines are never mistaken for the total", async (t) => 
   });
 });
 
+test("a second number on the total line never becomes the amount", async (t) => {
+  // Every case below RETURNED THE WRONG DOLLAR FIGURE before the amount
+  // rule required explicit cents — the worst class of defect this product
+  // has, and one a green test suite missed entirely because every fixture
+  // here used to have exactly one number on its total line.
+  //
+  // Tesseract merges the columns of a multi-column receipt onto one line,
+  // so an invoice number, a card mask or an auth code to the right of the
+  // total is the normal case, not a corner case.
+  await t.test("an invoice number to the right of the total (was $884,213.00)", () => {
+    assert.equal(extractAmountCents("TOTAL DUE $3,371.90  INV 884213"), 337190);
+  });
+
+  await t.test("a card mask (was $4,242.00)", () => {
+    assert.equal(extractAmountCents("TOTAL DUE   $3,371.90   VISA 4242"), 337190);
+  });
+
+  await t.test("an auth code (was $4,532.00)", () => {
+    assert.equal(extractAmountCents("Total  $61.50  Auth 004532"), 6150);
+  });
+
+  await t.test("a date on the total line (was $26.00)", () => {
+    assert.equal(extractAmountCents("TOTAL DUE 3,371.90 on 03/15/26"), 337190);
+  });
+
+  await t.test("a business whose NAME begins with Total (was $1,200.00)", () => {
+    assert.equal(extractAmountCents("TOTAL PETROLEUM PLAZA, 1200 AIRPORT RD"), null);
+  });
+
+  await t.test("a count, not money (was $3.00)", () => {
+    assert.equal(extractAmountCents("Total Nights 3"), null);
+    assert.equal(extractAmountCents("Total Rewards # 998877"), null);
+  });
+
+  await t.test("two different figures on one line is ambiguous, not a race", () => {
+    // A merged "Total 61.50 Tip 12.00" has no single right answer.
+    assert.equal(extractAmountCents("Total  61.50   Tip 12.00"), null);
+    // The same figure twice — a duplicated column — is not ambiguous.
+    assert.equal(extractAmountCents("TOTAL DUE   3,371.90    3,371.90"), 337190);
+  });
+
+  await t.test("a whole-dollar total is refused rather than guessed at", () => {
+    // The accepted cost of the rule above: "TOTAL 125" is a real thing a
+    // receipt prints, and the pilot now types it. Accepting bare integers
+    // is what produced every failure in this block.
+    assert.equal(extractAmountCents("TOTAL 125"), null);
+  });
+});
+
+test("a credit memo is never read as money the pilot spent", async (t) => {
+  // An FBO issues a credit for a mis-billed uplift. Read as a positive
+  // expense, it gets attached to a trip by the tail number and flipped to
+  // "rebill" by the client's default treatment — and the client is
+  // invoiced for their own refund.
+  await t.test("a minus sign is not punctuation to be stripped", () => {
+    assert.equal(extractAmountCents("TOTAL DUE  -125.00"), null);
+    assert.equal(extractAmountCents("AMOUNT CHARGED -3,371.90"), null);
+  });
+
+  await t.test("nor are accounting parentheses", () => {
+    assert.equal(extractAmountCents("Total  ($125.00)"), null);
+  });
+
+  await t.test("and the words are honoured too", () => {
+    assert.equal(extractAmountCents("Total Refund  250.00"), null);
+    assert.equal(extractAmountCents("Change Due  20.00"), null);
+  });
+});
+
+test("a zero balance is an answer, not a missing one", () => {
+  // Direct-billed hotel: the operator paid the room, the folio ends at
+  // 0.00. Discarding the zero used to fall back to the mid-stay running
+  // total and offer the pilot a $189.00 room charge to rebill.
+  assert.equal(
+    extractAmountCents("03/13  Room Charge  189.00\n03/13  Total  189.00\nBALANCE DUE  0.00"),
+    0
+  );
+});
+
+test("a total in another currency is not a dollar figure", () => {
+  // The field is labelled USD and every figure in this product is USD
+  // cents. These used to store the number as if it were dollars.
+  assert.equal(extractAmountCents("TOTAL CAD 1,240.55"), null);
+  assert.equal(extractAmountCents("TOTAL €61.50"), null);
+  assert.equal(extractAmountCents("Total £48.20"), null);
+  // European decimal notation is refused by the cents rule itself: these
+  // used to return $56.00 and $24,055.00.
+  assert.equal(extractAmountCents("Total 1.234,56"), null);
+  assert.equal(extractAmountCents("TOTAL 1 240,55"), null);
+});
+
 test("an unreadable field comes back null rather than guessed", async (t) => {
   await t.test("no labelled total means no amount", () => {
     // A smeared thermal receipt where the total line didn't survive OCR.
@@ -155,6 +246,24 @@ test("a tail number is recognised but an invoice number is not", async (t) => {
     assert.equal(extractAircraftIdent("NOTE: crew of two"), null);
     assert.equal(extractAircraftIdent("NOVEMBER STATEMENT"), null);
   });
+
+  await t.test("ordinary English is not a foreign registration", () => {
+    // These were all reported to the pilot as their aircraft. A
+    // letter-hyphen-letters shape is far too common in English to believe
+    // on its own, so the foreign pattern now needs an aircraft word on the
+    // same line.
+    assert.equal(extractAircraftIdent("C-STORE PURCHASE"), null);
+    assert.equal(extractAircraftIdent("G-FORCE FITNESS"), null);
+    assert.equal(extractAircraftIdent("M-CLASS SUITE"), null);
+    assert.equal(extractAircraftIdent("D-RATE applied"), null);
+    assert.equal(extractAircraftIdent("Aircraft C-GABC"), "C-GABC", "with context, still read");
+  });
+
+  await t.test("a one-digit N-number needs context, because a fuel desk prints those", () => {
+    assert.equal(extractAircraftIdent("PUMP N2 SELECTED"), null);
+    assert.equal(extractAircraftIdent("ROOM N4"), null);
+    assert.equal(extractAircraftIdent("Tail N2"), "N2", "N2 is a real registration");
+  });
 });
 
 test("the vendor survives the edge of a photographed receipt", async (t) => {
@@ -173,6 +282,19 @@ test("the vendor survives the edge of a photographed receipt", async (t) => {
 
   await t.test("a line that is only noise is skipped, not returned trimmed to nothing", () => {
     assert.equal(extractVendor("~~ | ~~\nSYNTHETIC FBO"), "SYNTHETIC FBO");
+  });
+
+  await t.test("the address block is not the merchant", () => {
+    // "1200 AIRPORT RD" was returned as the vendor of a receipt whose very
+    // next line said SYNTHETIC FBO.
+    assert.equal(extractVendor("1200 AIRPORT RD\nSYNTHETIC FBO"), "SYNTHETIC FBO");
+  });
+
+  await t.test("a total line is not the merchant either", () => {
+    // It passed the letter-ratio test at 8 letters of 16 CHARACTERS —
+    // spaces were counted in the denominator. Measured on non-space
+    // characters it fails, and the label check refuses it outright.
+    assert.equal(extractVendor("\n\nTOTAL DUE 100.00"), null);
   });
 });
 
