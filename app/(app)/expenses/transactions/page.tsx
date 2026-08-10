@@ -1,4 +1,5 @@
-import { Box, Table, Text } from "@/components/ui";
+import { Box, Callout, Table, Text } from "@/components/ui";
+import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatDateRange } from "@/lib/format";
@@ -102,14 +103,26 @@ export default async function TransactionsPage() {
   };
 
   const duplicatesByTxn = new Map<string, DuplicateCandidate[]>();
+  // A FAILED duplicate check is not "no duplicates". Discarding this error
+  // made every row render exactly like a genuinely-new charge, so a $312
+  // hotel folio already filed as rebill would be confirmed a second time
+  // and the client's invoice would show two lines for one night. The
+  // absence of a warning has to mean "we checked and found none", or the
+  // warning is worth nothing.
+  let duplicateCheckFailed = false;
   if (txns.length > 0) {
     const dates = txns.map((t) => t.posted_on).sort();
-    const { data: candidateData } = await supabase
+    const { data: candidateData, error: candidateError } = await supabase
       .from("expenses")
       .select("id, incurred_on, vendor, amount_cents, treatment, bank_transaction_id")
       .gte("incurred_on", shiftDays(dates[0]!, -DUP_WINDOW_DAYS))
       .lte("incurred_on", shiftDays(dates[dates.length - 1]!, DUP_WINDOW_DAYS))
       .limit(TXN_LIMIT);
+
+    duplicateCheckFailed = Boolean(candidateError);
+    if (candidateError) {
+      console.error("[db] expenses.select(duplicate candidates)", candidateError.message);
+    }
 
     const byAmount = new Map<number, ExpenseCandidateRow[]>();
     for (const e of (candidateData ?? []) as ExpenseCandidateRow[]) {
@@ -154,6 +167,20 @@ export default async function TransactionsPage() {
       title="Review imported transactions"
       subtitle="Nothing here is in your books yet. Pick a category and treatment for each transaction to turn it into an expense — or dismiss it if it isn't one."
     >
+      {duplicateCheckFailed ? (
+        <Callout.Root color="amber" mb="3">
+          <Callout.Icon>
+            <ExclamationTriangleIcon />
+          </Callout.Icon>
+          <Callout.Text>
+            We couldn&rsquo;t check these against the expenses you&rsquo;ve already
+            filed, so none of them are flagged as possible duplicates — check for
+            yourself before confirming. A charge you already photographed a receipt
+            for would otherwise be billed twice.
+          </Callout.Text>
+        </Callout.Root>
+      ) : null}
+
       {rows.length === 0 ? (
         <Text color="gray">Nothing to review. Import a statement to get started.</Text>
       ) : (

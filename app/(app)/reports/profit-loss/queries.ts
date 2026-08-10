@@ -13,8 +13,15 @@ type Supa = Awaited<ReturnType<typeof createClient>>;
 // asking this screen for. Two periods (current + prior) are loaded per
 // request, so these are the same per-query caps as the other reports —
 // not doubled — because each query is scoped to its own [start, end].
-const PAYMENTS_LIMIT = 2000;
-const EXPENSES_LIMIT = 2000;
+// 1000, NOT a larger number. The Supabase Data API clamps every response
+// to db-max-rows (1000) and TRUNCATES SILENTLY — no error, no flag. Every
+// truncation guard in this file detects the cap by exact equality
+// (`rows.length === LIMIT`), so a limit ABOVE the server's own cap can
+// never be reached and the guard is dead code: the query asks for 2000,
+// PostgREST returns 1000, 1000 !== 2000, and a tax figure short by a
+// sixth is handed to a CPA with nothing on screen saying so.
+const PAYMENTS_LIMIT = 1000;
+const EXPENSES_LIMIT = 1000;
 // Same cap discipline for the two lookups defect 9 exposed: an unbounded
 // `.in("id", invoiceIds)` / unbounded `clients` select silently truncates
 // past the Data API cap just like the list queries above do, and a
@@ -26,12 +33,12 @@ const EXPENSES_LIMIT = 2000;
 // bound; clients get their own cap because a pilot's client list is
 // unrelated in size to their payment count.
 const INVOICE_LOOKUP_LIMIT = PAYMENTS_LIMIT;
-const CLIENTS_LIMIT = 2000;
+const CLIENTS_LIMIT = 1000;
 // Mileage — defect 4: pilot.mileage_entries carries a real cash-equivalent
 // Schedule C deduction (the standard mileage rate) that this report
 // previously surfaced nowhere. It is intentionally NOT summed into
 // Expenses — see the "MILEAGE" note above loadProfitLossReport for why.
-const MILEAGE_LIMIT = 2000;
+const MILEAGE_LIMIT = 1000;
 
 // ---------------------------------------------------------------------------
 // Period resolution.
