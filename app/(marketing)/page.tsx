@@ -35,11 +35,31 @@ const FEATURES: { title: string; body: string }[] = [
   },
   {
     title: "Clients & documents",
-    body: "Keep your client roster and W-9 status in one place, and track the dates you enter for your certificates, medical, flight reviews, and insurance — with a reminder as each one approaches.",
+    // "Your dashboard shows" and not "we remind you", deliberately. The
+    // 30/14/7/1/overdue ladder is real — pilot.expirations computes it once and
+    // both the dashboard and the documents screen badge from it — but there is
+    // no scheduler, no mailer and no push anywhere in this product, so nothing
+    // REACHES a pilot who has not opened the app. A review caught the earlier
+    // wording promising "a reminder as each one approaches": the kind of claim
+    // a pilot only discovers is false by missing a medical.
+    // The dashboard panel is filtered to medical, flight review and passport,
+    // so naming four kinds and then saying "your dashboard shows what is
+    // coming due" was true of two of them. The documents screen carries every
+    // kind; only the dashboard summary is narrower. Both facts, stated
+    // separately, because a pilot who takes the wider claim at face value
+    // finds out by missing an insurance renewal.
+    body: "Keep your client roster and W-9 status in one place, and record expiry dates for the documents you carry — certificates, medical, flight reviews, insurance. The documents screen tracks them all; your dashboard summarises medical, flight review and passport, from a month out down to overdue.",
   },
   {
     title: "Reports",
-    body: "Profit & loss, a quarterly estimated-tax summary, and a year-end report, built from what you've actually recorded — for you or for whoever does your taxes.",
+    // No directional tax claim, and nothing implying the output is a filing or
+    // a substitute for one. It summarises what the pilot recorded; what that
+    // means for their return is between them and whoever prepares it.
+    // "Each IRS estimated-tax period" rather than "quarterly": the periods are
+    // Jan-Mar, Apr-May, Jun-Aug and Sep-Dec, which is a 3/2/3/4 split, and two
+    // of them are not quarters. The report follows the real periods; the copy
+    // should say so, since an accountant reads this and notices.
+    body: "Profit & loss, a summary of income and deductible expenses for each IRS estimated-tax period, and a year-end report, built from what you've actually recorded — for you or for whoever prepares your taxes.",
   },
 ];
 
@@ -65,24 +85,43 @@ export default async function LandingPage() {
 
   return (
     <>
-      <Section size="3">
+      <Section size="2">
         <Container size="3" px="4">
-          <Flex direction="column" gap="5" align="start">
+          <Flex direction="column" gap="4" align="start">
             <Flex direction="column" gap="3">
               <Heading size="8" trim="start">
                 {BRAND.tagline}
               </Heading>
+              {/*
+                The earlier line said "one entry, three outputs", counting
+                expense records as the third. A review checked and nothing in
+                this product creates an expense from a trip: expenses come from
+                the pilot, a scanned receipt, or a bank import, and the trip is
+                what they ATTACH to. Two things are generated and one is
+                organised, so that is what this says. The honest version is
+                still the whole pitch — it is the re-typing that goes away.
+              */}
               <Text size="4" color="gray" style={{ maxWidth: "38rem" }}>
-                {BRAND.name} turns a flown trip into your logbook entry, your
-                invoice, and your expense records — one entry, three
-                outputs. Built for the independent contract pilot who
-                currently keeps this in a logbook app, a spreadsheet, and
-                QuickBooks.
+                {BRAND.name} makes the trip the record everything else hangs
+                off. Your logbook draft and your invoice lines both come from
+                it, and your receipts attach to it, so the dates and the tail
+                number get typed once instead of three times. Built for the
+                independent contract pilot who currently keeps this in a
+                logbook app, a spreadsheet, and QuickBooks.
               </Text>
             </Flex>
 
+            {/* Navy, not the Theme's accent blue: this brand colour isn't
+                one of Radix's accentColor scale names, so the primary
+                action is set directly through --v1-marketing-navy and
+                --v1-marketing-navy-ink, the same pair the CTA band below
+                uses for its own panel. */}
             <Flex gap="3" wrap="wrap">
-              <Button asChild size="3">
+              <Button
+                asChild
+                size="3"
+                style={{ background: "var(--v1-marketing-navy)", color: "var(--v1-marketing-navy-ink)" }}
+              >
                 <NextLink href="/signup">Start your {TRIAL_LABEL}</NextLink>
               </Button>
               <Button asChild size="3" variant="outline" color="gray">
@@ -97,15 +136,15 @@ export default async function LandingPage() {
         </Container>
       </Section>
 
-      <Section size="3" style={{ borderTop: "1px solid var(--gray-a5)" }}>
+      <Section size="2" style={{ borderTop: "1px solid var(--gray-a5)" }}>
         <Container size="3" px="4">
-          <Flex direction="column" gap="5">
+          <Flex direction="column" gap="4">
             <Heading size="5" trim="start">
               What's built
             </Heading>
             <Grid columns={{ initial: "1", sm: "2" }} gap="4">
               {FEATURES.map((feature) => (
-                <Card key={feature.title} size="3">
+                <Card key={feature.title} size="2">
                   <Flex direction="column" gap="2">
                     <Text size="3" weight="medium">
                       {feature.title}
@@ -121,10 +160,10 @@ export default async function LandingPage() {
         </Container>
       </Section>
 
-      <Section size="3">
+      <Section size="2">
         <Container size="3" px="4">
           <Box
-            p={{ initial: "5", sm: "7" }}
+            p={{ initial: "4", sm: "5" }}
             style={{ background: "var(--v1-marketing-navy)" }}
           >
             <Flex
@@ -141,7 +180,14 @@ export default async function LandingPage() {
                   {TRIAL_LABEL}, {PRICE_LABEL} after. Card required to start.
                 </Text>
               </Flex>
-              <Button asChild size="3">
+              {/* Inverted from the hero/header/pricing buttons: this one
+                  sits on the navy Box itself, so the fill is navy-ink
+                  (white) and the text is navy, not navy on navy. */}
+              <Button
+                asChild
+                size="3"
+                style={{ background: "var(--v1-marketing-navy-ink)", color: "var(--v1-marketing-navy)" }}
+              >
                 <NextLink href="/signup">Start free trial</NextLink>
               </Button>
             </Flex>

@@ -15,12 +15,16 @@ deliberate.
 ## 1. What is already wired, so this is a change-or-confirm and not a blank page
 
 `docs/BILLING.md` documents **$29/month solo, card-required 7-day trial**, and that is what is
-configured today. If the answer to this memo is "$29 is right", nothing changes. If it is any
-other number, the blast radius is three places and none of them is a schema change:
+configured today — the public landing page and pricing page print the same $29, not the $39
+proposed below, a deliberate choice to keep the copy that charges money from getting ahead of
+this gate (`docs/LAUNCH-GATES.md` G2). If the answer to this memo is "$29 is right", nothing
+changes. If it is any other number, the blast radius is these places, and none of them is a
+schema change:
 
 - the Stripe Price object behind `STRIPE_PRICE_ID_SOLO` (a **new** Price — see §7),
-- `PRICE_LABEL` in `app/(auth)/welcome/page.tsx`, the one place the amount is written into copy,
-- the `$29/month` line in `docs/BILLING.md`.
+- `PRICE_LABEL` in `app/(auth)/welcome/page.tsx`, `app/(marketing)/page.tsx`, and
+  `app/(marketing)/pricing/page.tsx` — three hand-synced copies of the same string,
+- the `$29/month` line in `docs/BILLING.md` and the `$29/month` comment in `.env.example`.
 
 The per-seat business plan has no Price and no env var yet, on purpose — `docs/BILLING.md`
 explains why an empty `STRIPE_PRICE_ID_BUSINESS_SEAT` would be worse than an absent one.

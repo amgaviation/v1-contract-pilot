@@ -18,8 +18,25 @@ import SiteFooter from "./site-footer";
  * product has any reason to let a crawler see; the authenticated product
  * stays noindex exactly as app/layout.tsx's own comment explains.
  */
+/**
+ * INDEXABLE ONLY ON THE PRODUCTION DEPLOYMENT, and that condition is the whole
+ * point. docs/LAUNCH-GATES.md G2 and G7 both draw their line at "existing in
+ * the repo and rendering on a preview host is not publishing" — that carve-out
+ * is only honest if a preview genuinely cannot be found by a stranger. A flat
+ * `index: true` made it false: every preview deployment of every branch would
+ * have invited crawlers to an unsigned price and to counsel-gated feature
+ * copy, which is exactly what those gates exist to prevent.
+ *
+ * VERCEL_ENV is "production", "preview" or "development", and is absent on a
+ * local machine — so anything that is not the production deployment reads as
+ * not-production and stays noindex. Erring that way costs nothing: the worst
+ * case is that the real site needs one deploy to become indexable, whereas the
+ * opposite default leaks a price the owner has not signed.
+ */
+const isProductionDeployment = process.env.VERCEL_ENV === "production";
+
 export const metadata: Metadata = {
-  robots: { index: true, follow: true },
+  robots: { index: isProductionDeployment, follow: true },
 };
 
 export default function MarketingLayout({

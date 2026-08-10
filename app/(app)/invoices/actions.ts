@@ -1991,8 +1991,7 @@ export async function recordPayment(
 
 /**
  * Deactivates a Payment Link on Stripe and clears the invoice's four stored
- * link columns. Returns the sentence to show the pilot, or undefined when
- * there is nothing worth saying.
+ * link columns. Returns the sentence to show the pilot.
  *
  * The Stripe outcome and the DB outcome are deliberately different
  * sentences, because they ask different things of the pilot: a clean
@@ -2009,7 +2008,7 @@ async function retirePaymentLink(params: {
   connectAccountId: string | null;
   invoiceId: string;
   paymentLinkId: string;
-}): Promise<string | undefined> {
+}): Promise<string> {
   let notice =
     "The online payment link for this invoice was switched off, because it was priced for the previous balance. Generate a new one if you still need it.";
 

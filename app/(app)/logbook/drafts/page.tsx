@@ -76,6 +76,10 @@ async function fetchAllConfirmedLegIds(
       .eq("account_id", accountId)
       .in("trip_id", tripIds)
       .not("trip_leg_id", "is", null)
+      // id is the primary key, so ordering by it alone gives .range() a
+      // stable total order — without an .order() here, Postgres can
+      // return the same row on two pages or skip one across pages.
+      .order("id", { ascending: true })
       .range(offset, offset + CONFIRMED_PAGE_SIZE - 1);
     if (error) return { ids, error };
     const rows = (data ?? []) as { trip_leg_id: string }[];
@@ -210,11 +214,9 @@ export default async function LogbookDraftsPage() {
   // claim below is actually true. It's true only if this page looked at
   // every completed trip's every leg — if either query got capped, an
   // empty pendingTrips list means "nothing found in what was checked," not
-  // "there is nothing." confirmedTruncated is deliberately not part of
-  // this: fetchAllConfirmedLegIds no longer caps, so it can't hide a real
-  // draft, only (if it somehow errored partway) risk re-proposing an
-  // already-confirmed leg — a case confirmedError already turns into a red
-  // Callout above, not a silent gap here.
+  // "there is nothing." fetchAllConfirmedLegIds isn't part of this check
+  // — its own comment above covers why, and confirmedError above already
+  // turns any of its failures into a visible red Callout.
   const draftCheckIncomplete = tripsTruncated || legsTruncated;
 
   return (
@@ -222,12 +224,12 @@ export default async function LogbookDraftsPage() {
       title="Trip drafts"
       subtitle={
         pendingTrips.length === 0
-          ? notYetFlownCount
-            ? `Nothing waiting here — but ${notYetFlownCount} trip${
-                notYetFlownCount === 1 ? " is" : "s are"
-              } still marked Scheduled. Mark a trip flown and its legs show up here.`
-            : draftCheckIncomplete
-              ? "Nothing waiting in what this screen checked — see the note below before assuming your logbook is fully caught up."
+          ? draftCheckIncomplete
+            ? "Nothing waiting in what this screen checked — see the note below before assuming your logbook is fully caught up."
+            : notYetFlownCount
+              ? `Nothing waiting here — but ${notYetFlownCount} trip${
+                  notYetFlownCount === 1 ? " is" : "s are"
+                } still marked Scheduled. Mark a trip flown and its legs show up here.`
               : "Nothing waiting — every completed trip's legs are already in your logbook."
           : `${pendingTrips.length} completed trip${pendingTrips.length === 1 ? "" : "s"} with unconfirmed legs`
       }

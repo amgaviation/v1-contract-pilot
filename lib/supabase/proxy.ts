@@ -82,6 +82,10 @@ async function refreshSession(
   // loop. app/(app)/layout.tsx re-checks server-side, so this is defense
   // in depth, not the sole gate.
   const path = request.nextUrl.pathname;
+  // Strip a single trailing slash before matching the allow-list below, so
+  // "/pricing/" still matches "/pricing" instead of falling through to the
+  // login redirect. "/" has no trailing slash to strip.
+  const normalizedPath = path.length > 1 ? path.replace(/\/$/, "") : path;
   const isAuthSurface =
     // The signed-out marketing surface: app/(marketing)/{page,pricing,
     // terms,privacy}.tsx. All four are exact matches, not prefixes — none
@@ -92,19 +96,25 @@ async function refreshSession(
     // signed-in-vs-signed-out branch once it's actually rendering (the
     // Overview dashboard now lives at /overview, gated the normal way
     // below, not on this list).
-    path === "/" ||
-    path === "/pricing" ||
-    path === "/terms" ||
-    path === "/privacy" ||
-    path === "/login" ||
-    path === "/signup" ||
+    normalizedPath === "/" ||
+    normalizedPath === "/pricing" ||
+    normalizedPath === "/terms" ||
+    normalizedPath === "/privacy" ||
+    normalizedPath === "/login" ||
+    normalizedPath === "/signup" ||
     path.startsWith("/welcome") ||
     // Password recovery is by definition a signed-out surface. /auth/confirm
     // must pass through because it is what MINTS the session — gating it on
     // one would make every emailed link bounce to /login and lose its token.
     // /reset-password does its own session check (see its page).
-    path === "/forgot-password" ||
-    path === "/reset-password" ||
+    normalizedPath === "/forgot-password" ||
+    normalizedPath === "/reset-password" ||
+    // app/robots.ts and app/sitemap.ts: crawler requests carry no session,
+    // so without this an anonymous /robots.txt or /sitemap.xml request gets
+    // 307'd to /login instead of served. The top-level proxy.ts matcher
+    // already lets both through (neither is excluded there).
+    normalizedPath === "/robots.txt" ||
+    normalizedPath === "/sitemap.xml" ||
     path.startsWith("/auth/") ||
     // The Stripe webhook is machine-to-machine and carries no session. It
     // authenticates by signature (see the route), which is stronger than a

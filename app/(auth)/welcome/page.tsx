@@ -60,9 +60,17 @@ export default async function WelcomePage({
         <Text size="6" weight="bold">
           You&rsquo;re signed in
         </Text>
+        {/*
+          "expenses attach to it", not "post from it". Nothing in this product
+          creates an expense from a trip — expenses come from the pilot, a
+          scanned receipt, or a bank import, and a trip is what they get
+          ATTACHED to so they reach the right invoice and the right tax year.
+          "Post from it" asserted automatic generation that does not exist.
+        */}
         <Text size="2" color="gray">
-          Log the trip once — your logbook entry, invoice, and expenses all
-          post from it. Start your trial to set up your workspace.
+          Log the trip once — your logbook draft and your invoice lines both
+          come from it, and your expenses attach to it. Start your trial to set
+          up your workspace.
         </Text>
 
         {checkout === "cancelled" ? (

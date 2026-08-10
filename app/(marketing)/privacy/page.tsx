@@ -2,7 +2,17 @@ import { Callout, Container, Flex, Heading, Section, Text } from "@/components/u
 import { InfoCircledIcon } from "@radix-ui/react-icons";
 import { BRAND } from "@/lib/brand";
 
-export const metadata = { title: "Privacy Policy" };
+/**
+ * noindex for the same reason as app/(marketing)/terms/page.tsx: this page
+ * says in its own body that there is no published policy yet, and a
+ * placeholder saying so should not be the search result for this product's
+ * name. The URL stays stable and the footer links it. Remove the override when
+ * counsel's text lands (docs/LAUNCH-GATES.md G3).
+ */
+export const metadata = {
+  title: "Privacy Policy",
+  robots: { index: false, follow: true },
+};
 
 /**
  * COUNSEL-GATED PLACEHOLDER — docs/LAUNCH-GATES.md G3. Same reasoning as

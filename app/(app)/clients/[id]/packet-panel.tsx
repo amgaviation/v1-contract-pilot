@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import {
   AlertDialog,
   Button,
@@ -82,13 +82,26 @@ export default function PacketPanel({
   // panel simultaneously said "the previous link was revoked" under a
   // "Replace the link" button: three contradictory statements about the
   // same packet on one render.
+  // `revokedToken ?? candidateToken` rather than a bare `revokedToken`
+  // comparison: if a dispatch ever came back without a token to name (the
+  // hidden `revoking_token` field missing or empty), this must not read as
+  // "doesn't match, so show the link" — it fails toward hiding a possibly
+  // revoked link, not toward showing one.
   const token =
-    candidateToken && revokeState.revoked && revokeState.revokedToken === candidateToken
+    candidateToken &&
+    revokeState.revoked &&
+    (revokeState.revokedToken ?? candidateToken) === candidateToken
       ? null
       : candidateToken;
   const url = token
     ? `${typeof window === "undefined" ? "" : window.location.origin}/packet/${token}`
     : null;
+
+  // Copied is per-link: it must not survive a token change and claim a
+  // different link is on the clipboard than the one actually copied.
+  useEffect(() => {
+    setCopied(false);
+  }, [token]);
 
   return (
     <Card size="3">
@@ -236,8 +249,13 @@ export default function PacketPanel({
               revoke that failed on an old token would keep showing this
               error underneath a brand new link a subsequent create just
               made live, which is not a failure of anything on screen
-              anymore. */}
-          {revokeState.error && revokeState.revokedToken === token ? (
+              anymore. `revokedToken ?? token`, not a bare comparison: an
+              error path that returns without echoing revoking_token (the
+              client_id check in revokePacketShare, before revokingToken
+              is even read) must not read as "doesn't match, so drop the
+              error" — the same fail-closed reasoning as the `token`
+              derivation above. */}
+          {revokeState.error && (revokeState.revokedToken ?? token) === token ? (
             <Callout.Root color="red" size="1">
               <Callout.Text>{revokeState.error}</Callout.Text>
             </Callout.Root>

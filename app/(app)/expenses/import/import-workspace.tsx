@@ -77,7 +77,10 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
       return;
     }
     setAccounts((prev) => [...prev, result.account!].sort((a, b) => a.label.localeCompare(b.label)));
-    setBankAccountId(result.account.id);
+    // Routed through selectAccount (defined below), not setBankAccountId
+    // directly — otherwise this path skips the OFX re-parse and can
+    // leave a preview bound to a different ledger than the one shown.
+    selectAccount(result.account.id);
     setNewAccountOpen(false);
     setNewLabel("");
     setNewLast4("");
@@ -95,8 +98,8 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
   // headerRow/dataRecords/mapping stay put and step 3 has a "Parse N rows"
   // button to redo the read; OFX has no such button (step 3 is CSV-only)
   // and parseOfx never looked at the account anyway, so re-running it from
-  // this text is strictly better than losing the preview — see the
-  // Select's onValueChange below.
+  // this text is strictly better than losing the preview — see selectAccount
+  // below.
   const [ofxText, setOfxText] = useState<string | null>(null);
 
   const [parseResult, setParseResult] = useState<BankParseResult | null>(null);
@@ -105,11 +108,17 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [confirmResult, setConfirmResult] = useState<ConfirmBankImportResult | null>(null);
+  // Which account confirmResult belongs to. The success line below is
+  // gated on this matching bankAccountId, so switching accounts hides
+  // it without nulling confirmResult itself — confirmResult also carries
+  // the in-file-duplicate list, the only place that list is ever shown.
+  const [confirmResultAccountId, setConfirmResultAccountId] = useState<string | null>(null);
 
   const handleFile = async (file: File) => {
     setFileError(null);
     setParseResult(null);
     setConfirmResult(null);
+    setConfirmResultAccountId(null);
     setConfirmError(null);
     setExcluded(new Set());
     setFileName(file.name);
@@ -160,6 +169,27 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
   const runOfx = (text: string, fmt: "ofx" | "qfx") => {
     const result = parseOfx(text, fmt);
     setParseResult(result);
+  };
+
+  // Both the Select below and "Save account" above call this — neither
+  // may change the selected account any other way, or a preview can end
+  // up bound to a different ledger than the one showing (handleCreateAccount
+  // used to call setBankAccountId directly and skip all of it).
+  //
+  // OFX/QFX has no re-parse button (step 3 below is CSV-only) and
+  // re-picking the identical file doesn't reliably re-fire <input
+  // type="file">'s change event in Chrome/Safari, so the stored ofxText
+  // is re-run through parseOfx (which never reads the account) instead
+  // of losing the preview. CSV keeps headerRow/dataRecords untouched;
+  // step 3's "Parse N rows" button redoes that read.
+  const selectAccount = (id: string) => {
+    setBankAccountId(id);
+    setConfirmError(null);
+    if ((detectedFormat === "ofx" || detectedFormat === "qfx") && ofxText) {
+      runOfx(ofxText, detectedFormat);
+    } else {
+      setParseResult(null);
+    }
   };
 
   const runCsv = (signFlipOverride?: boolean) => {
@@ -229,6 +259,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
       return;
     }
     setConfirmResult(result);
+    setConfirmResultAccountId(selectedAccount.id);
   };
 
   return (
@@ -237,36 +268,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
         <Flex direction="column" gap="3">
           <Text weight="medium">1. Which account is this from?</Text>
           <Flex gap="3" align="center" wrap="wrap">
-            <Select.Root
-              value={bankAccountId}
-              onValueChange={(v) => {
-                setBankAccountId(v);
-                // A completed import's success callout is keyed to the account
-                // that was selected when Import was clicked, not to whichever
-                // account is selected now — and step 4 no longer unmounts on
-                // an OFX/QFX switch (see below), so without this the pilot
-                // could switch from Chase to Amex and still see "Imported 42.
-                // Go review them →" left over from Chase, stacked above a
-                // live Amex preview with no Import button to act on it.
-                setConfirmResult(null);
-                setConfirmError(null);
-                // OFX/QFX has no re-parse button (step 3 below is CSV-only)
-                // and re-picking the identical file doesn't reliably re-fire
-                // <input type="file">'s change event in Chrome/Safari — so
-                // wiping the preview here used to strand the pilot exactly
-                // when the wrong-ledger warning told them to switch the
-                // account. parseOfx never reads the account anyway, so
-                // there's a stored copy of the text to re-run it against
-                // instead of losing the preview. CSV keeps the old
-                // behavior: its headerRow/dataRecords survive untouched and
-                // step 3's "Parse N rows" button re-applies the mapping.
-                if ((detectedFormat === "ofx" || detectedFormat === "qfx") && ofxText) {
-                  runOfx(ofxText, detectedFormat);
-                } else {
-                  setParseResult(null);
-                }
-              }}
-            >
+            <Select.Root value={bankAccountId} onValueChange={selectAccount}>
               <Select.Trigger placeholder="Pick an account" />
               <Select.Content>
                 {accounts.map((a) => (
@@ -465,9 +467,9 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                   This statement is for an account ending{" "}
                   ···{parseResult.statementAccountId.slice(-4)}, but{" "}
                   {selectedAccount.label} has no last 4 on file, so we can&rsquo;t
-                  confirm it&rsquo;s the same account. Add the last 4 to {selectedAccount.label}{" "}
-                  above, or double-check the statement yourself — a later import of
-                  the right statement wouldn&rsquo;t catch a mismatch as a duplicate.
+                  confirm it&rsquo;s the same account. Double-check the statement
+                  yourself before importing — a later import of the right
+                  statement wouldn&rsquo;t catch a mismatch as a duplicate.
                 </Callout.Text>
               </Callout.Root>
             ) : null}
@@ -574,7 +576,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
               </Callout.Root>
             ) : null}
 
-            {confirmResult ? (
+            {confirmResult && confirmResultAccountId === bankAccountId ? (
               <Callout.Root color={confirmResult.partial ? "amber" : "green"}>
                 <Callout.Text>
                   {/* THE TWO KINDS OF DUPLICATE ARE NOT THE SAME EVENT and
@@ -612,7 +614,10 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                 already being computed, persisted to the batch AND returned
                 — and then dropped on the floor here. bank_import_batches
                 is never selected anywhere, so it was unreachable forever. */}
-            {confirmResult && !confirmResult.partial && (confirmResult.duplicatesInFile ?? 0) > 0 ? (
+            {confirmResult &&
+            confirmResultAccountId === bankAccountId &&
+            !confirmResult.partial &&
+            (confirmResult.duplicatesInFile ?? 0) > 0 ? (
               <Callout.Root color="amber">
                 <Callout.Text>
                   <Text as="div" weight="medium" mb="1">
@@ -639,7 +644,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
               </Callout.Root>
             ) : null}
 
-            {!confirmResult ? (
+            {!confirmResult || confirmResultAccountId !== bankAccountId ? (
               <Box>
                 <Button type="button" onClick={handleConfirm} disabled={confirming || includedRows.length === 0}>
                   {confirming ? "Importing…" : `Import ${includedRows.length} transaction${includedRows.length === 1 ? "" : "s"}`}

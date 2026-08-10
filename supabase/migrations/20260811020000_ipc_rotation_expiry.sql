@@ -28,8 +28,9 @@
 -- environment's fetcher reaches eCFR directly; there is no bot-detection
 -- redirect here, and no Cornell-mirror fallback is needed -- see
 -- REVIEW-ipc problem 5):
---   https://www.ecfr.gov/api/versioner/v1/full/2026-08-10/title-14.xml?section=135.297
---   retrieved live 2026-08-10. Paragraph (e), verbatim: "If the pilot in
+--   https://www.ecfr.gov/api/versioner/v1/full/2026-08-06/title-14.xml?section=135.297
+--   (2026-08-06 is the title's most recent issue date), retrieved live
+--   2026-08-10. Paragraph (e), verbatim: "If the pilot in
 --   command is assigned to pilot more than one type of aircraft, that
 --   pilot must take the instrument proficiency check required by
 --   paragraph (a) of this section in each type of aircraft to which that

@@ -2,7 +2,19 @@ import { Callout, Container, Flex, Heading, Section, Text } from "@/components/u
 import { InfoCircledIcon } from "@radix-ui/react-icons";
 import { BRAND } from "@/lib/brand";
 
-export const metadata = { title: "Terms of Service" };
+/**
+ * noindex, overriding the marketing layout's `index: true`. This page says in
+ * its own body that there are no Terms yet, and a placeholder saying so is the
+ * last thing that should be a search result for this product's name. The URL
+ * stays stable and reachable — the footer links it, and anyone who asks can
+ * read exactly where things stand — it simply is not offered to crawlers until
+ * there is a document here worth finding. Remove the override when counsel's
+ * text lands (docs/LAUNCH-GATES.md G3).
+ */
+export const metadata = {
+  title: "Terms of Service",
+  robots: { index: false, follow: true },
+};
 
 /**
  * COUNSEL-GATED PLACEHOLDER — docs/LAUNCH-GATES.md G3.

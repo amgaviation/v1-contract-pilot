@@ -52,6 +52,13 @@ function CorrectPaymentForm({
   const [dismissed, setDismissed] = useState(false);
   const [state, formAction, pending] = useActionState(correctPayment, initialState);
   const notice = dismissed ? undefined : state.notice;
+  // `wasCorrected` comes from the refetched `payments` prop and can lag a
+  // correction THIS form just submitted (revalidatePath race). state.saved
+  // is this form's own ground truth for that case, so either one means the
+  // correction has landed — without state.saved here, a dismissed notice
+  // with a not-yet-refreshed `wasCorrected` fell through to the full
+  // correction form again on a payment already corrected.
+  const corrected = wasCorrected || state.saved;
 
   useEffect(() => {
     // Close on a clean correction, but NOT when retiring the payment link
@@ -64,7 +71,7 @@ function CorrectPaymentForm({
 
   // The correction has landed and there's nothing left to tell the pilot —
   // the row's own "· corrected" label already covers it.
-  if (wasCorrected && !notice) {
+  if (corrected && !notice) {
     return null;
   }
 
@@ -81,7 +88,7 @@ function CorrectPaymentForm({
       <input type="hidden" name="invoice_id" value={invoiceId} />
       <input type="hidden" name="payment_id" value={payment.id} />
       <Flex direction="column" gap="2" mt="2">
-        {!wasCorrected ? (
+        {!corrected ? (
           <>
             <Text size="1" color="gray">
               {`This cancels the ${formatCents(payment.amount_cents)} entry with a matching
@@ -115,10 +122,9 @@ function CorrectPaymentForm({
             {state.error}
           </Text>
         ) : null}
-        {/* Mirrors recordPayment's own notice rendering below (~line 413)
-            — a side effect of a SUCCESSFUL correction, not a failure, so it
-            renders separately from `error`. See retirePaymentLink's doc
-            comment in actions.ts for what the two possible sentences mean. */}
+        {/* Mirrors the notice rendering in PaymentPanel's own record-payment
+            form below — a side effect of a SUCCESSFUL correction, not a
+            failure, so it renders separately from `error`. */}
         {notice ? (
           <Callout.Root color="amber" size="1">
             <Callout.Text>{notice}</Callout.Text>
@@ -171,11 +177,16 @@ function PayOnlinePanel({
   balanceDueCents: number | null;
 }) {
   const [state, formAction, pending] = useActionState(createInvoicePaymentLink, initialLinkState);
-  // A link generated in this render is priced at the current balance by
-  // construction — only one loaded from the server can be stale.
-  const justCreated = Boolean(state.url);
-  const url = state.url ?? existingLinkUrl;
-  const linkAmountCents = justCreated ? balanceDueCents : existingLinkAmountCents;
+  // Rendered from the server-refreshed props for THIS render, never from
+  // state.url — that flag is set once by a successful creation and never
+  // clears (useActionState state never clears), so after a LATER action on
+  // this same screen (recordPayment/correctPayment) retires the link,
+  // state.url would still name a link that is now dead on Stripe and erased
+  // from the row. createInvoicePaymentLink also calls revalidatePath, so by
+  // the time state.url is set here, existingLinkUrl/existingLinkAmountCents
+  // already reflect the same link — nothing is lost by reading only them.
+  const url = existingLinkUrl;
+  const linkAmountCents = existingLinkAmountCents;
   // A null existingLinkAmountCents is a link generated before this column
   // existed (20260810010000) and never regenerated — there's no way to know
   // what it actually charges without a Stripe round trip this panel doesn't
@@ -184,7 +195,6 @@ function PayOnlinePanel({
   // fine" — this has to agree, or the client reads "out of date, contact
   // your pilot" while the pilot's own screen says nothing is wrong.
   const stale =
-    !justCreated &&
     url !== null &&
     balanceDueCents !== null &&
     (existingLinkAmountCents === null || existingLinkAmountCents !== balanceDueCents);
@@ -201,11 +211,13 @@ function PayOnlinePanel({
     <Flex direction="column" gap="2" align="start">
       {url ? (
         <Flex direction="column" gap="1" width="100%">
-          <Text size="1" color="gray">
-            {linkAmountCents !== null
-              ? `Send this link to your client to pay ${formatCents(linkAmountCents)} by card:`
-              : "Send this link to your client to pay by card:"}
-          </Text>
+          {!stale ? (
+            <Text size="1" color="gray">
+              {linkAmountCents !== null
+                ? `Send this link to your client to pay ${formatCents(linkAmountCents)} by card:`
+                : "Send this link to your client to pay by card:"}
+            </Text>
+          ) : null}
           <TextField.Root readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
           <Text size="1" color="gray">
             It can only be paid once — Stripe switches it off after the first

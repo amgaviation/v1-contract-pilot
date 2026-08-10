@@ -41,7 +41,13 @@ export default function SiteHeader() {
             <Text asChild size="2" color="gray">
               <NextLink href="/login">Log in</NextLink>
             </Text>
-            <Button asChild size="2">
+            {/* Navy, not the Theme's accent blue — see the hero CTA
+                comment in app/(marketing)/page.tsx. */}
+            <Button
+              asChild
+              size="2"
+              style={{ background: "var(--v1-marketing-navy)", color: "var(--v1-marketing-navy-ink)" }}
+            >
               <NextLink href="/signup">Start free trial</NextLink>
             </Button>
           </Flex>

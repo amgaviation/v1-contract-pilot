@@ -44,8 +44,8 @@
  *     dashboard therefore judge the SAME row; every other type's row
  *     renders as rotation history with no red badge of its own on
  *     EITHER screen. Still NOT a determination that the rotation itself
- *     satisfies 297(e) — only that the most recent check is inside
- *     297(a)'s window — the panel copy says so.
+ *     satisfies 297(e) — only that the row with the latest expires_on is
+ *     inside 297(a)'s window — the panel copy says so.
  *
  * TYPE_SPECIFIC_REQUIREMENTS is the exception set — the panel renders
  * those two as repeatable-by-type sub-lists; every other requirement in
@@ -167,8 +167,9 @@ export const DERIVED_EXPIRY_REQUIREMENTS = new Set<string>([
  * 14 CFR 135.297(e), verbatim — eCFR title 14, versioner API (this
  * environment's fetcher reaches eCFR directly; there is no bot-detection
  * redirect and no mirror is needed):
- * https://www.ecfr.gov/api/versioner/v1/full/2026-08-10/title-14.xml?section=135.297,
- * retrieved live 2026-08-10: "If the pilot in command is assigned to
+ * https://www.ecfr.gov/api/versioner/v1/full/2026-08-06/title-14.xml?section=135.297
+ * (2026-08-06 is the title's most recent issue date), retrieved live
+ * 2026-08-10: "If the pilot in command is assigned to
  * pilot more than one type of aircraft, that pilot must take the
  * instrument proficiency check required by paragraph (a) of this section
  * in each type of aircraft to which that pilot is assigned, in rotation,
@@ -248,9 +249,9 @@ export function currentIpcRotationId(
 export const ROTATION_HISTORY_COPY: Record<string, string> = {
   [IPC_REQUIREMENT]:
     "Rotation history, not a lapse — 135.297(e) allows one flight check per " +
-    "6-month period across your assigned types; your most recently completed " +
-    "check is the one judged against that window. Planning aid, not a " +
-    "determination of regulatory compliance.",
+    "6-month period across your assigned types; the type expiring latest is " +
+    "the one judged against that window. Planning aid, not a determination " +
+    "of regulatory compliance.",
 };
 
 export const STATUS_OPTIONS = [

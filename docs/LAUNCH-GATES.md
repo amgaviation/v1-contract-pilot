@@ -32,35 +32,39 @@ never switch a mode, never soften a disclaimer, never publish a claim.
 61.23 medical posture, computed from the pilot's own logbook entries and document expiries.
 `docs/PLAN.md` decision #15 and the standing gates put it behind a flag, dark, until reviewed.
 
-**The flag's actual current default: there is no flag.** This is the accurate statement, and it
-matters more than "off". There is no feature-flag environment variable (the app reads only what
-`.env.example` documents, plus a handful of opt-ins the verify scripts read; none of them names
-currency), no `pilot.accounts` column, no `lib/flags.ts`, and no gate expression anywhere in
-`app/`. The engine is **not built**, so
-"dark" is currently enforced by the absence of the code rather than by a default someone could
-flip. Two consequences worth being blunt about:
+**The flag now exists, and the engine is IMPLEMENTED, dark, behind it.** `docs/CURRENCY-SPEC.md`
+§12 is the 2026-08-10 implementation-review addendum; read it before this paragraph settles
+anything. The flag is `CURRENCY_ENGINE_ENABLED`, defined in `lib/currency/gate.ts`: it requires
+an exact, case-sensitive match against the string `"true"`, so an unset variable, an empty
+variable, and the string `"false"` all read as off — never "on unless disabled". Nothing under
+`app/` calls the engine, so nothing renders it to a pilot today. Two consequences worth being
+blunt about:
 
-- Nobody can accidentally enable it today, because there is nothing to enable.
-- The flag itself is unwritten, so **whoever builds it inherits this gate**: it defaults off, it
-  is per-deployment (not per-tenant, until an owner decision says otherwise), and the default
-  belongs in code where a missing env var reads as off — never "on unless disabled".
+- The default-off behaviour is enforced in code (`isCurrencyEngineEnabled()` and
+  `assertCurrencyEngineEnabled()` in `lib/currency/gate.ts`), not by the absence of a feature —
+  building the engine did not weaken the default.
+- It is per-deployment, not per-tenant, until an owner decision says otherwise. §12 also found
+  that 61.56 flight-review currency is **not computable yet** — `pilot.documents` records
+  `expires_on` but no completion date, and 61.56 arithmetic runs from the completion — so O-1(b)'s
+  "ship 61.56 only" recommendation is not ready to act on.
 
-What exists today is the *inputs*: `pilot.logbook_entries` carries the day/night takeoff and
+What exists as *inputs*: `pilot.logbook_entries` carries the day/night takeoff and
 full-stop landing split, `approach_condition` (`20260807140000`), the
 61.57(c)(1)(iii) intercept/track boolean, and simulator device class; `pilot.aircraft` carries
 the tailwheel flag; `pilot.documents` carries hand-entered expiries. The Overview screen
 deliberately shows **document expiries only** and says so in its own copy — see
-`app/(app)/page.tsx` (the `expirations` query comment and the panel footnote), which explains
-why `CURRENCY_DISCLAIMER` is *not* rendered there: that string asserts a calculation this
-product does not yet perform, and spending it early is worse than not showing it.
+`app/(app)/overview/page.tsx` (the `expirations` query comment and the panel footnote), which
+explains why `CURRENCY_DISCLAIMER` is *not* rendered there: that string asserts a calculation
+this product does not yet perform, and spending it early is worse than not showing it.
 
 **Who signs.** **Both.** Aviation counsel on the disclaimer wording; the product owner on the
 written spec. They are independent — counsel's answer on C-1 does not settle O-1, and the
 owner's answer on O-1 does not license the wording.
 
-**Blocked until then.** Building or enabling the flag; rendering `CURRENCY_DISCLAIMER` on any
-screen; any output that states or implies a recency conclusion; any duty/rest output (G8, which
-ships inside this same flag and needs its *own* disclaimer, never this one).
+**Blocked until then.** Setting `CURRENCY_ENGINE_ENABLED=true` anywhere; rendering
+`CURRENCY_DISCLAIMER` on any screen; any output that states or implies a recency conclusion; any
+duty/rest output (G8, which ships inside this same flag and needs its *own* disclaimer, never
+this one).
 
 **Prepared and waiting for review.**
 - `docs/CURRENCY-SPEC.md` — the written spec the owner reviews. Every regulation in it was
@@ -100,18 +104,37 @@ business per-seat); it does not lock the amount.
 included (see G3 — the refund and cancellation terms are ToS surface, not pricing surface).
 
 **Blocked until then.** Creating the live-mode Stripe Price and setting `STRIPE_PRICE_ID_SOLO`
-against it (G4 depends on this one); publishing any public pricing page; changing the price
-strings already in the codebase.
+against it (G4 depends on this one); changing any price string in the codebase to a number the
+owner has not confirmed. **Existing in the repo and rendering on the Vercel preview host is not
+publishing** — G5 is the gate for the custom domain going live to strangers, and that is where
+"publishing a pricing page" actually happens. What this gate blocks, precisely, is a price the
+owner has not signed ever being charged: no live-mode Stripe Price, and no price string anywhere
+in the product moving off $29 without the owner's word.
 
-**Prepared and waiting for review.** `docs/PRICING.md` is the document this gate reviews. Until
-it is on disk and filled in, the only price statements in the repo are these three, and they
-are hand-maintained rather than derived:
+That carve-out is **enforced in code, not asserted here.** A review pointed out — correctly — that
+"a preview is not publishing" is worthless if a preview is crawlable, and the marketing layout was
+at that moment declaring `index: true` on every deployment. Both `app/(marketing)/layout.tsx` and
+`app/robots.ts` now gate indexing on `VERCEL_ENV === "production"`, and both fail closed when the
+variable is absent, so a preview host is noindex by construction. If either of those checks is ever
+removed, this carve-out stops being true and this gate has to be rewritten before that lands.
+
+**Prepared and waiting for review.** `docs/PRICING.md` is the document this gate reviews — it is
+drafted (see that file for the proposal and the competitor research behind it) but not yet
+signed. The price statements in the repo, hand-maintained rather than derived, are:
 
 | Where | What it says | Note |
 |---|---|---|
 | `app/(auth)/welcome/page.tsx` | `PRICE_LABEL = "$29/month"` | Presentational only; the Stripe Price object is authoritative, and its own comment says so |
+| `app/(marketing)/page.tsx` | `PRICE_LABEL = "$29/month"` | Public landing page hero and CTA band. Deployed to the Vercel preview host only — see G5 |
+| `app/(marketing)/pricing/page.tsx` | `PRICE_LABEL = "$29"` | Public pricing page. Deployed to the Vercel preview host only — see G5 |
 | `app/(auth)/welcome/welcome-actions.tsx` | "Card required now, cancel anytime" | The claim in G3's cancellation problem |
 | `docs/BILLING.md`, `.env.example` | $29/month solo, 7-day card-required trial | `STRIPE_PRICE_ID_BUSINESS_SEAT` is deliberately absent so "unset" can never pass for "configured" |
+
+**Every price string above prints $29, the number the product is already configured and wired to
+charge — none of them prints $39, the number `docs/PRICING.md` proposes.** The owner asked for
+the landing page and pricing page to be built, and they are, but the copy that charges money does
+not get ahead of this gate: it was a deliberate choice to print the confirmed number, not the
+proposal.
 
 **Closes when.** `docs/PRICING.md` states the launch price, the trial length, and whether the
 business per-seat plan is in or out of launch; the owner signs it; and every string in the table
@@ -134,8 +157,10 @@ published terms is the thing counsel review exists to prevent.
 
 **Prepared and waiting for review.** Very little, and that is the honest state:
 
-- **There are no `/terms` or `/privacy` routes.** `app/` contains `(app)`, `(auth)`, `api`,
-  `auth`, `invoice/[token]` and `packet/[token]`. There is no public marketing surface at all.
+- **`/terms` and `/privacy` routes exist, but neither is a real document.**
+  `app/(marketing)/terms/page.tsx` and `app/(marketing)/privacy/page.tsx` are counsel-gated
+  placeholders — each says in its own body that nothing on it is binding, and both stay
+  `noindex` until this gate closes.
 - **Signup captures no acceptance.** `app/(auth)/signup/signup-form.tsx` has email and password
   and nothing else, and there is no column anywhere recording that a user accepted anything.
   Recording acceptance needs a migration — it does not exist, and this file is not the place to
@@ -308,9 +333,28 @@ disclaimer above every figure is a first pass, not a substitute for review.
 
 **Who signs.** Aviation counsel.
 
-**Blocked until then.** Publishing the year-end packet as a marketed feature; adding any figure
-that is computed rather than summed. Nothing on those screens computes tax owed today, and
-nothing may start.
+**Blocked until then.** Marketing the year-end packet as a feature to a stranger at the product's
+real domain; adding any figure that is computed rather than summed.
+
+> **A standing exception this gate must not be read as approving.** `/reports/quarterly` already
+> carries a "Set aside" column that computes `netProfitCents × setAsidePercent`, which is a figure
+> computed rather than summed. It PREDATES this gate; it was not introduced under it. It is recorded
+> here rather than quietly tolerated, because a gate whose text forbids something the product
+> already does is a gate nobody can act on. Counsel should decide explicitly whether that column
+> stays, changes, or goes — and until they do, nothing may add a second computed figure anywhere.
+> Note that the column's percentage is pilot-supplied and its base excludes mileage; the screen's
+> own copy states both, and makes no claim about what the pilot actually owes.
+
+**Existing in the repo and
+rendering on the Vercel preview host is not marketing it** — and, as in G2, that is now enforced by
+`VERCEL_ENV`-gated indexing in `app/(marketing)/layout.tsx` and `app/robots.ts` rather than merely
+asserted. G5 is the gate for the custom domain
+going live to the public, and that is the point at which the landing page's and pricing page's
+mention of a year-end report (`app/(marketing)/page.tsx`'s Reports feature; `app/(marketing)/pricing/page.tsx`'s
+Included list) would actually reach a stranger. The landing page already frames it as a record
+"for you or for whoever prepares your taxes," never a filing; the pricing page's Included list
+names it with no framing at all. Neither is counsel's sign-off, so neither licenses the domain
+going live on its own. Nothing on those screens computes tax owed today, and nothing may start.
 
 **Prepared and waiting.** The copy listed in G6, plus the design constraint that produced it:
 `/reports/quarterly` prints a net-profit line and a set-aside column and says outright that both
@@ -382,7 +426,7 @@ should quietly resolve in either direction.
 
 | Locked decision | Reality today |
 |---|---|
-| #12/#13 — logbook import: ForeFlight, LogTen Pro, generic column mapper | **Not built.** `pilot.logbook_import_batches` and `pilot.logbook_source_files` exist with RLS and no code path writes to them. `/logbook/export` is the read direction only. The plan itself calls this the biggest single piece of work in the build. |
+| #12/#13 — logbook import: ForeFlight, LogTen Pro, generic column mapper | **Built, and the public copy may say so.** `/logbook/import` ships all three paths; `app/(app)/logbook/import/actions.ts` writes both `pilot.logbook_import_batches` and `pilot.logbook_source_files`. `npm run logbook:verify` round-trips a fixture of each shape and asserts that a re-imported file is deduped by fingerprint while trip-derived and manual entries bypass fingerprinting entirely. **This row previously read "Not built … no code path writes to them", which was true when the gate was written and false by the time anyone read it** — the risk a stale gate row carries is the opposite of the one it was written for: it makes the owner refuse a claim that is actually honest. |
 | #16 — invoice delivery from the platform | **Not built.** Delivery today is a copied share link and a downloaded PDF. There is no send path; the only mail this product sends is Supabase Auth's, and that is currently failing (G5). |
 | #10 — business per-seat plan | **Deferred on purpose.** No `STRIPE_PRICE_ID_BUSINESS_SEAT`, no seat-sync job. |
 

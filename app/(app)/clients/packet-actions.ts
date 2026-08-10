@@ -32,11 +32,12 @@ export type PacketState = {
    * see packet-panel.tsx's `token` derivation for why that scoping is
    * load-bearing. */
   revoked?: boolean;
-  /** The token the revoke click targeted, echoed back on EVERY revoke
-   * dispatch — success or failure. Comparing this against the token a
-   * render would otherwise show is how the panel tells a revoke that is
-   * still about the link on screen from a stale one left over from
-   * earlier in the same mount (a revoke before the most recent create). */
+  /** The token the revoke click targeted, echoed back on success or
+   * failure once past the client-id check below. Comparing this against
+   * the token a render would otherwise show is how the panel tells a
+   * revoke that is still about the link on screen from a stale one left
+   * over from earlier in the same mount (a revoke before the most recent
+   * create). */
   revokedToken?: string;
 };
 
