@@ -172,8 +172,14 @@ const CATEGORY_HINTS: ReadonlyArray<readonly [ExpenseCategory, readonly string[]
   ],
   [
     "meals",
+    // "dinner"/"lunch"/"breakfast" are only safe to list now that hints
+    // match on word boundaries — as bare substrings, "dinner" would have
+    // been shadowed by the hotel list's "inn" matching inside it, which is
+    // the defect that prompted this. A crew meal receipt that says nothing
+    // but DINNER used to come back as a hotel and now comes back as meals.
     ["restaurant", "cafe", "coffee", "starbucks", "grill", "diner",
-     "bar & grill", "catering", "crew meal", "server:", "gratuity", "tip:"],
+     "bar & grill", "catering", "crew meal", "server:", "gratuity", "tip:",
+     "breakfast", "lunch", "dinner"],
   ],
 ];
 
@@ -416,10 +422,37 @@ export function extractVendor(text: string): string | null {
   return null;
 }
 
+/**
+ * Hints match on WORD BOUNDARIES, not as bare substrings.
+ *
+ * A plain `includes` made every receipt containing the word DINNER a
+ * hotel, because "inn" is one of the hotel hints — and the meals category
+ * it should have landed in is the single most common expense a contract
+ * pilot files. This repo has been bitten by exactly this before: "ame " as
+ * a medical hint matched "NAME " on every receipt that printed one.
+ *
+ * Multi-word hints ("holiday inn", "rental car") keep working because \b
+ * sits at each end of the whole phrase, not between its words.
+ */
+const HINT_CACHE = new Map<string, RegExp>();
+function hintMatches(haystack: string, hint: string): boolean {
+  let re = HINT_CACHE.get(hint);
+  if (!re) {
+    const escaped = hint.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // \b is only meaningful next to a word character. A hint that starts
+    // or ends with punctuation ("$", "#") falls back to a plain search on
+    // that side rather than a boundary that can never match.
+    const left = /^\w/.test(hint) ? "\\b" : "";
+    const right = /\w$/.test(hint) ? "\\b" : "";
+    re = new RegExp(`${left}${escaped}${right}`, "i");
+    HINT_CACHE.set(hint, re);
+  }
+  return re.test(haystack);
+}
+
 export function extractCategory(text: string): ExpenseCategory | null {
-  const lower = text.toLowerCase();
   for (const [category, hints] of CATEGORY_HINTS) {
-    if (hints.some((h) => lower.includes(h))) return category;
+    if (hints.some((h) => hintMatches(text, h))) return category;
   }
   return null;
 }

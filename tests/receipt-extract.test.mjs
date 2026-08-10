@@ -7,6 +7,7 @@ const {
   extractDate,
   extractAircraftIdent,
   extractVendor,
+  extractCategory,
 } = await import("../lib/receipt-ocr/extract.ts");
 
 /**
@@ -348,4 +349,43 @@ test("the money parser refuses shapes that are not money", () => {
   assert.equal(extractAmountCents("Total 1,234.5"), null, "one decimal is not cents");
   assert.equal(extractAmountCents("Total ABC"), null);
   assert.equal(extractAmountCents("Total 99999999.00"), null, "a receipt is not $100m");
+});
+
+// ---------------------------------------------------------------------------
+// Category hints match on word boundaries, not as bare substrings.
+//
+// Found by a nine-dimension review: "inn" is a hotel hint, so every receipt
+// printing the word DINNER was categorised as a hotel — and meals is the
+// single most common expense a contract pilot files. This repo shipped the
+// same class of bug once before ("ame " as a medical hint matched "NAME "),
+// so these cases pin the rule rather than the one word that broke it.
+// ---------------------------------------------------------------------------
+test("a hint is not matched inside a longer word", () => {
+  // The defect: "inn" is a hotel hint, and a bare substring search found it
+  // inside DINNER. A crew meal came back as a hotel.
+  assert.equal(
+    extractCategory("THE STEAKHOUSE\nCREW DINNER\nTOTAL $84.20"),
+    "meals",
+    'DINNER must not match the "inn" hotel hint'
+  );
+});
+
+test("and a genuine FBO receipt still wins on its own name", () => {
+  // Not a counterexample to the rule above — a Signature receipt IS an FBO
+  // charge, and "signature" is a fuel hint. Pinned because the first
+  // version of the test above used this string and read its correct answer
+  // as a failure.
+  assert.equal(
+    extractCategory("SIGNATURE FLIGHT SUPPORT\nCREW DINNER\nTOTAL $84.20"),
+    "fuel"
+  );
+});
+
+test("but the same hint still matches as a real word", () => {
+  assert.equal(extractCategory("HOLIDAY INN EXPRESS\nROOM 214\nTOTAL $189.00"), "hotel");
+  assert.equal(extractCategory("THE INN AT KDAL\nTOTAL $210.00"), "hotel");
+});
+
+test("multi-word hints survive the boundary rule", () => {
+  assert.equal(extractCategory("HERTZ RENTAL CAR\nTOTAL $96.40"), "rental_car");
 });

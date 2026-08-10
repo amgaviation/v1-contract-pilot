@@ -118,6 +118,7 @@ export default async function LogbookPage({
     night_time: number;
     instrument_time: number;
     landings: number;
+    simulator_time: number;
   } | null;
 
   // A failed totals read is NOT zero hours. Falling back to the page's own
@@ -130,6 +131,10 @@ export default async function LogbookPage({
         night: Number(totalsRow.night_time),
         instrument: Number(totalsRow.instrument_time),
         landings: Number(totalsRow.landings),
+        // Its own figure, never folded into Total. The by-type table
+        // below already reports it separately; the career cards used to
+        // disagree with it by however many hours the pilot had in a box.
+        simulator: Number(totalsRow.simulator_time),
       }
     : null;
 
@@ -214,13 +219,14 @@ export default async function LogbookPage({
             </Callout.Root>
           ) : null}
 
-          <Grid columns={{ initial: "2", md: "5" }} gap="3">
+          <Grid columns={{ initial: "2", md: "6" }} gap="3">
             {(totals
               ? [
                   { label: "Total time", value: totals.total, decimals: 1 },
                   { label: "PIC", value: totals.pic, decimals: 1 },
                   { label: "Night", value: totals.night, decimals: 1 },
                   { label: "Instrument", value: totals.instrument, decimals: 1 },
+                  { label: "Simulator", value: totals.simulator, decimals: 1 },
                   { label: "Landings", value: totals.landings, decimals: 0 },
                 ]
               : []

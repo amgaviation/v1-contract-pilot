@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { friendlyDbError } from "@/lib/db-errors";
+import { DOCUMENT_KINDS } from "./kinds";
 import type { Database } from "@/lib/supabase/database.types";
 
 type DocumentInsert = Database["pilot"]["Tables"]["documents"]["Insert"];
@@ -41,15 +42,19 @@ const FILE_TYPES = [
   "application/pdf",
 ];
 
-const KINDS = [
-  "medical",
-  "flight_review",
-  "passport",
-  "certificate",
-  "insurance",
-  "w9",
-  "other",
-] as const;
+/**
+ * DERIVED, not retyped. This was a hand-copied array and it had fallen a
+ * value behind ./kinds.ts: "pic_proficiency_check" was missing, so a pilot
+ * who picked "PIC proficiency check (61.58)" had it silently rewritten to
+ * "other" by oneOf()'s fallback — no error, no hint, and the document then
+ * sat in the wrong bucket on the expirations board 61.58 is the whole
+ * reason for.
+ *
+ * ./kinds.ts is a plain module (no "use server"), so importing it here is
+ * safe, and deriving is the only version of "keep these in lockstep" that
+ * survives the next kind being added.
+ */
+const KINDS = DOCUMENT_KINDS.map((k) => k.value);
 
 const DOCUMENT_FIELDS = [
   "kind",
