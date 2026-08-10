@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionContext } from "@/lib/supabase/account";
 import LoginForm from "./login-form";
+import { safeNextPath } from "@/lib/safe-next";
 
 export const metadata = { title: "Sign in" };
 
@@ -20,7 +21,7 @@ export default async function LoginPage({
   if (ctx) redirect("/welcome");
 
   const { next } = await searchParams;
-  const target = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  const target = safeNextPath(next);
 
   return <LoginForm next={target} />;
 }

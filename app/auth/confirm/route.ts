@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { safeNextPath } from "@/lib/safe-next";
 
 export const dynamic = "force-dynamic";
 
@@ -28,11 +29,10 @@ export async function GET(request: NextRequest) {
   const tokenHash = url.searchParams.get("token_hash");
   const type = url.searchParams.get("type");
 
-  // Same open-redirect rule as login's `next` (see login/actions.ts):
-  // only an app-internal, non-protocol-relative path is honoured.
-  const requested = url.searchParams.get("next") ?? "/";
-  const next =
-    requested.startsWith("/") && !requested.startsWith("//") ? requested : "/";
+  // Same open-redirect rule as login's `next`, and now literally the same
+  // code — see lib/safe-next.ts for why the hand-written prefix test these
+  // three call sites each carried was wrong.
+  const next = safeNextPath(url.searchParams.get("next"));
 
   const supabase = await createClient();
 
