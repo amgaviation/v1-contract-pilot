@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { parseDollarsToCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+import { deactivatePaymentLink, LINK_STILL_LIVE_WARNING } from "@/lib/stripe/connect";
 import { categoryLabel } from "./labels";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -24,6 +25,14 @@ export type InvoiceFormState = {
   error: string | null;
   saved?: boolean;
   values?: Record<string, string>;
+  /**
+   * Something that happened as a SIDE EFFECT of a successful action and
+   * that the pilot needs to know — currently only "recording this payment
+   * switched off the online payment link". Not an error (the thing they
+   * asked for worked) and not a validation message, so it renders
+   * separately from `error`.
+   */
+  notice?: string;
 };
 /**
  * A rejected line edit used to re-render the STORED values, which silently
@@ -1429,13 +1438,72 @@ export async function sendInvoice(
   return { error: null };
 }
 
+/**
+ * Voiding an invoice that had a Stripe payment link on it USED TO FAIL
+ * OUTRIGHT — raised in review, then reproduced against the schema rather
+ * than taken on trust. `invoices_payment_link_requires_sendable_status`
+ * (20260809040000) permits a stored link only on a sent/partial/paid
+ * invoice; this action sent `{ status: 'void' }` and nothing else, so the
+ * new row still carried the link, the CHECK fired 23514, and the pilot
+ * got "Some of those values aren't valid together." on the one action
+ * they most needed to work.
+ *
+ * The constraint is right and stays (see 20260810010000's header). What
+ * was missing is the other half of voiding: a cancelled invoice must stop
+ * being payable. So this deactivates the link on Stripe first, then
+ * clears all four link columns in the SAME update that sets the status —
+ * satisfying the CHECK — and tells the pilot when Stripe couldn't confirm
+ * the deactivation, because then a live payment URL for a cancelled
+ * invoice is still out there and only they can finish killing it.
+ */
 export async function voidInvoice(id: string): Promise<{ error: string | null }> {
   if (!UUID_RE.test(id)) return { error: "That invoice no longer exists." };
 
   const { account } = await requireAccount(`/invoices/${id}`);
   const supabase = await createClient();
 
-  const payload: InvoiceUpdate = { status: "void" };
+  const { data: linkData } = await supabase
+    .from("invoices")
+    .select("stripe_payment_link_id")
+    .eq("id", id)
+    .eq("account_id", account.id)
+    .maybeSingle();
+  const paymentLinkId = (linkData as { stripe_payment_link_id: string | null } | null)
+    ?.stripe_payment_link_id;
+
+  let warning: string | undefined;
+  if (paymentLinkId) {
+    if (account.connect_account_id) {
+      try {
+        await deactivatePaymentLink({
+          connectAccountId: account.connect_account_id,
+          paymentLinkId,
+        });
+      } catch (err) {
+        console.error(
+          `deactivatePaymentLink failed while voiding invoice ${id}: ${
+            err instanceof Error ? err.message : "unknown error"
+          }`
+        );
+        warning = LINK_STILL_LIVE_WARNING;
+      }
+    } else {
+      // A stored link with no connected account: Stripe was disconnected
+      // between generating the link and voiding (connect_account_unlink
+      // clears these columns, so this is a narrow window, not a normal
+      // state). We have no way to reach the link — say so rather than
+      // letting the pilot assume it died with the invoice.
+      warning = LINK_STILL_LIVE_WARNING;
+    }
+  }
+
+  const payload: InvoiceUpdate = {
+    status: "void",
+    stripe_payment_link_id: null,
+    stripe_payment_link_url: null,
+    stripe_payment_link_livemode: null,
+    stripe_payment_link_amount_cents: null,
+  };
   const { error, count } = await supabase
     .from("invoices")
     .update(payload as never, { count: "exact" })
@@ -1448,6 +1516,16 @@ export async function voidInvoice(id: string): Promise<{ error: string | null }>
   revalidatePath(`/invoices/${id}`);
   revalidatePath("/invoices");
   revalidatePath("/trips");
+
+  // The warning travels as a query param rather than a return value
+  // because StatusActions unmounts the moment the invoice becomes void
+  // (it renders nothing for a void invoice) — a warning returned to that
+  // component would be thrown away in the same render that produced it.
+  // The invoice screen already renders `?warning=` as an amber callout,
+  // which outlives the transition.
+  if (warning) {
+    redirect(`/invoices/${id}?warning=${encodeURIComponent(warning)}`);
+  }
   return { error: null };
 }
 
@@ -1727,11 +1805,15 @@ export async function recordPayment(
   // transition, so there is nothing to advance in either of those states.
   const { data: invoiceData } = await supabase
     .from("invoices")
-    .select("status")
+    .select("status, stripe_payment_link_id")
     .eq("id", invoiceId)
     .eq("account_id", account.id)
     .maybeSingle();
-  const status = (invoiceData as { status: string } | null)?.status;
+  const invoiceRow = invoiceData as {
+    status: string;
+    stripe_payment_link_id: string | null;
+  } | null;
+  const status = invoiceRow?.status;
 
   if (status === "sent" || status === "partial") {
     const { data: totalsData } = await supabase
@@ -1767,8 +1849,93 @@ export async function recordPayment(
     }
   }
 
+  // RETIRE ANY LIVE PAYMENT LINK (added after review). A Payment Link is
+  // priced from a Price created at generation time, which snapshots the
+  // balance due at that moment. Once ANY payment lands the stored link is
+  // stale by definition: a $2,000 cheque against a $5,000 invoice leaves a
+  // link that still charges the full $5,000, and the invoice screen would
+  // have kept handing it out. So a recorded payment kills the link and
+  // clears the columns; if there's still a balance, the pilot generates a
+  // fresh link for the new amount in one click.
+  //
+  // Order is deliberate — this runs AFTER the payment and status writes,
+  // so a Stripe outage here never blocks recording money that has actually
+  // arrived. It runs for a fully-paid invoice too: 'paid' is a legal state
+  // to hold a link in (the CHECK allows it, for the race where the client
+  // pays before the pilot records it), but there is nothing left to
+  // collect, so leaving one live serves no one.
+  const linkNotice = invoiceRow?.stripe_payment_link_id
+    ? await retirePaymentLink({
+        supabase,
+        accountId: account.id,
+        connectAccountId: account.connect_account_id,
+        invoiceId,
+        paymentLinkId: invoiceRow.stripe_payment_link_id,
+      })
+    : undefined;
+
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");
   revalidatePath("/trips");
-  return { error: null, saved: true };
+  return { error: null, saved: true, notice: linkNotice };
+}
+
+/**
+ * Deactivates a Payment Link on Stripe and clears the invoice's four stored
+ * link columns. Returns the sentence to show the pilot, or undefined when
+ * there is nothing worth saying.
+ *
+ * The two outcomes are deliberately different sentences, because they ask
+ * different things of the pilot: a clean retirement is just information
+ * ("that link is dead, make a new one if you need it"), while a failed
+ * deactivation is a task only they can finish, in a dashboard this app
+ * cannot reach.
+ */
+async function retirePaymentLink(params: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  accountId: string;
+  connectAccountId: string | null;
+  invoiceId: string;
+  paymentLinkId: string;
+}): Promise<string | undefined> {
+  let notice =
+    "The online payment link for this invoice was switched off, because it was priced for the previous balance. Generate a new one if you still need it.";
+
+  if (params.connectAccountId) {
+    try {
+      await deactivatePaymentLink({
+        connectAccountId: params.connectAccountId,
+        paymentLinkId: params.paymentLinkId,
+      });
+    } catch (err) {
+      console.error(
+        `deactivatePaymentLink failed after recording a payment on invoice ${params.invoiceId}: ${
+          err instanceof Error ? err.message : "unknown error"
+        }`
+      );
+      notice = LINK_STILL_LIVE_WARNING;
+    }
+  } else {
+    notice = LINK_STILL_LIVE_WARNING;
+  }
+
+  const { error } = await params.supabase
+    .from("invoices")
+    .update({
+      stripe_payment_link_id: null,
+      stripe_payment_link_url: null,
+      stripe_payment_link_livemode: null,
+      stripe_payment_link_amount_cents: null,
+    } as never)
+    .eq("id", params.invoiceId)
+    .eq("account_id", params.accountId);
+
+  if (error) {
+    // The link is off on Stripe but the row still points at it. Not worth
+    // failing the payment over — the screen would keep showing a dead
+    // link, which the next generate replaces anyway.
+    console.error(`[db] invoices.update(clear payment_link) ${error.message}`);
+  }
+
+  return notice;
 }

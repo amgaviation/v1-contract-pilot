@@ -97,7 +97,16 @@ async function refreshSession(
     // authenticates by signature (see the route), which is stronger than a
     // cookie here — redirecting it to /login would silently break
     // provisioning and Stripe would just see 307s.
-    path.startsWith("/api/stripe/");
+    path.startsWith("/api/stripe/") ||
+    // The client-facing invoice share link (app/invoice/[token]/page.tsx,
+    // deliberately OUTSIDE the (app) route group) is this product's one
+    // page meant to be opened by someone with NO account at all — a
+    // pilot's client. It authenticates by an unguessable 256-bit token in
+    // the URL itself (see supabase/migrations/20260809060000_
+    // invoice_public_share.sql), not by a session, so redirecting a
+    // signed-out visitor to /login here would break the entire feature:
+    // the client has no login to redirect to.
+    path.startsWith("/invoice/");
   if (!user && !isAuthSurface) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";

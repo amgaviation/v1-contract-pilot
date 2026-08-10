@@ -40,6 +40,17 @@
  *                                                      mileage_entries)
  *   20260809030000_recurring_invoices.sql             (recurring_invoice_schedules,
  *                                                      recurring_invoice_generations)
+ *   20260809040000_connect_payments.sql               (invoices.stripe_payment_link_*,
+ *                                                      connect_account_link/unlink)
+ *   20260809060000_invoice_public_share.sql           (invoice_shares, invoice_public)
+ *   20260809070000_bank_transactions.sql              (bank_accounts,
+ *                                                      bank_import_batches,
+ *                                                      bank_source_files,
+ *                                                      bank_transactions)
+ *   20260810010000_connect_link_hardening.sql         (connect_oauth_state_begin,
+ *                                                      connect_account_link's new
+ *                                                      signature,
+ *                                                      invoices.stripe_payment_link_amount_cents)
  */
 export type Json =
   | string
@@ -889,6 +900,16 @@ export type Database = {
           tax_rate_bps: number;
           delivery_method: "platform_email" | "manual_download" | null;
           notes: string | null;
+          // 20260809040000_connect_payments.sql (+ the amount column, from
+          // 20260810010000). Ordinary tenant business data, not a
+          // billing/entitlement column — see that migration's header for
+          // why these are authenticated-writable while
+          // accounts.connect_account_id is not. They move as a set: every
+          // writer sets all four or clears all four.
+          stripe_payment_link_id: string | null;
+          stripe_payment_link_url: string | null;
+          stripe_payment_link_livemode: boolean | null;
+          stripe_payment_link_amount_cents: number | null;
           created_at: string;
           updated_at: string;
         };
@@ -909,6 +930,10 @@ export type Database = {
           tax_rate_bps?: number;
           delivery_method?: "platform_email" | "manual_download" | null;
           notes?: string | null;
+          stripe_payment_link_id?: string | null;
+          stripe_payment_link_url?: string | null;
+          stripe_payment_link_livemode?: boolean | null;
+          stripe_payment_link_amount_cents?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -932,6 +957,10 @@ export type Database = {
           tax_rate_bps?: number;
           delivery_method?: "platform_email" | "manual_download" | null;
           notes?: string | null;
+          stripe_payment_link_id?: string | null;
+          stripe_payment_link_url?: string | null;
+          stripe_payment_link_livemode?: boolean | null;
+          stripe_payment_link_amount_cents?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1076,6 +1105,35 @@ export type Database = {
           },
         ];
       };
+      // Added by 20260809060000_invoice_public_share.sql. No Insert/Update
+      // types: there is no direct INSERT/UPDATE grant to authenticated —
+      // every write goes through pilot.invoice_share_create/
+      // pilot.invoice_share_revoke (see Functions below), never a plain
+      // `.insert()`/`.update()` call. `token` is readable by the owning
+      // account's own members (to re-copy a link) but is never readable by
+      // anon directly — anon only ever reaches invoice data through the
+      // pilot.invoice_public RPC, which takes the token as an argument
+      // rather than exposing this table.
+      invoice_shares: {
+        Row: {
+          id: string;
+          account_id: string;
+          invoice_id: string;
+          token: string;
+          created_at: string;
+          created_by: string | null;
+          revoked_at: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "invoice_shares_account_id_invoice_id_fkey";
+            columns: ["account_id", "invoice_id"];
+            isOneToOne: true;
+            referencedRelation: "invoices";
+            referencedColumns: ["account_id", "id"];
+          },
+        ];
+      };
       // Added by 20260807040000_client_minimum_basis.sql. One row per
       // (client, calendar month) a 'per_month' minimum_basis client has
       // been drafted against — settled_invoice_id is what stops
@@ -1210,6 +1268,210 @@ export type Database = {
             columns: ["account_id", "document_id"];
             isOneToOne: false;
             referencedRelation: "documents";
+            referencedColumns: ["account_id", "id"];
+          },
+        ];
+      };
+      // Added by 20260809070000_bank_transactions.sql. See that migration's
+      // header for the amount_cents sign convention (negative = money out
+      // = expense candidate, for every account kind — credit_card CSV rows
+      // are flipped to canonical sign at parse time; see lib/bank-import/
+      // apply-mapping.ts).
+      bank_accounts: {
+        Row: {
+          id: string;
+          account_id: string;
+          label: string;
+          last4: string | null;
+          kind: "checking" | "savings" | "credit_card";
+          archived_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          account_id: string;
+          label: string;
+          last4?: string | null;
+          kind: "checking" | "savings" | "credit_card";
+          archived_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          label?: string;
+          last4?: string | null;
+          kind?: "checking" | "savings" | "credit_card";
+          archived_at?: string | null;
+        };
+        Relationships: [];
+      };
+      bank_import_batches: {
+        Row: {
+          id: string;
+          account_id: string;
+          bank_account_id: string;
+          source_format: "csv_signed" | "csv_debit_credit" | "ofx" | "qfx";
+          status: "pending" | "processing" | "completed" | "partial" | "failed";
+          total_rows: number;
+          imported_rows: number;
+          rejected_rows: number;
+          duplicate_rows: number;
+          error_summary: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          account_id: string;
+          bank_account_id: string;
+          source_format: "csv_signed" | "csv_debit_credit" | "ofx" | "qfx";
+          status?: "pending" | "processing" | "completed" | "partial" | "failed";
+          total_rows?: number;
+          imported_rows?: number;
+          rejected_rows?: number;
+          duplicate_rows?: number;
+          error_summary?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          status?: "pending" | "processing" | "completed" | "partial" | "failed";
+          total_rows?: number;
+          imported_rows?: number;
+          rejected_rows?: number;
+          duplicate_rows?: number;
+          error_summary?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "bank_import_batches_account_id_bank_account_id_fkey";
+            columns: ["account_id", "bank_account_id"];
+            isOneToOne: false;
+            referencedRelation: "bank_accounts";
+            referencedColumns: ["account_id", "id"];
+          },
+        ];
+      };
+      bank_source_files: {
+        Row: {
+          id: string;
+          account_id: string;
+          import_batch_id: string;
+          file_name: string;
+          row_count: number | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          account_id: string;
+          import_batch_id: string;
+          file_name: string;
+          row_count?: number | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          file_name?: string;
+          row_count?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "bank_source_files_account_id_import_batch_id_fkey";
+            columns: ["account_id", "import_batch_id"];
+            isOneToOne: false;
+            referencedRelation: "bank_import_batches";
+            referencedColumns: ["account_id", "id"];
+          },
+        ];
+      };
+      bank_transactions: {
+        Row: {
+          id: string;
+          account_id: string;
+          bank_account_id: string;
+          import_batch_id: string;
+          source_file_id: string;
+          source_row_number: number;
+          source_row: Json;
+          posted_on: string;
+          description: string;
+          amount_cents: number;
+          fingerprint: string;
+          review_state: "unreviewed" | "reviewed" | "ignored";
+          suggested_category:
+            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other" | null;
+          category:
+            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other" | null;
+          treatment: "rebill" | "deduct" | "unassigned" | null;
+          trip_id: string | null;
+          expense_id: string | null;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          account_id: string;
+          bank_account_id: string;
+          import_batch_id: string;
+          source_file_id: string;
+          source_row_number: number;
+          source_row: Json;
+          posted_on: string;
+          description: string;
+          amount_cents: number;
+          fingerprint: string;
+          review_state?: "unreviewed" | "reviewed" | "ignored";
+          suggested_category?:
+            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other" | null;
+          category?:
+            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other" | null;
+          treatment?: "rebill" | "deduct" | "unassigned" | null;
+          trip_id?: string | null;
+          expense_id?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        // Note the missing columns relative to Insert: source_row_number,
+        // fingerprint, posted_on, description, amount_cents,
+        // bank_account_id, import_batch_id, source_file_id are NOT here —
+        // there is no update grant on them at all (see the migration's
+        // grants section), so they are not representable as an update
+        // payload by construction, not merely by convention.
+        Update: {
+          review_state?: "unreviewed" | "reviewed" | "ignored";
+          suggested_category?:
+            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other" | null;
+          category?:
+            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other" | null;
+          treatment?: "rebill" | "deduct" | "unassigned" | null;
+          trip_id?: string | null;
+          expense_id?: string | null;
+          notes?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "bank_transactions_account_id_bank_account_id_fkey";
+            columns: ["account_id", "bank_account_id"];
+            isOneToOne: false;
+            referencedRelation: "bank_accounts";
+            referencedColumns: ["account_id", "id"];
+          },
+          {
+            foreignKeyName: "bank_transactions_account_id_expense_id_fkey";
+            columns: ["account_id", "expense_id"];
+            isOneToOne: false;
+            referencedRelation: "expenses";
+            referencedColumns: ["account_id", "id"];
+          },
+          {
+            foreignKeyName: "bank_transactions_account_id_trip_id_fkey";
+            columns: ["account_id", "trip_id"];
+            isOneToOne: false;
+            referencedRelation: "trips";
             referencedColumns: ["account_id", "id"];
           },
         ];
@@ -1508,6 +1770,54 @@ export type Database = {
       generate_recurring_invoice: {
         Args: { p_schedule_id: string; p_period_start: string };
         Returns: string;
+      };
+
+      // Added by 20260809040000_connect_payments.sql. All three are
+      // SECURITY DEFINER, owner-gated, and derive the caller from
+      // auth.uid() internally rather than trusting anything about "who's
+      // calling" — see that migration's header for why these exist
+      // instead of widening lib/supabase/service-role.ts.
+      //
+      // 20260810010000 then CHANGED connect_account_link's signature: it
+      // now takes the single-use OAuth state minted by
+      // connect_oauth_state_begin and reads the account off the consumed
+      // state row, returning that account id. The old
+      // (p_account_id, p_connect_account_id) shape was callable straight
+      // over PostgREST by any signed-in owner, with no OAuth round trip
+      // and no livemode check — it is dropped, not overloaded.
+      connect_oauth_state_begin: {
+        Args: { p_account_id: string };
+        Returns: string;
+      };
+      connect_account_link: {
+        Args: { p_connect_account_id: string; p_state: string };
+        Returns: string;
+      };
+      connect_account_unlink: {
+        Args: { p_account_id: string };
+        Returns: undefined;
+      };
+      // Added by 20260809060000_invoice_public_share.sql. SECURITY
+      // DEFINER, membership-gated via current_account_ids() (not
+      // owner-only). Returns the newly minted (or rotated) token as plain
+      // text — see share-actions.ts for why nothing downstream logs it.
+      invoice_share_create: {
+        Args: { p_invoice_id: string };
+        Returns: string;
+      };
+      invoice_share_revoke: {
+        Args: { p_invoice_id: string };
+        Returns: undefined;
+      };
+      // The ONE path from an unauthenticated request to invoice data —
+      // granted to anon AND authenticated (a signed-in pilot previewing
+      // their own share link goes through the identical call). Returns
+      // null for an unknown/revoked/no-longer-shareable token, never an
+      // error — see the migration and app/invoice/[token]/page.tsx for the
+      // full field-by-field justification of the jsonb shape.
+      invoice_public: {
+        Args: { p_token: string };
+        Returns: Json;
       };
     };
     Enums: Record<string, never>;

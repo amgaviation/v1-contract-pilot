@@ -4,6 +4,7 @@ import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
+import { isLiveMode } from "@/lib/stripe/server";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import PageShell from "../../page-shell";
@@ -11,6 +12,7 @@ import HeaderForm, { type ClientOption } from "./header-form";
 import LinesEditor, { type LineRow, type RebillableExpense } from "./lines-editor";
 import StatusActions from "./status-actions";
 import PaymentPanel, { type PaymentRow } from "./payment-panel";
+import SharePanel, { type ShareRow } from "./share-panel";
 
 export const metadata = { title: "Invoice" };
 
@@ -25,6 +27,9 @@ type InvoiceRow = {
   tax_rate_bps: number;
   delivery_method: "platform_email" | "manual_download" | null;
   notes: string | null;
+  stripe_payment_link_url: string | null;
+  stripe_payment_link_livemode: boolean | null;
+  stripe_payment_link_amount_cents: number | null;
 };
 
 type TotalsRow = {
@@ -56,7 +61,7 @@ export default async function InvoicePage({
 }) {
   const { id } = await params;
   const { warning } = await searchParams;
-  await requireAccount(`/invoices/${id}`);
+  const { account } = await requireAccount(`/invoices/${id}`);
 
   const supabase = await createClient();
 
@@ -67,6 +72,7 @@ export default async function InvoicePage({
     { data: totalsData, error: totalsError },
     { data: overdueData, error: overdueError },
     { data: clientData, error: clientError },
+    { data: shareData },
   ] = await Promise.all([
     supabase.from("invoices").select("*").eq("id", id).maybeSingle(),
     supabase
@@ -84,6 +90,13 @@ export default async function InvoicePage({
     // Not filtered to active-only: an issued invoice may bill a client
     // that has since been archived, and the picker still needs to show it.
     supabase.from("clients").select("id, name").order("name", { ascending: true }),
+    // A share row is best-effort read: its own error is not folded into
+    // moneyError below, because a failed read here degrades to "no share
+    // link shown yet" (the pilot can just try Share again), never to a
+    // wrong dollar figure — a materially different failure mode than the
+    // totals/payments/overdue/clients reads this screen already treats as
+    // hard errors.
+    supabase.from("invoice_shares").select("token, revoked_at").eq("invoice_id", id).maybeSingle(),
   ]);
 
   // A failed QUERY is not a missing invoice — see trips/[id]/page.tsx for
@@ -105,6 +118,7 @@ export default async function InvoicePage({
   const totals = totalsData as TotalsRow | null;
   const overdue = ((overdueData ?? []) as { invoice_id: string }[]).length > 0;
   const clients = (clientData ?? []) as ClientOption[];
+  const share = (shareData ?? null) as ShareRow;
 
   // A failed totals/payments/overdue/clients query is not "no data" — a
   // sent, unpaid invoice must not render as a healthy $0.00 balance in
@@ -220,7 +234,37 @@ export default async function InvoicePage({
 
         <Flex direction="column" gap="4" style={{ gridColumn: "span 5" }}>
           <StatusActions invoice={invoice} hasLines={lines.length > 0} />
-          <PaymentPanel invoiceId={invoice.id} status={invoice.status} payments={payments} />
+          {/* Matches pilot.invoice_share_create's own status gate
+              (sent/partial/paid only) — never offered on a draft, so the
+              button is never shown where the database would refuse it. */}
+          {!draft ? <SharePanel invoiceId={invoice.id} share={share} /> : null}
+          <PaymentPanel
+            invoiceId={invoice.id}
+            status={invoice.status}
+            payments={payments}
+            connectAccountConnected={Boolean(account.connect_account_id)}
+            // A payment link created in the other mode (e.g. a test link
+            // left over from before the deployment went live-keyed) is
+            // never surfaced as payable — same test/live separation the
+            // platform webhook enforces via isLiveMode(), applied here to
+            // display rather than to a write.
+            existingPaymentLinkUrl={
+              invoice.stripe_payment_link_url && invoice.stripe_payment_link_livemode === isLiveMode()
+                ? invoice.stripe_payment_link_url
+                : null
+            }
+            // What that link is priced at, so the panel can say so and can
+            // flag a link that no longer matches the balance due. A link is
+            // a snapshot of a Stripe Price; the app retires one whenever a
+            // payment lands, but this is what makes a mismatch visible
+            // rather than a thing the pilot finds out from their client.
+            existingPaymentLinkAmountCents={
+              invoice.stripe_payment_link_url && invoice.stripe_payment_link_livemode === isLiveMode()
+                ? invoice.stripe_payment_link_amount_cents
+                : null
+            }
+            balanceDueCents={totals?.balance_due_cents ?? null}
+          />
         </Flex>
       </Grid>
     </PageShell>

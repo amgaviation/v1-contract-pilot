@@ -1,9 +1,10 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { Button, Card, Flex, Select, Text, TextField } from "@/components/ui";
+import { Button, Callout, Card, Flex, Select, Separator, Text, TextField } from "@/components/ui";
 import { formatCents, formatDate } from "@/lib/format";
 import { recordPayment, type InvoiceFormState } from "../actions";
+import { createInvoicePaymentLink, type CreateLinkState } from "../payment-link-actions";
 
 export type PaymentRow = {
   id: string;
@@ -12,6 +13,116 @@ export type PaymentRow = {
   method: "ach" | "check" | "wire" | "card" | "cash" | "other" | null;
   notes: string | null;
 };
+
+const initialLinkState: CreateLinkState = { error: null };
+
+/**
+ * "Pay online" — Stripe Connect (Standard), payment-link-only (docs/
+ * PLAN.md decision #8). See
+ * supabase/migrations/20260809040000_connect_payments.sql's header for
+ * the full (a)-vs-(b) reasoning; the short version: auto-recording a
+ * client's payment would need a Connect webhook writing tenant financial
+ * data through a request with no session, which is exactly the kind of
+ * second privileged entry point lib/supabase/service-role.ts's own header
+ * says must not exist beyond the platform billing webhook. So this button
+ * only ever CREATES a Stripe-hosted Payment Link (a direct charge on the
+ * pilot's own connected account, no application fee, no funds routed
+ * through this platform) — when the client pays, the pilot sees it land
+ * in their own Stripe Dashboard and records it below exactly as they
+ * would a cheque or a wire. That manual last step is a documented,
+ * deliberate gap, not an oversight.
+ *
+ * A LINK IS PRICED ONCE, WHEN IT IS GENERATED. Stripe builds a Payment
+ * Link from a Price, and that Price snapshots the balance due at that
+ * moment. So this panel states what the live link actually charges, and
+ * says so plainly when that no longer matches the balance — a $2,000
+ * cheque against a $5,000 invoice otherwise leaves a link still asking
+ * for $5,000, which the pilot would find out about from their client.
+ * recordPayment retires a link whenever a payment lands, so the mismatch
+ * should be rare; it is surfaced anyway, because "rare" is not
+ * "impossible" and the cost of missing it lands on someone else.
+ */
+function PayOnlinePanel({
+  invoiceId,
+  connected,
+  existingLinkUrl,
+  existingLinkAmountCents,
+  balanceDueCents,
+}: {
+  invoiceId: string;
+  connected: boolean;
+  existingLinkUrl: string | null;
+  existingLinkAmountCents: number | null;
+  balanceDueCents: number | null;
+}) {
+  const [state, formAction, pending] = useActionState(createInvoicePaymentLink, initialLinkState);
+  // A link generated in this render is priced at the current balance by
+  // construction — only one loaded from the server can be stale.
+  const justCreated = Boolean(state.url);
+  const url = state.url ?? existingLinkUrl;
+  const linkAmountCents = justCreated ? balanceDueCents : existingLinkAmountCents;
+  const stale =
+    !justCreated &&
+    url !== null &&
+    existingLinkAmountCents !== null &&
+    balanceDueCents !== null &&
+    existingLinkAmountCents !== balanceDueCents;
+
+  if (!connected) {
+    return (
+      <Text size="1" color="gray">
+        Connect Stripe from Settings to accept card payments online.
+      </Text>
+    );
+  }
+
+  return (
+    <Flex direction="column" gap="2" align="start">
+      {url ? (
+        <Flex direction="column" gap="1" width="100%">
+          <Text size="1" color="gray">
+            {linkAmountCents !== null
+              ? `Send this link to your client to pay ${formatCents(linkAmountCents)} by card:`
+              : "Send this link to your client to pay by card:"}
+          </Text>
+          <TextField.Root readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
+          <Text size="1" color="gray">
+            It can only be paid once — Stripe switches it off after the first
+            payment goes through. Generating a new link switches this one off
+            too.
+          </Text>
+        </Flex>
+      ) : null}
+      {stale && existingLinkAmountCents !== null && balanceDueCents !== null ? (
+        <Callout.Root color="amber" size="1">
+          <Callout.Text>
+            This link still charges {formatCents(existingLinkAmountCents)}, but
+            the balance due is now {formatCents(balanceDueCents)}. Generate a new
+            link before you send it.
+          </Callout.Text>
+        </Callout.Root>
+      ) : null}
+      <form action={formAction}>
+        <input type="hidden" name="invoice_id" value={invoiceId} />
+        <Button type="submit" variant="outline" disabled={pending}>
+          {pending ? "Creating…" : url ? "Generate a new link" : "Generate payment link"}
+        </Button>
+      </form>
+      <Flex direction="column" gap="2" role="alert" aria-live="polite">
+        {state.error ? (
+          <Text size="1" color="red">
+            {state.error}
+          </Text>
+        ) : null}
+        {state.warning ? (
+          <Callout.Root color="amber" size="1">
+            <Callout.Text>{state.warning}</Callout.Text>
+          </Callout.Root>
+        ) : null}
+      </Flex>
+    </Flex>
+  );
+}
 
 // Radix Select forbids an item with value="" — "Unspecified" instead uses
 // this sentinel, translated back to "" (the value the `method` FormData
@@ -56,10 +167,18 @@ export default function PaymentPanel({
   invoiceId,
   status,
   payments,
+  connectAccountConnected,
+  existingPaymentLinkUrl,
+  existingPaymentLinkAmountCents,
+  balanceDueCents,
 }: {
   invoiceId: string;
   status: "draft" | "sent" | "partial" | "paid" | "void";
   payments: PaymentRow[];
+  connectAccountConnected: boolean;
+  existingPaymentLinkUrl: string | null;
+  existingPaymentLinkAmountCents: number | null;
+  balanceDueCents: number | null;
 }) {
   const [state, formAction, pending] = useActionState(recordPayment, initialState);
   // H5: a rejected payment used to blank amount/notes/date entirely — it
@@ -105,6 +224,23 @@ export default function PaymentPanel({
           ))}
         </Flex>
       )}
+
+      {canRecordPayment ? (
+        <>
+          <Separator size="4" my="3" />
+          <Text as="div" size="2" weight="medium" mb="2">
+            Pay online
+          </Text>
+          <PayOnlinePanel
+            invoiceId={invoiceId}
+            connected={connectAccountConnected}
+            existingLinkUrl={existingPaymentLinkUrl}
+            existingLinkAmountCents={existingPaymentLinkAmountCents}
+            balanceDueCents={balanceDueCents}
+          />
+          <Separator size="4" my="3" />
+        </>
+      ) : null}
 
       {canRecordPayment ? (
         <form
@@ -156,7 +292,7 @@ export default function PaymentPanel({
             </Text>
             <TextField.Root id="payment-notes" name="notes" placeholder="Notes" defaultValue={echoed("notes", "")} />
           </Flex>
-          <Flex mt="3" role="alert" aria-live="polite">
+          <Flex mt="3" direction="column" gap="2" role="alert" aria-live="polite">
             {state.error ? (
               <Text size="1" color="red">
                 {state.error}
@@ -165,6 +301,17 @@ export default function PaymentPanel({
               <Text size="1" color="green">
                 Payment recorded.
               </Text>
+            ) : null}
+            {/* A side effect of a SUCCESSFUL record, not a failure:
+                recording a payment retires the online payment link, because
+                that link is priced at the balance it was generated for.
+                Rendered separately from `error` so a green "Payment
+                recorded." and this can both be true at once, which they
+                usually are. */}
+            {state.notice ? (
+              <Callout.Root color="amber" size="1">
+                <Callout.Text>{state.notice}</Callout.Text>
+              </Callout.Root>
             ) : null}
           </Flex>
           <Flex mt="3">
