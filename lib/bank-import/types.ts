@@ -46,11 +46,46 @@ export type RejectedBankRow = {
   reason: string;
 };
 
+/**
+ * What the parser concluded about which direction this file's amounts run,
+ * and why — so the import preview can SAY it rather than the pilot finding
+ * out from an inverted statement.
+ *
+ * Only produced for the credit-card signed-amount shape, which is the one
+ * place a guess is involved (see applyCsvMapping's header). `flipped` is
+ * what was actually done; `moneyOutRows`/`moneyInRows` are the counts the
+ * decision was made from, so the preview can show its working.
+ */
+export type SignInterpretation = {
+  flipped: boolean;
+  /** True when the pilot overrode the parser's suggestion. */
+  overridden: boolean;
+  /**
+   * Whether the file's own contents settled the question. False means the
+   * counts were close enough that the parser guessed, and the preview must
+   * ASK rather than quietly proceed — a short statement with one charge and
+   * two payments is exactly the shape that fools a majority rule.
+   */
+  decisive: boolean;
+  moneyOutRows: number;
+  moneyInRows: number;
+  /** Rows whose own text declared direction (a trailing CR/DR) and were never flipped. */
+  selfDeclaredRows: number;
+};
+
 export type BankParseResult = {
   format: BankFileFormat;
   header: string[];
   valid: ParsedBankRow[];
   rejected: RejectedBankRow[];
+  signInterpretation?: SignInterpretation;
+  /**
+   * OFX/QFX only: the account number the statement names (`<ACCTID>`), or
+   * null when it names none. A file naming MORE than one account is
+   * refused outright by parseOfx — see its header for why booking three
+   * accounts into one ledger is worse than it sounds.
+   */
+  statementAccountId?: string | null;
 };
 
 /**

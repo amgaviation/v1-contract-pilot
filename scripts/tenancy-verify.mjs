@@ -1473,6 +1473,70 @@ begin
 end $$;
 reset role;
 
+-- ===========================================================================
+-- SIMROLE — a simulator session has no crew role, and a FLIGHT still must.
+--
+-- 20260810020000 made pilot.logbook_entries.role nullable, which on its own
+-- would be a real loosening of a legal record. What makes it safe is the
+-- companion CHECK: role may be absent only when every hour on the entry is
+-- simulator time. All four arms are asserted, because the two that matter
+-- most are the ones that would fail SILENTLY if the constraint were ever
+-- dropped — a flight stored with nobody named as its pilot would look like
+-- an ordinary row.
+--
+-- Both application layers (lib/logbook-import/resolve-row.ts's
+-- isWhollySimulator and confirmImport's isWhollySimulatorEntry) mirror this
+-- rule independently. These probes assert the DATABASE's version, which is
+-- the one that holds against a crafted request that ran neither.
+-- ===========================================================================
+set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', '${UA}', 'role', 'authenticated')::text, true);
+
+do $$
+begin
+  insert into pilot.logbook_entries
+    (account_id, airman_user_id, source, entry_date, total_time, role, simulator_time, simulator_device_type)
+  values ('${A}', '${UA}', 'manual', '2026-03-25', 2.4, null, 2.4, 'ffs');
+  raise notice 'PASS (SIMROLE-1): a wholly-simulator entry stores with no crew role — an FFS session has no pilot in command because there is no aircraft';
+end $$;
+
+do $$
+begin
+  begin
+    insert into pilot.logbook_entries
+      (account_id, airman_user_id, source, entry_date, total_time, role)
+    values ('${A}', '${UA}', 'manual', '2026-03-26', 1.5, null);
+    raise exception 'SIMROLE-2 FAILURE: a FLIGHT was stored with no crew role — the simulator exemption has leaked';
+  exception when check_violation then
+    raise notice 'PASS (SIMROLE-2, sqlstate confirmed 23514): a flight still requires a crew role';
+  end;
+end $$;
+
+do $$
+begin
+  begin
+    insert into pilot.logbook_entries
+      (account_id, airman_user_id, source, entry_date, total_time, role, simulator_time, simulator_device_type)
+    values ('${A}', '${UA}', 'manual', '2026-03-27', 3.0, null, 2.0, 'ffs');
+    raise exception 'SIMROLE-3 FAILURE: an entry mixing real flight time with simulator time was stored with no role';
+  exception when check_violation then
+    raise notice 'PASS (SIMROLE-3, sqlstate confirmed 23514): a mixed flight/sim entry must still say who was flying the aircraft part';
+  end;
+end $$;
+
+do $$
+begin
+  begin
+    insert into pilot.logbook_entries
+      (account_id, airman_user_id, source, entry_date, total_time, role)
+    values ('${A}', '${UA}', 'manual', '2026-03-28', 1.0, 'CAPTAIN');
+    raise exception 'SIMROLE-4 FAILURE: a role outside the vocabulary was accepted';
+  exception when check_violation then
+    raise notice 'PASS (SIMROLE-4, sqlstate confirmed 23514): the role vocabulary still constrains the non-null case (a CHECK passes on NULL, so making the column nullable could have quietly disarmed it)';
+  end;
+end $$;
+reset role;
+
 rollback;
 `;
 

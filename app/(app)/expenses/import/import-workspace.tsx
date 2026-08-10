@@ -144,7 +144,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
     setParseResult(result);
   };
 
-  const runCsv = () => {
+  const runCsv = (signFlipOverride?: boolean) => {
     if (!selectedAccount) {
       setFileError("Pick which account this statement is from first.");
       return;
@@ -154,8 +154,23 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
       dataRecords,
       mapping,
       accountKind: selectedAccount.kind,
+      signFlipOverride,
     });
     setParseResult(result);
+  };
+
+  /**
+   * Re-reads the statement with the amount column's direction reversed.
+   *
+   * Card issuers disagree about whether a purchase is written positive or
+   * negative, and a short statement can easily hold more payments than
+   * purchases — so the parser's reading is a SUGGESTION. On a file whose
+   * own contents don't settle it (signInterpretation.decisive === false)
+   * the pilot is asked outright, rather than having every amount silently
+   * rewritten in whichever direction the row count happened to point.
+   */
+  const invertSignReading = () => {
+    runCsv(!(parseResult?.signInterpretation?.flipped ?? false));
   };
 
   const setColumn = (idx: number, key: CsvColumnKey) => {
@@ -335,7 +350,11 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
               </Table.Body>
             </Table.Root>
             <Box>
-              <Button type="button" onClick={runCsv}>
+              {/* Wrapped, not passed by reference: runCsv's first argument
+                  is now the sign override, and React would hand it the
+                  MouseEvent — which is truthy, so every parse would come
+                  out inverted. tsc caught it; the wrapper is the fix. */}
+              <Button type="button" onClick={() => runCsv()}>
                 Parse {dataRecords.length} row{dataRecords.length === 1 ? "" : "s"}
               </Button>
             </Box>
@@ -358,6 +377,63 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                 {includedRows.length} will be imported
               </Text>
             </Flex>
+
+            {/* WHICH WAY THE MONEY RUNS. Card issuers disagree about
+                whether a purchase is written positive or negative, and
+                getting it backwards inverts an entire statement: real
+                purchases become "deposits" that can't be filed, and the
+                month's one refund becomes the only expense. The parser
+                reads the file's own convention and says what it concluded
+                — plainly, with the counts it concluded it from — and the
+                pilot can reverse it in one click. Amber when the file
+                didn't settle the question, because then this is a
+                question and not a note. */}
+            {/* WRONG LEDGER. An OFX statement names the account it is for;
+                the pilot picks one here. When those disagree, every row
+                lands in the wrong ledger — and because the dedup index is
+                scoped per bank account, importing the right statement
+                afterwards does NOT collide, so the same charges get
+                recorded twice. Compared on the last four digits, which is
+                all the account picker shows and all a statement reliably
+                carries. */}
+            {parseResult.statementAccountId &&
+            selectedAccount?.last4 &&
+            parseResult.statementAccountId.slice(-4) !== selectedAccount.last4 ? (
+              <Callout.Root color="amber" size="1">
+                <Callout.Text>
+                  This statement is for an account ending{" "}
+                  ···{parseResult.statementAccountId.slice(-4)}, but you picked{" "}
+                  {selectedAccount.label} ···{selectedAccount.last4}. Importing it
+                  would file these transactions against the wrong account — and a
+                  later import of the right statement wouldn&rsquo;t catch it as a
+                  duplicate. Check the account above before continuing.
+                </Callout.Text>
+              </Callout.Root>
+            ) : null}
+
+            {parseResult.signInterpretation ? (
+              <Callout.Root
+                color={parseResult.signInterpretation.decisive ? "gray" : "amber"}
+                size="1"
+              >
+                <Callout.Text>
+                  We read {parseResult.signInterpretation.moneyOutRows} row
+                  {parseResult.signInterpretation.moneyOutRows === 1 ? "" : "s"} as money
+                  out and {parseResult.signInterpretation.moneyInRows} as money in
+                  {parseResult.signInterpretation.selfDeclaredRows > 0
+                    ? `, plus ${parseResult.signInterpretation.selfDeclaredRows} that said which way in the file itself`
+                    : ""}
+                  .{" "}
+                  {parseResult.signInterpretation.decisive
+                    ? "That matches this statement's own pattern."
+                    : "This statement is too evenly split to be sure — check it against your card before importing."}{" "}
+                  <RadixLink href="#" onClick={(e) => { e.preventDefault(); invertSignReading(); }}>
+                    That&rsquo;s backwards — swap them
+                  </RadixLink>
+                  {parseResult.signInterpretation.overridden ? " (swapped)" : ""}
+                </Callout.Text>
+              </Callout.Root>
+            ) : null}
 
             {parseResult.valid.length > 0 ? (
               <Box style={{ overflowX: "auto" }}>
@@ -440,23 +516,75 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
             {confirmResult ? (
               <Callout.Root color={confirmResult.partial ? "amber" : "green"}>
                 <Callout.Text>
+                  {/* THE TWO KINDS OF DUPLICATE ARE NOT THE SAME EVENT and
+                      were being summed into one number.
+
+                      An IN-LEDGER duplicate is the feature working: an
+                      overlapping re-import found a transaction already
+                      imported, and skipping it is exactly right.
+
+                      An IN-FILE duplicate is a transaction the statement
+                      itself listed twice as far as the fingerprint can
+                      tell — two $4.75 coffees, a toll charged both ways —
+                      and one of them was DROPPED. That is a probable real
+                      transaction the pilot now has to notice is missing.
+                      fingerprint.ts documents the collision and justifies
+                      it by saying the loss is "recoverable: the pilot adds
+                      the missed transaction as a manual expense" — which
+                      requires telling them, and one combined count in a
+                      routine-looking total does not. */}
                   {confirmResult.partial
                     ? confirmResult.partialMessage
                     : `Imported ${confirmResult.imported ?? 0}. ${
-                        (confirmResult.duplicatesInLedger ?? 0) + (confirmResult.duplicatesInFile ?? 0)
-                      } duplicate(s) skipped, ${confirmResult.rejectedCount ?? 0} rejected.`}{" "}
+                        confirmResult.duplicatesInLedger ?? 0
+                      } already imported before, ${confirmResult.rejectedCount ?? 0} rejected.`}{" "}
                   <RadixLink asChild>
                     <NextLink href="/expenses/transactions">Go review them →</NextLink>
                   </RadixLink>
                 </Callout.Text>
               </Callout.Root>
-            ) : (
+            ) : null}
+
+            {/* The in-file collisions, called out separately and by row,
+                because each one is a transaction that did NOT make it in
+                and that the pilot has to decide about. duplicateDetail was
+                already being computed, persisted to the batch AND returned
+                — and then dropped on the floor here. bank_import_batches
+                is never selected anywhere, so it was unreachable forever. */}
+            {confirmResult && !confirmResult.partial && (confirmResult.duplicatesInFile ?? 0) > 0 ? (
+              <Callout.Root color="amber">
+                <Callout.Text>
+                  <Text as="div" weight="medium" mb="1">
+                    {confirmResult.duplicatesInFile} transaction
+                    {confirmResult.duplicatesInFile === 1 ? " was" : "s were"} skipped as a
+                    repeat of another row in the same file.
+                  </Text>
+                  <Text as="div" size="1" mb="1">
+                    Two charges on the same day, at the same place, for the same
+                    amount look identical to us — so if these are genuinely
+                    separate (two crew meals, a toll paid both ways), add the
+                    missing one as an expense by hand.
+                  </Text>
+                  {(confirmResult.duplicateDetail ?? [])
+                    .filter((d) => d.kind === "in_file")
+                    .slice(0, 10)
+                    .map((d) => (
+                      <Text as="div" size="1" key={`dup-${d.rowNumber}`}>
+                        Row {d.rowNumber}
+                        {d.sourceRow ? ` — ${Object.values(d.sourceRow).slice(0, 3).join(" · ")}` : ""}
+                      </Text>
+                    ))}
+                </Callout.Text>
+              </Callout.Root>
+            ) : null}
+
+            {!confirmResult ? (
               <Box>
                 <Button type="button" onClick={handleConfirm} disabled={confirming || includedRows.length === 0}>
                   {confirming ? "Importing…" : `Import ${includedRows.length} transaction${includedRows.length === 1 ? "" : "s"}`}
                 </Button>
               </Box>
-            )}
+            ) : null}
           </Flex>
         </Card>
       ) : null}

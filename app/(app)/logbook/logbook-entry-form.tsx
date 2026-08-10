@@ -47,6 +47,18 @@ const ROLES = [
   { value: "DUAL_RECEIVED", label: "Dual received" },
 ];
 
+// The roleless choice, for an entry whose time is entirely simulator time
+// (20260810020000) — an FFS/FTD/ATD session has no pilot in command
+// because there is no aircraft.
+//
+// Offered unconditionally rather than shown only when the times qualify:
+// total_time and simulator_time are uncontrolled inputs here, so gating
+// the option on them would mean making both controlled just to hide a
+// menu item, and the server has to re-check the times regardless. Picking
+// it on a real flight comes back with a sentence saying exactly why it
+// was refused, which is the same answer with less machinery.
+const ROLE_NONE_LABEL = "No role — simulator session";
+
 // Radix Select.Item forbids an empty-string value, so the "no selection"
 // options below use this sentinel and are translated back to "" before
 // the value reaches the form's actual field name.
@@ -132,7 +144,12 @@ export default function LogbookEntryForm({
     return value === "" ? NONE : value;
   };
 
-  const [role, setRole] = useState(() => initial("role", "PIC"));
+  // Seeded from the entry's OWN role, with NONE for a roleless
+  // (wholly-simulator) entry — NOT defaulted to "PIC". It used to default,
+  // which meant opening an imported simulator session and saving an
+  // unrelated correction silently rewrote its role to PIC in a legal
+  // record. Caught in review before it shipped.
+  const [role, setRole] = useState(() => initialSelect("role"));
   const [simulatorDeviceType, setSimulatorDeviceType] = useState(() => initialSelect("simulator_device_type"));
   const [approachType, setApproachType] = useState(() => initialSelect("approach_type"));
   const [approachCondition, setApproachCondition] = useState(() => initialSelect("approach_condition"));
@@ -151,7 +168,10 @@ export default function LogbookEntryForm({
   // (e.g. after a rejected submit), so the pilot's choice is what's shown
   // AND what's posted next, not the mount-time value.
   useEffect(() => {
-    if (submitted?.role !== undefined) setRole(String(submitted.role || "PIC"));
+    // Echoes the submitted role verbatim, including a deliberate blank —
+    // "|| 'PIC'" here would re-introduce the silent default on the error
+    // path, which is where it would be hardest to notice.
+    if (submitted?.role !== undefined) setRole(submitted.role ? String(submitted.role) : NONE);
     if (submitted?.simulator_device_type !== undefined) {
       setSimulatorDeviceType(submitted.simulator_device_type ? String(submitted.simulator_device_type) : NONE);
     }
@@ -241,9 +261,14 @@ export default function LogbookEntryForm({
                     {option.label}
                   </Select.Item>
                 ))}
+                <Select.Item value={NONE}>{ROLE_NONE_LABEL}</Select.Item>
               </Select.Content>
             </Select.Root>
-            <input type="hidden" name="role" value={role} />
+            {/* NONE is a Radix-only sentinel (Select.Item forbids ""), so
+                it is translated back to the empty string the server reads
+                as "no role" — same pattern every other optional Select in
+                this form uses. */}
+            <input type="hidden" name="role" value={role === NONE ? "" : role} />
           </Flex>
 
           <Heading as="h2" size="4" mt="2">

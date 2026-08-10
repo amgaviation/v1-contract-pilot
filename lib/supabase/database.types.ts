@@ -533,6 +533,10 @@ export type Database = {
           treatment: "rebill" | "deduct" | "unassigned";
           receipt_path: string | null;
           notes: string | null;
+          // 20260810040000: the bank transaction this expense was
+          // confirmed from. Carries a partial unique index so a retry
+          // after a lost reply raises 23505 instead of duplicating.
+          bank_transaction_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -555,6 +559,7 @@ export type Database = {
           treatment?: "rebill" | "deduct" | "unassigned";
           receipt_path?: string | null;
           notes?: string | null;
+          bank_transaction_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -577,6 +582,7 @@ export type Database = {
           treatment?: "rebill" | "deduct" | "unassigned";
           receipt_path?: string | null;
           notes?: string | null;
+          bank_transaction_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1785,6 +1791,37 @@ export type Database = {
       // (p_account_id, p_connect_account_id) shape was callable straight
       // over PostgREST by any signed-in owner, with no OAuth round trip
       // and no livemode check — it is dropped, not overloaded.
+      // Added by 20260810040000_bank_confirm_atomic.sql. SECURITY
+      // DEFINER, scoped by pilot.current_account_ids(), and the ONLY way
+      // a bank transaction becomes an expense: it claims the row, inserts
+      // the expense and attaches the link in one transaction. The three
+      // round trips it replaces had reachable gaps — a crash between them
+      // stranded the row reviewed with no expense, and a lost reply on
+      // the insert produced two expenses for one bank line.
+      bank_transaction_confirm: {
+        Args: {
+          p_transaction_id: string;
+          p_category: string;
+          p_treatment: string;
+          p_trip_id: string | null;
+          p_notes: string | null;
+        };
+        Returns: string;
+      };
+      // Advisory only — expenses already in the books that look like the
+      // same spend (same amount, within a few days). Warns, never blocks:
+      // two identical same-day charges are real.
+      bank_transaction_duplicate_candidates: {
+        Args: { p_transaction_id: string; p_day_window?: number };
+        Returns: {
+          expense_id: string;
+          incurred_on: string;
+          vendor: string | null;
+          amount_cents: number;
+          treatment: string;
+          already_from_bank: boolean;
+        }[];
+      };
       connect_oauth_state_begin: {
         Args: { p_account_id: string };
         Returns: string;
