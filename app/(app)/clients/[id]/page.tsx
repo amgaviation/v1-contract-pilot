@@ -13,7 +13,7 @@ import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
-import { formatCents, formatDateRange } from "@/lib/format";
+import { formatCents, formatDate, formatDateRange } from "@/lib/format";
 import type { Database } from "@/lib/supabase/database.types";
 import PageShell from "../../page-shell";
 import ClientForm from "../client-form";
@@ -21,6 +21,7 @@ import { updateClientRecord } from "../actions";
 import ArchiveButton from "./archive-button";
 import RateOverridesPanel from "./rate-overrides-panel";
 import OperatorQualificationsPanel from "./operator-qualifications-panel";
+import PacketPanel from "./packet-panel";
 
 type ClientRow = Database["pilot"]["Tables"]["clients"]["Row"];
 type DayTypeRow = Database["pilot"]["Tables"]["day_types"]["Row"];
@@ -91,7 +92,15 @@ export default async function EditClientPage({
   // the query itself made that override invisible while it still applied
   // to any not-yet-invoiced day already captured under the old type.
   // RateOverridesPanel is what decides active-vs-archived-with-override.
-  const [dayTypesResult, ratesResult, openTripsResult, invoicesResult, qualificationsResult] =
+  const [
+    dayTypesResult,
+    ratesResult,
+    openTripsResult,
+    invoicesResult,
+    qualificationsResult,
+    packetDocsResult,
+    packetShareResult,
+  ] =
     await Promise.all([
     supabase
       .from("day_types")
@@ -120,7 +129,47 @@ export default async function EditClientPage({
       .order("due_on", { ascending: true })
       .limit(OUTSTANDING_INVOICES_LIMIT),
     supabase.from("operator_qualifications").select("*").eq("client_id", id),
+    // The packet: what this pilot could send, and whatever link is live.
+    // Documents NOT already tied to another client — a per-client document
+    // belongs to that client and is not part of a general packet.
+    supabase
+      .from("documents")
+      .select("id, kind, label, expires_on, client_id")
+      .or(`client_id.is.null,client_id.eq.${id}`)
+      .order("kind"),
+    supabase
+      .from("document_shares")
+      .select("token, expires_at, revoked_at")
+      .eq("client_id", id)
+      .maybeSingle(),
   ]);
+
+  const packetDocuments = ((packetDocsResult.data ?? []) as {
+    id: string;
+    kind: string;
+    label: string;
+    expires_on: string | null;
+  }[]).map((d) => ({
+    id: d.id,
+    kind: d.kind,
+    label: d.label,
+    expiresOn: d.expires_on,
+  }));
+  const packetShareRow = packetShareResult.data as {
+    token: string;
+    expires_at: string;
+    revoked_at: string | null;
+  } | null;
+  // A revoked or expired row still exists; neither is a live link, and
+  // showing one would offer the pilot a URL that 404s for their client.
+  const livePacket =
+    packetShareRow && !packetShareRow.revoked_at && packetShareRow.expires_at > new Date().toISOString()
+      ? {
+          token: packetShareRow.token,
+          expiresAt: formatDate(packetShareRow.expires_at.slice(0, 10)),
+          documentCount: 0,
+        }
+      : null;
 
   const dayTypes = (dayTypesResult.data ?? []) as DayTypeRow[];
   const rateOverrides = (ratesResult.data ?? []) as ClientRateRow[];
@@ -279,6 +328,15 @@ export default async function EditClientPage({
           />
         </Box>
       )}
+
+      <Box mt="4">
+        <PacketPanel
+          clientId={client.id}
+          clientName={client.name}
+          documents={packetDocuments}
+          existing={livePacket}
+        />
+      </Box>
 
       <Box mt="4">
         <OperatorQualificationsPanel

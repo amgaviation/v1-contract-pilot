@@ -106,7 +106,15 @@ async function refreshSession(
     // invoice_public_share.sql), not by a session, so redirecting a
     // signed-out visitor to /login here would break the entire feature:
     // the client has no login to redirect to.
-    path.startsWith("/invoice/");
+    path.startsWith("/invoice/") ||
+    // The client-facing credential packet (app/packet/[token]/page.tsx),
+    // same shape and same reasoning as /invoice/ above: authenticated by
+    // an unguessable 256-bit token in the URL, opened by someone who has
+    // no account here and never will. Without this line a pilot's client
+    // clicks the link they were sent and lands on a login form — the
+    // whole feature, silently dead. Caught before shipping only because
+    // /ocr had exactly this bug an hour earlier.
+    path.startsWith("/packet/");
   if (!user && !isAuthSurface) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";

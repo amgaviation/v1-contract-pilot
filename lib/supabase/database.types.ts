@@ -1261,6 +1261,30 @@ export type Database = {
         };
         Relationships: [];
       };
+      // 20260810100000_credential_packet_share.sql. No Insert/Update
+      // types, same as invoice_shares below: every write goes through the
+      // SECURITY DEFINER functions, never a plain .insert()/.update().
+      document_shares: {
+        Row: {
+          id: string;
+          account_id: string;
+          client_id: string;
+          token: string;
+          expires_at: string;
+          created_at: string;
+          created_by: string | null;
+          revoked_at: string | null;
+        };
+        Relationships: [];
+      };
+      document_share_items: {
+        Row: {
+          share_id: string;
+          account_id: string;
+          document_id: string;
+        };
+        Relationships: [];
+      };
       // Added by 20260809060000_invoice_public_share.sql. No Insert/Update
       // types: there is no direct INSERT/UPDATE grant to authenticated —
       // every write goes through pilot.invoice_share_create/
@@ -1952,6 +1976,32 @@ export type Database = {
       };
       // 20260810060000_phase10_estimates.sql. Both SECURITY DEFINER with an
       // explicit in-body membership check — see that migration's header.
+      // 20260810100000_credential_packet_share.sql. All three SECURITY
+      // DEFINER; the membership check and the account_id filter on the
+      // item insert ARE the access boundary, since DEFINER bypasses RLS.
+      document_share_create: {
+        Args: {
+          p_client_id: string;
+          p_document_ids: string[];
+          p_days_valid?: number;
+        };
+        Returns: string;
+      };
+      document_share_revoke: {
+        Args: { p_client_id: string };
+        Returns: undefined;
+      };
+      /** anon-reachable. Metadata only — no file path, no bytes. */
+      document_packet_public: {
+        Args: { p_token: string };
+        Returns: {
+          business_name: string;
+          document_kind: string;
+          document_label: string;
+          expires_on: string | null;
+          issued_on: string | null;
+        }[];
+      };
       next_estimate_number: {
         Args: { target_account_id: string };
         Returns: string;
