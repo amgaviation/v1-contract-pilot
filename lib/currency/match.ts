@@ -51,10 +51,11 @@ export function categoryKey(a: AircraftFacts): string | null {
  * fact. Before this short-circuit existed, a row like that fell through
  * to the type check below and picked up aircraft_type_unrecorded on the
  * blank-rating path purely because the code hadn't yet noticed the
- * category already decided the answer — passenger-shared.ts's matchGates
- * depends on a decisive non-match never adding to `missing`, or an
- * irrelevant entry (wrong category, wrong airman, no movements — see that
- * module) ends up gating a card it could never have changed.
+ * category already decided the answer — passenger-shared.ts's
+ * classifyForCurrency depends on a decisive non-match never adding to
+ * `missing`, or an irrelevant entry (wrong category, wrong airman, no
+ * movements — see that module) ends up gating a card it could never have
+ * changed.
  *
  * TYPE COMPARES WHEN A TYPE RATING IS REQUIRED — 61.57(a)(1)(ii)
  * ("...and, if a class or type rating is required for that aircraft...")
@@ -81,6 +82,18 @@ export function categoryKey(a: AircraftFacts): string | null {
  * a pass; three full-stop landings in a C172 no longer count toward a
  * PA-28 on category/class alone, because this schema cannot tell that
  * case apart from the Citation/Baron one.
+ *
+ * A KNOWN, DIFFERENT TYPE (both typeKeys resolved and unequal, with a
+ * rating required) is JUST AS DECISIVE as the category short-circuit
+ * above, and must return immediately for the same reason (Q4): a Baron
+ * entry can never become a Citation's type no matter how ITS category
+ * turns out to be recorded, so a still-blank category on that same entry
+ * must never be reported as the reason this card cannot answer. Before
+ * this short-circuit existed, a decisively-wrong-typed entry with an
+ * ALSO-blank category fell through to the final `missing.length > 0`
+ * check and was reported as `aircraft_category_class_unrecorded` — true
+ * in isolation, but misleading, because recording that category could
+ * never have changed this entry's (already known) non-match.
  */
 export function sameCategoryClassAndType(
   entry: AircraftFacts,
@@ -104,8 +117,14 @@ export function sameCategoryClassAndType(
     if (entryType === null || intendedType === null) {
       missing.push("aircraft_type_unrecorded");
       typeMatches = false;
+    } else if (entryType !== intendedType) {
+      // KNOWN, DIFFERENT type — decisive (Q4): return now, before any
+      // category ambiguity accumulated above can be reported as the
+      // reason, since resolving that category could never change this
+      // entry's already-known non-match.
+      return { matches: false, missing: [] };
     } else {
-      typeMatches = entryType === intendedType;
+      typeMatches = true;
     }
   } else if (entryType !== null && intendedType !== null && entryType === intendedType) {
     // Same logged type as intended — matches regardless of whether a

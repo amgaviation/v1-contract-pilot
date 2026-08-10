@@ -71,7 +71,11 @@ const MISSING_INPUT_COPY: Record<MissingInput, { label: string; href: string }> 
     href: "/logbook/aircraft",
   },
   aircraft_unregistered: {
-    label: "Register the aircraft flown on entries in this window with takeoffs or landings.",
+    // Q5: the old wording said "with takeoffs or landings" unconditionally
+    // — true for the 90-day cards, but the instrument card only ever fires
+    // this gate on approaches, holds, or a course intercept, never a
+    // takeoff or landing. Worded to be true on every card it can render on.
+    label: "Register the aircraft flown on the entries this card's notes name — it isn't in your registry yet.",
     href: "/logbook/aircraft",
   },
   aircraft_gear_unrecorded: {

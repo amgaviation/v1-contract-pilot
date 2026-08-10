@@ -588,10 +588,25 @@ section("N — 61.57(b) night takeoff/landing experience");
   var n3 = evaluateNightExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V, entries: n3entries });
   checkResult("N-3", "2 full-stop + 1 touch-and-go", n3, { status: "estimated_not_current", observed: { takeoffs: 3, landings: 2 }, missing: [] });
 
+  // Exactly at threshold, alone, so the ambiguity genuinely could be the
+  // difference (Q1-class scoping: a null nightWindowAsserted on a row that
+  // could never reach 3/3 on its own must NOT gate — see N-4b below for
+  // that control case).
   var n4 = evaluateNightExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
-    entries: [mkEntry("n4-0", { entryDate: "2026-06-01", nightTakeoffs: 1, nightLandingsFullStop: 1, nightWindowAsserted: null })] });
+    entries: [mkEntry("n4-0", { entryDate: "2026-06-01", nightTakeoffs: 3, nightLandingsFullStop: 3, nightWindowAsserted: null })] });
   checkResult("N-4", "civil twilight vs 61.57(b)(1)'s window — the single most dangerous silent error", n4, {
     status: "insufficient_data", missing: ["night_window_unasserted"],
+  });
+
+  // N-4b: nightWindowAsserted === FALSE is a STATED NEGATIVE ("this
+  // landing was confirmed outside the (b)(1) window"), not an unknown —
+  // same discipline as D-5's soleManipulator === false. Silently excluded,
+  // never gated; three OTHER certain entries still answer the card.
+  var n4bEntries = threeDated("n4b", ["2026-06-01", "2026-06-02", "2026-06-03"], { nightTakeoffs: 1, nightLandingsFullStop: 1, nightWindowAsserted: true })
+    .concat([mkEntry("n4b-3", { entryDate: "2026-06-04", nightTakeoffs: 3, nightLandingsFullStop: 3, nightWindowAsserted: false })]);
+  var n4b = evaluateNightExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V, entries: n4bEntries });
+  checkResult("N-4b", "a STATED false is not an unknown — excluded, not gated, even though it alone would have reached 3/3", n4b, {
+    status: "estimated_current", observed: { takeoffs: 3, landings: 3 }, missing: [],
   });
 
   var n5entries = threeDated("n5", ["2026-06-01", "2026-06-02", "2026-06-03"], { nightTakeoffs: 1, nightLandingsFullStop: 1, nightWindowAsserted: true })
@@ -616,7 +631,7 @@ section("N — 61.57(b) night takeoff/landing experience");
   checkResult("N-7-inside", "(b)'s own 90-day boundary, inside", n7in, { status: "estimated_current", missing: [] });
 
   var n8 = evaluateNightExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
-    entries: [mkEntry("n8-0", { entryDate: "2026-06-01", simulatorTime: 4.0, simulatorDeviceType: "ffs" })] });
+    entries: [mkEntry("n8-0", { entryDate: "2026-06-01", nightTakeoffs: 3, nightLandingsFullStop: 3, nightWindowAsserted: true, simulatorTime: 4.0, simulatorDeviceType: "ffs" })] });
   checkResult("N-8", "61.57(b)(2) needs device approval and a part 142 course this schema cannot assert", n8, {
     status: "insufficient_data", missing: ["unresolvable_simulator_row"],
   });
@@ -906,11 +921,27 @@ section("D — insufficient_data is the default posture");
   checkField("D-2 flight_review unaffected", "flight_review computes normally with no intended aircraft at all", d2[3].status !== "insufficient_data", true);
   checkField("D-2 medical always insufficient", "", d2[4].status, "insufficient_data");
 
-  var d3entries = threeDated("d3", ["2026-06-01", "2026-06-02", "2026-06-03"], { dayTakeoffs: 1, dayLandingsFullStop: 1 })
-    .concat([mkEntry("d3-3", { entryDate: "2026-06-04", soleManipulator: null })]);
-  var d3 = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V, entries: d3entries });
-  checkResult("D-3", "ANY missing input that could change the answer, even though the count is met", d3, {
+  // D-3a: only 2/2 CERTAIN — the ambiguous soleManipulator entry COULD
+  // make up the difference, so this genuinely asks.
+  var d3aEntries = threeDated("d3a", ["2026-06-01", "2026-06-02"], { dayTakeoffs: 1, dayLandingsFullStop: 1 })
+    .concat([mkEntry("d3a-2", { entryDate: "2026-06-03", dayTakeoffs: 1, dayLandingsFullStop: 1, soleManipulator: null })]);
+  var d3a = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V, entries: d3aEntries });
+  checkResult("D-3a", "a missing input that COULD change the answer — short without it, sufficient with it", d3a, {
     status: "insufficient_data", missing: ["sole_manipulator_unrecorded"],
+  });
+
+  // D-3b — Q1's class of bug, generalized to sole_manipulator_unrecorded:
+  // 3/3 CERTAIN already answers this card; a FOURTH, unrelated entry
+  // carrying the identical ambiguous fact could never change that answer
+  // and must not gate it, even though the count IS met and the fact IS
+  // present in the window — the naive "any ambiguous fact anywhere gates"
+  // reading this row used to assert is exactly the bug five review rounds
+  // kept finding in a new gate each time.
+  var d3bEntries = threeDated("d3b", ["2026-06-01", "2026-06-02", "2026-06-03"], { dayTakeoffs: 1, dayLandingsFullStop: 1 })
+    .concat([mkEntry("d3b-3", { entryDate: "2026-06-04", dayTakeoffs: 3, dayLandingsFullStop: 3, soleManipulator: null })]);
+  var d3b = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V, entries: d3bEntries });
+  checkResult("D-3b", "a missing input that could NOT change the answer — the count is already met on certain entries alone", d3b, {
+    status: "estimated_current", observed: { takeoffs: 3, landings: 3 }, missing: [],
   });
 
   var d4entries = threeDated("d4", ["2026-06-01", "2026-06-02", "2026-06-03"], { dayTakeoffs: 1, dayLandingsFullStop: 1 })
@@ -922,9 +953,20 @@ section("D — insufficient_data is the default posture");
   var d5 = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V, entries: d5entries });
   checkResult("D-5", "a stated negative is not an unknown", d5, { status: "estimated_not_current", missing: [] });
 
+  // Exactly at threshold, alone, so attributing it genuinely could be the
+  // difference (same Q1-class scoping as N-4/D-10a below).
   var d6 = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
-    entries: [mkEntry("d6-0", { entryDate: "2026-06-01", dayTakeoffs: 1, dayLandingsFullStop: 1, airmanUserId: null })] });
+    entries: [mkEntry("d6-0", { entryDate: "2026-06-01", dayTakeoffs: 3, dayLandingsFullStop: 3, airmanUserId: null })] });
   checkResult("D-6", "unattributed entry", d6, { status: "insufficient_data", missing: ["airman_unattributed"] });
+
+  // D-6b: the SAME unattributed entry, but short even in the best case (1
+  // of 3) — attributing it could not have changed a not-current answer
+  // either, so it must not gate.
+  var d6b = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
+    entries: [mkEntry("d6b-0", { entryDate: "2026-06-01", dayTakeoffs: 1, dayLandingsFullStop: 1, airmanUserId: null })] });
+  checkResult("D-6b", "an unattributed entry that is short even in the best case never gates", d6b, {
+    status: "estimated_not_current", missing: [],
+  });
 
   var d7entries = threeDated("d7other", ["2026-06-01", "2026-06-02", "2026-06-03"], { dayTakeoffs: 1, dayLandingsFullStop: 1, airmanUserId: OTHER_AIRMAN })
     .concat([mkEntry("d7-mine", { entryDate: "2026-06-04", dayTakeoffs: 1, dayLandingsFullStop: 1, airmanUserId: AIRMAN })]);
@@ -945,7 +987,7 @@ section("D — insufficient_data is the default posture");
   checkResult("D-9", "the gate fires only for entries that could change the answer", d9, { status: "estimated_current", missing: [] });
 
   var d10a = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
-    entries: [mkEntry("d10a-0", { entryDate: "2026-06-01", simulatorTime: 1.0, simulatorDeviceType: "ffs" })] });
+    entries: [mkEntry("d10a-0", { entryDate: "2026-06-01", dayTakeoffs: 3, dayLandingsFullStop: 3, simulatorTime: 1.0, simulatorDeviceType: "ffs" })] });
   checkResult("D-10a", "an FFS row in the (a) window", d10a, { status: "insufficient_data", missing: ["unresolvable_simulator_row"] });
   var d10b = evaluateInstrumentExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
     entries: [mkEntry("d10b-0", { entryDate: "2026-03-01", simulatorTime: 1.0, simulatorDeviceType: "ffs", approachesCount: 6, approachType: "ils", approachCondition: "simulated", holds: 1, coursesInterceptedTracked: true })] });
@@ -961,12 +1003,25 @@ section("D — insufficient_data is the default posture");
     intendedAircraft: { tailKey: "NC", typeRating: null, typeDesignator: null, categoryClass: "AMEL", gear: "tricycle" }, entries: [] });
   checkResult("D-12", "no type rating and no type designator", d12, { status: "insufficient_data", missing: ["aircraft_type_unrecorded"] });
 
-  var d13 = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN,
-    intendedAircraft: { tailKey: "NX", typeRating: null, typeDesignator: null, categoryClass: "", gear: null },
-    entries: [mkEntry("d13-0", { entryDate: "2026-06-01", dayTakeoffs: 1, airmanUserId: null })] });
-  checkResult("D-13", "four gates at once, deduplicated, in MISSING_INPUT_ORDER", d13, {
+  var d13intended = { tailKey: "NX", typeRating: null, typeDesignator: null, categoryClass: "", gear: null };
+  var d13 = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: d13intended, entries: [] });
+  checkResult("D-13", "three INTENDED-aircraft-level gates at once, deduplicated, in MISSING_INPUT_ORDER", d13, {
     status: "insufficient_data",
-    missing: ["airman_unattributed", "aircraft_gear_unrecorded", "aircraft_category_class_unrecorded", "aircraft_type_unrecorded"],
+    missing: ["aircraft_gear_unrecorded", "aircraft_category_class_unrecorded", "aircraft_type_unrecorded"],
+  });
+
+  // D-13b: the entry-level equivalent — ONE entry, ambiguous on FOUR axes
+  // at once (airman/role/sole-manipulator/registration), exactly at
+  // threshold so all four genuinely could be the difference. Proves
+  // deduplication (one entry, four facts, four codes) and
+  // MISSING_INPUT_ORDER together, now against a resolvable intended
+  // aircraft so it exercises classifyForCurrency rather than the
+  // upstream intended-aircraft gates D-13 above already covers.
+  var d13b = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
+    entries: [mkEntry("d13b-0", { entryDate: "2026-06-01", dayTakeoffs: 3, dayLandingsFullStop: 3, airmanUserId: null, role: null, soleManipulator: null, aircraft: null })] });
+  checkResult("D-13b", "four per-entry gates at once, deduplicated, in MISSING_INPUT_ORDER", d13b, {
+    status: "insufficient_data",
+    missing: ["airman_unattributed", "role_unrecorded", "sole_manipulator_unrecorded", "aircraft_unregistered"],
   });
 
   var threwEmpty = false, threwSlash = false;

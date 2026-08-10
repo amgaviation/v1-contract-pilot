@@ -21,13 +21,13 @@ import type { AircraftFacts, CountedEntry, CurrencyEntry, DateWindow, IsoDate, M
  * a blank rating is not evidence a rating isn't needed (REGU-3). An entry
  * of the SAME type as intended still counts; a DIFFERENT (or unrecorded)
  * type is excluded from this total UNLESS resolving it could change
- * whether you are current — see matchGates below, which only asks you to
- * resolve a specific entry's type when it could actually be the
- * difference, not merely because it exists in the window (P1/P3: an
- * earlier version of this sentence claimed a silent exclusion in every
- * case, which was only ever true when the described case had not
- * occurred — supplying the fact matters, or it doesn't, and only the
- * first case reaches a card at all). Disclosed here as a shared
+ * whether you are current — see classifyForCurrency/ambiguousFactGates
+ * below, which only ask you to resolve a specific entry's type when it
+ * could actually be the difference, not merely because it exists in the
+ * window (P1/P3: an earlier version of this sentence claimed a silent
+ * exclusion in every case, which was only ever true when the described
+ * case had not occurred — supplying the fact matters, or it doesn't, and
+ * only the first case reaches a card at all). Disclosed here as a shared
  * assumption string so general.ts, night.ts and part135.ts render
  * identical wording rather than three hand-copied sentences drifting
  * apart.
@@ -35,8 +35,24 @@ import type { AircraftFacts, CountedEntry, CurrencyEntry, DateWindow, IsoDate, M
 export function typeMatchAssumption(intended: AircraftFacts): string | null {
   const required = intended.typeRating !== null && intended.typeRating.trim() !== "";
   if (required) return null;
-  return "No type rating is recorded for the intended aircraft, so a different (or unrecorded) type of aircraft is not read as \"no rating required\" — an entry of the SAME type as the intended aircraft still counts; a different type is excluded from this total unless it could be the difference between current and not, in which case this card asks you to resolve it rather than guessing. See match.ts for why an absent rating is not read as \"none required.\"";
+  return "No type rating is recorded for the intended aircraft, so a different (or unrecorded) type of aircraft is not read as \"no rating required\" — an entry of the SAME type as the intended aircraft still counts; a different type is excluded from this total unless it could be the difference between current and not, in which case this card asks you to resolve it rather than guessing.";
 }
+
+/**
+ * Q6: category_class is free text with no fixed vocabulary (that column's
+ * own migration comment: a CHECK that is wrong for a pilot's aircraft is
+ * worse than a field they fill in themselves) — match.ts's categoryKey
+ * only trims and case-folds, so an entry logged as "Airplane Single-Engine
+ * Land" is a KNOWN, DIFFERENT category from an intended aircraft recorded
+ * as "ASEL," and is silently excluded rather than credited. Rendered on
+ * every 90-day card unconditionally (unlike typeMatchAssumption above,
+ * which only applies when the intended type rating is blank) because this
+ * exact-string comparison runs regardless of whether a type rating is
+ * recorded, and previously had no equivalent to instrument.ts's own CORR-2
+ * disclosure of the identical compare.
+ */
+export const CATEGORY_MATCH_ASSUMPTION =
+  "An entry's aircraft category/class is compared to the intended aircraft's as one exact, pilot-typed field (e.g. \"ASEL\") — a different wording of the same category, such as \"Airplane Single-Engine Land,\" reads as a different aircraft, and its takeoffs/landings are excluded, not corrected for you.";
 
 export const NINETY_DAYS = 90;
 
@@ -71,129 +87,152 @@ export function actingRoleAllowed(role: CurrencyEntry["role"]): boolean {
   return role === "PIC" || role === "SIC" || role === "SOLO";
 }
 
-/** Gates common to every 90-day rule: airman attribution, role recording, sole-manipulator recording, and any unresolvable simulator row in the window. */
-export function baseGates(inWindow: readonly CurrencyEntry[]): Set<MissingInput> {
-  const gates = new Set<MissingInput>();
-  for (const e of inWindow) {
-    if (e.airmanUserId === null) gates.add("airman_unattributed");
-    // A null role used to be silently dropped by actingRoleAllowed's
-    // allowlist rather than gated — correct in that it never counted a
-    // role that wasn't PIC/SIC/SOLO, but wrong in that an unrecorded role
-    // is a fact that could change the answer (role SOLO + sole_manipulator
-    // true is a real, common case) and the pilot got no remedy line
-    // telling them which entry to fix. Gated here instead, same posture
-    // as sole_manipulator_unrecorded below.
-    if (e.role === null) gates.add("role_unrecorded");
-    if (e.soleManipulator === null) gates.add("sole_manipulator_unrecorded");
-    // 61.57(a)(3)/(b)(2) each carry a device-approval and part-142-course
-    // condition this schema has no field for; counting a simulator row
-    // asserts an approval the pilot never stated, ignoring it silently
-    // under-credits real recurrent training. Neither is safe, so any
-    // simulator row in a 90-day window forces insufficient_data. (c) is
-    // the one exception among the currency rules and has its own gate —
-    // see instrument.ts.
-    if ((e.simulatorTime ?? 0) > 0) gates.add("unresolvable_simulator_row");
-  }
-  return gates;
-}
-
-/** An entry with real takeoffs or landings whose aircraft is not in the pilot's registry — a fact that could change the answer, not a zero. */
-export function aircraftUnregisteredGate(
-  inWindow: readonly CurrencyEntry[],
-  takeoffs: (e: CurrencyEntry) => number,
-  landings: (e: CurrencyEntry) => number
-): boolean {
-  return inWindow.some((e) => e.aircraft === null && (takeoffs(e) > 0 || landings(e) > 0));
-}
+/** One entry, classified against the intended aircraft — see classifyForCurrency's header. */
+export type AmbiguousEntry = { entry: CurrencyEntry; missing: MissingInput[] };
+export type EntryClassification = { certain: CurrencyEntry[]; ambiguous: AmbiguousEntry[] };
 
 /**
- * Surfaces sameCategoryClassAndType's own MISSING inputs across the
- * window — see match.ts's header: a null category/type on an entry's
- * registered aircraft is a missing input, never silently treated as "not
- * this type," which would tell a current pilot they are not.
+ * ONE PASS over the window, replacing what used to be four separate,
+ * sequential, UNCONDITIONAL gates (airman/role/sole-manipulator/simulator
+ * in baseGates, aircraft registration in aircraftUnregisteredGate, gear in
+ * gearGates) followed by a fifth gate (type/category in matchGates) that
+ * was the ONLY one of the five scoped by lib/currency/ambiguous-facts.ts's
+ * rule. Every review round on this engine reproduced the same bug in
+ * whichever gate the previous round had not yet scoped — an entry that
+ * could never have changed the answer emptied the whole card anyway. This
+ * function is the fix for the CLASS, not the next instance: every fact
+ * this module can be unsure about is classified through the SAME test.
  *
- * SCOPED BY lib/currency/ambiguous-facts.ts's RULE (P1): a missing type or
- * category on one entry gates the card ONLY IF resolving it could change
- * whether the pilot is current. Two things follow, and both are load-
- * bearing — an earlier version of this function got neither right, and
- * turned one unrelated logbook entry into a whole-card gate for every
- * pilot whose intended aircraft carries no recorded type rating:
+ * THREE OUTCOMES PER ENTRY, not two:
  *
- *   1. RELEVANCE FIRST. An entry that could never contribute regardless
- *      of how its ambiguous fact resolved — wrong airman, a role that
- *      never counts (DUAL_RECEIVED), sole manipulator not affirmed, no
- *      aircraft on record, zero takeoffs or landings, or (via match.ts's
- *      own short-circuit) a KNOWN different category — is never even
- *      considered here. `eligibleEntries` below already applies every one
- *      of those filters for the CERTAIN count; `ambiguousMatchEntries`
- *      applies the identical filters, minus the one fact actually in
- *      question, for the entries whose ambiguity might matter.
- *   2. ARITHMETIC SECOND. Among the entries that survive #1, the fact
- *      only gates if the pilot is short on the CERTAIN total but would
- *      clear it on the BEST-CASE total (certain + every ambiguous entry
- *      counted as if it matched) — missingFactCouldChangeAnswer's own
- *      comparison. If certain alone already clears the bar, the
- *      ambiguity is moot and the card answers from certain alone. If even
- *      best-case falls short, the ambiguity is ALSO moot — the pilot is
- *      not current regardless — and the card again answers from certain
- *      alone (never from best-case: an unresolved fact is never credited,
- *      only ever asked about).
+ *   1. IRRELEVANT (silently dropped, not even inspected further) — zero
+ *      takeoffs and zero landings. Nothing about this entry's other facts
+ *      can matter if it contributes no movement either way.
+ *
+ *   2. DECISIVELY EXCLUDED (silently dropped) — some KNOWN, non-null fact
+ *      rules it out on its own: a different airman, a role that never
+ *      counts (DUAL_RECEIVED), an affirmed "not sole manipulator," a KNOWN
+ *      different aircraft category/class/type (match.ts's own
+ *      short-circuit), a KNOWN non-tailwheel gear against a tailwheel
+ *      intended aircraft (when `checkGear`), or an affirmed "not inside
+ *      the 61.57(b)(1) window" (when `checkNightWindow`). None of these is
+ *      a missing fact — resolving it further cannot change a "no" that is
+ *      already known — so none of them is ever named in a gate. This is
+ *      the same discipline instrument.ts applies to a visual approach or a
+ *      device row logged 'neither': a known disqualifying fact is handled
+ *      by exclusion, never by asking a question with only one answer.
+ *
+ *   3. CERTAIN or AMBIGUOUS. CERTAIN means every fact this function checks
+ *      is KNOWN and passing; its takeoffs/landings go straight into the
+ *      card's certain total. AMBIGUOUS means at least one fact is
+ *      genuinely unknown (null, or a device/simulator row this schema
+ *      cannot confirm) — its takeoffs/landings count only toward the
+ *      BEST-CASE total, and it names every unresolved fact so the caller
+ *      can ask `missingFactCouldChangeAnswer` whether any of them is worth
+ *      surfacing to the pilot.
+ *
+ * A SIMULATOR/DEVICE ROW (`simulatorTime > 0`) is always outcome 3, never
+ * certain: 61.57(a)(3)/(b)(2)/135.247(a)(3) each carry a device-approval
+ * and part-142-course condition this schema has no field for, so crediting
+ * it asserts an approval the pilot never stated. It is ALSO never checked
+ * against the aircraft registry or gear below — a device session has no
+ * tail number by design, and routing it through those checks anyway is the
+ * Q1/REGU-4/CORR-1 failure shape (an unrelated simulator row poisoning the
+ * whole card with a "register the aircraft" remedy no one can act on),
+ * generalized here past the instrument card it was first found on.
  */
-function ambiguousMatchEntries(
+export function classifyForCurrency(
   inWindow: readonly CurrencyEntry[],
   airmanUserId: string,
   intendedAircraft: AircraftFacts,
   takeoffs: (e: CurrencyEntry) => number,
   landings: (e: CurrencyEntry) => number,
-  isOtherwiseEligible: (e: CurrencyEntry) => boolean
-): { entry: CurrencyEntry; missing: MissingInput[] }[] {
-  const out: { entry: CurrencyEntry; missing: MissingInput[] }[] = [];
+  options: { checkGear: boolean; checkNightWindow: boolean }
+): EntryClassification {
+  const certain: CurrencyEntry[] = [];
+  const ambiguous: AmbiguousEntry[] = [];
+
   for (const e of inWindow) {
-    if (e.airmanUserId !== airmanUserId) continue;
-    if (!actingRoleAllowed(e.role)) continue;
-    if (e.soleManipulator !== true) continue;
-    if (e.aircraft === null) continue; // handled by aircraftUnregisteredGate
-    if (takeoffs(e) <= 0 && landings(e) <= 0) continue; // cannot contribute either way
-    // A caller-supplied fact besides type/category can ALSO conclusively
-    // rule an entry out — general.ts/part135.ts pass a gear-compatibility
-    // check here so a tricycle entry's ambiguous TYPE never gets asked
-    // about when its already-KNOWN gear mismatch means it could never
-    // have contributed regardless of how the type resolved.
-    if (!isOtherwiseEligible(e)) continue;
-    const { matches, missing } = sameCategoryClassAndType(e.aircraft, intendedAircraft);
-    if (!matches && missing.length > 0) out.push({ entry: e, missing });
+    if (takeoffs(e) <= 0 && landings(e) <= 0) continue; // outcome 1
+
+    if (e.airmanUserId !== null && e.airmanUserId !== airmanUserId) continue; // outcome 2
+    if (e.role !== null && !actingRoleAllowed(e.role)) continue; // outcome 2
+    if (e.soleManipulator === false) continue; // outcome 2
+    if (options.checkNightWindow && e.nightWindowAsserted === false) continue; // outcome 2
+
+    const missing: MissingInput[] = [];
+    if (e.airmanUserId === null) missing.push("airman_unattributed");
+    if (e.role === null) missing.push("role_unrecorded");
+    if (e.soleManipulator === null) missing.push("sole_manipulator_unrecorded");
+    if (options.checkNightWindow && e.nightWindowAsserted === null) missing.push("night_window_unasserted");
+
+    if ((e.simulatorTime ?? 0) > 0) {
+      missing.push("unresolvable_simulator_row");
+      ambiguous.push({ entry: e, missing });
+      continue;
+    }
+
+    if (e.aircraft === null) {
+      missing.push("aircraft_unregistered");
+      ambiguous.push({ entry: e, missing });
+      continue;
+    }
+
+    const cat = sameCategoryClassAndType(e.aircraft, intendedAircraft);
+    if (!cat.matches && cat.missing.length === 0) continue; // outcome 2: known different category/type
+    missing.push(...cat.missing);
+
+    if (options.checkGear) {
+      const gear = gearMatches(e.aircraft, intendedAircraft);
+      if (!gear.matches && gear.missing.length === 0) continue; // outcome 2: known non-tailwheel gear
+      missing.push(...gear.missing);
+    }
+
+    if (missing.length > 0) ambiguous.push({ entry: e, missing });
+    else certain.push(e);
   }
-  return out;
+
+  return { certain, ambiguous };
+}
+
+const AMBIGUOUS_FACT_PHRASE: Partial<Record<MissingInput, string>> = {
+  airman_unattributed: "its airman is not recorded",
+  role_unrecorded: "its role is not recorded",
+  sole_manipulator_unrecorded: "whether you were sole manipulator is not recorded",
+  aircraft_unregistered: "its aircraft is not in your registry",
+  aircraft_gear_unrecorded: "its aircraft's gear is not recorded",
+  aircraft_category_class_unrecorded: "its aircraft's category/class is not recorded",
+  aircraft_type_unrecorded: "its aircraft's type could not be matched against the intended aircraft",
+  unresolvable_simulator_row: "it is a simulator/device session whose device approval and course details this schema cannot confirm",
+  night_window_unasserted: "whether it fell inside the 61.57(b)(1) window is not recorded",
+};
+
+function describeAmbiguousEntry(a: AmbiguousEntry): string {
+  const facts = a.missing.map((m) => AMBIGUOUS_FACT_PHRASE[m] ?? m).join("; ");
+  return `Entry ${a.entry.entryDate}: ${facts} — and its takeoffs/landings could be the difference between current and not current, so this card asks rather than guesses.`;
 }
 
 /**
- * `certainTakeoffs`/`certainLandings` are the CALLER's own already-computed
- * certain total — general.ts/part135.ts's is gear-filtered on top of
- * `eligibleEntries`, night.ts's is `eligibleEntries` alone (see each
- * module's own gear-gate header for why they differ) — passed in rather
- * than recomputed here so this function can never silently use a
- * DIFFERENT "certain" than the one the card's own arithmetic will use.
- * `isOtherwiseEligible` is that same additional filter, applied to the
- * AMBIGUOUS side for the identical reason (see ambiguousMatchEntries
- * above); omit it where there is no such additional fact (night.ts).
+ * Turns a classification into a gate/no-gate decision — the ONE
+ * comparison lib/currency/ambiguous-facts.ts's missingFactCouldChangeAnswer
+ * encodes, applied to the union of every ambiguous entry's facts at once
+ * rather than one fact at a time, so an entry ambiguous on TWO axes (say,
+ * a null role AND a null gear) is named once, not gated twice by two
+ * separate passes that could disagree about whether it mattered.
  */
-export function matchGates(
-  inWindow: readonly CurrencyEntry[],
-  airmanUserId: string,
-  intendedAircraft: AircraftFacts,
+export function ambiguousFactGates(
+  classification: EntryClassification,
   takeoffs: (e: CurrencyEntry) => number,
   landings: (e: CurrencyEntry) => number,
   takeoffThreshold: number,
-  landingThreshold: number,
-  certainTakeoffs: number,
-  certainLandings: number,
-  isOtherwiseEligible: (e: CurrencyEntry) => boolean = () => true
+  landingThreshold: number
 ): { gates: Set<MissingInput>; notes: string[] } {
   const noGate = { gates: new Set<MissingInput>(), notes: [] as string[] };
-
-  const ambiguous = ambiguousMatchEntries(inWindow, airmanUserId, intendedAircraft, takeoffs, landings, isOtherwiseEligible);
+  const { certain, ambiguous } = classification;
   if (ambiguous.length === 0) return noGate;
 
+  const certainTakeoffs = certain.reduce((sum, e) => sum + takeoffs(e), 0);
+  const certainLandings = certain.reduce((sum, e) => sum + landings(e), 0);
   const certainlyMeets = certainTakeoffs >= takeoffThreshold && certainLandings >= landingThreshold;
 
   const bestTakeoffs = certainTakeoffs + ambiguous.reduce((sum, a) => sum + takeoffs(a.entry), 0);
@@ -206,37 +245,9 @@ export function matchGates(
   const notes: string[] = [];
   for (const a of ambiguous) {
     for (const m of a.missing) gates.add(m);
-    notes.push(
-      `Entry ${a.entry.entryDate}: its aircraft's type or category could not be matched against the intended aircraft, and its takeoffs/landings could be the difference between current and not current — resolving the aircraft's type rating, type designator, or category/class would settle it.`
-    );
+    notes.push(describeAmbiguousEntry(a));
   }
   return { gates, notes };
-}
-
-/**
- * 61.57(a)(1)(ii) / 135.247(b) ONLY — see match.ts's gearMatches. NOT
- * called by night.ts: 61.57(b) has no tailwheel clause of its own (see
- * that module's header), so calling this there would gate/exclude
- * entries on a fact the rule never conditions on. Scoped to entries that
- * actually contribute a takeoff or landing, same as aircraftUnregisteredGate
- * above — an entry with no movements can't change the answer regardless
- * of its aircraft's gear.
- */
-export function gearGates(
-  inWindow: readonly CurrencyEntry[],
-  intendedAircraft: AircraftFacts,
-  takeoffs: (e: CurrencyEntry) => number,
-  landings: (e: CurrencyEntry) => number
-): Set<MissingInput> {
-  const gates = new Set<MissingInput>();
-  if (intendedAircraft.gear !== "tailwheel") return gates;
-  for (const e of inWindow) {
-    if (e.aircraft === null) continue; // handled by aircraftUnregisteredGate
-    if (takeoffs(e) <= 0 && landings(e) <= 0) continue;
-    const { missing } = gearMatches(e.aircraft, intendedAircraft);
-    for (const m of missing) gates.add(m);
-  }
-  return gates;
 }
 
 /**
@@ -247,21 +258,6 @@ export function gearGates(
  */
 export const NINETY_DAY_BOUNDARY_ASSUMPTION =
   "The 90-day window runs from this date back through the 89 days before it — a takeoff or landing made exactly 90 days before this date falls one day outside the window and does not count.";
-
-export function eligibleEntries(
-  inWindow: readonly CurrencyEntry[],
-  airmanUserId: string,
-  intendedAircraft: AircraftFacts
-): CurrencyEntry[] {
-  return inWindow.filter(
-    (e) =>
-      e.airmanUserId === airmanUserId &&
-      actingRoleAllowed(e.role) &&
-      e.soleManipulator === true &&
-      e.aircraft !== null &&
-      sameCategoryClassAndType(e.aircraft, intendedAircraft).matches
-  );
-}
 
 export function countedFrom(
   eligible: readonly CurrencyEntry[],

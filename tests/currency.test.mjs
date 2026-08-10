@@ -415,11 +415,46 @@ test("61.57(a): a missing intended aircraft is insufficient_data with intended_a
   assert.deepEqual(r.missing, ["intended_aircraft_absent"]);
 });
 
-test("61.57(a): an unattributed entry in the window forces insufficient_data even if it wouldn't have counted (S2)", () => {
-  const entries = [entry({ entryDate: "2026-07-01", airmanUserId: null })];
+test("61.57(a): an unattributed entry that COULD be the difference forces insufficient_data (S2)", () => {
+  // Exactly at threshold, alone — attributing it genuinely could flip the
+  // answer, so this asks rather than guesses.
+  const entries = [entry({ entryDate: "2026-07-01", airmanUserId: null, dayTakeoffs: 3, dayLandingsFullStop: 3 })];
   const r = evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
   assert.equal(r.status, "insufficient_data");
   assert.ok(r.missing.includes("airman_unattributed"));
+});
+
+test("61.57(a): an unattributed entry that could NEVER be the difference never gates (Q1-class scoping, generalized past matchGates)", () => {
+  // Zero movements: cannot contribute regardless of who it belongs to.
+  const zeroMovement = evaluateGeneralExperience({
+    asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(),
+    entries: [entry({ entryDate: "2026-07-01", airmanUserId: null })],
+  });
+  assert.equal(zeroMovement.status, "estimated_not_current");
+  assert.deepEqual(zeroMovement.missing, []);
+
+  // Real movements, but short even in the best case (1 of 3, alone).
+  const shortEvenBestCase = evaluateGeneralExperience({
+    asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(),
+    entries: [entry({ entryDate: "2026-07-01", airmanUserId: null, dayTakeoffs: 1, dayLandingsFullStop: 1 })],
+  });
+  assert.equal(shortEvenBestCase.status, "estimated_not_current");
+  assert.deepEqual(shortEvenBestCase.missing, []);
+
+  // Three OTHER certain entries already answer the card — a fourth,
+  // unattributed entry could never change that, even though it alone
+  // would have reached the threshold.
+  const alreadyCurrent = evaluateGeneralExperience({
+    asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(),
+    entries: [
+      entry({ entryDate: "2026-07-01", dayTakeoffs: 1, dayLandingsFullStop: 1 }),
+      entry({ entryDate: "2026-07-10", dayTakeoffs: 1, dayLandingsFullStop: 1 }),
+      entry({ entryDate: "2026-07-20", dayTakeoffs: 1, dayLandingsFullStop: 1 }),
+      entry({ entryDate: "2026-07-15", airmanUserId: null, dayTakeoffs: 3, dayLandingsFullStop: 3 }),
+    ],
+  });
+  assert.equal(alreadyCurrent.status, "estimated_current");
+  assert.deepEqual(alreadyCurrent.missing, []);
 });
 
 test("61.57(a): a second airman's entries in a shared account never count toward this airman's total (S2)", () => {
@@ -431,13 +466,36 @@ test("61.57(a): a second airman's entries in a shared account never count toward
   assert.equal(r.observed.takeoffs, 0);
 });
 
-test("61.57(a): any simulator row in the window is unresolvable, never counted and never ignored silently", () => {
+test("61.57(a): a simulator row that COULD be the difference is unresolvable, never counted and never ignored silently", () => {
   const entries = [
-    entry({ entryDate: "2026-07-01", simulatorTime: 1.0, simulatorDeviceType: "ffs" }),
+    entry({ entryDate: "2026-07-01", dayTakeoffs: 3, dayLandingsFullStop: 3, simulatorTime: 1.0, simulatorDeviceType: "ffs" }),
   ];
   const r = evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
   assert.equal(r.status, "insufficient_data");
   assert.ok(r.missing.includes("unresolvable_simulator_row"));
+});
+
+test("61.57(a): a simulator row that could never be the difference never gates", () => {
+  // Zero movements.
+  const zeroMovement = evaluateGeneralExperience({
+    asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(),
+    entries: [entry({ entryDate: "2026-07-01", simulatorTime: 1.0, simulatorDeviceType: "ffs" })],
+  });
+  assert.equal(zeroMovement.status, "estimated_not_current");
+  assert.deepEqual(zeroMovement.missing, []);
+
+  // Already current on three OTHER certain entries.
+  const alreadyCurrent = evaluateGeneralExperience({
+    asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(),
+    entries: [
+      entry({ entryDate: "2026-07-01", dayTakeoffs: 1, dayLandingsFullStop: 1 }),
+      entry({ entryDate: "2026-07-10", dayTakeoffs: 1, dayLandingsFullStop: 1 }),
+      entry({ entryDate: "2026-07-20", dayTakeoffs: 1, dayLandingsFullStop: 1 }),
+      entry({ entryDate: "2026-07-15", dayTakeoffs: 3, dayLandingsFullStop: 3, simulatorTime: 1.0, simulatorDeviceType: "ffs" }),
+    ],
+  });
+  assert.equal(alreadyCurrent.status, "estimated_current");
+  assert.deepEqual(alreadyCurrent.missing, []);
 });
 
 // ---------------------------------------------------------------------------
@@ -556,13 +614,30 @@ test("61.57(b): a full-stop night landing counts when the (b)(1) window is asser
   assert.equal(r.status, "estimated_current");
 });
 
-test("61.57(b): night_window_asserted !== true on a contributing row forces insufficient_data — the 1.1-vs-(b)(1) clock", () => {
+test("61.57(b): night_window_asserted === null on a row that COULD be the difference forces insufficient_data — the 1.1-vs-(b)(1) clock", () => {
+  // Exactly at threshold, alone — asserting the window genuinely could
+  // flip the answer.
   const entries = [
-    entry({ entryDate: "2026-07-01", nightTakeoffs: 1, nightLandingsFullStop: 1, nightWindowAsserted: false }),
+    entry({ entryDate: "2026-07-01", nightTakeoffs: 3, nightLandingsFullStop: 3, nightWindowAsserted: null }),
   ];
   const r = evaluateNightExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
   assert.equal(r.status, "insufficient_data");
   assert.ok(r.missing.includes("night_window_unasserted"));
+});
+
+test("61.57(b): night_window_asserted === FALSE is a STATED negative, not an unknown — excluded, never gated (same discipline as soleManipulator === false)", () => {
+  const entries = [
+    entry({ entryDate: "2026-07-01", nightTakeoffs: 1, nightLandingsFullStop: 1, nightWindowAsserted: true }),
+    entry({ entryDate: "2026-07-10", nightTakeoffs: 1, nightLandingsFullStop: 1, nightWindowAsserted: true }),
+    entry({ entryDate: "2026-07-20", nightTakeoffs: 1, nightLandingsFullStop: 1, nightWindowAsserted: true }),
+    // Confirmed OUTSIDE the (b)(1) window — even though it alone would
+    // reach the threshold, it is a known "no," not a question.
+    entry({ entryDate: "2026-07-15", nightTakeoffs: 3, nightLandingsFullStop: 3, nightWindowAsserted: false }),
+  ];
+  const r = evaluateNightExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
+  assert.equal(r.status, "estimated_current");
+  assert.equal(r.observed.takeoffs, 3);
+  assert.deepEqual(r.missing, []);
 });
 
 test("61.57(b): a night flight with a daytime landing is a NOTE, not a missing-data gate", () => {
@@ -593,7 +668,6 @@ test("61.57(b) has no tailwheel gate of its own: entries flown in a TRICYCLE air
   assert.equal(r.observed.takeoffs, 3);
   assert.equal(r.observed.landings, 3, "a tricycle-flown entry's landings must still count — (b) has no gear predicate to exclude them");
   assert.deepEqual(r.missing, []);
-  assert.ok(!r.missing.includes("aircraft_gear_unrecorded"), "night.ts must never gate on the LOGGED aircraft's gear either");
 });
 
 // ---------------------------------------------------------------------------
@@ -644,7 +718,7 @@ test("61.57(c): all three device classes (FFS/FTD/ATD) are accepted device class
   }
 });
 
-test("61.57(c): device class 'other' is unresolvable, unconditionally — the one exception (c) does not extend to", () => {
+test("61.57(c): device class 'other' is unresolvable — when it could be the difference, it asks, not answers", () => {
   const entries = [
     entry({
       entryDate: "2026-07-01",
@@ -653,11 +727,32 @@ test("61.57(c): device class 'other' is unresolvable, unconditionally — the on
       approachCondition: "simulated",
       simulatorTime: 1.0,
       simulatorDeviceType: "other",
+      holds: 1,
+      coursesInterceptedTracked: true,
     }),
   ];
   const r = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
   assert.equal(r.status, "insufficient_data");
   assert.ok(r.missing.includes("unresolvable_simulator_row"));
+});
+
+test("61.57(c): device class 'other' never gates when it could not be the difference", () => {
+  // Real aircraft entries alone already clear the card — the unneeded
+  // 'other' device row must not gate it.
+  const entries = [
+    entry({ entryDate: "2026-07-01", approachesCount: 6, approachType: "ils", approachCondition: "actual", holds: 1, coursesInterceptedTracked: true }),
+    entry({
+      entryDate: "2026-07-05",
+      approachesCount: 2,
+      approachType: "ils",
+      approachCondition: "simulated",
+      simulatorTime: 1.0,
+      simulatorDeviceType: "other",
+    }),
+  ];
+  const r = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
+  assert.equal(r.status, "estimated_current");
+  assert.deepEqual(r.missing, []);
 });
 
 test("61.57(c), P2: a device row has NO tail number by design (REGU-4/CORR-1) but STILL can't singlehandedly prove currency — the device-represents-category predicate is unconfirmable, not unconditional credit", () => {
@@ -686,7 +781,6 @@ test("61.57(c), P2: a device row has NO tail number by design (REGU-4/CORR-1) bu
   const r = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
   assert.equal(r.status, "insufficient_data");
   assert.deepEqual(r.missing, ["device_category_unconfirmed"]);
-  assert.ok(!r.missing.includes("aircraft_unregistered"), "must never fall back to the registry gate for a device row");
 });
 
 test("61.57(c), P9: a MIXED row (real approaches in ACTUAL conditions, alongside unrelated simulator time on the same entry) counts its real-aircraft approaches — simulatorTime alone must not route it into the device branch", () => {
@@ -733,11 +827,18 @@ test("61.57(c), REGU-4/CORR-1: an unrelated device row with no aircraft must not
   assert.deepEqual(r.missing, []);
 });
 
-test("61.57(c): approach_condition unrecorded on a counted-approach row forces insufficient_data", () => {
-  const entries = [entry({ entryDate: "2026-07-01", approachesCount: 6, approachType: "ils", approachCondition: null })];
+test("61.57(c): approach_condition unrecorded on a counted-approach row forces insufficient_data when it could be the difference", () => {
+  const entries = [entry({ entryDate: "2026-07-01", approachesCount: 6, approachType: "ils", approachCondition: null, holds: 1, coursesInterceptedTracked: true })];
   const r = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
   assert.equal(r.status, "insufficient_data");
   assert.ok(r.missing.includes("approach_condition_unrecorded"));
+});
+
+test("61.57(c): approach_condition unrecorded never gates when it could not be the difference (short even in the best case)", () => {
+  const entries = [entry({ entryDate: "2026-07-01", approachesCount: 6, approachType: "ils", approachCondition: null })];
+  const r = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
+  assert.equal(r.status, "estimated_not_current", "no holds/intercept even in the best case, so resolving the condition could never make this card current");
+  assert.deepEqual(r.missing, []);
 });
 
 test("61.57(c): needs six approaches, at least one hold, and the intercept/track task — none need to share a flight", () => {
@@ -770,11 +871,24 @@ test("61.57(c), REG-2: a hold or intercept flown in VMC on a 'neither' row does 
   assert.equal(r.observed.intercepts, 0);
 });
 
-test("61.57(c), REG-2: a hold/intercept row with no recorded condition is a missing input, exactly like an approach row", () => {
-  const entries = [entry({ entryDate: "2026-07-01", holds: 1, approachCondition: null })];
+test("61.57(c), REG-2: a hold row with no recorded condition is a missing input, exactly like an approach row, when it could be the difference", () => {
+  const entries = [
+    // Certain approaches, certain intercept — short only on holds.
+    entry({ entryDate: "2026-07-01", approachesCount: 6, approachType: "ils", approachCondition: "actual" }),
+    entry({ entryDate: "2026-07-05", coursesInterceptedTracked: true, approachCondition: "actual" }),
+    // The only source of a hold, condition unresolved.
+    entry({ entryDate: "2026-07-10", holds: 1, approachCondition: null }),
+  ];
   const r = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
   assert.equal(r.status, "insufficient_data");
   assert.ok(r.missing.includes("approach_condition_unrecorded"));
+});
+
+test("61.57(c), REG-2: a hold row with no recorded condition never gates when it could not be the difference (no other source of a hold, short in the best case too)", () => {
+  const entries = [entry({ entryDate: "2026-07-01", holds: 1, approachCondition: null })];
+  const r = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
+  assert.equal(r.status, "estimated_not_current", "zero approaches even in the best case, so this can never reach current regardless of the hold's condition");
+  assert.deepEqual(r.missing, []);
 });
 
 test("61.57(c), REG-3: instrument time logged in a different-category aircraft does not manufacture the intended aircraft's currency", () => {
@@ -807,14 +921,29 @@ test("61.57(c), CORR-2: category_class is matched as one field, so a different C
   assert.ok(r.assumptions.some((a) => a.includes("category/class field")), "the class-vs-category-only deviation must be disclosed on the card");
 });
 
-test("61.57(c), REG-3: a hold on an unregistered aircraft is a missing input, not silently dropped", () => {
+test("61.57(c), REG-3: a hold on an unregistered aircraft is a missing input, not silently dropped, when it could be the difference", () => {
   const entries = [
+    // Certain approaches, certain intercept — short only on holds.
     entry({ entryDate: "2026-07-01", approachesCount: 6, approachType: "ils", approachCondition: "actual" }),
+    entry({ entryDate: "2026-07-05", coursesInterceptedTracked: true, approachCondition: "actual" }),
+    // The only source of a hold, aircraft not in the registry.
     entry({ entryDate: "2026-07-10", holds: 1, approachCondition: "actual", aircraft: null }),
   ];
   const r = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
   assert.equal(r.status, "insufficient_data");
   assert.ok(r.missing.includes("aircraft_unregistered"));
+});
+
+test("61.57(c), REG-3/Q1: a hold on an unregistered aircraft never gates when it could not be the difference — the exact shape of Q1's critical finding, generalized off the device case", () => {
+  const entries = [
+    // Already current on certain evidence alone.
+    entry({ entryDate: "2026-07-01", approachesCount: 6, approachType: "ils", approachCondition: "actual", holds: 1, coursesInterceptedTracked: true }),
+    // An unrelated, unregistered-aircraft hold entry could never change that.
+    entry({ entryDate: "2026-07-10", holds: 1, approachCondition: "actual", aircraft: null }),
+  ];
+  const r = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
+  assert.equal(r.status, "estimated_current");
+  assert.deepEqual(r.missing, []);
 });
 
 test("61.57(c): the calendar-month window boundary matches worked example 1 exactly", () => {
@@ -1293,4 +1422,259 @@ test("describeResult, SEC-6/SEC-14: every aircraft-related remedy points at the 
     const described = describeResult({ ...base, missing: [missing] });
     assert.equal(described.remedies[0].href, "/logbook/aircraft", `${missing} must route to the real aircraft registry`);
   }
+});
+
+// =============================================================================
+// THE INVARIANT — the test that would have caught all five review rounds.
+//
+// Every one of those rounds found the identical bug in a new place: a fact
+// missing from ONE logbook entry emptied the WHOLE card, even for a pilot
+// whose OTHER entries already answered it. lib/currency/ambiguous-facts.ts's
+// missingFactCouldChangeAnswer is the fix, and this file's tests above prove
+// it works ONE GATE AT A TIME (P1 for type/category, the Q1-generalized
+// pairs above for airman/role/sole-manipulator/registration/gear/simulator/
+// approach-condition/device). This block asserts the SHAPE of the bug
+// directly, across every gate at once, so the next occurrence — in a gate
+// nobody has thought to write a paired test for yet — fails here first.
+//
+// FLYING MORE CANNOT MAKE A PILOT LESS CURRENT. That is true of the
+// regulation (61.57/(135.247's thresholds are floors: three takeoffs and
+// three landings, six approaches — once met, nothing about a DIFFERENT,
+// later-added log entry can un-meet them) and it must be true of the
+// engine:
+//
+//   Adding one more logbook entry to a pilot's history must NEVER turn a
+//   card from estimated_current into insufficient_data.
+//
+// This holds with NO REGULATORY EXCEPTION, for a structural reason, not a
+// policy one: every "certain" set this engine computes (classifyForCurrency
+// in passenger-shared.ts, classifyInstrumentEntry in instrument.ts) is
+// read-only over the window and can only GAIN members as entries are added
+// — nothing about a NEW entry can un-qualify an EXISTING one, and
+// missingFactCouldChangeAnswer only ever gates when the CERTAIN total
+// (which cannot shrink) is short of the threshold. So if certain evidence
+// already clears the bar, it goes on clearing it no matter what else is
+// logged. Contrast with the property this file does NOT assert — that
+// adding an entry can flip estimated_not_current or insufficient_data
+// FORWARD to estimated_current or vice versa within the "could this change
+// the answer" arithmetic — which is supposed to happen and is covered by
+// the P1/P9/Q1-generalized "COULD be the difference" tests elsewhere in
+// this file. See the WHERE THE INVARIANT DOES NOT APPLY note at the end of
+// this block for why the two are different claims, spelled out rather than
+// used to weaken the property below.
+// =============================================================================
+
+test("INVARIANT: adding one more ambiguous logbook entry to an already-current pilot's history never produces insufficient_data", async (t) => {
+  const TRICYCLE = aircraft({ tailKey: "N-TRI", gear: "tricycle" });
+  const TAILWHEEL = aircraft({ tailKey: "N-TW", gear: "tailwheel" });
+
+  function baseDayEntries(ac) {
+    return [
+      entry({ entryDate: "2026-07-01", dayTakeoffs: 1, dayLandingsFullStop: 1, aircraft: ac }),
+      entry({ entryDate: "2026-07-10", dayTakeoffs: 1, dayLandingsFullStop: 1, aircraft: ac }),
+      entry({ entryDate: "2026-07-20", dayTakeoffs: 1, dayLandingsFullStop: 1, aircraft: ac }),
+    ];
+  }
+  function baseNightEntries(ac) {
+    return [
+      entry({ entryDate: "2026-07-01", nightTakeoffs: 1, nightLandingsFullStop: 1, nightWindowAsserted: true, aircraft: ac }),
+      entry({ entryDate: "2026-07-10", nightTakeoffs: 1, nightLandingsFullStop: 1, nightWindowAsserted: true, aircraft: ac }),
+      entry({ entryDate: "2026-07-20", nightTakeoffs: 1, nightLandingsFullStop: 1, nightWindowAsserted: true, aircraft: ac }),
+    ];
+  }
+  function baseInstrumentEntries(ac) {
+    return [
+      entry({
+        entryDate: "2026-07-01",
+        approachesCount: 6,
+        approachType: "ils",
+        approachCondition: "actual",
+        holds: 1,
+        coursesInterceptedTracked: true,
+        aircraft: ac,
+      }),
+    ];
+  }
+
+  // The table of ambiguous facts for the three 90-day cards — one entry
+  // per fact, each carrying enough movement to have reached the threshold
+  // ON ITS OWN, so a card that DIDN'T already have three certain entries
+  // would have to ask about it (see the P1/Q1-generalized "COULD be the
+  // difference" tests elsewhere in this file for that half). `includeGear`
+  // is false for night.ts, which has no gear axis of its own (see that
+  // module's header) and true everywhere else.
+  function ninetyDayAmbiguousVariants(movementFields, ac, includeGear) {
+    const variants = {
+      "null role": { ...movementFields, role: null, aircraft: ac },
+      "null sole_manipulator": { ...movementFields, soleManipulator: null, aircraft: ac },
+      "null airman": { ...movementFields, airmanUserId: null, aircraft: ac },
+      "unregistered tail": { ...movementFields, aircraft: null },
+      "blank category": { ...movementFields, aircraft: { ...ac, categoryClass: null } },
+      "blank type rating and designator (unresolved type)": {
+        ...movementFields,
+        aircraft: { ...ac, typeRating: null, typeDesignator: null },
+      },
+      "simulator row (device, unconfirmable approval — 61.57(a)(3)/(b)(2)/135.247(a)(3))": {
+        ...movementFields,
+        simulatorTime: 1.0,
+        simulatorDeviceType: "ffs",
+        aircraft: null,
+      },
+      "mixed real-and-device row (real movements plus unrelated simulatorTime on the same entry)": {
+        ...movementFields,
+        simulatorTime: 0.5,
+        simulatorDeviceType: "ffs",
+        aircraft: ac,
+      },
+    };
+    if (includeGear) {
+      variants["null gear"] = { ...movementFields, aircraft: { ...ac, gear: null } };
+    }
+    return variants;
+  }
+
+  function assertNeverBecomesInsufficient(cardLabel, base, variants, evaluate) {
+    for (const [name, overrides] of Object.entries(variants)) {
+      const withExtra = evaluate([...base, entry({ entryDate: "2026-07-15", ...overrides })]);
+      assert.equal(withExtra.status, "estimated_current", `${cardLabel} + ${name} must stay estimated_current`);
+      assert.deepEqual(withExtra.missing, [], `${cardLabel} + ${name} must carry no missing input`);
+    }
+  }
+
+  await t.test("61.57(a) — exercised against a TAILWHEEL intended aircraft so the gear axis is covered too", () => {
+    const base = baseDayEntries(TAILWHEEL);
+    const sanity = evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: TAILWHEEL, entries: base });
+    assert.equal(sanity.status, "estimated_current", "the base history itself must be current for this property to mean anything");
+
+    const variants = ninetyDayAmbiguousVariants({ dayTakeoffs: 3, dayLandingsFullStop: 3 }, TAILWHEEL, true);
+    assertNeverBecomesInsufficient("61.57(a)", base, variants, (entries) =>
+      evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: TAILWHEEL, entries })
+    );
+  });
+
+  await t.test("61.57(b) — no gear axis of its own; the 61.57(b)(1) window is its extra axis instead", () => {
+    const base = baseNightEntries(TRICYCLE);
+    const sanity = evaluateNightExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: TRICYCLE, entries: base });
+    assert.equal(sanity.status, "estimated_current");
+
+    const variants = ninetyDayAmbiguousVariants(
+      { nightTakeoffs: 3, nightLandingsFullStop: 3, nightWindowAsserted: true },
+      TRICYCLE,
+      false
+    );
+    variants["night window unasserted (null — not the (b)(1) window, distinct from 14 CFR 1.1 night)"] = {
+      nightTakeoffs: 3,
+      nightLandingsFullStop: 3,
+      nightWindowAsserted: null,
+      aircraft: TRICYCLE,
+    };
+    assertNeverBecomesInsufficient("61.57(b)", base, variants, (entries) =>
+      evaluateNightExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: TRICYCLE, entries })
+    );
+  });
+
+  await t.test("135.247(a)(1) day — TAILWHEEL, both gear and the 90-day axes apply", () => {
+    const base = baseDayEntries(TAILWHEEL);
+    const sanity = evaluatePart135Recency({
+      asOf: "2026-08-07", airmanUserId: AIRMAN, operatingRule: "part_135", exemptionAsserted: false,
+      intendedAircraft: TAILWHEEL, entries: base,
+    });
+    assert.equal(sanity.day.status, "estimated_current");
+
+    const variants = ninetyDayAmbiguousVariants({ dayTakeoffs: 3, dayLandingsFullStop: 3 }, TAILWHEEL, true);
+    assertNeverBecomesInsufficient("135.247(a)(1)", base, variants, (entries) =>
+      evaluatePart135Recency({
+        asOf: "2026-08-07", airmanUserId: AIRMAN, operatingRule: "part_135", exemptionAsserted: false,
+        intendedAircraft: TAILWHEEL, entries,
+      }).day
+    );
+  });
+
+  await t.test("135.247(a)(2) night — TAILWHEEL, gear AND the (b)(1)-style window both apply (135.247(b) reaches the night variant)", () => {
+    const base = baseNightEntries(TAILWHEEL);
+    const sanity = evaluatePart135Recency({
+      asOf: "2026-08-07", airmanUserId: AIRMAN, operatingRule: "part_135", exemptionAsserted: false,
+      intendedAircraft: TAILWHEEL, entries: base,
+    });
+    assert.equal(sanity.night.status, "estimated_current");
+
+    const variants = ninetyDayAmbiguousVariants(
+      { nightTakeoffs: 3, nightLandingsFullStop: 3, nightWindowAsserted: true },
+      TAILWHEEL,
+      true
+    );
+    variants["night window unasserted (null)"] = {
+      nightTakeoffs: 3,
+      nightLandingsFullStop: 3,
+      nightWindowAsserted: null,
+      aircraft: TAILWHEEL,
+    };
+    assertNeverBecomesInsufficient("135.247(a)(2)", base, variants, (entries) =>
+      evaluatePart135Recency({
+        asOf: "2026-08-07", airmanUserId: AIRMAN, operatingRule: "part_135", exemptionAsserted: false,
+        intendedAircraft: TAILWHEEL, entries,
+      }).night
+    );
+  });
+
+  await t.test("61.57(c) — its own axes: airman, approach_condition, aircraft registry/category, and the device predicate (no role/sole-manipulator/gear axis on this card)", () => {
+    const base = baseInstrumentEntries(TRICYCLE);
+    const sanity = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: TRICYCLE, entries: base });
+    assert.equal(sanity.status, "estimated_current");
+
+    const full = { approachesCount: 6, approachType: "ils", holds: 1, coursesInterceptedTracked: true };
+    const variants = {
+      "null airman": { ...full, approachCondition: "actual", airmanUserId: null, aircraft: TRICYCLE },
+      "unregistered tail": { ...full, approachCondition: "actual", aircraft: null },
+      "blank category": { ...full, approachCondition: "actual", aircraft: { ...TRICYCLE, categoryClass: null } },
+      "approach_condition null, real aircraft": { ...full, approachCondition: null, aircraft: TRICYCLE },
+      "device row, condition 'simulated' (61.57(c)(2)'s own device-represents-category predicate is unconfirmable)": {
+        ...full, approachCondition: "simulated", simulatorTime: 1.0, simulatorDeviceType: "atd", aircraft: null,
+      },
+      "device row, condition null (approach_condition_unrecorded on a device)": {
+        ...full, approachCondition: null, simulatorTime: 1.0, simulatorDeviceType: "atd", aircraft: null,
+      },
+      "device row, condition 'neither' (decisive exclusion, per Q1 — proven here to never gate either)": {
+        ...full, approachCondition: "neither", simulatorTime: 1.0, simulatorDeviceType: "atd", aircraft: null,
+      },
+      "device row, device type 'other' (unresolvable_simulator_row)": {
+        ...full, approachCondition: "simulated", simulatorTime: 1.0, simulatorDeviceType: "other", aircraft: null,
+      },
+      "mixed real-and-device row (condition 'actual' plus unrelated simulatorTime — P9's fixture, generalized)": {
+        ...full, approachCondition: "actual", simulatorTime: 0.5, simulatorDeviceType: "ffs", aircraft: TRICYCLE,
+      },
+    };
+    for (const [name, overrides] of Object.entries(variants)) {
+      const withExtra = evaluateInstrumentExperience({
+        asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: TRICYCLE,
+        entries: [...base, entry({ entryDate: "2026-07-05", ...overrides })],
+      });
+      assert.equal(withExtra.status, "estimated_current", `61.57(c) + ${name} must stay estimated_current`);
+      assert.deepEqual(withExtra.missing, [], `61.57(c) + ${name} must carry no missing input`);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // WHERE THIS INVARIANT LEGITIMATELY DOES NOT APPLY — written down, rather
+  // than used to weaken the property above (the one unforgivable move).
+  //
+  // The invariant is ONE DIRECTION ONLY: estimated_current -> insufficient_
+  // data by adding an entry. It is silent on, and does not forbid:
+  //   - estimated_not_current -> estimated_current: a NEW, fully-CERTAIN
+  //     qualifying entry is supposed to do exactly this (every basic A-1-
+  //     shaped fixture in this file proves the engine does it).
+  //   - insufficient_data staying insufficient_data, or resolving to
+  //     estimated_current, as an AMBIGUOUS fact is settled: this is what
+  //     the P1 (a17/a18/a19), Q1-generalized, and REGU-4/CORR-1 tests
+  //     elsewhere in this file cover — a SHORT pilot whose only chance at
+  //     currency is one ambiguous entry legitimately gets asked, not
+  //     answered, per 61.57(a)(1)/(b)(1)/135.247(a) and 61.57(c)(2)'s own
+  //     text. That is not a counter-example to the invariant above, because
+  //     the base in those fixtures is never estimated_current to begin
+  //     with — nothing here is "one more entry took away a yes."
+  // No fact pattern this engine encodes can turn the SECOND case into the
+  // first without changing the base history itself (adding a wholly
+  // separate, fully-certain entry) — which is a different logbook, not "one
+  // more entry."
+  // -------------------------------------------------------------------------
 });

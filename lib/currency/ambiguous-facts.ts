@@ -2,8 +2,11 @@
  * THE ONE RULE for deciding whether a missing or unresolved fact on a
  * logbook entry is worth turning into insufficient_data, shared by every
  * rule module so it is answered the same way everywhere instead of
- * re-derived per module (passenger-shared.ts's matchGates and
- * instrument.ts's device-row credit both call this).
+ * re-derived per module (passenger-shared.ts's ambiguousFactGates and
+ * instrument.ts's evaluateInstrumentExperience both call this, each after
+ * classifying every entry in the window as certain, ambiguous, or
+ * decisively excluded — see classifyForCurrency's and
+ * classifyInstrumentEntry's own headers).
  *
  * A missing fact produces insufficient_data ONLY IF SUPPLYING IT COULD
  * CHANGE THE ANSWER.

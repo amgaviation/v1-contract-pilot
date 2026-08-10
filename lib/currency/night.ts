@@ -14,11 +14,11 @@
  * the same clock. They are not — civil twilight ends roughly 25-35
  * minutes after sunset, so there is a nightly window in which a landing
  * is correctly logged as night_time and is NOT inside 61.57(b)(1)'s
- * period. See the nightWindowAsserted gate below, and
+ * period. See classifyForCurrency's `checkNightWindow` option below, and
  * supabase/migrations/20260807120000_logbook_reg_corrections.sql section
  * B, which documents the same distinction on the column itself.
  *
- * THE GEAR GATE IS NOT COPIED FROM general.ts. 61.57(b) has no tailwheel
+ * THE GEAR CHECK IS NOT COPIED FROM general.ts. 61.57(b) has no tailwheel
  * clause of its own — full stop is required for EVERY aircraft here, not
  * only tailwheel ones, so there is nothing for a gear flag to change.
  * (135.247(b) IS a tailwheel rule that reaches the night variant — see
@@ -26,15 +26,14 @@
  */
 import { rollingDayWindow } from "./window";
 import {
+  CATEGORY_MATCH_ASSUMPTION,
   NINETY_DAYS,
   NINETY_DAY_BOUNDARY_ASSUMPTION,
-  aircraftUnregisteredGate,
-  baseGates,
+  ambiguousFactGates,
+  classifyForCurrency,
   countedFrom,
-  eligibleEntries,
   inWindowEntries,
   limitingDateFor,
-  matchGates,
   typeMatchAssumption,
 } from "./passenger-shared";
 import { categoryKey, typeKey } from "./match";
@@ -71,34 +70,23 @@ export function evaluateNightExperience(input: {
     if (typeKey(intendedAircraft) === null) gates.add("aircraft_type_unrecorded");
     // No aircraft_gear_unrecorded gate here — see the module header.
   }
-  for (const g of baseGates(inWindow)) gates.add(g);
-  if (aircraftUnregisteredGate(inWindow, takeoffs, landings)) gates.add("aircraft_unregistered");
 
-  // The 1.1-vs-(b)(1) clock: any entry contributing a night takeoff or
-  // full-stop night landing must have asserted it was inside the (b)(1)
-  // window, or the count is unusable — see the module header.
-  for (const e of inWindow) {
-    if ((takeoffs(e) > 0 || landings(e) > 0) && e.nightWindowAsserted !== true) {
-      gates.add("night_window_unasserted");
-    }
-  }
-
-  // matchGates (P1/ambiguous-facts.ts): only evaluated once every other,
-  // unconditional gate above is clear — see general.ts's identical
-  // comment for why. No gear filter here (see the module header), so
-  // `eligible` is just eligibleEntries — unlike general.ts/part135.ts.
+  // classifyForCurrency/ambiguousFactGates: only evaluated once the two
+  // unconditional intended-aircraft gates above are clear — see
+  // general.ts's identical comment for why. No gear check here (see the
+  // module header); the 1.1-vs-(b)(1) clock IS checked (checkNightWindow),
+  // unlike general.ts/part135.ts's day variant.
   let matchNotes: string[] = [];
   let eligible: CurrencyEntry[] = [];
   if (intendedAircraft && gates.size === 0) {
-    eligible = eligibleEntries(inWindow, airmanUserId, intendedAircraft);
-    const certainTakeoffs = eligible.reduce((sum, e) => sum + takeoffs(e), 0);
-    const certainLandings = eligible.reduce((sum, e) => sum + landings(e), 0);
-    const m = matchGates(
-      inWindow, airmanUserId, intendedAircraft, takeoffs, landings, TAKEOFF_THRESHOLD, LANDING_THRESHOLD,
-      certainTakeoffs, certainLandings
-    );
-    for (const g of m.gates) gates.add(g);
-    matchNotes = m.notes;
+    const classification = classifyForCurrency(inWindow, airmanUserId, intendedAircraft, takeoffs, landings, {
+      checkGear: false,
+      checkNightWindow: true,
+    });
+    eligible = classification.certain;
+    const g = ambiguousFactGates(classification, takeoffs, landings, TAKEOFF_THRESHOLD, LANDING_THRESHOLD);
+    for (const gg of g.gates) gates.add(gg);
+    matchNotes = g.notes;
   }
 
   const missing = MISSING_INPUT_ORDER.filter((m) => gates.has(m));
@@ -150,6 +138,7 @@ export function evaluateNightExperience(input: {
   const assumptions = [
     "Full-stop landings only — 61.57(b)(1) requires a full stop for every aircraft, not only tailwheel; touch-and-go night landings never count here.",
     NINETY_DAY_BOUNDARY_ASSUMPTION,
+    CATEGORY_MATCH_ASSUMPTION,
   ];
   const typeAssumption = typeMatchAssumption(aircraft);
   if (typeAssumption) assumptions.push(typeAssumption);

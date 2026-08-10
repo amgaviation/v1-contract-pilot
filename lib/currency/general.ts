@@ -20,19 +20,17 @@
  */
 import { rollingDayWindow } from "./window";
 import {
+  CATEGORY_MATCH_ASSUMPTION,
   NINETY_DAYS,
   NINETY_DAY_BOUNDARY_ASSUMPTION,
-  aircraftUnregisteredGate,
-  baseGates,
+  ambiguousFactGates,
+  classifyForCurrency,
   countedFrom,
-  eligibleEntries,
-  gearGates,
   inWindowEntries,
   limitingDateFor,
-  matchGates,
   typeMatchAssumption,
 } from "./passenger-shared";
-import { categoryKey, gearMatches, typeKey } from "./match";
+import { categoryKey, typeKey } from "./match";
 import { MISSING_INPUT_ORDER } from "./types";
 import type { AircraftFacts, CurrencyEntry, CurrencyResult, IsoDate, MissingInput } from "./types";
 
@@ -51,8 +49,8 @@ function takeoffs(e: CurrencyEntry): number {
  * OTHER half of that clause — the takeoffs AND landings must have been
  * made IN AN AIRPLANE WITH A TAILWHEEL, not merely to a full stop in
  * whatever was flown — is NOT a column-selection question and is not
- * enforced here: see gearGates/gearMatches below and in
- * evaluateGeneralExperience, which gate on and filter by the LOGGED
+ * enforced here: see classifyForCurrency's `checkGear` option below and in
+ * evaluateGeneralExperience, which gates on and filters by the LOGGED
  * entry's own gear (REGU-1 — category/type matching alone does not touch
  * gear at all, and previously let a tricycle Skyhawk's landings credit a
  * taildragger's currency).
@@ -81,40 +79,33 @@ export function evaluateGeneralExperience(input: {
   } else {
     if (categoryKey(intendedAircraft) === null) gates.add("aircraft_category_class_unrecorded");
     if (typeKey(intendedAircraft) === null) gates.add("aircraft_type_unrecorded");
-    // Unknown gear means unknown whether touch-and-goes count at all.
+    // Unknown gear means unknown whether touch-and-goes count at all — a
+    // question about the INTENDED aircraft, not about any one entry, so
+    // this stays unconditional: nothing below can even be computed
+    // without it (landingsFor needs it for every row, not just an
+    // ambiguous one).
     if (intendedAircraft.gear === null) gates.add("aircraft_gear_unrecorded");
   }
-  for (const g of baseGates(inWindow)) gates.add(g);
 
   const landings = intendedAircraft ? landingsFor(intendedAircraft) : () => 0;
-  if (aircraftUnregisteredGate(inWindow, takeoffs, landings)) gates.add("aircraft_unregistered");
-  if (intendedAircraft) {
-    for (const g of gearGates(inWindow, intendedAircraft, takeoffs, landings)) gates.add(g);
-  }
 
-  // matchGates (P1/ambiguous-facts.ts): only evaluated once every other,
-  // unconditional gate above is clear — if the card is already
-  // insufficient_data for another reason, whether an entry's type is
-  // ambiguous cannot change that, and running the "could this change the
-  // answer" arithmetic against a card that already has no answer would
-  // only produce notes nobody needs to read. `eligible` is computed here
-  // (gear-filtered — REGU-1) rather than after the gate check so
-  // matchGates' "certain" total is the SAME total the arithmetic below
-  // uses, never a looser one that ignores the gear filter.
+  // classifyForCurrency/ambiguousFactGates (ambiguous-facts.ts's rule,
+  // closed for the WHOLE class here — see that function's header): only
+  // evaluated once the two unconditional intended-aircraft gates above are
+  // clear, since neither the arithmetic nor "could this entry change the
+  // answer" can be computed without a resolved intended aircraft.
   let matchNotes: string[] = [];
   let eligible: CurrencyEntry[] = [];
   if (intendedAircraft && gates.size === 0) {
     const aircraft = intendedAircraft;
-    const gearOk = (e: CurrencyEntry) => e.aircraft !== null && gearMatches(e.aircraft, aircraft).matches;
-    eligible = eligibleEntries(inWindow, airmanUserId, aircraft).filter(gearOk);
-    const certainTakeoffs = eligible.reduce((sum, e) => sum + takeoffs(e), 0);
-    const certainLandings = eligible.reduce((sum, e) => sum + landings(e), 0);
-    const m = matchGates(
-      inWindow, airmanUserId, aircraft, takeoffs, landings, TAKEOFF_THRESHOLD, LANDING_THRESHOLD,
-      certainTakeoffs, certainLandings, gearOk
-    );
-    for (const g of m.gates) gates.add(g);
-    matchNotes = m.notes;
+    const classification = classifyForCurrency(inWindow, airmanUserId, aircraft, takeoffs, landings, {
+      checkGear: true,
+      checkNightWindow: false,
+    });
+    eligible = classification.certain;
+    const g = ambiguousFactGates(classification, takeoffs, landings, TAKEOFF_THRESHOLD, LANDING_THRESHOLD);
+    for (const gg of g.gates) gates.add(gg);
+    matchNotes = g.notes;
   }
 
   const missing = MISSING_INPUT_ORDER.filter((m) => gates.has(m));
@@ -138,11 +129,6 @@ export function evaluateGeneralExperience(input: {
   }
 
   const aircraft = intendedAircraft as AircraftFacts; // non-null: no gates fired
-  // REGU-1: eligibleEntries alone only checks category/class/type — a
-  // tailwheel intended aircraft additionally requires the LOGGED
-  // aircraft's own gear to be tailwheel (see gearGates above, which would
-  // already have gated a null gear here to insufficient_data). `eligible`
-  // was already computed, gear-filtered, above.
   const totalTakeoffs = eligible.reduce((sum, e) => sum + takeoffs(e), 0);
   const totalLandings = eligible.reduce((sum, e) => sum + landings(e), 0);
   const status =
@@ -158,6 +144,7 @@ export function evaluateGeneralExperience(input: {
     "61.57(a) has no time-of-day limit — night takeoffs and night landings count toward this total, not only day ones.",
     "Whether 61.57(a) applies to this flight at all — carrying persons, or an aircraft certificated for more than one pilot flight crewmember — is not evaluated here.",
     NINETY_DAY_BOUNDARY_ASSUMPTION,
+    CATEGORY_MATCH_ASSUMPTION,
   ];
   // P5: general.ts previously disclosed the (a)(1)(ii) tailwheel gear
   // predicate nowhere on the card, so a tailwheel pilot whose entries were

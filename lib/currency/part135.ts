@@ -37,19 +37,17 @@
  */
 import { rollingDayWindow } from "./window";
 import {
+  CATEGORY_MATCH_ASSUMPTION,
   NINETY_DAYS,
   NINETY_DAY_BOUNDARY_ASSUMPTION,
-  aircraftUnregisteredGate,
-  baseGates,
+  ambiguousFactGates,
+  classifyForCurrency,
   countedFrom,
-  eligibleEntries,
-  gearGates,
   inWindowEntries,
   limitingDateFor,
-  matchGates,
   typeMatchAssumption,
 } from "./passenger-shared";
-import { categoryKey, gearMatches, typeKey } from "./match";
+import { categoryKey, typeKey } from "./match";
 import { MISSING_INPUT_ORDER } from "./types";
 import type { TripOperatingRule } from "@/lib/operating-rule";
 import type { AircraftFacts, CurrencyEntry, CurrencyResult, IsoDate, MissingInput } from "./types";
@@ -74,11 +72,11 @@ function nightTakeoffs(e: CurrencyEntry): number {
  *
  * The OTHER half of (b) — each takeoff and landing must be MADE IN a
  * tailwheel airplane, not merely counted from the right columns — is not
- * a column-selection question and is not handled here: see gearGates/
- * gearMatches below and in evaluateVariant, which gate on and filter by
- * the LOGGED entry's own gear (REGU-2 — this column selection alone
- * previously let a tricycle Skyhawk's landings credit a taildragger's
- * currency).
+ * a column-selection question and is not handled here: see
+ * classifyForCurrency's `checkGear` option below and in evaluateVariant,
+ * which gates on and filters by the LOGGED entry's own gear (REGU-2 — this
+ * column selection alone previously let a tricycle Skyhawk's landings
+ * credit a taildragger's currency).
  */
 function landingsFor(intended: AircraftFacts, variant: "day" | "night"): (e: CurrencyEntry) => number {
   const tailwheel = intended.gear === "tailwheel";
@@ -142,39 +140,25 @@ function evaluateVariant(
     // airplane. Not knowing gear means not knowing which landings count.
     if (intendedAircraft.gear === null) gates.add("aircraft_gear_unrecorded");
   }
-  for (const g of baseGates(inWindow)) gates.add(g);
   const landings = intendedAircraft ? landingsFor(intendedAircraft, variant) : () => 0;
-  if (aircraftUnregisteredGate(inWindow, takeoffs, landings)) gates.add("aircraft_unregistered");
-  if (intendedAircraft) {
-    for (const g of gearGates(inWindow, intendedAircraft, takeoffs, landings)) gates.add(g);
-  }
-  if (variant === "night") {
-    for (const e of inWindow) {
-      if ((takeoffs(e) > 0 || landings(e) > 0) && e.nightWindowAsserted !== true) {
-        gates.add("night_window_unasserted");
-      }
-    }
-  }
 
-  // matchGates (P1/ambiguous-facts.ts): only evaluated once every other,
-  // unconditional gate above is clear — see general.ts's identical
-  // comment for why. `eligible` is computed here (gear-filtered — REGU-2)
-  // rather than after the gate check so matchGates' "certain" total is
-  // the SAME total the arithmetic below uses.
+  // classifyForCurrency/ambiguousFactGates: only evaluated once the
+  // unconditional intended-aircraft gates above are clear — see
+  // general.ts's identical comment for why. Gear IS checked in both
+  // variants (REGU-2); the 61.57(b)(1)-style window is checked only for
+  // the night variant.
   let matchNotes: string[] = [];
   let eligible: CurrencyEntry[] = [];
   if (intendedAircraft && gates.size === 0) {
     const aircraft = intendedAircraft;
-    const gearOk = (e: CurrencyEntry) => e.aircraft !== null && gearMatches(e.aircraft, aircraft).matches;
-    eligible = eligibleEntries(inWindow, airmanUserId, aircraft).filter(gearOk);
-    const certainTakeoffs = eligible.reduce((sum, e) => sum + takeoffs(e), 0);
-    const certainLandings = eligible.reduce((sum, e) => sum + landings(e), 0);
-    const m = matchGates(
-      inWindow, airmanUserId, aircraft, takeoffs, landings, TAKEOFF_THRESHOLD, LANDING_THRESHOLD,
-      certainTakeoffs, certainLandings, gearOk
-    );
-    for (const g of m.gates) gates.add(g);
-    matchNotes = m.notes;
+    const classification = classifyForCurrency(inWindow, airmanUserId, aircraft, takeoffs, landings, {
+      checkGear: true,
+      checkNightWindow: variant === "night",
+    });
+    eligible = classification.certain;
+    const g = ambiguousFactGates(classification, takeoffs, landings, TAKEOFF_THRESHOLD, LANDING_THRESHOLD);
+    for (const gg of g.gates) gates.add(gg);
+    matchNotes = g.notes;
   }
 
   const missing = MISSING_INPUT_ORDER.filter((m) => gates.has(m));
@@ -185,9 +169,9 @@ function evaluateVariant(
   const aircraft = intendedAircraft as AircraftFacts; // non-null: no gates fired
   // REGU-2: 135.247(b) reaches back into paragraph (a) as a whole, so a
   // tailwheel intended aircraft requires the LOGGED aircraft's own gear
-  // to be tailwheel too — see gearGates above, which would already have
-  // gated a null gear here to insufficient_data. `eligible` was already
-  // computed, gear-filtered, above.
+  // to be tailwheel too — see classifyForCurrency's checkGear option
+  // above, which would already have gated a null gear here to
+  // insufficient_data. `eligible` was already computed above.
   const totalTakeoffs = eligible.reduce((sum, e) => sum + takeoffs(e), 0);
   const totalLandings = eligible.reduce((sum, e) => sum + landings(e), 0);
   const status =
@@ -199,7 +183,7 @@ function evaluateVariant(
       ? limitingDateFor(eligible, takeoffs, landings, TAKEOFF_THRESHOLD, LANDING_THRESHOLD)
       : null;
 
-  const assumptions: string[] = [NINETY_DAY_BOUNDARY_ASSUMPTION];
+  const assumptions: string[] = [NINETY_DAY_BOUNDARY_ASSUMPTION, CATEGORY_MATCH_ASSUMPTION];
   if (aircraft.gear === "tailwheel") {
     assumptions.push(
       "135.247(b): because this is a tailwheel airplane, only full-stop landings count toward both the day and night variants — touch-and-goes are excluded, including for the night variant, where 61.57(b)(1) alone already requires full stop but 135.247(a)(2) alone would not."
@@ -260,12 +244,12 @@ export function evaluatePart135Recency(input: {
   // own. REBUILT FROM night WHOLESALE, not `{...day, status: ...}` — day
   // may have returned insufficient_data (a different gate can fire for
   // day than for night: e.g. an unregistered-tail entry with only day
-  // movements trips day's aircraftUnregisteredGate but is invisible to
-  // night's, which counts only night movements), and overwriting just
-  // `status` left its missing[]/empty observed/empty counted attached to
-  // an "estimated_current" card — a permissive verdict computed from data
-  // the engine itself had just declared unusable, and a CurrencyResult
-  // that violates types.ts's own invariant (missing non-empty IFF
+  // movements trips day's own classification but is invisible to night's,
+  // which counts only night movements), and overwriting just `status` left
+  // its missing[]/empty observed/empty counted attached to an
+  // "estimated_current" card — a permissive verdict computed from data the
+  // engine itself had just declared unusable, and a CurrencyResult that
+  // violates types.ts's own invariant (missing non-empty IFF
   // insufficient_data). Relabeling night's own — already well-formed —
   // result under the day currencyType/ruleBasis is what the trailing
   // sentence actually means: night's arithmetic IS what satisfies day, so
