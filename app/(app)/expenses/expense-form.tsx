@@ -439,9 +439,11 @@ export default function ExpenseForm({
               </Text>
             ) : null}
             <Text size="1" color={rebilling ? "amber" : "gray"}>
-              {rebilling
-                ? "Required — a rebilled expense has to land on an invoice"
-                : "Optional. Leave blank and it waits in the unassigned queue."}
+              {trips.length === 0
+                ? "No trips yet — log one first if this expense should be rebilled."
+                : rebilling
+                  ? "Required — a rebilled expense has to land on an invoice"
+                  : "Optional. Leave blank and it waits in the unassigned queue."}
             </Text>
           </Flex>
           <Box gridColumn="1 / -1">

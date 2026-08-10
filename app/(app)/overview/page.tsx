@@ -618,6 +618,20 @@ export default async function OverviewPage() {
 
   const expirationRows = expirations.slice(0, EXPIRATIONS_LIMIT);
 
+  // Day one: the screen every other first-run empty state (/trips,
+  // /clients, /invoices, /expenses, /logbook) is reached from, but with
+  // nothing logged anywhere it renders four $0.00 KPI cards and says
+  // nothing about what the product is for. True zero-data across every
+  // panel this page reads — not just "no unbilled trips", which a
+  // pilot with a month of paid-off history also sees.
+  const isDayOne =
+    readyCount === 0 &&
+    unmarkedTripCount === 0 &&
+    clients.length === 0 &&
+    expenses.length === 0 &&
+    liveInvoices.length === 0 &&
+    yearPayments.length === 0;
+
   return (
     <PageShell
       title="Overview"
@@ -668,6 +682,31 @@ export default async function OverviewPage() {
             )} may be partial — there are more than ${AGGREGATE_LIMIT} rows and only the first ${AGGREGATE_LIMIT} were totaled.`}
           </Callout.Text>
         </Callout.Root>
+      ) : null}
+
+      {/* Day-one orientation — the KPI cards below are correctly $0.00
+          with nothing logged, but a zero-state dashboard alone doesn't
+          say what to do next. Same thesis /trips states in its own
+          empty state, said once here since this is the screen every
+          other one is reached from. */}
+      {!errors.length && isDayOne ? (
+        <Card>
+          <Flex direction="column" gap="2" py="2">
+            <Text size="4" weight="medium">
+              Nothing logged yet
+            </Text>
+            <Text size="2" color="gray">
+              Log the trip once. Its legs feed your logbook, its days feed
+              the invoice, and its expenses file themselves against it —
+              the figures below fill in from there.
+            </Text>
+            <Flex mt="1">
+              <Button asChild>
+                <NextLink href="/trips/new">Log your first trip</NextLink>
+              </Button>
+            </Flex>
+          </Flex>
+        </Card>
       ) : null}
 
       {/* Row 1 — KPI statistics cards. */}
@@ -773,10 +812,13 @@ export default async function OverviewPage() {
           </Flex>
 
           {readyTrips.length === 0 ? (
-            <Flex align="center" justify="center" py="5">
-              <Text size="2" color="gray">
+            <Flex direction="column" align="center" gap="3" py="5">
+              <Text size="2" color="gray" align="center">
                 No completed trips are waiting to be billed.
               </Text>
+              <Button asChild variant="outline">
+                <NextLink href="/trips/new">Log a trip</NextLink>
+              </Button>
             </Flex>
           ) : (
             <>

@@ -68,7 +68,7 @@ export default async function TripsPage() {
   await requireAccount("/trips");
 
   const supabase = await createClient();
-  const [{ data: tripData, error }, { data: clientData }] = await Promise.all([
+  const [{ data: tripData, error }, { data: clientData, error: clientError }] = await Promise.all([
     supabase
       .from("trips")
       .select(
@@ -93,6 +93,11 @@ export default async function TripsPage() {
   const clientNames = new Map(
     ((clientData ?? []) as { id: string; name: string }[]).map((c) => [c.id, c.name])
   );
+  // A failed clients read is not "this client has no name" — without this
+  // flag every Client cell silently fell back to "—", indistinguishable
+  // from a trip with no client_id, and nothing on screen said the lookup
+  // had failed.
+  const clientNamesError = Boolean(clientError);
 
   // F3: day rows for exactly the trips just listed, plus the account's
   // day-type taxonomy to know which of them are billable. Skipped
@@ -187,6 +192,15 @@ export default async function TripsPage() {
           </Flex>
         ) : (
           <>
+            {clientNamesError ? (
+              <Callout.Root color="amber" m="3">
+                <Callout.Text>
+                  Couldn&rsquo;t load client names, so the Client column
+                  below reads &ldquo;—&rdquo; for trips that do have a
+                  client on file.
+                </Callout.Text>
+              </Callout.Root>
+            ) : null}
             {dayGridError ? (
               <Callout.Root color="amber" m="3">
                 <Callout.Text>

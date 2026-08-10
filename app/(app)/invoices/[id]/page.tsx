@@ -136,21 +136,32 @@ export default async function InvoicePage({
   // set already used on THIS draft is enough to exclude, but excluding
   // every already-referenced expense_id is the correct global check.
   let rebillable: RebillableExpense[] = [];
+  // Unlike moneyError above, a failed read here does not display a wrong
+  // figure — it silently offers nothing to attach, and once
+  // invoices_protect_issued locks this document the receipts the pilot
+  // meant to rebill are never billed at all. That has to be disclosed,
+  // not just degraded to an empty list.
+  let rebillableError: { code?: string | null; message?: string | null } | null = null;
   if (draft) {
-    const [{ data: clientTrips }, { data: usedLines }] = await Promise.all([
+    const [
+      { data: clientTrips, error: clientTripsError },
+      { data: usedLines, error: usedLinesError },
+    ] = await Promise.all([
       supabase.from("trips").select("id").eq("client_id", invoice.client_id),
       supabase.from("invoice_lines").select("expense_id").not("expense_id", "is", null),
     ]);
+    rebillableError = clientTripsError ?? usedLinesError;
     const tripIds = ((clientTrips ?? []) as { id: string }[]).map((t) => t.id);
     const usedExpenseIds = new Set(
       ((usedLines ?? []) as { expense_id: string | null }[]).map((l) => l.expense_id)
     );
-    if (tripIds.length > 0) {
-      const { data: expenseData } = await supabase
+    if (!rebillableError && tripIds.length > 0) {
+      const { data: expenseData, error: expenseError } = await supabase
         .from("expenses")
         .select("id, trip_id, category, vendor, amount_cents, incurred_on")
         .eq("treatment", "rebill")
         .in("trip_id", tripIds);
+      rebillableError = expenseError;
       rebillable = ((expenseData ?? []) as RebillableExpense[]).filter(
         (e) => !usedExpenseIds.has(e.id)
       );
@@ -205,6 +216,19 @@ export default async function InvoicePage({
             <Text as="div" size="4" weight="bold" mb="3">
               Lines
             </Text>
+            {rebillableError ? (
+              <Callout.Root color="amber" mb="3">
+                <Callout.Icon>
+                  <ExclamationTriangleIcon />
+                </Callout.Icon>
+                <Callout.Text>
+                  {friendlyDbError(rebillableError, "invoice.rebillable")} Rebillable
+                  expenses couldn&rsquo;t be loaded for this client — nothing is
+                  offered to attach below. Reload before issuing this invoice, or
+                  the receipts tagged rebill for it will go unbilled.
+                </Callout.Text>
+              </Callout.Root>
+            ) : null}
             <LinesEditor
               invoiceId={invoice.id}
               lines={lines}

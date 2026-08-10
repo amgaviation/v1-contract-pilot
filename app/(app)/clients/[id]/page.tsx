@@ -177,7 +177,6 @@ export default async function EditClientPage({
 
   const openTrips = (openTripsResult.data ?? []) as OpenTripRow[];
   const outstandingInvoices = (invoicesResult.data ?? []) as OutstandingInvoiceRow[];
-  const linkedRecordsError = openTripsResult.error ?? invoicesResult.error;
 
   const qualifications = (qualificationsResult.data ?? []) as OperatorQualificationRow[];
   const qualificationsLoadError = Boolean(qualificationsResult.error);
@@ -192,6 +191,11 @@ export default async function EditClientPage({
   const balanceByInvoice = new Map(
     ((balancesResult.data ?? []) as BalanceRow[]).map((b) => [b.invoice_id, b.balance_due_cents])
   );
+  // A failed invoice_totals read is not "nothing owed" — without this, an
+  // invoice_totals error left balanceByInvoice empty and every row printed
+  // formatCents(undefined ?? 0), "$0.00" in the gray styling reserved for
+  // settled, on the one screen a pilot opens to ask what a client owes.
+  const linkedRecordsError = openTripsResult.error ?? invoicesResult.error ?? balancesResult.error;
 
   return (
     <PageShell

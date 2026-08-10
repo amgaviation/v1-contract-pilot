@@ -81,7 +81,7 @@ export default async function ExpensesPage() {
     { data: tripData },
     unreviewedCount,
     { data: mileageData, error: mileageError },
-    { data: mileageRateData },
+    { data: mileageRateData, error: mileageRateError },
   ] = await Promise.all([
     supabase
       .from("expenses")
@@ -121,12 +121,17 @@ export default async function ExpensesPage() {
       (r) => [r.tax_year, r.rate_cents_per_mile]
     )
   );
-  const { amountCents: mileageTotalCents } = scheduleCMileageCents(
+  const { amountCents: mileageTotalCents, milesWithoutRate } = scheduleCMileageCents(
     mileageRows,
     mileageRatesByYear
   );
   const mileageTotalMiles = mileageRows.reduce((sum, r) => sum + r.miles, 0);
   const mileageTruncated = mileageRows.length === MILEAGE_LIMIT;
+  // A failed mileage_rates read must read the same as a failed
+  // mileage_entries read, not as "no rate on file" — that day-one wording
+  // is only honest when the rates query actually came back empty, not when
+  // it errored and ratesByYear was silently built from nothing.
+  const mileageFailed = Boolean(mileageError || mileageRateError);
 
   const tripLabel = (trip: TripRow) =>
     `${formatDateRange(trip.starts_on, trip.ends_on)}${
@@ -256,7 +261,7 @@ export default async function ExpensesPage() {
                     Mileage
                   </Text>
                   <Text as="div" size="2" color="gray">
-                    {mileageError
+                    {mileageFailed
                       ? "Couldn't load your mileage total."
                       : `${mileageTotalMiles.toFixed(1)} mi logged at the standard mileage rate${
                           mileageTruncated ? " (partial — see the mileage log)" : ""
@@ -264,10 +269,22 @@ export default async function ExpensesPage() {
                   </Text>
                 </Flex>
                 <Flex align="center" gap="4">
-                  {!mileageError ? (
-                    <Text size="5" weight="bold" className="tnum">
-                      {formatCents(mileageTotalCents)}
-                    </Text>
+                  {!mileageFailed ? (
+                    // A rate-less year must never render as a $0.00
+                    // deduction — that reads as "your mileage is worth
+                    // nothing" to a pilot who logged real drives. Same
+                    // "No rate on file" wording as /expenses/mileage's
+                    // by-tax-year table, which is the correct handling of
+                    // this exact case.
+                    mileageTotalCents === 0 && milesWithoutRate > 0 ? (
+                      <Text size="2" color="gray">
+                        No rate on file
+                      </Text>
+                    ) : (
+                      <Text size="5" weight="bold" className="tnum">
+                        {formatCents(mileageTotalCents)}
+                      </Text>
+                    )
                   ) : null}
                   <Button asChild variant="soft">
                     <NextLink href="/expenses/mileage">Log a drive</NextLink>

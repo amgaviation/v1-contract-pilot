@@ -1,5 +1,6 @@
 "use client";
 
+import NextLink from "next/link";
 import { Button, Card, Flex, Text } from "@/components/ui";
 
 /**
@@ -25,7 +26,12 @@ export default function Error({
           <Text size="2" color="gray">
             That didn&rsquo;t load. Try again, or head back to the overview.
           </Text>
-          <Button onClick={reset}>Try again</Button>
+          <Flex gap="3">
+            <Button onClick={reset}>Try again</Button>
+            <Button asChild variant="outline">
+              <NextLink href="/overview">Back to overview</NextLink>
+            </Button>
+          </Flex>
         </Flex>
       </Card>
     </Flex>

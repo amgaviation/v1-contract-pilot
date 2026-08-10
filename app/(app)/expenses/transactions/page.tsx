@@ -1,8 +1,10 @@
-import { Box, Callout, Table, Text } from "@/components/ui";
+import NextLink from "next/link";
+import { Box, Button, Callout, Card, Flex, Table, Text } from "@/components/ui";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatDateRange } from "@/lib/format";
+import { friendlyDbError } from "@/lib/db-errors";
 import PageShell from "../../page-shell";
 import TransactionRow, {
   type DuplicateCandidate,
@@ -59,9 +61,21 @@ export default async function TransactionsPage() {
   ]);
 
   if (error) {
+    // error.message is a raw PostgREST message — table/constraint names,
+    // no help to the pilot reading it. friendlyDbError logs the detail
+    // server-side and returns a sentence instead; see lib/db-errors.ts.
     return (
       <PageShell title="Review transactions">
-        <Text color="red">{error.message}</Text>
+        <Card size="3">
+          <Callout.Root color="red">
+            <Callout.Icon>
+              <ExclamationTriangleIcon />
+            </Callout.Icon>
+            <Callout.Text>
+              {friendlyDbError(error, "bank_transactions.select")}
+            </Callout.Text>
+          </Callout.Root>
+        </Card>
       </PageShell>
     );
   }
@@ -182,7 +196,19 @@ export default async function TransactionsPage() {
       ) : null}
 
       {rows.length === 0 ? (
-        <Text color="gray">Nothing to review. Import a statement to get started.</Text>
+        <Flex direction="column" align="center" gap="3" py="6">
+          <Text size="4" weight="bold">
+            Nothing to review
+          </Text>
+          <Text size="2" color="gray" align="center">
+            Import a bank statement and its transactions land here — pick
+            a category and treatment for each one to turn it into an
+            expense.
+          </Text>
+          <Button asChild>
+            <NextLink href="/expenses/import">Import a statement</NextLink>
+          </Button>
+        </Flex>
       ) : (
         <Box style={{ overflowX: "auto" }}>
           <Table.Root variant="surface">
