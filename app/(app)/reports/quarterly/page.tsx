@@ -261,6 +261,26 @@ export default async function QuarterlyReportPage({
                       </Text>
                     </Table.Cell>
                   </Table.Row>
+                  {/* Shown, not silently netted off. The income above
+                      already contains whatever the client reimbursed, so
+                      this cost has to come out of profit — but a figure
+                      that moves net profit without appearing anywhere is
+                      its own kind of wrong. Hidden at zero so a pilot who
+                      never rebills doesn't carry a line that means nothing
+                      to them. */}
+                  {pf.rebilledCostCents > 0 ? (
+                    <Table.Row>
+                      <Table.RowHeaderCell>
+                        Rebilled costs (reimbursed by the client)
+                      </Table.RowHeaderCell>
+                      <Table.Cell justify="end" />
+                      <Table.Cell justify="end">
+                        <Text className="tnum">
+                          {formatCents(pf.rebilledCostCents)}
+                        </Text>
+                      </Table.Cell>
+                    </Table.Row>
+                  ) : null}
                   <Table.Row>
                     <Table.RowHeaderCell>
                       <Text weight="bold">Net profit</Text>

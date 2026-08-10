@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
+import { loadFleetOptions } from "@/lib/fleet";
 import { formatDate } from "@/lib/format";
 import PageShell from "../../page-shell";
 import LogbookEntryForm, { type LogbookEntryFormValues } from "../logbook-entry-form";
@@ -42,6 +43,10 @@ export default async function LogbookEntryPage({
   // RLS, so a probe can't tell them apart.
   if (!entry) notFound();
 
+  // After the notFound() guard: a fleet for a page that will not render is
+  // a query nobody needed.
+  const fleet = await loadFleetOptions();
+
   return (
     <PageShell
       title={`${entry.from_icao ?? "—"} → ${entry.to_icao ?? "—"}`}
@@ -53,6 +58,7 @@ export default async function LogbookEntryPage({
         values={entry as LogbookEntryFormValues & { id: string }}
         submitLabel="Save entry"
         provenanceNote={`${SOURCE_LABEL[entry.source]} You can correct the flight data below, but where it came from can't be changed here.`}
+        fleet={fleet}
       />
     </PageShell>
   );

@@ -1,5 +1,6 @@
 import { requireAccount } from "@/lib/supabase/account";
 import { createClient } from "@/lib/supabase/server";
+import { loadFleetOptions } from "@/lib/fleet";
 import PageShell from "../../page-shell";
 import TripForm, { type ClientOption } from "../trip-form";
 import { createTrip } from "../actions";
@@ -25,6 +26,8 @@ export default async function NewTripPage() {
     .is("archived_at", null)
     .order("name", { ascending: true });
 
+  const fleet = await loadFleetOptions();
+
   // Without this, a failed query renders the reassuring "No active
   // clients yet" empty state to a pilot who has plenty.
   if (error) {
@@ -40,6 +43,7 @@ export default async function NewTripPage() {
         action={createTrip}
         clients={(data ?? []) as ClientOption[]}
         submitLabel="Create trip"
+        fleet={fleet}
       />
     </PageShell>
   );

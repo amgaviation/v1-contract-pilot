@@ -1010,11 +1010,40 @@ export async function createInvoiceDraft(
         // IDEMPOTENCY: a different invoice already settled this month —
         // the common shape being a second invoice for the same client,
         // drafted later, that happens to also cover a trip inside an
-        // already-topped-up month. Warn, and add no second line.
+        // already-topped-up month. No second TOP-UP line is added.
+        //
+        // BUT SKIPPING THE TOP-UP IS NOT THE SAME AS BILLING CORRECTLY,
+        // and this warning used to imply it was. The day lines for this
+        // month are still on the invoice below, and the earlier top-up
+        // already charged the client for a guaranteed number of days that
+        // these ones now duplicate.
+        //
+        // Worked example, from the review that found this: a 10-day
+        // monthly minimum at $1,200/day, four 3-day trips in August
+        // invoiced one at a time — the product's own default flow, since
+        // the picker offers completed unbilled trips singly. Invoice A
+        // bills 3 flight days plus a 7-day top-up. Invoices B, C and D
+        // bill 3 days each on top. The client is billed 19 days for a
+        // month whose honest total is 12, and whose guarantee is 10.
+        // $8,400 of days nobody flew, on documents an owner's AP
+        // department reads.
+        //
+        // A full fix reconciles: it credits back the overlap between what
+        // this invoice adds and what the earlier top-up already covered.
+        // That needs guarantee_periods to record how many days were billed
+        // into the month at settlement, which it does not — it stores
+        // guaranteed_days and settled_invoice_id and nothing about days
+        // worked. So this warning states the exposure in the terms it can
+        // actually compute — how many days THIS invoice adds to a month
+        // already topped up — without inventing a precise credit figure
+        // the data does not support.
         const settledLabel =
           settledInvoiceLabelById.get(alreadySettled) ?? "a draft invoice";
+        const addedDays = roundQuantity(bucket.qty);
         warnings.push(
-          `${monthLabel}: this client's monthly guarantee for this month was already settled on invoice ${settledLabel} — no second top-up line added.`
+          `${monthLabel}: this client's monthly guarantee was already settled on invoice ${settledLabel}, so no second top-up line was added — but this invoice still bills ${formatMinDays(
+            addedDays
+          )} ${addedDays === 1 ? "day" : "days"} in that month. Invoice ${settledLabel}'s top-up already charged for the guaranteed days, so check these aren't being billed twice before you send this.`
         );
         continue;
       }
@@ -1803,12 +1832,28 @@ export async function recordPayment(
   // Only attempted from 'sent'/'partial': invoices_protect_issued already
   // refuses 'draft' -> 'paid'/'partial' and 'paid' has no outbound
   // transition, so there is nothing to advance in either of those states.
-  const { data: invoiceData } = await supabase
+  // The `error` is READ, not discarded. Dropping it made a failed read
+  // indistinguishable from "this invoice isn't in an advanceable state":
+  // `status` came back undefined, the whole advance block below was
+  // skipped, and the function still returned saved: true. The payment had
+  // landed, so the invoice stayed 'sent' — counted as awaiting payment and
+  // rendered red as overdue by pilot.invoices_overdue (which filters on
+  // status in ('sent','partial')) for an invoice that was fully paid. That
+  // is the precise outcome the comment below this block says must not
+  // happen; it guarded the UPDATE and not the two reads gating it.
+  const { data: invoiceData, error: invoiceReadError } = await supabase
     .from("invoices")
     .select("status, stripe_payment_link_id")
     .eq("id", invoiceId)
     .eq("account_id", account.id)
     .maybeSingle();
+  if (invoiceReadError) {
+    return {
+      error:
+        "The payment was recorded, but the invoice's status couldn't be updated — reopen it and check whether it still shows as awaiting payment.",
+      saved: true,
+    };
+  }
   const invoiceRow = invoiceData as {
     status: string;
     stripe_payment_link_id: string | null;
@@ -1816,11 +1861,18 @@ export async function recordPayment(
   const status = invoiceRow?.status;
 
   if (status === "sent" || status === "partial") {
-    const { data: totalsData } = await supabase
+    const { data: totalsData, error: totalsReadError } = await supabase
       .from("invoice_totals")
       .select("balance_due_cents")
       .eq("invoice_id", invoiceId)
       .maybeSingle();
+    if (totalsReadError) {
+      return {
+        error:
+          "The payment was recorded, but the invoice's status couldn't be updated — reopen it and check whether it still shows as awaiting payment.",
+        saved: true,
+      };
+    }
     const balance = (totalsData as { balance_due_cents: number } | null)
       ?.balance_due_cents;
 
@@ -1938,4 +1990,85 @@ async function retirePaymentLink(params: {
   }
 
   return notice;
+}
+
+/**
+ * Correct a mistyped payment.
+ *
+ * NOT AN EDIT. pilot.invoice_payments has no UPDATE and no DELETE grant,
+ * and this deliberately does not add one: the correction is a new row
+ * carrying exactly the negative of the one it names, so the ledger shows
+ * both what was recorded and what corrected it. If a client ever disputes
+ * what they paid, that is evidence; a number that changed silently is not.
+ * All of the arithmetic — same invoice, exact negative, not a correction
+ * of a correction, only once — is enforced by the trigger and the unique
+ * index in supabase/migrations/20260810120000_payment_reversals.sql, and
+ * this function's job is to turn a form submission into that INSERT.
+ *
+ * The invoice's own status walks itself back (paid -> partial/sent) from
+ * an AFTER trigger on the insert, so there is nothing to update here — and
+ * nothing here can move an invoice's status by hand.
+ */
+export async function correctPayment(
+  _prev: InvoiceFormState,
+  formData: FormData
+): Promise<InvoiceFormState> {
+  const invoiceId = String(formData.get("invoice_id") ?? "");
+  const paymentId = String(formData.get("payment_id") ?? "");
+  if (!UUID_RE.test(invoiceId) || !UUID_RE.test(paymentId)) {
+    return { error: "Missing payment." };
+  }
+
+  const { account } = await requireAccount(`/invoices/${invoiceId}`);
+  const supabase = await createClient();
+
+  // The amount is read back rather than taken from the form. The trigger
+  // would reject a wrong one anyway, but a hidden input carrying the
+  // figure a correction must equal is a field worth not having.
+  const { data: original, error: readError } = await supabase
+    .from("invoice_payments")
+    .select("amount_cents")
+    .eq("account_id", account.id)
+    .eq("invoice_id", invoiceId)
+    .eq("id", paymentId)
+    .maybeSingle();
+
+  if (readError) return { error: friendlyDbError(readError, "invoice_payments.select") };
+  if (!original) return { error: "That payment is no longer on this invoice." };
+
+  const reason = optional(formData, "reversal_reason");
+  const payload = {
+    account_id: account.id,
+    invoice_id: invoiceId,
+    // Today, not the original's date: the correction happened now, and
+    // back-dating it would put a change to the books in a period that may
+    // already have been reported.
+    paid_on: new Date().toISOString().slice(0, 10),
+    amount_cents: -(original as { amount_cents: number }).amount_cents,
+    reverses_payment_id: paymentId,
+    reversal_reason: reason,
+  };
+
+  const { error } = await supabase.from("invoice_payments").insert(payload as never);
+
+  if (error) {
+    // The trigger's own refusals are already written for a pilot to read.
+    if (
+      typeof error.message === "string" &&
+      /cannot be corrected|cannot have a payment corrected|same invoice|exactly the negative|no such payment/.test(
+        error.message
+      )
+    ) {
+      return { error: error.message };
+    }
+    if (error.code === "23505") {
+      return { error: "That payment has already been corrected." };
+    }
+    return { error: friendlyDbError(error, "invoice_payments.correct") };
+  }
+
+  revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath("/invoices");
+  revalidatePath("/reports");
+  return { error: null, saved: true };
 }

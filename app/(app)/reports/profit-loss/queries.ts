@@ -1,3 +1,4 @@
+import { scheduleCMileageCents, type RatesByYear } from "@/lib/mileage";
 import "server-only";
 import type { createClient } from "@/lib/supabase/server";
 import { yearBounds, currentTaxYear } from "../year-end/db";
@@ -12,8 +13,15 @@ type Supa = Awaited<ReturnType<typeof createClient>>;
 // asking this screen for. Two periods (current + prior) are loaded per
 // request, so these are the same per-query caps as the other reports —
 // not doubled — because each query is scoped to its own [start, end].
-const PAYMENTS_LIMIT = 2000;
-const EXPENSES_LIMIT = 2000;
+// 1000, NOT a larger number. The Supabase Data API clamps every response
+// to db-max-rows (1000) and TRUNCATES SILENTLY — no error, no flag. Every
+// truncation guard in this file detects the cap by exact equality
+// (`rows.length === LIMIT`), so a limit ABOVE the server's own cap can
+// never be reached and the guard is dead code: the query asks for 2000,
+// PostgREST returns 1000, 1000 !== 2000, and a tax figure short by a
+// sixth is handed to a CPA with nothing on screen saying so.
+const PAYMENTS_LIMIT = 1000;
+const EXPENSES_LIMIT = 1000;
 // Same cap discipline for the two lookups defect 9 exposed: an unbounded
 // `.in("id", invoiceIds)` / unbounded `clients` select silently truncates
 // past the Data API cap just like the list queries above do, and a
@@ -25,12 +33,12 @@ const EXPENSES_LIMIT = 2000;
 // bound; clients get their own cap because a pilot's client list is
 // unrelated in size to their payment count.
 const INVOICE_LOOKUP_LIMIT = PAYMENTS_LIMIT;
-const CLIENTS_LIMIT = 2000;
+const CLIENTS_LIMIT = 1000;
 // Mileage — defect 4: pilot.mileage_entries carries a real cash-equivalent
 // Schedule C deduction (the standard mileage rate) that this report
 // previously surfaced nowhere. It is intentionally NOT summed into
 // Expenses — see the "MILEAGE" note above loadProfitLossReport for why.
-const MILEAGE_LIMIT = 2000;
+const MILEAGE_LIMIT = 1000;
 
 // ---------------------------------------------------------------------------
 // Period resolution.
@@ -315,6 +323,13 @@ type PeriodFigures = {
   mileageTotalCents: number;
   mileageCount: number;
   mileageTruncated: boolean;
+  /**
+   * Miles in range whose tax year has no rate on file, so they are NOT in
+   * mileageTotalCents. Surfaced rather than silently dropped: a deduction
+   * quietly missing a year's driving is worse than one that says the rate
+   * is missing.
+   */
+  mileageMilesWithoutRate: number;
 
   invoiceLookupTruncated: boolean;
 
@@ -334,6 +349,7 @@ async function loadPeriodFigures(
     { data: rebillData, error: rebillError },
     { data: unassignedData, error: unassignedError },
     { data: mileageData, error: mileageError },
+    { data: mileageRateData, error: mileageRateError },
   ] = await Promise.all([
     // CASH-BASIS income: pilot.invoice_payments by paid_on, exactly as
     // app/(app)/reports/year-end/queries.ts section A and
@@ -393,18 +409,38 @@ async function loadPeriodFigures(
     // its own flagged, informational figure instead, the same shape as
     // Unassigned receipts above.
     supabase
+      // drove_on and miles, NOT the per-row amount_cents. Schedule C is
+      // total miles for the year x that year's rate, rounded once — see
+      // lib/mileage.ts. Summing the stored per-row amounts is what made
+      // this report disagree with /expenses/mileage for the same drives.
       .from("mileage_entries")
-      .select("id, amount_cents")
+      .select("id, drove_on, miles")
       .eq("account_id", accountId)
       .gte("drove_on", start)
       .lte("drove_on", end)
       .limit(MILEAGE_LIMIT),
+    // The pilot's own per-year IRS rates. Never hardcoded — the rate
+    // changes annually and a baked-in figure would silently misstate every
+    // year it is stale for (see the mileage_rates table comment).
+    supabase
+      .from("mileage_rates")
+      .select("tax_year, rate_cents_per_mile")
+      .eq("account_id", accountId),
   ]);
+
+  const mileageRatesByYear: RatesByYear = Object.fromEntries(
+    ((mileageRateData ?? []) as { tax_year: number; rate_cents_per_mile: number }[]).map(
+      (r) => [r.tax_year, r.rate_cents_per_mile]
+    )
+  );
 
   const error =
     paymentsError?.message ??
     deductError?.message ??
     rebillError?.message ??
+    // A failed rate read is not "no rate on file" — it would silently zero
+    // the whole mileage deduction on a report headed for a tax filing.
+    mileageRateError?.message ??
     unassignedError?.message ??
     mileageError?.message ??
     null;
@@ -491,9 +527,16 @@ async function loadPeriodFigures(
   const unassignedTruncated = unassignedRaw.length === EXPENSES_LIMIT;
   const unassignedTotalCents = unassignedRaw.reduce((sum, e) => sum + e.amount_cents, 0);
 
-  const mileageRaw = (mileageData ?? []) as { id: string; amount_cents: number }[];
+  const mileageRaw = (mileageData ?? []) as {
+    id: string;
+    drove_on: string;
+    miles: number;
+  }[];
   const mileageTruncated = mileageRaw.length === MILEAGE_LIMIT;
-  const mileageTotalCents = mileageRaw.reduce((sum, e) => sum + e.amount_cents, 0);
+  // The SAME function /expenses/mileage uses. Two surfaces computing one
+  // deduction two ways is the defect this replaces.
+  const { amountCents: mileageTotalCents, milesWithoutRate: mileageMilesWithoutRate } =
+    scheduleCMileageCents(mileageRaw, mileageRatesByYear);
 
   return {
     incomeByClient,
@@ -515,6 +558,7 @@ async function loadPeriodFigures(
     unassignedTruncated,
 
     mileageTotalCents,
+    mileageMilesWithoutRate,
     mileageCount: mileageRaw.length,
     mileageTruncated,
 
@@ -549,6 +593,13 @@ export type ProfitLossReport = {
   mileageTotalCents: number;
   mileageCount: number;
   mileageTruncated: boolean;
+  /**
+   * Miles in range whose tax year has no rate on file, so they are NOT in
+   * mileageTotalCents. Surfaced rather than silently dropped: a deduction
+   * quietly missing a year's driving is worse than one that says the rate
+   * is missing.
+   */
+  mileageMilesWithoutRate: number;
 };
 
 /**
@@ -689,5 +740,6 @@ export async function loadProfitLossReport(
     mileageTotalCents: current.mileageTotalCents,
     mileageCount: current.mileageCount,
     mileageTruncated: current.mileageTruncated,
+    mileageMilesWithoutRate: current.mileageMilesWithoutRate,
   };
 }

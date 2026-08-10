@@ -452,7 +452,18 @@ export type Database = {
           block_hours: number | null;
           night_hours: number | null;
           instrument_hours: number | null;
+          // 20260810080000_trip_legs_currency_fields.sql — 61.51(b)(3)
+          // names actual and simulated instrument separately, and
+          // 61.57(a)(1) counts takeoffs apart from landings. Additive;
+          // instrument_hours is the legacy combined total and is NOT the
+          // sum of the two below.
+          instrument_actual_hours: number | null;
+          instrument_simulated_hours: number | null;
+          cross_country_hours: number | null;
+          day_takeoffs: number;
           day_landings: number;
+          /** How many of day_landings were to a full stop (a subset). */
+          day_landings_full_stop: number;
           night_takeoffs: number;
           night_landings_full_stop: number;
           night_landings_touch_go: number;
@@ -473,7 +484,12 @@ export type Database = {
           block_hours?: number | null;
           night_hours?: number | null;
           instrument_hours?: number | null;
+          instrument_actual_hours?: number | null;
+          instrument_simulated_hours?: number | null;
+          cross_country_hours?: number | null;
+          day_takeoffs?: number;
           day_landings?: number;
+          day_landings_full_stop?: number;
           night_takeoffs?: number;
           night_landings_full_stop?: number;
           night_landings_touch_go?: number;
@@ -494,7 +510,12 @@ export type Database = {
           block_hours?: number | null;
           night_hours?: number | null;
           instrument_hours?: number | null;
+          instrument_actual_hours?: number | null;
+          instrument_simulated_hours?: number | null;
+          cross_country_hours?: number | null;
+          day_takeoffs?: number;
           day_landings?: number;
+          day_landings_full_stop?: number;
           night_takeoffs?: number;
           night_landings_full_stop?: number;
           night_landings_touch_go?: number;
@@ -527,6 +548,13 @@ export type Database = {
             | "fuel"
             | "meals"
             | "parking"
+            | "training"
+            | "medical"
+            | "insurance"
+            | "charts"
+            | "equipment"
+            | "uniform"
+            | "dues"
             | "other";
           vendor: string | null;
           amount_cents: number;
@@ -553,6 +581,13 @@ export type Database = {
             | "fuel"
             | "meals"
             | "parking"
+            | "training"
+            | "medical"
+            | "insurance"
+            | "charts"
+            | "equipment"
+            | "uniform"
+            | "dues"
             | "other";
           vendor?: string | null;
           amount_cents: number;
@@ -576,6 +611,13 @@ export type Database = {
             | "fuel"
             | "meals"
             | "parking"
+            | "training"
+            | "medical"
+            | "insurance"
+            | "charts"
+            | "equipment"
+            | "uniform"
+            | "dues"
             | "other";
           vendor?: string | null;
           amount_cents?: number;
@@ -1111,6 +1153,138 @@ export type Database = {
           },
         ];
       };
+      // 20260810060000_phase10_estimates.sql. A quote given to a client
+      // before the work — deliberately NOT a financial record: no tax
+      // report reads it and no payment can land on it. See that migration's
+      // header for why its rules are softer than pilot.invoices'.
+      estimates: {
+        Row: {
+          id: string;
+          account_id: string;
+          client_id: string;
+          trip_id: string | null;
+          estimate_number: string | null;
+          status: "draft" | "sent" | "accepted" | "declined";
+          issued_on: string | null;
+          valid_until: string | null;
+          sent_at: string | null;
+          tax_rate_bps: number;
+          terms: string | null;
+          notes: string | null;
+          converted_invoice_id: string | null;
+          converted_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        // status/estimate_number/sent_at/converted_* are set by triggers and
+        // by pilot.estimate_convert_to_invoice, and are withheld from the
+        // INSERT grant. Present here only because the Row shape needs them;
+        // never populate them from application code on insert.
+        Insert: {
+          id?: string;
+          account_id: string;
+          client_id: string;
+          trip_id?: string | null;
+          valid_until?: string | null;
+          tax_rate_bps?: number;
+          terms?: string | null;
+          notes?: string | null;
+        };
+        // `status` IS writable here, unlike invoices — the pilot drives the
+        // whole lifecycle (send, accept, decline) from the UI, and
+        // pilot.estimates_protect is what constrains which transitions are
+        // legal. estimate_number/sent_at/converted_* remain ungrantable.
+        Update: {
+          client_id?: string;
+          trip_id?: string | null;
+          status?: "draft" | "sent" | "accepted" | "declined";
+          valid_until?: string | null;
+          tax_rate_bps?: number;
+          terms?: string | null;
+          notes?: string | null;
+        };
+        Relationships: [];
+      };
+      estimate_lines: {
+        Row: {
+          id: string;
+          account_id: string;
+          estimate_id: string;
+          line_type:
+            | "flight_day"
+            | "travel_day"
+            | "per_diem"
+            | "reimbursable_expense"
+            | "cancellation_fee"
+            | "other";
+          description: string;
+          quantity: number;
+          unit_amount_cents: number;
+          // GENERATED from quantity x unit_amount_cents. Read-only by
+          // construction: it cannot be inserted or updated, so a line total
+          // can never drift from its own inputs.
+          amount_cents: number;
+          taxable: boolean;
+          sort_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          account_id: string;
+          estimate_id: string;
+          line_type:
+            | "flight_day"
+            | "travel_day"
+            | "per_diem"
+            | "reimbursable_expense"
+            | "cancellation_fee"
+            | "other";
+          description: string;
+          quantity?: number;
+          unit_amount_cents: number;
+          taxable?: boolean;
+          sort_order?: number;
+        };
+        Update: {
+          line_type?:
+            | "flight_day"
+            | "travel_day"
+            | "per_diem"
+            | "reimbursable_expense"
+            | "cancellation_fee"
+            | "other";
+          description?: string;
+          quantity?: number;
+          unit_amount_cents?: number;
+          taxable?: boolean;
+          sort_order?: number;
+        };
+        Relationships: [];
+      };
+      // 20260810100000_credential_packet_share.sql. No Insert/Update
+      // types, same as invoice_shares below: every write goes through the
+      // SECURITY DEFINER functions, never a plain .insert()/.update().
+      document_shares: {
+        Row: {
+          id: string;
+          account_id: string;
+          client_id: string;
+          token: string;
+          expires_at: string;
+          created_at: string;
+          created_by: string | null;
+          revoked_at: string | null;
+        };
+        Relationships: [];
+      };
+      document_share_items: {
+        Row: {
+          share_id: string;
+          account_id: string;
+          document_id: string;
+        };
+        Relationships: [];
+      };
       // Added by 20260809060000_invoice_public_share.sql. No Insert/Update
       // types: there is no direct INSERT/UPDATE grant to authenticated —
       // every write goes through pilot.invoice_share_create/
@@ -1407,9 +1581,11 @@ export type Database = {
           fingerprint: string;
           review_state: "unreviewed" | "reviewed" | "ignored";
           suggested_category:
-            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other" | null;
+            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other"
+            | "training" | "medical" | "insurance" | "charts" | "equipment" | "uniform" | "dues" | null;
           category:
-            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other" | null;
+            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other"
+            | "training" | "medical" | "insurance" | "charts" | "equipment" | "uniform" | "dues" | null;
           treatment: "rebill" | "deduct" | "unassigned" | null;
           trip_id: string | null;
           expense_id: string | null;
@@ -1431,9 +1607,11 @@ export type Database = {
           fingerprint: string;
           review_state?: "unreviewed" | "reviewed" | "ignored";
           suggested_category?:
-            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other" | null;
+            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other"
+            | "training" | "medical" | "insurance" | "charts" | "equipment" | "uniform" | "dues" | null;
           category?:
-            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other" | null;
+            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other"
+            | "training" | "medical" | "insurance" | "charts" | "equipment" | "uniform" | "dues" | null;
           treatment?: "rebill" | "deduct" | "unassigned" | null;
           trip_id?: string | null;
           expense_id?: string | null;
@@ -1450,9 +1628,11 @@ export type Database = {
         Update: {
           review_state?: "unreviewed" | "reviewed" | "ignored";
           suggested_category?:
-            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other" | null;
+            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other"
+            | "training" | "medical" | "insurance" | "charts" | "equipment" | "uniform" | "dues" | null;
           category?:
-            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other" | null;
+            | "airline" | "hotel" | "rental_car" | "rideshare" | "fuel" | "meals" | "parking" | "other"
+            | "training" | "medical" | "insurance" | "charts" | "equipment" | "uniform" | "dues" | null;
           treatment?: "rebill" | "deduct" | "unassigned" | null;
           trip_id?: string | null;
           expense_id?: string | null;
@@ -1736,6 +1916,46 @@ export type Database = {
           },
         ];
       };
+      // 20260810060000_phase10_estimates.sql. No amount_paid or balance
+      // here, unlike invoice_totals: an estimate is not a financial record
+      // and no payment can be recorded against one.
+      estimate_totals: {
+        Row: {
+          estimate_id: string;
+          account_id: string;
+          subtotal_cents: number;
+          tax_cents: number;
+          total_cents: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "estimate_totals_estimate_id_fkey";
+            columns: ["estimate_id"];
+            isOneToOne: true;
+            referencedRelation: "estimates";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      // Derived exactly as invoices_overdue is, and for the same reason —
+      // see the status column comment in the migration.
+      estimates_expired: {
+        Row: {
+          estimate_id: string;
+          account_id: string;
+          valid_until: string;
+          days_expired: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "estimates_expired_estimate_id_fkey";
+            columns: ["estimate_id"];
+            isOneToOne: true;
+            referencedRelation: "estimates";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Functions: {
       current_account_ids: {
@@ -1752,6 +1972,45 @@ export type Database = {
       };
       next_invoice_number: {
         Args: { target_account_id: string };
+        Returns: string;
+      };
+      // 20260810060000_phase10_estimates.sql. Both SECURITY DEFINER with an
+      // explicit in-body membership check — see that migration's header.
+      // 20260810100000_credential_packet_share.sql. All three SECURITY
+      // DEFINER; the membership check and the account_id filter on the
+      // item insert ARE the access boundary, since DEFINER bypasses RLS.
+      document_share_create: {
+        Args: {
+          p_client_id: string;
+          p_document_ids: string[];
+          p_days_valid?: number;
+        };
+        Returns: string;
+      };
+      document_share_revoke: {
+        Args: { p_client_id: string };
+        Returns: undefined;
+      };
+      /** anon-reachable. Metadata only — no file path, no bytes. */
+      document_packet_public: {
+        Args: { p_token: string };
+        Returns: {
+          business_name: string;
+          document_kind: string;
+          document_label: string;
+          expires_on: string | null;
+          issued_on: string | null;
+        }[];
+      };
+      next_estimate_number: {
+        Args: { target_account_id: string };
+        Returns: string;
+      };
+      // Accepted estimate -> DRAFT invoice, atomically. Returns the new
+      // invoice's id. Refuses a second conversion, a quote that was never
+      // accepted, and one with no lines.
+      estimate_convert_to_invoice: {
+        Args: { target_estimate_id: string };
         Returns: string;
       };
       // Added by 20260807020000_phase9_review_fixes.sql. The label of a

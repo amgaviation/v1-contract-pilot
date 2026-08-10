@@ -425,6 +425,16 @@ export default async function ProfitLossReportPage({
                 </Badge>
               ) : null}
             </Flex>
+            {report.mileageMilesWithoutRate > 0 ? (
+              <Callout.Root color="amber" mt="3">
+                <Callout.Icon>
+                  <ExclamationTriangleIcon />
+                </Callout.Icon>
+                <Callout.Text>
+                  {`${report.mileageMilesWithoutRate} miles are not in the figure above — there's no IRS standard rate on file for their tax year. Add it in Settings and this recomputes.`}
+                </Callout.Text>
+              </Callout.Root>
+            ) : null}
             {report.mileageTruncated ? (
               <Callout.Root color="amber" mt="3">
                 <Callout.Icon>

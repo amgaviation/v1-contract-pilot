@@ -7,7 +7,9 @@ import { friendlyDbError } from "@/lib/db-errors";
 import { logbookFrom, type LogbookRole, type SimulatorDeviceType, type ApproachType } from "../db";
 import { rowFingerprint } from "@/lib/logbook-import/fingerprint";
 import type { ImportFormat, ImportEntryInsert } from "@/lib/logbook-import/types";
-import type { LogbookEntryFlightFields } from "../db";
+import type { LogbookEntryFlightFields,
+  ApproachCondition,
+} from "../db";
 
 // PIC/SIC/SOLO/DUAL_RECEIVED — see db.ts's LogbookRole comment and
 // supabase/migrations/20260809000000_logbook_role_vocabulary.sql for why
@@ -165,6 +167,10 @@ function isSimDevice(v: unknown): v is SimulatorDeviceType {
 function isApproachType(v: unknown): v is ApproachType {
   return (APPROACH_TYPES as readonly string[]).includes(String(v));
 }
+const APPROACH_CONDITIONS = ["actual", "simulated", "neither"] as const;
+function isApproachCondition(v: unknown): v is ApproachCondition {
+  return (APPROACH_CONDITIONS as readonly string[]).includes(String(v));
+}
 function isTenth(v: unknown, max: number): v is number {
   return typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= max && Math.round(v * 10) === v * 10;
 }
@@ -234,35 +240,60 @@ function isIcaoOrNull(v: unknown): v is string | null {
  * *shape* of client JSON in exactly the way this file's own top comment
  * says it must not. An explicit allowlist copy makes that whole bug class
  * unreachable regardless of what the payload's JSON actually contains. */
-const FLIGHT_FIELDS: (keyof LogbookEntryFlightFields)[] = [
-  "entry_date",
-  "aircraft_ident",
-  "aircraft_type",
-  "from_icao",
-  "to_icao",
-  "role",
-  "total_time",
-  "pic_time",
-  "sic_time",
-  "solo_time",
-  "cross_country_time",
-  "night_time",
-  "instrument_actual_time",
-  "instrument_simulated_time",
-  "flight_instructor_time",
-  "dual_received_time",
-  "simulator_time",
-  "simulator_device_type",
-  "day_landings_full_stop",
-  "day_landings_touch_go",
-  "night_takeoffs",
-  "night_landings_full_stop",
-  "night_landings_touch_go",
-  "approaches_count",
-  "approach_type",
-  "holds",
-  "remarks",
-];
+/**
+ * EVERY flight field, and the compiler now says so.
+ *
+ * This was a hand-maintained array, and it had silently fallen four
+ * columns behind the type: day_takeoffs, approach_condition,
+ * courses_intercepted_tracked and view_limiting_pilot_name. The parser
+ * produced all four — foreflight.ts aliases the live "Takeoff Day" column
+ * into day_takeoffs and scripts/foreflight-import-verify.mjs even asserts
+ * it — and then toFlightFields dropped them on the floor on the way to the
+ * insert, so the columns fell to their NOT NULL defaults. A pilot
+ * importing 221 ForeFlight rows with 180 day takeoffs recorded got 221
+ * rows reading zero, in a legal record under 61.51, with the import
+ * reporting complete success. 61.57(a)(1) counts takeoffs.
+ *
+ * Declared as a Record keyed on the type instead of a bare array: adding a
+ * field to LogbookEntryFlightFields without adding it here is now a
+ * compile error, which is the only reason to believe this list is complete
+ * next time.
+ */
+const FLIGHT_FIELD_SET: Record<keyof LogbookEntryFlightFields, true> = {
+  entry_date: true,
+  aircraft_ident: true,
+  aircraft_type: true,
+  from_icao: true,
+  to_icao: true,
+  role: true,
+  total_time: true,
+  pic_time: true,
+  sic_time: true,
+  solo_time: true,
+  cross_country_time: true,
+  night_time: true,
+  instrument_actual_time: true,
+  instrument_simulated_time: true,
+  flight_instructor_time: true,
+  dual_received_time: true,
+  simulator_time: true,
+  simulator_device_type: true,
+  day_takeoffs: true,
+  day_landings_full_stop: true,
+  day_landings_touch_go: true,
+  night_takeoffs: true,
+  night_landings_full_stop: true,
+  night_landings_touch_go: true,
+  approaches_count: true,
+  approach_type: true,
+  approach_condition: true,
+  courses_intercepted_tracked: true,
+  view_limiting_pilot_name: true,
+  holds: true,
+  remarks: true,
+};
+
+const FLIGHT_FIELDS = Object.keys(FLIGHT_FIELD_SET) as (keyof LogbookEntryFlightFields)[];
 
 function toFlightFields(values: LogbookEntryFlightFields): LogbookEntryFlightFields {
   const out = {} as LogbookEntryFlightFields;
@@ -346,6 +377,11 @@ function validateRow(values: LogbookEntryFlightFields): string | null {
     }
   }
   const counts: (keyof LogbookEntryFlightFields)[] = [
+    // day_takeoffs was missing here for the same reason it was missing
+    // from the copy allowlist: both lists were hand-maintained. 61.57(a)(1)
+    // counts takeoffs, so an unvalidated one is a regulatory field taken
+    // on trust from a file the pilot uploaded.
+    "day_takeoffs",
     "day_landings_full_stop",
     "day_landings_touch_go",
     "night_takeoffs",
@@ -370,6 +406,19 @@ function validateRow(values: LogbookEntryFlightFields): string | null {
   if (values.approach_type !== null) {
     if (!isApproachType(values.approach_type)) return "invalid approach_type";
     if (values.approaches_count === 0) return "approach type without an approach count";
+  }
+  // 61.57(c)(1) distinguishes approaches flown in actual weather from
+  // those under a view-limiting device, and 20260807140000 added the
+  // column plus a CHECK forbidding a 'visual' approach from claiming
+  // either. Mirrored here so a bad import row fails with a sentence.
+  if (values.approach_condition !== null) {
+    if (!isApproachCondition(values.approach_condition)) return "invalid approach_condition";
+    if (values.approach_type === "visual") {
+      return "a visual approach cannot be flown in actual or simulated instrument conditions";
+    }
+  }
+  if (typeof values.courses_intercepted_tracked !== "boolean") {
+    return "invalid courses_intercepted_tracked";
   }
   return null;
 }

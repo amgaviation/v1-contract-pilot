@@ -25,7 +25,12 @@ export type LegRow = {
   block_hours: number | null;
   night_hours: number | null;
   instrument_hours: number | null;
+  instrument_actual_hours: number | null;
+  instrument_simulated_hours: number | null;
+  cross_country_hours: number | null;
+  day_takeoffs: number;
   day_landings: number;
+  day_landings_full_stop: number;
   night_takeoffs: number;
   night_landings_full_stop: number;
   night_landings_touch_go: number;
@@ -112,19 +117,68 @@ function LegFieldGrid({
         </Text>
       </Flex>
       <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={id("instrument_hours")}>
-          Instrument
+        <Text as="label" size="2" weight="medium" htmlFor={id("instrument_actual_hours")}>
+          Instrument (actual)
         </Text>
         <TextField.Root
-          id={id("instrument_hours")}
+          id={id("instrument_actual_hours")}
           type="number"
-          name="instrument_hours"
+          name="instrument_actual_hours"
           step="0.1"
           min="0"
-          defaultValue={initial("instrument_hours")}
+          defaultValue={initial("instrument_actual_hours")}
+        />
+        <Text size="1" color="gray">
+          14 CFR 61.51(b)(3)(ii) — actual and simulated are logged separately
+        </Text>
+      </Flex>
+      <Flex direction="column" gap="1">
+        <Text as="label" size="2" weight="medium" htmlFor={id("instrument_simulated_hours")}>
+          Instrument (simulated)
+        </Text>
+        <TextField.Root
+          id={id("instrument_simulated_hours")}
+          type="number"
+          name="instrument_simulated_hours"
+          step="0.1"
+          min="0"
+          defaultValue={initial("instrument_simulated_hours")}
         />
       </Flex>
+      <Flex direction="column" gap="1">
+        <Text as="label" size="2" weight="medium" htmlFor={id("cross_country_hours")}>
+          Cross-country
+        </Text>
+        <TextField.Root
+          id={id("cross_country_hours")}
+          type="number"
+          name="cross_country_hours"
+          step="0.1"
+          min="0"
+          defaultValue={initial("cross_country_hours")}
+        />
+      </Flex>
+      {/* The legacy combined field, kept so a leg written before the
+          actual/simulated split can still be read and corrected. Not
+          derived from the two above and never used to fill them. */}
+      <input type="hidden" name="instrument_hours" value={initial("instrument_hours")} />
 
+      <Flex direction="column" gap="1">
+        <Text as="label" size="2" weight="medium" htmlFor={id("day_takeoffs")}>
+          Day takeoffs
+        </Text>
+        <TextField.Root
+          id={id("day_takeoffs")}
+          type="number"
+          name="day_takeoffs"
+          step="1"
+          min="0"
+          defaultValue={initial("day_takeoffs", "0")}
+        />
+        <Text size="1" color="gray">
+          14 CFR 61.57(a)(1) counts takeoffs separately from landings
+        </Text>
+      </Flex>
       <Flex direction="column" gap="1">
         <Text as="label" size="2" weight="medium" htmlFor={id("day_landings")}>
           Day landings
@@ -137,6 +191,22 @@ function LegFieldGrid({
           min="0"
           defaultValue={initial("day_landings", "0")}
         />
+      </Flex>
+      <Flex direction="column" gap="1">
+        <Text as="label" size="2" weight="medium" htmlFor={id("day_landings_full_stop")}>
+          …of which full stop
+        </Text>
+        <TextField.Root
+          id={id("day_landings_full_stop")}
+          type="number"
+          name="day_landings_full_stop"
+          step="1"
+          min="0"
+          defaultValue={initial("day_landings_full_stop", "0")}
+        />
+        <Text size="1" color="gray">
+          Only 61.57(a)(1) tailwheel currency requires full stop by day
+        </Text>
       </Flex>
       <Flex direction="column" gap="1">
         <Text as="label" size="2" weight="medium" htmlFor={id("night_takeoffs")}>

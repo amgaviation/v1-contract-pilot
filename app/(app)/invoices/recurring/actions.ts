@@ -295,13 +295,22 @@ export async function updateRecurringSchedule(
     tax_rate_bps: taxBps ?? 0,
   };
 
-  const { error } = await supabase
+  // { count: "exact" } for the same reason invoices.update carries it:
+  // PostgREST returns 200 for a write that matched ZERO rows, so without
+  // this a pilot raising a retainer from $5,000 to $6,000 against a stale
+  // schedule id is told it saved while generate_recurring_invoice keeps
+  // reading amount_cents and billing $5,000, every month, silently. This
+  // is the only write in this file that changes a money figure.
+  const { error, count } = await supabase
     .from("recurring_invoice_schedules")
-    .update(payload as never)
+    .update(payload as never, { count: "exact" })
     .eq("account_id", account.id)
     .eq("id", id);
   if (error) {
     return { error: friendlyDbError(error, "recurring_invoice_schedules.update"), values };
+  }
+  if (!count) {
+    return { error: "That schedule no longer exists — nothing was changed.", values };
   }
 
   revalidatePath("/invoices/recurring");
@@ -323,12 +332,15 @@ export async function setRecurringScheduleActive(
 
   const supabase = await createClient();
   const payload: ScheduleUpdate = { active };
-  const { error } = await supabase
+  const { error, count } = await supabase
     .from("recurring_invoice_schedules")
-    .update(payload as never)
+    .update(payload as never, { count: "exact" })
     .eq("account_id", account.id)
     .eq("id", id);
   if (error) return { error: friendlyDbError(error, "recurring_invoice_schedules.update") };
+  // Zero rows means the schedule is gone. Reporting success would leave a
+  // pilot believing they had paused a schedule they had not.
+  if (!count) return { error: "That schedule no longer exists." };
 
   revalidatePath("/invoices/recurring");
   return { error: null };
@@ -348,12 +360,13 @@ export async function deleteRecurringSchedule(id: string): Promise<{ error: stri
   if (!UUID_RE.test(id)) return { error: "That schedule couldn't be found." };
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { error, count } = await supabase
     .from("recurring_invoice_schedules")
-    .delete()
+    .delete({ count: "exact" })
     .eq("account_id", account.id)
     .eq("id", id);
   if (error) return { error: friendlyDbError(error, "recurring_invoice_schedules.delete") };
+  if (!count) return { error: "That schedule no longer exists." };
 
   revalidatePath("/invoices/recurring");
   return { error: null };

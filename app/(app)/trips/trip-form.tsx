@@ -16,6 +16,8 @@ import {
 } from "@/components/ui";
 import { centsToInput } from "@/lib/format";
 import { TRIP_OPERATING_RULES } from "@/lib/operating-rule";
+import TailNumberField from "@/components/tail-number-field";
+import type { FleetOption } from "@/lib/fleet";
 import type { TripFormState } from "./actions";
 
 export type TripFormValues = {
@@ -109,6 +111,7 @@ export default function TripForm({
   cancelHref = "/trips",
   locked = false,
   hasDayRows = false,
+  fleet = [],
 }: {
   action: (state: TripFormState, formData: FormData) => Promise<TripFormState>;
   clients: ClientOption[];
@@ -126,6 +129,12 @@ export default function TripForm({
    * exactly as it always has.
    */
   hasDayRows?: boolean;
+  /**
+   * The pilot's registered airframes, offered as suggestions on the tail
+   * number. Defaults to none so the field degrades to the plain text box
+   * it was before pilot.aircraft existed.
+   */
+  fleet?: FleetOption[];
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
 
@@ -414,10 +423,12 @@ export default function TripForm({
             <Text as="label" size="2" weight="medium" htmlFor="aircraft_ident">
               Tail number
             </Text>
-            <TextField.Root
+            <TailNumberField
               id="aircraft_ident"
               name="aircraft_ident"
+              fleet={fleet}
               defaultValue={initial("aircraft_ident")}
+              typeFieldId="aircraft_type"
             />
           </Flex>
           <Flex direction="column" gap="1">

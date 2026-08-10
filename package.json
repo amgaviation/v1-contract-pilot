@@ -17,7 +17,13 @@
     "invoice-share-verify": "node scripts/invoice-share-verify.mjs",
     "bank-import:verify": "node --experimental-strip-types scripts/bank-import-verify.mjs",
     "foreflight-import:verify": "node scripts/foreflight-import-verify.mjs",
-    "test:unit": "node --test --experimental-strip-types --import ./scripts/lib/ts-extensionless-loader.mjs \"tests/*.test.mjs\""
+    "test:unit": "node --test --experimental-strip-types --import ./scripts/lib/ts-extensionless-loader.mjs \"tests/*.test.mjs\"",
+    "predev": "node scripts/sync-ocr-assets.mjs",
+    "prebuild": "node scripts/sync-ocr-assets.mjs",
+    "receipt-ocr:verify": "node scripts/receipt-ocr-verify.mjs",
+    "estimates:verify": "node scripts/estimates-verify.mjs",
+    "aircraft:verify": "node scripts/aircraft-verify.mjs",
+    "payment-reversal:verify": "node scripts/payment-reversal-verify.mjs"
   },
   "dependencies": {
     "@radix-ui/colors": "^3.0.0",
@@ -26,11 +32,13 @@
     "@react-pdf/renderer": "^4.5.1",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.1",
+    "@tesseract.js-data/eng": "^1.0.0",
     "next": "^16.2.11",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "server-only": "^0.0.1",
-    "stripe": "^22.4.0"
+    "stripe": "^22.4.0",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

@@ -23,3 +23,12 @@ next-env.d.ts.bak
 
 # vercel
 .vercel
+
+# receipt-OCR engine assets, copied from node_modules by
+# scripts/sync-ocr-assets.mjs on predev/prebuild. ~11 MB of binaries whose
+# source of truth is package-lock.json — never committed.
+/public/ocr/
+
+# Scratch probes written by review agents against the real modules.
+# Never part of the product.
+/.qa-probe/

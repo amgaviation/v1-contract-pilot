@@ -36,6 +36,7 @@ const HEADER = [
   "Dual Received Time",
   "Simulator Time",
   "Simulator Device Type",
+  "Day Takeoffs",
   "Day Landings Full Stop",
   "Day Landings Touch and Go",
   "Night Takeoffs",
@@ -43,6 +44,9 @@ const HEADER = [
   "Night Landings Touch and Go",
   "Approaches Count",
   "Approach Type",
+  "Approach Condition",
+  "Intercepted and Tracked Course",
+  "Safety Pilot",
   "Holds",
   "Remarks",
   "Source",
@@ -50,8 +54,12 @@ const HEADER = [
 
 
 
-function entryToRow(e: LogbookEntryRow): string {
-  return csvRow([
+/**
+ * The values, in HEADER's order. Split out from entryToRow only so the two
+ * can be length-checked against each other at module load — see below.
+ */
+function entryToValues(e: LogbookEntryRow): (string | number | null | undefined)[] {
+  return [
     e.entry_date,
     e.aircraft_ident,
     e.aircraft_type,
@@ -70,6 +78,7 @@ function entryToRow(e: LogbookEntryRow): string {
     e.dual_received_time,
     e.simulator_time,
     e.simulator_device_type,
+    e.day_takeoffs,
     e.day_landings_full_stop,
     e.day_landings_touch_go,
     e.night_takeoffs,
@@ -77,10 +86,47 @@ function entryToRow(e: LogbookEntryRow): string {
     e.night_landings_touch_go,
     e.approaches_count,
     e.approach_type,
+    e.approach_condition,
+    // The only boolean in the file. Written as Yes/No because a pilot
+    // reads this CSV, and "false" in a column headed "Intercepted and
+    // Tracked Course" is worse than useless next to twenty numeric fields.
+    e.courses_intercepted_tracked ? "Yes" : "No",
+    e.view_limiting_pilot_name,
     e.holds,
     e.remarks,
     e.source,
-  ]);
+  ];
+}
+
+/**
+ * A CSV whose header and rows disagree does not fail — it SHIFTS, silently,
+ * so every column after the mismatch carries the neighbouring column's
+ * value. In a file this route calls the pilot's legal record under 61.51,
+ * that is the worst possible failure mode: it looks complete and reads
+ * wrong, and the pilot has no way to spot it.
+ *
+ * This route already fell four columns behind the schema once —
+ * day_takeoffs, approach_condition, courses_intercepted_tracked and the
+ * 61.51(b)(1)(v) safety-pilot name were all missing, the last of them from
+ * a migration written specifically to add it. Both lists were maintained
+ * by hand and nothing compared them.
+ *
+ * Checked at module load, with a row of nulls, so a mismatch is a startup
+ * error rather than a corrupted download. It can only fire if this file is
+ * already wrong.
+ */
+{
+  const probeLength = entryToValues({} as LogbookEntryRow).length;
+  if (probeLength !== HEADER.length) {
+    throw new Error(
+      `logbook export is broken: HEADER has ${HEADER.length} columns but each row emits ${probeLength}. ` +
+        "A CSV with mismatched header and row lengths shifts every later column instead of failing."
+    );
+  }
+}
+
+function entryToRow(e: LogbookEntryRow): string {
+  return csvRow(entryToValues(e));
 }
 
 /** Filesystem/header-safe filename component. */

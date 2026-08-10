@@ -3,6 +3,8 @@
 import { useActionState, useEffect, useId, useState } from "react";
 import NextLink from "next/link";
 import { Button, Card, Checkbox, Flex, Grid, Heading, Select, Text, TextArea, TextField } from "@/components/ui";
+import TailNumberField from "@/components/tail-number-field";
+import type { FleetOption } from "@/lib/fleet";
 import type { LogbookFormState } from "./actions";
 
 export type LogbookEntryFormValues = {
@@ -108,12 +110,19 @@ export default function LogbookEntryForm({
   values = {},
   submitLabel,
   provenanceNote,
+  fleet = [],
 }: {
   action: (state: LogbookFormState, formData: FormData) => Promise<LogbookFormState>;
   values?: LogbookEntryFormValues;
   submitLabel: string;
   /** Read-only context shown above the form, e.g. "Confirmed from a trip on 12 AUG 2026". */
   provenanceNote?: string;
+  /**
+   * The pilot's registered airframes, offered as suggestions on the tail
+   * number. Defaults to none so the field degrades to exactly the plain
+   * text box it was before pilot.aircraft existed.
+   */
+  fleet?: FleetOption[];
 }) {
   // Select.Root never controls the native <select> Radix mounts for form
   // submission (it always renders `defaultValue`, never `value` — see
@@ -212,7 +221,7 @@ export default function LogbookEntryForm({
             The flight
           </Heading>
           <Grid columns={{ initial: "2", md: "12" }} gap="3">
-            <LabeledField label="Date" htmlFor="entry_date" style={{ gridColumn: "span 3" }}>
+            <LabeledField label="Date" htmlFor="entry_date" gridColumn={{ md: "span 3" }}>
               <TextField.Root
                 id="entry_date"
                 type="date"
@@ -221,15 +230,17 @@ export default function LogbookEntryForm({
                 defaultValue={initial("entry_date")}
               />
             </LabeledField>
-            <LabeledField label="Tail number" htmlFor="aircraft_ident" style={{ gridColumn: "span 3" }}>
-              <TextField.Root
+            <LabeledField label="Tail number" htmlFor="aircraft_ident" gridColumn={{ md: "span 3" }}>
+              <TailNumberField
                 id="aircraft_ident"
                 name="aircraft_ident"
+                fleet={fleet}
                 placeholder="Tail number"
                 defaultValue={initial("aircraft_ident")}
+                typeFieldId="aircraft_type"
               />
             </LabeledField>
-            <LabeledField label="Aircraft type" htmlFor="aircraft_type" style={{ gridColumn: "span 3" }}>
+            <LabeledField label="Aircraft type" htmlFor="aircraft_type" gridColumn={{ md: "span 3" }}>
               <TextField.Root
                 id="aircraft_type"
                 name="aircraft_type"
@@ -237,7 +248,7 @@ export default function LogbookEntryForm({
                 defaultValue={initial("aircraft_type")}
               />
             </LabeledField>
-            <LabeledField label="From" htmlFor="from_icao" style={{ gridColumn: "span 2" }}>
+            <LabeledField label="From" htmlFor="from_icao" gridColumn={{ md: "span 2" }}>
               <TextField.Root
                 id="from_icao"
                 name="from_icao"
@@ -245,7 +256,7 @@ export default function LogbookEntryForm({
                 defaultValue={initial("from_icao")}
               />
             </LabeledField>
-            <LabeledField label="To" htmlFor="to_icao" style={{ gridColumn: "span 1" }}>
+            <LabeledField label="To" htmlFor="to_icao" gridColumn={{ md: "span 1" }}>
               <TextField.Root id="to_icao" name="to_icao" placeholder="To (KTEB)" defaultValue={initial("to_icao")} />
             </LabeledField>
           </Grid>
@@ -338,7 +349,7 @@ export default function LogbookEntryForm({
           </Grid>
 
           {instrumentSimulatedTime > 0 ? (
-            <LabeledField label="Safety pilot name" htmlFor="view_limiting_pilot_name" style={{ maxWidth: 360 }}>
+            <LabeledField label="Safety pilot name" htmlFor="view_limiting_pilot_name" maxWidth="360px">
               <TextField.Root
                 id="view_limiting_pilot_name"
                 name="view_limiting_pilot_name"
@@ -402,7 +413,7 @@ export default function LogbookEntryForm({
               defaultValue={initial("approaches_count", "0")}
               hint="Instrument approaches in actual or simulated instrument conditions — counts for 61.57(c). A Visual-tagged approach below does not."
             />
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
               <Text as="label" htmlFor={approachId} size="1" color="gray">
                 Approach type
               </Text>
@@ -421,7 +432,7 @@ export default function LogbookEntryForm({
                 If the source gives you one. Visual does not count for 61.57(c).
               </Text>
             </Flex>
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
               <Text as="label" htmlFor={approachConditionId} size="1" color="gray">
                 Approach condition
               </Text>
@@ -445,7 +456,7 @@ export default function LogbookEntryForm({
                 approach TYPE above. Leave unknown rather than guessing.
               </Text>
             </Flex>
-            <Flex direction="column" gap="1" justify="end" style={{ gridColumn: "span 2" }}>
+            <Flex direction="column" gap="1" justify="end" gridColumn={{ md: "span 2" }}>
               <Text as="label" size="2" htmlFor={interceptTrackId}>
                 <Flex gap="2" align="center">
                   <Checkbox
@@ -495,19 +506,37 @@ export default function LogbookEntryForm({
   );
 }
 
+/**
+ * `gridColumn` rather than a raw `style` prop.
+ *
+ * A raw inline style applies at EVERY width. The parent Grid here is
+ * columns={{ initial: "2", md: "12" }}, so on a phone it is two columns
+ * wide while its children were still asking for span 3 — CSS Grid then
+ * places them into implicit auto-width tracks and the row comes out
+ * uneven and unpredictable. Measured in Chromium at 390px: three fields
+ * at full width and the last two at 179 and 199 px, against a uniform
+ * 189 px once the span is scoped to md and up.
+ *
+ * This is the product's most-used mobile capture screen — a pilot filling
+ * in a logbook entry between legs — so it is the worst place in the app
+ * for it.
+ */
 function LabeledField({
   label,
   htmlFor,
-  style,
+  gridColumn,
+  maxWidth,
   children,
 }: {
   label: string;
   htmlFor: string;
-  style?: React.CSSProperties;
+  gridColumn?: React.ComponentProps<typeof Flex>["gridColumn"];
+  /** Radix's own max-width scale, not a raw pixel style. */
+  maxWidth?: React.ComponentProps<typeof Flex>["maxWidth"];
   children: React.ReactNode;
 }) {
   return (
-    <Flex direction="column" gap="1" style={style}>
+    <Flex direction="column" gap="1" gridColumn={gridColumn} maxWidth={maxWidth}>
       <Text as="label" htmlFor={htmlFor} size="1" color="gray">
         {label}
       </Text>

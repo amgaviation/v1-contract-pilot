@@ -9,8 +9,15 @@ type Supa = Awaited<ReturnType<typeof createClient>>;
 // API caps and silently truncates an unbounded select, and a partial
 // year-end total presented as complete would be the one place in this
 // product where that silence costs a pilot real money at tax time.
-const PAYMENTS_LIMIT = 2000;
-const EXPENSES_LIMIT = 2000;
+// 1000, NOT a larger number. The Supabase Data API clamps every response
+// to db-max-rows (1000) and TRUNCATES SILENTLY — no error, no flag. Every
+// truncation guard in this file detects the cap by exact equality
+// (`rows.length === LIMIT`), so a limit ABOVE the server's own cap can
+// never be reached and the guard is dead code: the query asks for 2000,
+// PostgREST returns 1000, 1000 !== 2000, and a tax figure short by a
+// sixth is handed to a CPA with nothing on screen saying so.
+const PAYMENTS_LIMIT = 1000;
+const EXPENSES_LIMIT = 1000;
 
 export type IncomeByClient = {
   clientId: string;

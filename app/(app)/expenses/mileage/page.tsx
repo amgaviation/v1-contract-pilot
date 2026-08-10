@@ -8,6 +8,7 @@ import { formatCents, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import type { Database } from "@/lib/supabase/database.types";
 import PageShell from "../../page-shell";
+import { computeYearTotals } from "@/lib/mileage";
 import MileageForm, { type ClientOption, type RatesByYear, type TripOption } from "./mileage-form";
 
 export const metadata = { title: "Mileage" };
@@ -31,45 +32,11 @@ type RateRow = { tax_year: number; rate_cents_per_mile: number };
 // short total.
 const ENTRIES_LIMIT = 1000;
 
-export type YearTotal = {
-  year: number;
-  miles: number;
-  rateCentsPerMile: number | null;
-  /** round(miles * rateCentsPerMile) — computed ONCE over the year's
-   * summed miles, never by summing per-row amounts. null when no rate is
-   * on file for the year (miles are still shown; no dollar figure is
-   * invented). */
-  amountCents: number | null;
-};
-
-/**
- * Groups entries by tax year (extract(year from drove_on), i.e. the first
- * 4 characters of the "YYYY-MM-DD" drove_on string — never a Date parse,
- * to avoid a timezone-shifted year for a date near midnight) and computes
- * each year's Schedule-C figure from that year's rate on file — see the
- * "DEFECT 5 FIX" comment at the call site for the full reasoning. Math.round
- * matches Postgres's round()-with-no-scale-argument behavior (round half
- * away from zero) for the non-negative inputs this domain always has
- * (miles > 0, rate >= 0 per their CHECK constraints) — there is no
- * negative-number case here where the two would diverge.
- */
-export function computeYearTotals(
-  entries: Pick<MileageEntryRow, "drove_on" | "miles">[],
-  ratesByYear: RatesByYear
-): YearTotal[] {
-  const milesByYear = new Map<number, number>();
-  for (const entry of entries) {
-    const year = Number(entry.drove_on.slice(0, 4));
-    milesByYear.set(year, (milesByYear.get(year) ?? 0) + entry.miles);
-  }
-  return [...milesByYear.entries()]
-    .sort((a, b) => b[0] - a[0])
-    .map(([year, miles]) => {
-      const rate = ratesByYear[year];
-      const amountCents = rate === undefined ? null : Math.round(miles * rate);
-      return { year, miles, rateCentsPerMile: rate ?? null, amountCents };
-    });
-}
+// computeYearTotals moved to lib/mileage.ts so /reports/profit-loss can
+// use the SAME arithmetic. It used to live here, which is exactly why the
+// report that goes to a pilot's accountant carried a different figure from
+// this screen for the same drives — see that file's header.
+export type { YearTotal, RatesByYear } from "@/lib/mileage";
 
 export default async function MileagePage() {
   await requireAccount("/expenses/mileage");

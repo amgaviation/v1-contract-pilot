@@ -17,6 +17,7 @@ import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import PageShell from "../page-shell";
+import { scheduleCMileageCents, type RatesByYear } from "@/lib/mileage";
 import UnassignedQueue, { type QueueRow } from "./unassigned-queue";
 
 export const metadata = { title: "Expenses" };
@@ -80,6 +81,7 @@ export default async function ExpensesPage() {
     { data: tripData },
     unreviewedCount,
     { data: mileageData, error: mileageError },
+    { data: mileageRateData },
   ] = await Promise.all([
     supabase
       .from("expenses")
@@ -99,18 +101,30 @@ export default async function ExpensesPage() {
       .from("bank_transactions")
       .select("id", { count: "exact", head: true })
       .eq("review_state", "unreviewed"),
+    // drove_on and miles, not the per-row amount_cents — the deduction is
+    // total miles for the year x that year's rate, rounded ONCE. See
+    // lib/mileage.ts; this was the third surface computing it differently.
     supabase
       .from("mileage_entries")
-      .select("miles, amount_cents")
+      .select("drove_on, miles")
       .limit(MILEAGE_LIMIT),
+    supabase.from("mileage_rates").select("tax_year, rate_cents_per_mile"),
   ]);
 
   const expenses = (expenseData ?? []) as ExpenseRow[];
   const trips = (tripData ?? []) as TripRow[];
   const truncatedExpenses = expenses.length === EXPENSES_LIMIT;
 
-  const mileageRows = (mileageData ?? []) as { miles: number; amount_cents: number }[];
-  const mileageTotalCents = mileageRows.reduce((sum, r) => sum + r.amount_cents, 0);
+  const mileageRows = (mileageData ?? []) as { drove_on: string; miles: number }[];
+  const mileageRatesByYear: RatesByYear = Object.fromEntries(
+    ((mileageRateData ?? []) as { tax_year: number; rate_cents_per_mile: number }[]).map(
+      (r) => [r.tax_year, r.rate_cents_per_mile]
+    )
+  );
+  const { amountCents: mileageTotalCents } = scheduleCMileageCents(
+    mileageRows,
+    mileageRatesByYear
+  );
   const mileageTotalMiles = mileageRows.reduce((sum, r) => sum + r.miles, 0);
   const mileageTruncated = mileageRows.length === MILEAGE_LIMIT;
 

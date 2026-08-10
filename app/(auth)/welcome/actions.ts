@@ -61,11 +61,24 @@ export async function startCheckout(
     });
     url = session.url;
   } catch (err) {
-    // Surface configuration problems (missing key/price) as a readable
-    // message rather than a stack trace in the pilot's face.
-    const message =
-      err instanceof Error ? err.message : "Could not start checkout.";
-    return { error: message };
+    // The raw Stripe message is a CONFIGURATION disclosure, not a readable
+    // error. A wrong or deleted price renders "No such price:
+    // 'price_1Qabc...'" and a bad key renders "Invalid API Key provided:
+    // sk_test_...****" — Stripe object ids and the key's mode, handed to
+    // an unprovisioned visitor who has not paid for anything yet. It also
+    // tells them nothing they can act on: every one of these is our
+    // misconfiguration, not their mistake.
+    //
+    // Logged in full server-side, where it is the thing that actually
+    // diagnoses the outage. Same posture as friendlyDbError.
+    console.error(
+      "[stripe] checkout session creation failed",
+      err instanceof Error ? err.message : String(err)
+    );
+    return {
+      error:
+        "Couldn't start checkout. Try again, or get in touch if this keeps happening.",
+    };
   }
 
   if (!url) {

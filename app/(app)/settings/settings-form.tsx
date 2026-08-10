@@ -48,7 +48,7 @@ export default function SettingsForm({
           </Flex>
 
           <Grid columns={{ initial: "1", md: "12" }} gap="3">
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 8" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 8" }}>
               <Text as="label" size="1" weight="medium" htmlFor="legal_name">
                 Business name
               </Text>
@@ -63,7 +63,7 @@ export default function SettingsForm({
                 Appears as the payee on every invoice
               </Text>
             </Flex>
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 4" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 4" }}>
               <Text as="label" size="1" weight="medium" htmlFor="invoice_prefix">
                 Invoice prefix
               </Text>
@@ -78,7 +78,7 @@ export default function SettingsForm({
               </Text>
             </Flex>
 
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 6" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 6" }}>
               <Text as="label" size="1" weight="medium" htmlFor="address_line1">
                 Address
               </Text>
@@ -89,7 +89,7 @@ export default function SettingsForm({
                 defaultValue={initial("address_line1")}
               />
             </Flex>
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 6" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 6" }}>
               <Text as="label" size="1" weight="medium" htmlFor="address_line2">
                 Address line 2
               </Text>
@@ -100,19 +100,19 @@ export default function SettingsForm({
                 defaultValue={initial("address_line2")}
               />
             </Flex>
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 4" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 4" }}>
               <Text as="label" size="1" weight="medium" htmlFor="city">
                 City
               </Text>
               <TextField.Root id="city" name="city" disabled={!canEdit} defaultValue={initial("city")} />
             </Flex>
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
               <Text as="label" size="1" weight="medium" htmlFor="state">
                 State
               </Text>
               <TextField.Root id="state" name="state" disabled={!canEdit} defaultValue={initial("state")} />
             </Flex>
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 3" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
               <Text as="label" size="1" weight="medium" htmlFor="postal_code">
                 Postal code
               </Text>
@@ -123,7 +123,7 @@ export default function SettingsForm({
                 defaultValue={initial("postal_code")}
               />
             </Flex>
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 3" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
               <Text as="label" size="1" weight="medium" htmlFor="country">
                 Country
               </Text>

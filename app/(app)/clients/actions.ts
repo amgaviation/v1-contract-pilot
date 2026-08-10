@@ -258,7 +258,33 @@ export async function updateClientRecord(
   // a public endpoint, and a future migration that loosened the policy
   // would otherwise turn that into a cross-tenant write with nothing in
   // the application layer to refuse it.
-  const payload: ClientUpdate = values;
+  // STAMP THE W-9 DATES ON THE TRANSITION, because nothing else ever did.
+  // pilot.clients.w9_sent_at and w9_received_at are granted for insert and
+  // update and are READ by the Overview's "Needs attention" queue — which
+  // renders "Requested —" for every outstanding W-9, forever, because no
+  // code path in the product has ever written either column. A date the
+  // pilot can see is the difference between "I asked them" and "I asked
+  // them five weeks ago", which is the entire reason that queue item
+  // exists.
+  //
+  // Read the stored status first so the stamp lands on the TRANSITION
+  // rather than on every save — re-saving an unrelated field must not
+  // reset the clock on a request that went out weeks ago.
+  const { data: priorRow } = await supabase
+    .from("clients")
+    .select("w9_status")
+    .eq("id", id)
+    .eq("account_id", account.id)
+    .maybeSingle();
+  const priorW9 = (priorRow as { w9_status: string | null } | null)?.w9_status ?? null;
+  const nextW9 = values.w9_status ?? null;
+  const nowIso = new Date().toISOString();
+
+  const payload: ClientUpdate = {
+    ...values,
+    ...(nextW9 === "requested" && priorW9 !== "requested" ? { w9_sent_at: nowIso } : {}),
+    ...(nextW9 === "on_file" && priorW9 !== "on_file" ? { w9_received_at: nowIso } : {}),
+  };
   const { error: updateError, count } = await supabase
     .from("clients")
     .update(payload as never, { count: "exact" })

@@ -35,6 +35,26 @@ happened here, three times, and only a probe against the real schema
 caught it. Keep the balance: pure logic here, everything that touches the
 database there.
 
+## What is here now
+
+| File | Module under test |
+|---|---|
+| `money.test.mjs` | `lib/bank-import/amount.ts`, `lib/format.ts` |
+| `statement-parsing.test.mjs` | `lib/bank-import/{csv,apply-mapping,ofx,date}.ts` |
+| `receipt-extract.test.mjs` | `lib/receipt-ocr/extract.ts` |
+| `receipt-trip-match.test.mjs` | `lib/receipt-ocr/match-trip.ts` |
+
+`lib/receipt-ocr/engine.ts` is deliberately **absent** from that list and
+cannot be added to it: it decodes an image, draws to a canvas and drives a
+WebAssembly worker, none of which exist in Node. It is exercised instead by
+driving the real module in headless Chromium against a synthetic receipt
+rendered in the page — which is how the leading-pipe artifact that
+`receipt-extract.test.mjs` now pins was found, and how the claim that a
+scan makes zero off-origin requests was checked rather than assumed. That
+harness is not committed; it belongs to the same family as the
+`*-verify.mjs` scripts below — a probe against a real runtime, not a unit
+test — and if it earns a permanent home it should be written as one.
+
 ## Convention
 
 One file per module under test, named `<module>.test.mjs`. Each test's

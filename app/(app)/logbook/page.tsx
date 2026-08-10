@@ -19,6 +19,7 @@ import { formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import PageShell from "../page-shell";
 import { logbookFrom, type LogbookEntryRow, type LogbookSource } from "./db";
+import type { TimeByTypeRow } from "./aircraft/db";
 
 export const metadata = { title: "Logbook" };
 
@@ -39,10 +40,6 @@ const SOURCE_BADGE: Record<LogbookSource, SourceBadge> = {
 // for their own numerics, so a string doesn't silently become NaN-shaped
 // arithmetic three renders downstream.
 
-/** total_time is NOT NULL; every other time column can be null. */
-function sum(entries: LogbookEntryRow[], pick: (e: LogbookEntryRow) => number | null): number {
-  return entries.reduce((total, entry) => total + Number(pick(entry) ?? 0), 0);
-}
 
 function landings(entry: LogbookEntryRow): number {
   return (
@@ -53,32 +50,115 @@ function landings(entry: LogbookEntryRow): number {
   );
 }
 
-// Supabase's Data API caps rows (commonly 1000) and TRUNCATES SILENTLY —
-// an explicit .limit makes that boundary visible instead of invisible, and
-// truncatedEntries below turns it into a caveat rather than a quietly
-// wrong sum. The real fix is a server-side aggregate (an RPC or a view),
-// deferred to a later pass.
-const ENTRIES_LIMIT = 1000;
+/** One screenful. Entries beyond it are a page away, not unreachable. */
+const PAGE_SIZE = 200;
 
-export default async function LogbookPage() {
-  await requireAccount("/logbook");
+/**
+ * Types shown in the hours-by-type panel. A career pilot who imported
+ * twenty years of history can hold time in forty, and a panel with forty
+ * rows stops being a summary — but a panel that shows twelve of forty and
+ * says nothing is a pilot transcribing an incomplete pilot-history form.
+ * One more than this is fetched so the shortfall can be STATED, and the
+ * full table lives on the fleet screen.
+ */
+const TYPE_ROW_LIMIT = 12;
+
+export default async function LogbookPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
+  const { account } = await requireAccount("/logbook");
+  const { page: pageParam } = await searchParams;
+  const parsed = Number(pageParam ?? "1");
+  const page = Number.isInteger(parsed) && parsed >= 1 ? parsed : 1;
+  const from = (page - 1) * PAGE_SIZE;
 
   const supabase = await createClient();
-  const { data, error } = await logbookFrom(supabase, "logbook_entries")
-    .select("*")
-    .order("entry_date", { ascending: false })
-    .limit(ENTRIES_LIMIT);
+  const [
+    { data, error, count },
+    { data: totalsData, error: totalsError },
+    { data: byTypeData, error: byTypeError },
+  ] = await Promise.all([
+    logbookFrom(supabase, "logbook_entries")
+      .select("*", { count: "exact" })
+      .order("entry_date", { ascending: false })
+      .range(from, from + PAGE_SIZE - 1),
+    // TOTALS COME FROM THE DATABASE, over every entry the pilot owns.
+    // Summing the page would make total time — the number an employer
+    // and an underwriter ask for — a function of pagination. A career
+    // pilot with 8,000 entries used to see a figure computed from the
+    // most recent 1,000.
+    logbookFrom(supabase, "logbook_totals").select("*").maybeSingle(),
+    // Time in type, from the same database rollup for the same reason.
+    // See supabase/migrations/20260810110000_aircraft_registry.sql: it
+    // matches the entry's free-text ident to the aircraft registry on a
+    // normalised key at READ time, and still counts entries that match
+    // nothing rather than dropping them.
+    // .eq on account_id as well as RLS: current_account_ids() spans every
+    // account a user belongs to, and this view groups by account_id — so a
+    // future two-account membership would produce two rows with the same
+    // type_label, a duplicate React key, and two half-totals presented as
+    // if they were the whole career.
+    logbookFrom(supabase, "logbook_time_by_type")
+      .select("*")
+      .eq("account_id", account?.id ?? "")
+      .order("total_time", { ascending: false })
+      .order("type_label", { ascending: true })
+      .limit(TYPE_ROW_LIMIT + 1),
+  ]);
 
   const entries = (data ?? []) as LogbookEntryRow[];
-  const truncatedEntries = entries.length === ENTRIES_LIMIT;
+  const totalCount = count ?? entries.length;
+  const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const totalsRow = totalsData as {
+    entry_count: number;
+    total_time: number;
+    pic_time: number;
+    night_time: number;
+    instrument_time: number;
+    landings: number;
+    simulator_time: number;
+  } | null;
 
-  const totals = {
-    total: sum(entries, (e) => e.total_time),
-    pic: sum(entries, (e) => e.pic_time),
-    night: sum(entries, (e) => e.night_time),
-    instrument: sum(entries, (e) => (e.instrument_actual_time ?? 0) + (e.instrument_simulated_time ?? 0)),
-    landings: entries.reduce((total, e) => total + landings(e), 0),
-  };
+  // A failed totals read is NOT zero hours. Falling back to the page's own
+  // sum would be worse than showing nothing — it would look authoritative
+  // and be wrong by however much did not fit.
+  const totals = totalsRow
+    ? {
+        total: Number(totalsRow.total_time),
+        pic: Number(totalsRow.pic_time),
+        night: Number(totalsRow.night_time),
+        instrument: Number(totalsRow.instrument_time),
+        landings: Number(totalsRow.landings),
+        // Its own figure, never folded into Total. The by-type table
+        // below already reports it separately; the career cards used to
+        // disagree with it by however many hours the pilot had in a box.
+        simulator: Number(totalsRow.simulator_time),
+      }
+    : null;
+
+  const byTypeRows = (byTypeData ?? []) as TimeByTypeRow[];
+  const moreTypes = byTypeRows.length > TYPE_ROW_LIMIT;
+  const byType = byTypeRows.slice(0, TYPE_ROW_LIMIT).map((row) => ({
+    label: row.type_label,
+    // AIRCRAFT time. The view reports simulator hours in their own column
+    // and never adds them here — a pilot-history form asks for the two
+    // separately, and a C560 credited with a recurrent session is the one
+    // number this panel must not get wrong.
+    total: Number(row.total_time),
+    pic: Number(row.pic_time),
+    sic: Number(row.sic_time),
+    night: Number(row.night_time),
+    simulator: Number(row.simulator_time),
+    entries: Number(row.entry_count),
+    registered: row.has_registered_aircraft === true,
+  }));
+  // "Unspecified" only earns a row when it is not the ONLY row. A pilot who
+  // has never registered an airframe would otherwise get a table with one
+  // line reading "Unspecified — all your hours", which is noise dressed as
+  // a report; the prompt to build a fleet is the useful thing there.
+  const hasTypeBreakdown = byType.some((row) => row.label !== "Unspecified");
 
   return (
     <PageShell
@@ -86,7 +166,9 @@ export default async function LogbookPage() {
       subtitle={
         error
           ? "Couldn't load your logbook."
-          : `${entries.length} entr${entries.length === 1 ? "y" : "ies"}`
+          : `${totalCount} entr${totalCount === 1 ? "y" : "ies"}${
+              pageCount > 1 ? ` · page ${page} of ${pageCount}` : ""
+            }`
       }
       action={
         <>
@@ -125,25 +207,30 @@ export default async function LogbookPage() {
         </Callout.Root>
       ) : (
         <Flex direction="column" gap="4">
-          {truncatedEntries ? (
+          {totalsError ? (
             <Callout.Root color="amber">
               <Callout.Icon>
                 <ExclamationTriangleIcon />
               </Callout.Icon>
               <Callout.Text>
-                {`Totals below may be partial — there are more than ${ENTRIES_LIMIT} entries and only the first ${ENTRIES_LIMIT} were totaled.`}
+                Your career totals couldn&rsquo;t be loaded, so they aren&rsquo;t
+                shown — the entries below are still complete and correct.
               </Callout.Text>
             </Callout.Root>
           ) : null}
 
-          <Grid columns={{ initial: "2", md: "5" }} gap="3">
-            {[
-              { label: "Total time", value: totals.total, decimals: 1 },
-              { label: "PIC", value: totals.pic, decimals: 1 },
-              { label: "Night", value: totals.night, decimals: 1 },
-              { label: "Instrument", value: totals.instrument, decimals: 1 },
-              { label: "Landings", value: totals.landings, decimals: 0 },
-            ].map((stat) => (
+          <Grid columns={{ initial: "2", md: "6" }} gap="3">
+            {(totals
+              ? [
+                  { label: "Total time", value: totals.total, decimals: 1 },
+                  { label: "PIC", value: totals.pic, decimals: 1 },
+                  { label: "Night", value: totals.night, decimals: 1 },
+                  { label: "Instrument", value: totals.instrument, decimals: 1 },
+                  { label: "Simulator", value: totals.simulator, decimals: 1 },
+                  { label: "Landings", value: totals.landings, decimals: 0 },
+                ]
+              : []
+            ).map((stat) => (
               <Card key={stat.label}>
                 <Flex direction="column" align="center" gap="1" p="1">
                   <Text size="1" color="gray" weight="bold" style={{ textTransform: "uppercase" }}>
@@ -156,6 +243,122 @@ export default async function LogbookPage() {
               </Card>
             ))}
           </Grid>
+
+          {entries.length > 0 ? (
+            <Card>
+              <Flex direction="column" gap="3" p="1">
+                <Flex justify="between" align="center" gap="3" wrap="wrap">
+                  <Flex direction="column" gap="1">
+                    <Heading as="h2" size="4">
+                      Hours by type
+                    </Heading>
+                    <Text size="2" color="gray">
+                      What an insurance pilot-history form asks for, and what a chief
+                      pilot asks on the phone.
+                    </Text>
+                  </Flex>
+                  <Button asChild variant="outline">
+                    <NextLink href="/logbook/aircraft">Your aircraft</NextLink>
+                  </Button>
+                </Flex>
+
+                {byTypeError ? (
+                  <Callout.Root color="amber" size="1">
+                    <Callout.Icon>
+                      <ExclamationTriangleIcon />
+                    </Callout.Icon>
+                    <Callout.Text>
+                      Your time in type couldn&rsquo;t be loaded just now, so
+                      it isn&rsquo;t shown. Nothing is wrong with your entries.
+                    </Callout.Text>
+                  </Callout.Root>
+                ) : hasTypeBreakdown ? (
+                  <Table.Root variant="ghost">
+                    <Table.Header>
+                      <Table.Row>
+                        <Table.ColumnHeaderCell>Type</Table.ColumnHeaderCell>
+                        <Table.ColumnHeaderCell justify="end">Total</Table.ColumnHeaderCell>
+                        <Table.ColumnHeaderCell justify="end">PIC</Table.ColumnHeaderCell>
+                        <Table.ColumnHeaderCell justify="end">SIC</Table.ColumnHeaderCell>
+                        <Table.ColumnHeaderCell justify="end">Night</Table.ColumnHeaderCell>
+                        <Table.ColumnHeaderCell justify="end">Sim</Table.ColumnHeaderCell>
+                      </Table.Row>
+                    </Table.Header>
+                    <Table.Body>
+                      {byType.map((row) => (
+                        <Table.Row key={row.label}>
+                          <Table.RowHeaderCell>
+                            <Flex align="center" gap="2">
+                              <Text weight="medium">{row.label}</Text>
+                              {/* Says WHY a row reads the way it does: these
+                                  hours are grouped by what the pilot typed on
+                                  each entry, not by a registered airframe, so
+                                  the same aeroplane spelled two ways is still
+                                  two rows here. */}
+                              {row.registered ? null : (
+                                <Badge color="gray" variant="outline">
+                                  No aircraft on file
+                                </Badge>
+                              )}
+                            </Flex>
+                          </Table.RowHeaderCell>
+                          <Table.Cell justify="end">
+                            <Text weight="medium" className="tnum">
+                              {row.total.toFixed(1)}
+                            </Text>
+                          </Table.Cell>
+                          <Table.Cell justify="end">
+                            <Text color="gray" className="tnum">
+                              {row.pic.toFixed(1)}
+                            </Text>
+                          </Table.Cell>
+                          <Table.Cell justify="end">
+                            <Text color="gray" className="tnum">
+                              {row.sic.toFixed(1)}
+                            </Text>
+                          </Table.Cell>
+                          <Table.Cell justify="end">
+                            <Text color="gray" className="tnum">
+                              {row.night.toFixed(1)}
+                            </Text>
+                          </Table.Cell>
+                          {/* Its own column, never folded into Total. An
+                              underwriter's pilot-history form asks for
+                              simulator time separately, because it is not
+                              time in the aircraft. */}
+                          <Table.Cell justify="end">
+                            <Text color="gray" className="tnum">
+                              {row.simulator.toFixed(1)}
+                            </Text>
+                          </Table.Cell>
+                        </Table.Row>
+                      ))}
+                    </Table.Body>
+                  </Table.Root>
+                ) : (
+                  <Text size="2" color="gray">
+                    Your entries aren&rsquo;t grouped by type yet. Add the airframes you
+                    fly and every hour you&rsquo;ve already logged in them gets counted
+                    under a make and model — including entries where you wrote the
+                    registration differently.
+                  </Text>
+                )}
+
+                {/* Said out loud rather than left to be noticed. Twelve rows
+                    of forty, with the career total sitting directly above,
+                    is how a pilot copies an incomplete pilot-history form
+                    without ever seeing anything was missing. */}
+                {moreTypes && !byTypeError ? (
+                  <Text size="1" color="gray">
+                    {`Showing the ${TYPE_ROW_LIMIT} types you have the most time in. `}
+                    <Link asChild>
+                      <NextLink href="/logbook/aircraft">See every type</NextLink>
+                    </Link>
+                  </Text>
+                ) : null}
+              </Flex>
+            </Card>
+          ) : null}
 
           <Card>
             {entries.length === 0 ? (
@@ -170,6 +373,14 @@ export default async function LogbookPage() {
                   </Button>
                   <Button asChild variant="outline">
                     <NextLink href="/logbook/drafts">Review trip drafts</NextLink>
+                  </Button>
+                  {/* Reachable before the first entry exists. The Hours by
+                      type panel is the only other link to the fleet screen
+                      and it renders only when there ARE entries, so a pilot
+                      who wanted to set their aircraft up first had no path
+                      to it at all. */}
+                  <Button asChild variant="outline">
+                    <NextLink href="/logbook/aircraft">Your aircraft</NextLink>
                   </Button>
                 </Flex>
               </Flex>
@@ -250,6 +461,29 @@ export default async function LogbookPage() {
               </Table.Root>
             )}
           </Card>
+
+          {/* Entries past the first page used to be unreachable — not
+              merely un-totalled, but unviewable, in the product's copy of
+              a record 61.51 makes the pilot responsible for keeping.
+              Plain links so a page is bookmarkable and the browser's back
+              button behaves. */}
+          {pageCount > 1 ? (
+            <Flex justify="between" align="center" gap="3" wrap="wrap">
+              <Button asChild variant="soft" disabled={page <= 1}>
+                <NextLink href={page <= 2 ? "/logbook" : `/logbook?page=${page - 1}`}>
+                  Newer
+                </NextLink>
+              </Button>
+              <Text size="2" color="gray">
+                {`Showing ${from + 1}–${Math.min(from + PAGE_SIZE, totalCount)} of ${totalCount}`}
+              </Text>
+              <Button asChild variant="soft" disabled={page >= pageCount}>
+                <NextLink href={`/logbook?page=${Math.min(page + 1, pageCount)}`}>
+                  Older
+                </NextLink>
+              </Button>
+            </Flex>
+          ) : null}
         </Flex>
       )}
     </PageShell>

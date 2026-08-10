@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import NextLink from "next/link";
 import { Button, Card, Flex, Grid, Heading, Select, Text, TextArea, TextField } from "@/components/ui";
 import { DOCUMENT_KINDS } from "./kinds";
+import { useFileSurvivesReset } from "@/components/use-file-survives-reset";
 import type { DocumentFormState } from "./actions";
 
 export type DocumentFormValues = {
@@ -48,6 +49,8 @@ export default function DocumentForm({
     return action(prevState, formData);
   }
   const [state, formAction, pending] = useActionState(wrappedAction, initialState);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const { fileName, lost: fileLost, onFileChange } = useFileSurvivesReset(fileInputRef);
 
   const submitted = state.values;
   const initial = (key: string, stored: unknown, fallback = "") => {
@@ -101,7 +104,7 @@ export default function DocumentForm({
               </Select.Root>
               <input type="hidden" name="kind" value={kind} />
             </Flex>
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
               <Text as="label" size="1" color="gray" htmlFor="label">
                 Label
               </Text>
@@ -192,18 +195,33 @@ export default function DocumentForm({
           <Heading as="h2" size="4">Scan or photo</Heading>
           <Flex direction="column" gap="1">
             {/* A plain file input: the file is stored privately and read back
-                through a short-lived signed URL, never a public URL. */}
+                through a short-lived signed URL, never a public URL.
+                The ref and onChange are what keep the chosen file attached
+                across React 19's post-action form.reset() — without them a
+                rejected submit on any OTHER field saved the document with
+                no file while this screen still said one was attached. */}
             <input
+              ref={fileInputRef}
               type="file"
               name="file"
               accept="image/jpeg,image/png,image/heic,image/webp,application/pdf"
               aria-label="Document scan or photo"
+              onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
             />
-            <Text size="1" color="gray">
-              {values.file_path
-                ? "A file is already attached. Choosing a file replaces it."
-                : "JPEG, PNG, HEIC, WebP or PDF, up to 10 MB. Optional."}
-            </Text>
+            {fileLost ? (
+              <Text size="1" color="red">
+                This browser cleared the file you picked. Choose it again before
+                saving — the rest of the form is as you left it.
+              </Text>
+            ) : (
+              <Text size="1" color="gray">
+                {fileName
+                  ? `${fileName} will be attached.`
+                  : values.file_path
+                    ? "A file is already attached. Choosing a file replaces it."
+                    : "JPEG, PNG, HEIC, WebP or PDF, up to 10 MB. Optional."}
+              </Text>
+            )}
           </Flex>
 
           <div role="alert" aria-live="polite">

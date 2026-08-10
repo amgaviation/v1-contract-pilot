@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation";
-import { Box, Card, Grid, Heading, Text } from "@/components/ui";
+import NextLink from "next/link";
+import { Box, Button, Card, Flex, Grid, Heading, Text } from "@/components/ui";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
+import { loadFleetOptions } from "@/lib/fleet";
 import { formatCents, formatDateRange } from "@/lib/format";
 import { tripValueCents } from "@/lib/trip-value";
 import PageShell from "../../page-shell";
@@ -15,6 +17,7 @@ import DayGrid, {
 } from "../day-grid";
 import { updateTrip } from "../actions";
 import DeleteTripButton from "./delete-trip-button";
+import MarkFlownButton from "../mark-flown-button";
 
 export const metadata = { title: "Trip" };
 
@@ -150,6 +153,7 @@ export default async function TripPage({
   // number" defect this screen's comment used to warn about: a figure the
   // invoice will not bill.
   const hasDayRows = tripDays.length > 0;
+  const fleet = await loadFleetOptions();
   const billableByDayType = new Map(dayTypes.map((t) => [t.id, t.billable]));
   const value = tripValueCents(trip, tripDays, billableByDayType);
 
@@ -177,8 +181,50 @@ export default async function TripPage({
             }`
           : ""
       } · ${legs.length} leg${legs.length === 1 ? "" : "s"}`}
-      action={<DeleteTripButton id={trip.id} disabled={locked} />}
+      action={
+        <Flex gap="2" wrap="wrap" align="start">
+          {/* The trip's own state is what everything downstream filters
+              on, so the action that changes it belongs here — beside the
+              title — not buried mid-form. See markTripCompleted. */}
+          {trip.status === "scheduled" || trip.status === "in_progress" ? (
+            <MarkFlownButton id={trip.id} />
+          ) : null}
+          <DeleteTripButton id={trip.id} disabled={locked} />
+        </Flex>
+      }
     >
+      {/* THE THESIS, MADE NAVIGABLE. One trip produces a logbook entry, a
+          billable line and an expense file — and until now the trip page
+          linked to none of the three, so a pilot had to know the product's
+          internal geography and go back out to the rail. The ?trip=
+          preselect on the expense form was already built and had no caller
+          anywhere in the app. */}
+      {trip.status === "completed" ? (
+        <Card mb="4">
+          <Flex gap="3" wrap="wrap" align="center">
+            <Text size="2" color="gray">
+              This trip is flown. Next:
+            </Text>
+            <Button asChild variant="soft" size="2">
+              <NextLink href={`/expenses/new?trip=${trip.id}`}>Add an expense</NextLink>
+            </Button>
+            <Button asChild variant="soft" size="2">
+              <NextLink href="/logbook/drafts">Confirm logbook entries</NextLink>
+            </Button>
+            <Button asChild variant="soft" size="2">
+              <NextLink
+                href={
+                  trip.client_id
+                    ? `/invoices/new?client=${trip.client_id}`
+                    : "/invoices/new"
+                }
+              >
+                Invoice it
+              </NextLink>
+            </Button>
+          </Flex>
+        </Card>
+      ) : null}
       {locked ? (
         <Card mb="4">
           <Text size="2" color="gray">
@@ -200,6 +246,7 @@ export default async function TripPage({
             cancelHref="/trips"
             locked={locked}
             hasDayRows={hasDayRows}
+            fleet={fleet}
           />
         </Box>
         <Box gridColumn={{ lg: "span 5" }}>

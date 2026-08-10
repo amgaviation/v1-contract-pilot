@@ -198,7 +198,7 @@ export default async function InvoicePage({
       ) : null}
 
       <Grid columns={{ initial: "1", lg: "12" }} gap="4">
-        <Flex direction="column" gap="4" style={{ gridColumn: "span 7" }}>
+        <Flex direction="column" gap="4" gridColumn={{ lg: "span 7" }}>
           <HeaderForm invoice={invoice} clients={clients} locked={!draft} />
 
           <Card size="3">
@@ -232,7 +232,7 @@ export default async function InvoicePage({
           </Card>
         </Flex>
 
-        <Flex direction="column" gap="4" style={{ gridColumn: "span 5" }}>
+        <Flex direction="column" gap="4" gridColumn={{ lg: "span 5" }}>
           <StatusActions invoice={invoice} hasLines={lines.length > 0} />
           {/* Matches pilot.invoice_share_create's own status gate
               (sent/partial/paid only) — never offered on a draft, so the

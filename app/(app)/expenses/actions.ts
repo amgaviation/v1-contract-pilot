@@ -29,6 +29,11 @@ const RECEIPT_TYPES = [
   "image/jpeg",
   "image/png",
   "image/heic",
+  // Same container and the same `ftyp` box as HEIC — some browsers report
+  // an iPhone photo as one and some as the other. Accepting only "heic"
+  // meant a pilot could pick a photo, scan it, fill in the whole form and
+  // only then be told receipts must be a JPEG, PNG, HEIC, WebP or PDF.
+  "image/heif",
   "image/webp",
   "application/pdf",
 ];
@@ -42,6 +47,15 @@ const CATEGORIES = [
   "meals",
   "parking",
   "other",
+  // What a contract pilot self-funds — see
+  // 20260810070000_pilot_expense_categories.sql.
+  "training",
+  "medical",
+  "insurance",
+  "charts",
+  "equipment",
+  "uniform",
+  "dues",
 ] as const;
 
 const TREATMENTS = ["rebill", "deduct", "unassigned"] as const;
@@ -172,7 +186,10 @@ function looksLikeDeclaredType(bytes: Uint8Array, type: string): boolean {
         [0x57, 0x45, 0x42, 0x50].every((byte, i) => bytes[8 + i] === byte)
       );
     case "image/heic":
-      // "ftyp" at offset 4.
+    case "image/heif":
+      // "ftyp" at offset 4. One case for both: they are the same ISOBMFF
+      // container, and which of the two a browser reports for the same
+      // iPhone photo is not something this app gets to decide.
       return [0x66, 0x74, 0x79, 0x70].every((byte, i) => bytes[4 + i] === byte);
     default:
       return false;

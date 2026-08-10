@@ -39,7 +39,7 @@ export default async function SettingsPage({
   const canEdit = role === "owner";
 
   const supabase = await createClient();
-  const { data: settingsValuesData } = await supabase
+  const { data: settingsValuesData, error: settingsValuesError } = await supabase
     .from("accounts")
     .select(
       "legal_name, address_line1, address_line2, city, state, postal_code, country, invoice_prefix"
@@ -47,6 +47,13 @@ export default async function SettingsPage({
     .eq("id", account.id)
     .maybeSingle();
 
+  // A FAILED READ IS NOT AN EMPTY ACCOUNT. Discarding this error handed
+  // SettingsForm `{}`, which is indistinguishable from a brand-new
+  // account — every field rendered blank, and the first save wrote those
+  // blanks over the legal name and address that print on every invoice
+  // the pilot sends. The dayTypes and mileageRates blocks seventy lines
+  // below already render a red "Couldn't load" card for exactly this; the
+  // one holding the invoice address did not.
   const settingsValues: SettingsValues = settingsValuesData ?? {};
 
   // RLS scopes this to the caller's tenant; no account_id filter is
@@ -77,8 +84,24 @@ export default async function SettingsPage({
         initialTab={tab}
         business={
           <Grid columns={{ initial: "1", lg: "3" }} gap="4">
-            <Flex direction="column" gap="4" style={{ gridColumn: "span 2" }}>
-              <SettingsForm values={settingsValues} canEdit={canEdit} />
+            <Flex direction="column" gap="4" gridColumn={{ md: "span 2" }}>
+              {settingsValuesError ? (
+                <Card>
+                  <Flex direction="column" gap="1" p="1">
+                    <Text weight="bold" color="red">
+                      Couldn&rsquo;t load your business details
+                    </Text>
+                    <Text size="2" color="gray">
+                      They&rsquo;re not shown because we couldn&rsquo;t read them —
+                      not because they&rsquo;re empty. Don&rsquo;t save from this
+                      screen until it loads, or you&rsquo;ll overwrite the name and
+                      address that print on your invoices. Reload in a moment.
+                    </Text>
+                  </Flex>
+                </Card>
+              ) : (
+                <SettingsForm values={settingsValues} canEdit={canEdit} />
+              )}
             </Flex>
             <Flex direction="column" gap="4">
               <LogoPanel hasLogo={Boolean(account.logo_url)} canEdit={canEdit} />

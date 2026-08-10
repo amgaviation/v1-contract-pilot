@@ -490,6 +490,69 @@ export async function updateTrip(
   return { error: null, saved: true, daysRemoved };
 }
 
+/**
+ * Mark a trip flown.
+ *
+ * ***************************************************************************
+ * WHY THIS EXISTS, AND WHY IT IS THE MOST IMPORTANT BUTTON IN THE PRODUCT
+ * ***************************************************************************
+ * A trip is created as 'scheduled'. Everything downstream — the invoice
+ * picker, the logbook drafts queue, Overview's "flown but not yet
+ * invoiced" — filters on status = 'completed', and until now NOTHING in
+ * the product ever advanced it. There is no trigger and no date rule; a
+ * review checked.
+ *
+ * So a pilot could fly ten trips, open the app to bill them, and be told
+ * by three separate screens that they had nothing: "0 trips flown and
+ * logged but not yet invoiced", "No completed, unbilled trips for this
+ * client yet", "Nothing waiting — every completed trip's legs are already
+ * in your logbook." All three false, none of them naming the cause, and
+ * the only cure a Status dropdown buried in the middle of a long edit
+ * form. That single field gated 100% of this product's value.
+ *
+ * The state stays the pilot's to set — a trip is not complete because a
+ * date passed, and auto-advancing would be the silent write this codebase
+ * refuses everywhere else. What changes is that asking for it is now one
+ * tap from the list and from the trip, and the screens that used to lie
+ * now say what is actually true.
+ */
+export async function markTripCompleted(
+  id: string
+): Promise<{ error: string | null }> {
+  const { account } = await requireAccount("/trips");
+  if (!UUID_RE.test(id)) return { error: "That trip couldn't be found." };
+
+  const supabase = await createClient();
+  // { count: "exact" }: PostgREST answers 200 for a write that matched no
+  // rows, and "we marked it flown" when nothing moved is the failure this
+  // whole action exists to end, not to reproduce.
+  const { error, count } = await supabase
+    .from("trips")
+    .update({ status: "completed" } as never, { count: "exact" })
+    .eq("id", id)
+    .eq("account_id", account.id)
+    // Only from a state that can still advance. A canceled trip is not
+    // flown, and a completed one is already there — narrowing here rather
+    // than reading first keeps it a single statement, so two taps on a
+    // slow connection cannot race.
+    .in("status", ["scheduled", "in_progress"]);
+
+  if (error) return { error: billedTripDbError(error, "trips.update") };
+  if (!count) {
+    return {
+      error:
+        "That trip couldn't be marked flown — it may already be completed, or canceled.",
+    };
+  }
+
+  revalidatePath("/trips");
+  revalidatePath(`/trips/${id}`);
+  revalidatePath("/invoices/new");
+  revalidatePath("/logbook/drafts");
+  revalidatePath("/");
+  return { error: null };
+}
+
 export async function deleteTrip(id: string): Promise<{ error: string | null }> {
   const { account } = await requireAccount("/trips");
 
@@ -524,7 +587,12 @@ const LEG_FIELDS = [
   "block_hours",
   "night_hours",
   "instrument_hours",
+  "instrument_actual_hours",
+  "instrument_simulated_hours",
+  "cross_country_hours",
+  "day_takeoffs",
   "day_landings",
+  "day_landings_full_stop",
   "night_takeoffs",
   "night_landings_full_stop",
   "night_landings_touch_go",
@@ -564,10 +632,30 @@ function parseLegForm(formData: FormData): ParsedLeg {
     String(formData.get("instrument_hours") ?? ""),
     { max: 999, allowBlank: true }
   );
+  // 61.51(b)(3) names ACTUAL and SIMULATED instrument as two separate
+  // conditions of flight, so they are two fields. The legacy combined
+  // `instrument_hours` stays writable for rows that predate the split and
+  // is never derived from these — see the column comment in
+  // 20260810080000_trip_legs_currency_fields.sql.
+  const instrumentActual = parseTenth(
+    String(formData.get("instrument_actual_hours") ?? ""),
+    { max: 999, allowBlank: true }
+  );
+  const instrumentSimulated = parseTenth(
+    String(formData.get("instrument_simulated_hours") ?? ""),
+    { max: 999, allowBlank: true }
+  );
+  const crossCountryHours = parseTenth(
+    String(formData.get("cross_country_hours") ?? ""),
+    { max: 999, allowBlank: true }
+  );
   if (
     blockHours === undefined ||
     nightHours === undefined ||
-    instrumentHours === undefined
+    instrumentHours === undefined ||
+    instrumentActual === undefined ||
+    instrumentSimulated === undefined ||
+    crossCountryHours === undefined
   ) {
     return {
       values: null,
@@ -577,7 +665,9 @@ function parseLegForm(formData: FormData): ParsedLeg {
 
   const counts: Record<string, number> = {};
   for (const field of [
+    "day_takeoffs",
     "day_landings",
+    "day_landings_full_stop",
     "night_takeoffs",
     "night_landings_full_stop",
     "night_landings_touch_go",
@@ -595,6 +685,17 @@ function parseLegForm(formData: FormData): ParsedLeg {
     counts[field] = value;
   }
 
+  // Mirrors trip_legs_day_full_stop_within_landings so the pilot gets a
+  // sentence instead of a constraint name. The database is still the
+  // authority.
+  if ((counts.day_landings_full_stop ?? 0) > (counts.day_landings ?? 0)) {
+    return {
+      values: null,
+      error:
+        "Full-stop landings can't exceed the day landings — the full-stop count is how many of them came to a stop.",
+    };
+  }
+
   return {
     error: null,
     values: {
@@ -604,7 +705,12 @@ function parseLegForm(formData: FormData): ParsedLeg {
       block_hours: blockHours,
       night_hours: nightHours,
       instrument_hours: instrumentHours,
+      instrument_actual_hours: instrumentActual,
+      instrument_simulated_hours: instrumentSimulated,
+      cross_country_hours: crossCountryHours,
+      day_takeoffs: counts.day_takeoffs,
       day_landings: counts.day_landings,
+      day_landings_full_stop: counts.day_landings_full_stop,
       night_takeoffs: counts.night_takeoffs,
       night_landings_full_stop: counts.night_landings_full_stop,
       night_landings_touch_go: counts.night_landings_touch_go,

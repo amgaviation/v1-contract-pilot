@@ -75,7 +75,7 @@ function DraftHeader({
           Billing details
         </Text>
         <Grid columns={{ initial: "1", md: "12" }} gap="3">
-          <Flex direction="column" gap="1" style={{ gridColumn: "span 6" }}>
+          <Flex direction="column" gap="1" gridColumn={{ md: "span 6" }}>
             <Text as="label" size="2" weight="medium" id="client-label">
               Client
             </Text>
@@ -91,7 +91,7 @@ function DraftHeader({
             </Select.Root>
             <input type="hidden" name="client_id" value={clientId} />
           </Flex>
-          <Flex direction="column" gap="1" style={{ gridColumn: "span 3" }}>
+          <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
             <Text as="label" size="2" weight="medium" htmlFor="issued_on">
               Issue date
             </Text>
@@ -105,7 +105,7 @@ function DraftHeader({
               Defaults to today when sent
             </Text>
           </Flex>
-          <Flex direction="column" gap="1" style={{ gridColumn: "span 3" }}>
+          <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
             <Text as="label" size="2" weight="medium" htmlFor="due_on">
               Due date
             </Text>
@@ -119,7 +119,7 @@ function DraftHeader({
               Defaults from the client&rsquo;s terms
             </Text>
           </Flex>
-          <Flex direction="column" gap="1" style={{ gridColumn: "span 4" }}>
+          <Flex direction="column" gap="1" gridColumn={{ md: "span 4" }}>
             <Text as="label" size="2" weight="medium" htmlFor="tax_rate_percent">
               Tax rate (%)
             </Text>
@@ -133,7 +133,7 @@ function DraftHeader({
               )}
             />
           </Flex>
-          <Flex direction="column" gap="1" style={{ gridColumn: "span 8" }}>
+          <Flex direction="column" gap="1" gridColumn={{ md: "span 8" }}>
             <Text as="label" size="2" weight="medium" htmlFor="notes">
               Notes
             </Text>
@@ -186,19 +186,19 @@ function LockedHeader({
         Billing details
       </Text>
       <Grid columns={{ initial: "1", md: "12" }} gap="3">
-        <Flex direction="column" gap="1" style={{ gridColumn: "span 6" }}>
+        <Flex direction="column" gap="1" gridColumn={{ md: "span 6" }}>
           <Text size="1" color="gray">
             Client
           </Text>
           <Text weight="medium">{clientName}</Text>
         </Flex>
-        <Flex direction="column" gap="1" style={{ gridColumn: "span 3" }}>
+        <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
           <Text size="1" color="gray">
             Issued
           </Text>
           <Text weight="medium">{formatDate(invoice.issued_on)}</Text>
         </Flex>
-        <Flex direction="column" gap="1" style={{ gridColumn: "span 3" }}>
+        <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
           <Text size="1" color="gray">
             Due
           </Text>
