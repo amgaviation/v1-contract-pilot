@@ -89,8 +89,37 @@ this one).
    the required changes. This is a migration, and it is not written.
 4. `npm run currency:verify` exists and passes — table-driven fixtures per currency type,
    including the full-stop night rule, the six-calendar-month instrument look-back, and
-   `insufficient_data`. `docs/PLAN.md` names it in Verification; it is not in `package.json`
-   today.
+   `insufficient_data`. **This one is now done**: the script exists, is wired into
+   `package.json`, runs in CI against a real Postgres, and passes 514 checks (492 pure plus 22
+   database-contract). It says out loud in its final line when its database half was skipped,
+   rather than reporting a clean pass.
+5. **The regulatory findings below are closed.** Added 2026-08-10. See the next section — a green
+   `currency:verify` is NOT on its own evidence that the engine is right.
+
+### Where the engine actually stands, 2026-08-10
+
+The engine is **implemented and dark**. `CURRENCY_ENGINE_ENABLED` requires the literal string
+`true`, so an unset variable, an empty one, and the string `false` all read as off, and nothing
+renders currency to a pilot in any deployed state. `docs/CURRENCY-SPEC.md` §12 records what the
+implementation review found against the spec.
+
+**Four adversarial regulatory passes have run. Each closed the previous round's criticals and found
+a new one.** That pattern is the single most important fact on this page, because it means a green
+suite is a floor and not a ceiling. Closed so far, each verified against live eCFR text:
+
+- 61.57(a)(1)(ii) and 135.247(b) tailwheel: the code enforced full-stop but not the requirement
+  that the takeoffs and landings were made **in a tailwheel airplane**, so a tricycle-gear trainer's
+  landings credited a taildragger. Both closed, with unrecorded gear producing `insufficient_data`.
+- The Part 135 day/night substitution overwrote a status without rebuilding the evidence behind it,
+  so a card could read "current" while still listing what was missing.
+- Flight review and medical were read account-scoped, not airman-scoped — in a multi-seat account
+  that reads another member's medical.
+- 61.57(c)(2)'s device path was unreachable, since a simulator row has no tail number by design.
+
+**Open at the time of writing, and blocking this gate:** the most recent type-rating fix turns a
+per-entry missing fact into a whole-card gate, so one unrelated entry can empty 61.57(a), (b) and
+135.247 for any pilot whose aircraft has no recorded type rating — most piston pilots. A repair is
+in flight. **Do not flip this flag on the strength of the suite being green.**
 
 ---
 
