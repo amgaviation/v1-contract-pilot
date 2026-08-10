@@ -983,6 +983,65 @@ begin
 end $$;
 
 -- =====================================================================
+-- D2 PROBE (20260809020000, mileage). Two properties, both of which were
+-- proven by hand when the feature landed and neither of which any
+-- assertion in this suite covered — which is exactly how a property
+-- stops being true later without anyone noticing.
+--
+-- 1. TENANCY. mileage_entries carries deduction figures; tenant B must
+--    not see tenant A's.
+--
+-- 2. THE RATE SNAPSHOT. mileage_entries.rate_cents_per_mile is captured
+--    at entry and must NEVER re-resolve from pilot.mileage_rates. A
+--    pilot enters next year's IRS rate; every drive they logged last
+--    year must keep the rate it was recorded at, because those figures
+--    may already be on a filed return. This is the same rule
+--    trip_days.rate_cents follows, and the failure mode here is worse:
+--    silently restating a prior year's deduction.
+-- =====================================================================
+do $$
+declare
+  entry_id uuid; rate_after numeric; amount_after bigint; leaked int;
+begin
+  insert into pilot.mileage_rates (account_id, tax_year, rate_cents_per_mile)
+    values ('${A}', 2026, 50.000);
+  insert into pilot.mileage_entries
+    (account_id, drove_on, miles, from_place, to_place, purpose, rate_cents_per_mile)
+  values
+    ('${A}', date '2026-03-01', 42.3, 'home', 'KTEB', 'Positioning drive', 50.000)
+  returning id into entry_id;
+
+  -- The pilot updates the year's rate. The captured entry must not move.
+  update pilot.mileage_rates set rate_cents_per_mile = 99.900
+   where account_id = '${A}' and tax_year = 2026;
+
+  select rate_cents_per_mile, amount_cents into rate_after, amount_after
+    from pilot.mileage_entries where id = entry_id;
+
+  if rate_after is distinct from 50.000 then
+    raise exception 'MILEAGE SNAPSHOT FAILURE: entry rate re-resolved to % after the year rate changed (expected 50.000)', rate_after;
+  end if;
+  if amount_after is distinct from round(42.3 * 50.000)::bigint then
+    raise exception 'MILEAGE SNAPSHOT FAILURE: amount_cents = %, expected % (the exact product of the SNAPSHOTTED rate)',
+      amount_after, round(42.3 * 50.000)::bigint;
+  end if;
+  raise notice 'PASS: a mileage entry keeps the rate it was captured at when the year rate changes';
+
+  -- Tenancy: B must not see A's row.
+  set local role authenticated;
+  perform set_config('request.jwt.claims', json_build_object('sub', '${UB}')::text, true);
+  select count(*) into leaked from pilot.mileage_entries where account_id = '${A}';
+  reset role;
+  if leaked <> 0 then
+    raise exception 'MILEAGE TENANCY FAILURE: tenant B sees % of tenant A mileage rows', leaked;
+  end if;
+  raise notice 'PASS: tenant B sees zero of tenant A''s mileage entries';
+
+  delete from pilot.mileage_entries where account_id = '${A}';
+  delete from pilot.mileage_rates where account_id = '${A}';
+end $$;
+
+-- =====================================================================
 -- C1 PROBE (20260807070000's away backfill). This file's earlier passes
 -- only ever read the catalog for this migration's columns/grants — never
 -- WROTE against the shape that actually breaks: a trip_days row on a
@@ -1086,6 +1145,133 @@ begin
 
   raise notice 'PASS C1: bare away-backfill 23514s on a billed trip_day (sqlstate confirmed), and the service_role-bypassed backfill sets away=true while leaving every billed value (rate_cents, quantity, units) unchanged';
 end $$;
+
+-- =====================================================================
+-- E1 PROBE (20260809030000_recurring_invoices.sql). Two properties this
+-- file's own header promises and no assertion anywhere in this suite
+-- covered until now:
+--
+-- 1. IDEMPOTENCY. unique (account_id, schedule_id, period_start) on
+--    pilot.recurring_invoice_generations must make a (schedule, period)
+--    pair unrepeatable, by CONSTRUCTION — the same discipline the C2
+--    probe above proves for guarantee_periods. An INSERT-only probe that
+--    computes the same period_start on both attempts would prove nothing
+--    if this were, say, a bare INSERT ... ON CONFLICT DO NOTHING
+--    silently swallowing the second write (a "PASS" for the wrong
+--    reason) — so this checks the SQLSTATE is actually 23505
+--    (unique_violation), not just that the second insert didn't produce
+--    a second row, and separately proves a genuinely different period on
+--    the SAME schedule is NOT blocked (the control that shows the
+--    constraint is scoped to (schedule, period), not to schedule alone).
+--
+-- 2. TENANCY. Both new tables must be invisible to a different tenant,
+--    and a different tenant must not be able to write a schedule row
+--    under this tenant's account_id.
+--
+-- FAILURE-PROOF (manual, not committed — this suite has been fooled
+-- twice by an assertion that could never fail): before landing this
+-- block, the migration's own unique (account_id, schedule_id,
+-- period_start) constraint on recurring_invoice_generations was DROPPED
+-- against local Postgres and this script re-run — the IDEMPOTENCY
+-- block below raised 'E1 FAILURE: a (schedule, period) pair was generated
+-- twice' as expected (the second insert silently succeeded with the
+-- constraint gone), proving the assertion is load-bearing. The constraint
+-- was then restored (replaying the migration from a dropped schema) before
+-- verifying the PASS path.
+-- =====================================================================
+insert into pilot.clients (id, account_id, name, default_day_rate_cents)
+values ('00000000-0000-0000-0000-00000000c9e1', '${C}', 'C Recurring Client', 150000);
+
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"${UC}"}', true);
+
+do $$
+declare
+  acct_id constant uuid := '${C}';
+  client_id constant uuid := '00000000-0000-0000-0000-00000000c9e1';
+  sched_id uuid;
+  inv1_id uuid;
+  inv2_id uuid;
+  inv3_id uuid;
+  n int;
+begin
+  insert into pilot.recurring_invoice_schedules
+    (account_id, client_id, cadence, anchor_date, description, amount_cents)
+  values (acct_id, client_id, 'monthly', '2026-01-31', 'Monthly retainer', 500000)
+  returning id into sched_id;
+
+  insert into pilot.invoices (account_id, client_id) values (acct_id, client_id) returning id into inv1_id;
+  insert into pilot.invoices (account_id, client_id) values (acct_id, client_id) returning id into inv2_id;
+  insert into pilot.invoices (account_id, client_id) values (acct_id, client_id) returning id into inv3_id;
+
+  insert into pilot.recurring_invoice_generations (account_id, schedule_id, period_start, invoice_id)
+  values (acct_id, sched_id, '2026-03-01', inv1_id);
+
+  -- IDEMPOTENCY: the SAME (schedule, period), a DIFFERENT invoice.
+  begin
+    insert into pilot.recurring_invoice_generations (account_id, schedule_id, period_start, invoice_id)
+    values (acct_id, sched_id, '2026-03-01', inv2_id);
+    raise exception 'E1 FAILURE: a (schedule, period) pair was generated twice';
+  exception
+    when others then
+      if sqlerrm like 'E1 FAILURE%' then raise; end if;
+      if sqlstate is distinct from '23505' then
+        raise exception 'E1 FAILURE: double-generation attempt failed with sqlstate % (expected 23505 unique_violation): %', sqlstate, sqlerrm;
+      end if;
+  end;
+  raise notice 'PASS E1: unique (account_id, schedule_id, period_start) blocks generating the same period twice (SQLSTATE 23505 confirmed)';
+
+  -- CONTROL: a DIFFERENT period on the SAME schedule is not blocked —
+  -- proves the constraint is scoped to (schedule, period), not schedule
+  -- alone (a probe that only ever tried the identical period on both
+  -- sides could not tell these apart).
+  insert into pilot.recurring_invoice_generations (account_id, schedule_id, period_start, invoice_id)
+  values (acct_id, sched_id, '2026-04-01', inv2_id);
+  select count(*) into n from pilot.recurring_invoice_generations where account_id = acct_id and schedule_id = sched_id;
+  if n <> 2 then
+    raise exception 'E1 FAILURE: expected 2 generation rows (different periods), got %', n;
+  end if;
+  raise notice 'PASS E1: a different period on the same schedule generates normally (control)';
+
+  -- Third invoice (inv3_id) stays unreferenced deliberately — proves the
+  -- guard rejects on the (schedule, period) identity, not on invoice_id
+  -- uniqueness (a schedule could in principle be pointed at an invoice
+  -- already used elsewhere; that is not this constraint's job).
+  perform inv3_id;
+end $$;
+
+-- TENANCY: tenant A must not see tenant C's schedule/generation rows.
+select set_config('request.jwt.claims', '{"sub":"${UA}"}', true);
+do $$
+declare n int;
+begin
+  select count(*) into n from pilot.recurring_invoice_schedules where account_id = '${C}';
+  if n <> 0 then raise exception 'E1 TENANCY FAILURE: tenant A sees % of tenant C''s recurring schedules', n; end if;
+  select count(*) into n from pilot.recurring_invoice_generations where account_id = '${C}';
+  if n <> 0 then raise exception 'E1 TENANCY FAILURE: tenant A sees % of tenant C''s recurring generations', n; end if;
+  raise notice 'PASS E1: tenant A sees zero of tenant C''s recurring schedules/generations';
+end $$;
+
+-- CROSS-TENANT WRITE: tenant A cannot insert a schedule claiming tenant
+-- C's account_id (RLS WITH CHECK, not just SELECT isolation).
+do $$
+begin
+  begin
+    insert into pilot.recurring_invoice_schedules
+      (account_id, client_id, cadence, anchor_date, description, amount_cents)
+    values ('${C}', '00000000-0000-0000-0000-00000000c9e1', 'monthly', '2026-01-31', 'hijack', 100);
+    raise exception 'E1 TENANCY FAILURE: tenant A inserted a schedule under tenant C''s account_id';
+  exception
+    when others then
+      if sqlerrm like 'E1 TENANCY FAILURE%' then raise; end if;
+      if sqlstate is distinct from '42501' then
+        raise exception 'E1 TENANCY FAILURE: cross-tenant schedule insert failed with sqlstate % (expected 42501 via RLS WITH CHECK): %', sqlstate, sqlerrm;
+      end if;
+  end;
+  raise notice 'PASS E1: RLS WITH CHECK blocks a cross-tenant recurring schedule insert';
+end $$;
+reset role;
+
 
 -- =====================================================================
 -- C2 PROBE (guarantee_periods write path). Same lesson as C1: the prior

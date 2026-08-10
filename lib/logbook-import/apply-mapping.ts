@@ -11,7 +11,10 @@ import type {
   RoleSource,
 } from "./types";
 
-const ROLES = ["PIC", "SIC"] as const;
+// PIC/SIC/SOLO/DUAL_RECEIVED — see app/(app)/logbook/db.ts's LogbookRole
+// comment and supabase/migrations/20260809000000_logbook_role_vocabulary.sql
+// for why this list doesn't include DUAL_GIVEN.
+const ROLES = ["PIC", "SIC", "SOLO", "DUAL_RECEIVED"] as const;
 // 'ffs' = full flight simulator; see the Phase 6-corrections migration for
 // why it's a distinct device class from 'ftd'/'atd'.
 const SIM_DEVICES = ["ffs", "ftd", "atd", "other"] as const;
@@ -312,8 +315,26 @@ export function applyMapping(params: {
       if (residual > 0) unclassifiedLandings = residual;
     }
 
-    // Role: explicit mapped column, else inferred from an unambiguous
-    // PIC/SIC time signal, else deferred to the pilot. Never guessed.
+    // Role: explicit mapped column, else inferred from an unambiguous time
+    // signal, else deferred to the pilot. Never guessed. Precedence — see
+    // supabase/migrations/20260809000000_logbook_role_vocabulary.sql's
+    // header for the full reasoning:
+    //   1. picTime > 0 && !sicTime  -> PIC (unaffected by dualReceivedTime
+    //      also being present — a rated pilot logs PIC as sole manipulator
+    //      under 61.51(e)(1)(i) while simultaneously receiving instruction
+    //      under 61.51(h) on the same flight; that combination is real and
+    //      the role stays PIC).
+    //   2. sicTime > 0 && !picTime  -> SIC.
+    //   3. Neither PIC nor SIC asserted:
+    //        a. soloTime > 0        -> SOLO (61.51(d)).
+    //        b. else dualReceivedTime > 0 -> DUAL_RECEIVED (61.51(h)).
+    //        c. else                -> needs_selection.
+    //   4. Both PIC and SIC asserted -> needs_selection, unchanged: a
+    //      genuinely ambiguous multi-crew-logging row still asks the pilot.
+    // Solo is checked before dual-received in 3 because the two are
+    // mutually exclusive in practice (solo = sole occupant; dual received =
+    // an instructor aboard) and solo is the more specific signal of the two
+    // whenever both happen to be mapped.
     let role: (typeof ROLES)[number] | null = null;
     let roleSource: RoleSource = "needs_selection";
     if (isMapped("role")) {
@@ -330,11 +351,19 @@ export function applyMapping(params: {
     if (!role) {
       const picPositive = (picTime ?? 0) > 0;
       const sicPositive = (sicTime ?? 0) > 0;
+      const soloPositive = (soloTime ?? 0) > 0;
+      const dualReceivedPositive = (dualReceivedTime ?? 0) > 0;
       if (picPositive && !sicPositive) {
         role = "PIC";
         roleSource = "inferred";
       } else if (sicPositive && !picPositive) {
         role = "SIC";
+        roleSource = "inferred";
+      } else if (!picPositive && !sicPositive && soloPositive) {
+        role = "SOLO";
+        roleSource = "inferred";
+      } else if (!picPositive && !sicPositive && dualReceivedPositive) {
+        role = "DUAL_RECEIVED";
         roleSource = "inferred";
       } else {
         role = null;

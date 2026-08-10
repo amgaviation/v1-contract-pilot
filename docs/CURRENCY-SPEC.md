@@ -81,7 +81,8 @@ needs it for the "how do I fix this" copy.
 | `entry_date` | Yes |
 | `day_takeoffs` + `night_takeoffs` | Yes — added by `20260807120000`. **The brief's claim that no takeoff count is recorded is stale.** |
 | `day_landings_full_stop`, `day_landings_touch_go`, `night_landings_full_stop`, `night_landings_touch_go` | Yes |
-| Sole manipulator of the controls on that entry | **No column.** `role` (PIC/SIC) is not the same fact — an SIC can be the sole manipulator, and a PIC in a two-crew aircraft may not have been. |
+| Sole manipulator of the controls on that entry | **No column.** `role` (now `PIC`/`SIC`/`SOLO`/`DUAL_RECEIVED` — widened by `supabase/migrations/20260809000000_logbook_role_vocabulary.sql`) is still not the same fact — an SIC can be the sole manipulator, and a PIC in a two-crew aircraft may not have been. The widened vocabulary does not close this gap; it makes one direction of it explicit for a case the old two-value vocabulary could not represent at all — see the next row. |
+| Whether the entry is DUAL_RECEIVED (training received, not acting as PIC) | **New, as of the same migration.** `role = 'DUAL_RECEIVED'` is a reliable *negative* signal for 61.57(a)/(b): a row logged that way records the pilot receiving instruction under 61.51(h), not acting as pilot in command, so it must never be counted toward (a)/(b) recency even though it may sit inside the lookback window and even though the SAME row's `total_time` reflects real flying. Note the asymmetry with `role = 'PIC'`: a PIC row can carry `dual_received_time > 0` on the same row (recurrent training, sole-manipulator PIC per 61.51(e)(1)(i) while also receiving instruction per 61.51(h) — see the migration header) and such a row's role stays `PIC`, so it is NOT excluded by this rule. The exclusion is keyed on `role`, not on whether `dual_received_time` is non-null. |
 | Category, class, and type of the aircraft flown | **No.** Free-text `aircraft_type` only. |
 | Category/class/type of the aircraft *to be flown* | **No.** There is no "intended flight" input at all. |
 | Whether the aircraft is a tailwheel airplane | **No flag.** |
@@ -97,10 +98,19 @@ landings(entry) = day_landings_full_stop + day_landings_touch_go
    -- if the aircraft is a tailwheel airplane, only *_full_stop count.
 
 window   = entries where entry_date between (flight_date - 89 days) and flight_date
+           and role <> 'DUAL_RECEIVED'
            and sole_manipulator is true
            and matches category/class/type of the aircraft to be flown
 current  = sum(takeoffs) >= 3 and sum(landings) >= 3
 ```
+
+The `role <> 'DUAL_RECEIVED'` clause is a cheap, reliable pre-filter available today (see the inputs
+table above); it is not a substitute for `sole_manipulator`, which still gates the window on its own
+once that column exists. Whether a `role = 'SOLO'` entry should pass this filter is **left open** —
+see O-6 below; the pseudocode above deliberately does not exclude `SOLO`, matching the "ambiguity
+resolves against permissiveness" rule this document already applies to the 90-day boundary, but a
+solo entry is asserted, not derived, to be sole-manipulator PIC time and this document has not
+verified that reading against 61.51(e)(4)/(d) closely enough to state it as settled.
 
 **The 90-day boundary is a stated choice, not a derived one.** The reg says "within the
 preceding 90 days" without saying whether the 90th day back is inside or outside. The engine
@@ -899,6 +909,17 @@ needs counsel and privacy review first (`docs/PLAN.md`, standing gates).
 - **O-5. Does 61.57(e)(4) get built in Phase 7 or after?** It is specified here per your request.
   It also needs the most new fields of anything in §9, and the audit says it is the path most of
   our users rely on — meaning the feature is least useful to our actual market until it exists.
+- **O-6. Does a `role = 'SOLO'` entry count toward 61.57(a)/(b) recency?** `supabase/migrations/
+  20260809000000_logbook_role_vocabulary.sql` added `SOLO` (61.51(d), sole occupant) to the role
+  vocabulary. A student pilot's solo time is logged as PIC time under 61.51(e)(4), which reads as
+  "yes, treat it like PIC for (a)/(b) purposes too" — but that reasoning was not verified against
+  the eCFR text closely enough by this pass to state as settled, and this product's actual market
+  (contract pilots on type-rated recurrent training, not student pilots building solo time) makes
+  it a low-frequency case that is easy to get wrong quietly. §2.1's computation pseudocode
+  currently does NOT exclude `SOLO` from the 61.57(a)/(b) window (unlike `DUAL_RECEIVED`, which the
+  same change excludes with higher confidence — see §2.1's inputs table). Confirm before Phase 7's
+  engine ships whether that inclusion is correct, or whether `SOLO` needs the same exclusion
+  `DUAL_RECEIVED` gets.
 
 ### For counsel (legal-exposure decisions)
 

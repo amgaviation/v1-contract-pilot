@@ -36,6 +36,21 @@
  *                                                      out of this file per
  *                                                      app/(app)/logbook/db.ts's
  *                                                      header comment)
+ *   20260809020000_mileage.sql                        (mileage_rates,
+ *                                                      mileage_entries)
+ *   20260809030000_recurring_invoices.sql             (recurring_invoice_schedules,
+ *                                                      recurring_invoice_generations)
+ *   20260809040000_connect_payments.sql               (invoices.stripe_payment_link_*,
+ *                                                      connect_account_link/unlink)
+ *   20260809060000_invoice_public_share.sql           (invoice_shares, invoice_public)
+ *   20260809070000_bank_transactions.sql              (bank_accounts,
+ *                                                      bank_import_batches,
+ *                                                      bank_source_files,
+ *                                                      bank_transactions)
+ *   20260810010000_connect_link_hardening.sql         (connect_oauth_state_begin,
+ *                                                      connect_account_link's new
+ *                                                      signature,
+ *                                                      invoices.stripe_payment_link_amount_cents)
  */
 export type Json =
   | string
@@ -1461,6 +1476,207 @@ export type Database = {
           },
         ];
       };
+      // -----------------------------------------------------------------
+      // 20260809020000_mileage.sql — mileage / vehicle deduction tracking.
+      // rate_cents_per_mile is numeric(6,3) (not bigint cents) because the
+      // published rate carries a fractional cent; mileage_entries snapshots
+      // it at capture and never re-resolves it from mileage_rates. See the
+      // migration header for the full money-type reasoning.
+      //
+      // mileage_entries.rate_cents_per_mile is listed below in Update for
+      // shape-completeness only (it mirrors the Row/Insert types) — as of
+      // 20260809050000_mileage_and_recurring_fixes.sql, `authenticated`
+      // has NO UPDATE grant on this column at the database, and the app
+      // layer (expenses/mileage/actions.ts) never attempts to write it on
+      // update. Do not add it back to an UPDATE payload.
+      // -----------------------------------------------------------------
+      mileage_rates: {
+        Row: {
+          id: string;
+          account_id: string;
+          tax_year: number;
+          rate_cents_per_mile: number;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          account_id: string;
+          tax_year: number;
+          rate_cents_per_mile: number;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          account_id?: string;
+          tax_year?: number;
+          rate_cents_per_mile?: number;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      mileage_entries: {
+        Row: {
+          id: string;
+          account_id: string;
+          drove_on: string;
+          miles: number;
+          from_place: string;
+          to_place: string;
+          purpose: string;
+          trip_id: string | null;
+          client_id: string | null;
+          rate_cents_per_mile: number;
+          // GENERATED column — never present in Insert/Update below.
+          amount_cents: number;
+          notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          account_id: string;
+          drove_on: string;
+          miles: number;
+          from_place: string;
+          to_place: string;
+          purpose: string;
+          trip_id?: string | null;
+          client_id?: string | null;
+          rate_cents_per_mile: number;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          account_id?: string;
+          drove_on?: string;
+          miles?: number;
+          from_place?: string;
+          to_place?: string;
+          purpose?: string;
+          trip_id?: string | null;
+          client_id?: string | null;
+          rate_cents_per_mile?: number;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "mileage_entries_account_id_trip_id_fkey";
+            columns: ["account_id", "trip_id"];
+            isOneToOne: false;
+            referencedRelation: "trips";
+            referencedColumns: ["account_id", "id"];
+          },
+          {
+            foreignKeyName: "mileage_entries_account_id_client_id_fkey";
+            columns: ["account_id", "client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["account_id", "id"];
+          },
+        ];
+      };
+      // -----------------------------------------------------------------
+      // 20260809030000_recurring_invoices.sql. A standing cadence a pilot
+      // bills a client on (fixed description + amount, monthly or
+      // quarterly). See the migration header for why this is fixed-amount
+      // only (no monthly-guarantee/guarantee_periods linkage yet) and why
+      // client_id/cadence/anchor_date are not updatable.
+      // -----------------------------------------------------------------
+      recurring_invoice_schedules: {
+        Row: {
+          id: string;
+          account_id: string;
+          client_id: string;
+          cadence: "monthly" | "quarterly";
+          anchor_date: string;
+          end_date: string | null;
+          description: string;
+          amount_cents: number;
+          tax_rate_bps: number;
+          active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          account_id: string;
+          client_id: string;
+          cadence: "monthly" | "quarterly";
+          anchor_date: string;
+          end_date?: string | null;
+          description: string;
+          amount_cents: number;
+          tax_rate_bps?: number;
+          active?: boolean;
+        };
+        Update: {
+          end_date?: string | null;
+          description?: string;
+          amount_cents?: number;
+          tax_rate_bps?: number;
+          active?: boolean;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "recurring_invoice_schedules_account_id_client_id_fkey";
+            columns: ["account_id", "client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["account_id", "id"];
+          },
+        ];
+      };
+      // -----------------------------------------------------------------
+      // 20260809030000_recurring_invoices.sql. The idempotency ledger: one
+      // row per (schedule, period_start) ever generated. unique
+      // (account_id, schedule_id, period_start) is what makes a double
+      // generation impossible — see the migration header. No UPDATE/DELETE
+      // grant exists on this table at all (a generation, once recorded, is
+      // an immutable fact), so this type carries no Update shape.
+      // -----------------------------------------------------------------
+      recurring_invoice_generations: {
+        Row: {
+          id: string;
+          account_id: string;
+          schedule_id: string;
+          period_start: string;
+          invoice_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          account_id: string;
+          schedule_id: string;
+          period_start: string;
+          invoice_id: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "recurring_invoice_generations_account_id_schedule_id_fkey";
+            columns: ["account_id", "schedule_id"];
+            isOneToOne: false;
+            referencedRelation: "recurring_invoice_schedules";
+            referencedColumns: ["account_id", "id"];
+          },
+          {
+            foreignKeyName: "recurring_invoice_generations_account_id_invoice_id_fkey";
+            columns: ["account_id", "invoice_id"];
+            isOneToOne: false;
+            referencedRelation: "invoices";
+            referencedColumns: ["account_id", "id"];
+          },
+        ];
+      };
     };
     Views: {
       expirations: {
@@ -1541,6 +1757,21 @@ export type Database = {
         Args: { p_account_id: string; p_trip_id: string };
         Returns: string | null;
       };
+      // Added by 20260809050000_mileage_and_recurring_fixes.sql (defect 6
+      // fix). SECURITY DEFINER: writes the invoice, its line, and the
+      // recurring_invoice_generations ledger row as one atomic statement
+      // so a partial failure (including the ledger's own 23505) can never
+      // leave an orphaned invoice/line behind. Returns the new invoice id,
+      // or raises (never trust a caller-supplied account_id — the
+      // function re-derives it from the schedule after checking
+      // pilot.current_account_ids()). Does not check period due-ness —
+      // the caller (generateRecurringInvoice, recurring/actions.ts) still
+      // does that server-side before calling.
+      generate_recurring_invoice: {
+        Args: { p_schedule_id: string; p_period_start: string };
+        Returns: string;
+      };
+
       // Added by 20260809040000_connect_payments.sql. All three are
       // SECURITY DEFINER, owner-gated, and derive the caller from
       // auth.uid() internally rather than trusting anything about "who's
