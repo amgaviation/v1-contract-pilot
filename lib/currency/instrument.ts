@@ -20,6 +20,7 @@
 import { calendarMonthLookback, withinInclusive } from "./window";
 import { categoryKey } from "./match";
 import { missingFactCouldChangeAnswer } from "./ambiguous-facts";
+import { isWhollySimulatorEntry } from "./simulator";
 import { MISSING_INPUT_ORDER } from "./types";
 import type { AircraftFacts, CountedEntry, CurrencyEntry, CurrencyResult, IsoDate, MissingInput } from "./types";
 
@@ -83,16 +84,23 @@ type Classification = { kind: "excluded" } | { kind: "certain" } | { kind: "ambi
  *      aircraft" predicate) this schema cannot confirm. Its
  *      approaches/holds/intercept count only toward the BEST-CASE totals.
  *
- * A DEVICE/SIMULATOR ROW (`simulatorTime > 0` on a row whose condition is
- * not 'actual' — actual weather cannot happen in a device, so a row
- * logged 'actual' is a REAL-aircraft row even if it also carries unrelated
- * simulatorTime, P9's mixed-entry fixture) is NEVER checked against the
- * aircraft registry or category below — see the block's own comment for
- * why routing it there is the Q1/REGU-4/CORR-1 failure shape. It is
- * NEVER certain either: this schema has no field recording 61.57(c)(2)'s
- * own "the device represents the category of aircraft for the instrument
- * rating privileges to be maintained" predicate, so a device row's best
- * possible outcome is "ambiguous, ask the pilot," never "counted."
+ * A DEVICE/SIMULATOR ROW is a WHOLLY-simulator row — ./simulator's
+ * isWhollySimulatorEntry, the SAME predicate passenger-shared.ts's
+ * classifyForCurrency uses for the identical question (Finding A: the two
+ * modules used to test this with two different proxies — this one on
+ * approachCondition, that one on totalTime/simulatorTime directly — that
+ * could disagree about a MIXED row logged 'simulated' rather than
+ * 'actual'; see ./simulator's header for the reasoning). It is NEVER
+ * checked against the aircraft registry or category below — see the
+ * block's own comment for why routing it there is the Q1/REGU-4/CORR-1
+ * failure shape. It is NEVER certain either: this schema has no field
+ * recording 61.57(c)(2)'s own "the device represents the category of
+ * aircraft for the instrument rating privileges to be maintained"
+ * predicate, so a device row's best possible outcome is "ambiguous, ask
+ * the pilot," never "counted." A row with real aircraft time left over
+ * (a MIXED row, or a pure real-aircraft row) is not a device row by this
+ * definition even if it also logs simulatorTime — its approaches are
+ * real-aircraft evidence, handled below.
  */
 function classifyInstrumentEntry(
   e: CurrencyEntry,
@@ -106,8 +114,7 @@ function classifyInstrumentEntry(
   const missing: MissingInput[] = [];
   if (e.airmanUserId === null) missing.push("airman_unattributed");
 
-  const isDeviceSession = (e.simulatorTime ?? 0) > 0 && e.approachCondition !== "actual";
-  if (isDeviceSession) {
+  if (isWhollySimulatorEntry(e)) {
     if (e.approachCondition !== null && e.approachCondition !== "simulated") {
       // 'neither' — decisively fails (c)(2)'s "simulated instrument
       // conditions" condition. Silent exclusion, never a gate (Q1).
@@ -128,8 +135,17 @@ function classifyInstrumentEntry(
     return { kind: "ambiguous", missing };
   }
 
-  // Real-aircraft row (including a MIXED row whose condition is 'actual'
-  // even though it also logs unrelated simulatorTime — P9).
+  // Real-aircraft row — has real aircraft time left over, whether it is a
+  // pure real-aircraft row or a MIXED one (real aircraft time AND
+  // unrelated simulatorTime on the same entry). approachCondition
+  // 'actual' can only have happened in the aircraft (P9); 'simulated' can
+  // legitimately mean a view-limiting device worn IN the aircraft per
+  // (c)(1), and this schema has no field splitting a mixed row's
+  // approaches between its aircraft portion and its device portion, so —
+  // same as passenger-shared.ts's mixedSimulatorRowAssumption for
+  // takeoffs/landings — they are taken as flown in the aircraft rather
+  // than left permanently unresolvable; see evaluateInstrumentExperience's
+  // own mixedSimulatorRowApproachAssumption for the disclosure.
   if (e.approachCondition !== null && e.approachCondition !== "actual" && e.approachCondition !== "simulated") {
     return { kind: "excluded" }; // 'neither' decisively fails (c)(1)
   }
@@ -165,6 +181,25 @@ const AMBIGUOUS_FACT_PHRASE: Partial<Record<MissingInput, string>> = {
 function describeAmbiguousEntry(a: { entry: CurrencyEntry; missing: MissingInput[] }): string {
   const facts = a.missing.map((m) => AMBIGUOUS_FACT_PHRASE[m] ?? m).join("; ");
   return `Entry ${a.entry.entryDate}: ${facts} — and its approaches/holds/course intercept could be the difference between current and not current, so this card asks rather than guesses.`;
+}
+
+/**
+ * FINDING A/B, extended to this card: merging the discriminator (Finding
+ * A) means a MIXED row logged 'simulated' can now reach `certain` here,
+ * the same way passenger-shared.ts's mixed rows already do for takeoffs
+ * and landings. This schema has no field splitting such a row's approaches
+ * between its aircraft portion and its device portion, so crediting them
+ * to the aircraft is an assumption, not a certainty — disclosed here for
+ * the same reason passenger-shared.ts's mixedSimulatorRowAssumption
+ * discloses the equivalent for movements. condition 'actual' needs no such
+ * disclosure (P9): actual weather cannot happen in a device, so those
+ * approaches are certain to be aircraft-earned regardless of any unrelated
+ * simulatorTime on the same row.
+ */
+function mixedSimulatorRowApproachAssumption(certain: readonly CurrencyEntry[]): string | null {
+  const countedAMixedRow = certain.some((e) => (e.simulatorTime ?? 0) > 0 && e.approachCondition === "simulated");
+  if (!countedAMixedRow) return null;
+  return "At least one counted entry also logs simulator/device time alongside real aircraft time (a mixed row) and was flown under simulated instrument conditions — this schema records no split of its approaches/holds/course intercept between the aircraft and the device, so they were taken as flown in the aircraft under 61.57(c)(1), not as 61.57(c)(2) device experience.";
 }
 
 function approachesFrom(rows: readonly CurrencyEntry[]): number {
@@ -315,6 +350,8 @@ export function evaluateInstrumentExperience(input: {
     "Assumes you hold the instrument rating for the intended aircraft's category — this engine has no airman/ratings record and gates on the aircraft instead.",
     "Matched on the intended aircraft's full category/class field (e.g. \"ASEL\" vs \"AMEL\"), not category alone — this schema has no separate category field, so an approach flown in a different class of the same category will not count here even though 61.57(c) itself conditions only on category.",
   ];
+  const mixedAssumption = mixedSimulatorRowApproachAssumption(certain);
+  if (mixedAssumption) assumptions.push(mixedAssumption);
 
   return {
     currencyType: "instrument",

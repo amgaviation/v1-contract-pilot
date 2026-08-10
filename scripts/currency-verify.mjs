@@ -272,6 +272,20 @@ function checkResult(rowId, why, actual, expect) {
       else bad(rowId + ' notes include "' + s + '"', "notes were: " + JSON.stringify(actual.notes));
     });
   }
+  if (expect.assumptionsInclude) {
+    var joinedAssumptions = actual.assumptions.join(" | ");
+    expect.assumptionsInclude.forEach(function (s) {
+      if (joinedAssumptions.indexOf(s) !== -1) ok(rowId + ' assumptions include "' + s + '"');
+      else bad(rowId + ' assumptions include "' + s + '"', "assumptions were: " + JSON.stringify(actual.assumptions));
+    });
+  }
+  if (expect.assumptionsExclude) {
+    var joinedAssumptionsEx = actual.assumptions.join(" | ");
+    expect.assumptionsExclude.forEach(function (s) {
+      if (joinedAssumptionsEx.indexOf(s) === -1) ok(rowId + ' assumptions exclude "' + s + '"');
+      else bad(rowId + ' assumptions exclude "' + s + '"', "assumptions were: " + JSON.stringify(actual.assumptions));
+    });
+  }
   return actual;
 }
 
@@ -327,8 +341,10 @@ function mkEntry(id, overrides) {
     // case). Every fixture below that sets simulatorTime also sets
     // totalTime explicitly, to WHOLLY-simulator (totalTime ===
     // simulatorTime) or MIXED (totalTime > simulatorTime) as that
-    // fixture's own name says — see passenger-shared.ts's
-    // isWhollySimulatorEntry for what the two mean.
+    // fixture's own name says — see lib/currency/simulator.ts's
+    // isWhollySimulatorEntry for what the two mean, and why instrument.ts
+    // and passenger-shared.ts both import it rather than each testing it
+    // their own way (Finding A).
     totalTime: 1.0,
     aircraft: N1V,
   };
@@ -781,6 +797,46 @@ section("I — 61.57(c) instrument experience");
     status: "estimated_not_current", observed: { approaches: 0 }, missing: [],
   });
 
+  // I-18, FINDING A: the exact row instrument.ts's OLD approachCondition
+  // proxy and passenger-shared.ts's totalTime/simulatorTime test used to
+  // classify differently. totalTime (2.0) > simulatorTime (0.5): real
+  // aircraft time is left over, so this is a MIXED row, not a device row —
+  // the OLD instrument.ts test (\`simulatorTime > 0 && approachCondition
+  // !== 'actual'\`) would have routed it into the device branch (never
+  // certain) purely because its condition is 'simulated'; D-10a-mixed above
+  // proves passenger-shared.ts already credited the identical
+  // totalTime/simulatorTime shape as a real-aircraft row for takeoffs and
+  // landings. Both modules now import lib/currency/simulator.ts's
+  // isWhollySimulatorEntry, so they agree.
+  var i18 = evaluateInstrumentExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
+    entries: [mkEntry("i18-0", { entryDate: "2026-03-01", approachesCount: 6, approachType: "ils", approachCondition: "simulated", totalTime: 2.0, simulatorTime: 0.5, simulatorDeviceType: "ffs", holds: 1, coursesInterceptedTracked: true })] });
+  checkResult("I-18", "FINDING A: a MIXED row logged 'simulated' is a real-aircraft row, credited the same way P9's 'actual' row already is", i18, {
+    status: "estimated_current", observed: { approaches: 6, holds: 1, intercepts: 1 }, missing: [],
+    // FINDING B, extended to this card: crediting this row's approaches to
+    // the aircraft (rather than the device it also logs) is an assumption
+    // this schema cannot avoid making, so it must be disclosed here too.
+    assumptionsInclude: ["mixed row"],
+  });
+
+  // I-19: the same shape as I-18, but as SOLE evidence rather than padded
+  // onto an already-current card — proves the credit is real, not merely
+  // non-gating (R1's own "sole evidence" discipline, generalized here).
+  var i19 = evaluateInstrumentExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
+    entries: [mkEntry("i19-0", { entryDate: "2026-03-01", approachesCount: 6, approachType: "ils", approachCondition: "simulated", totalTime: 1.5, simulatorTime: 0.5, simulatorDeviceType: "ftd", holds: 1, coursesInterceptedTracked: true })] });
+  checkResult("I-19", "FINDING A: the same mixed-row shape, as sole evidence, is still credited", i19, {
+    status: "estimated_current", observed: { approaches: 6, holds: 1, intercepts: 1 }, missing: [],
+  });
+
+  // I-20: the safe side of isWhollySimulatorEntry's \`<=\` — simulatorTime
+  // (1.5) meets or exceeds totalTime (1.0), so no real aircraft time is
+  // left over and this stays a device row, never certain, even though its
+  // approachCondition is 'simulated' just like I-18/I-19's mixed rows.
+  var i20 = evaluateInstrumentExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
+    entries: [mkEntry("i20-0", { entryDate: "2026-03-01", approachesCount: 6, approachType: "ils", approachCondition: "simulated", totalTime: 1.0, simulatorTime: 1.5, simulatorDeviceType: "ftd", holds: 1, coursesInterceptedTracked: true })] });
+  checkResult("I-20", "FINDING A: simulatorTime >= totalTime is still a device row, never certain", i20, {
+    status: "insufficient_data", missing: ["device_category_unconfirmed"],
+  });
+
   // I-14b (SEC-13) used to assert allResults.every(r => !r.ruleBasis.includes("(d)")) —
   // the RuleBasis union (types.ts) has seven literals, none containing "(d)", and every
   // module returns one of those literals, so the check could not fail for any input;
@@ -1032,6 +1088,20 @@ section("D — insufficient_data is the default posture");
     entries: [mkEntry("d10amixed-0", { entryDate: "2026-06-01", dayTakeoffs: 3, dayLandingsFullStop: 3, totalTime: 1.5, simulatorTime: 0.5, simulatorDeviceType: "ffs" })] });
   checkResult("D-10a-mixed", "R1: a MIXED row (totalTime > simulatorTime) is credited, not discarded as unresolvable", d10aMixed, {
     status: "estimated_current", observed: { takeoffs: 3, landings: 3 }, missing: [],
+    // FINDING B: crediting a mixed row's movements to the aircraft is an
+    // assumption this schema cannot avoid making (it records no split
+    // between the aircraft and the device), so the card must say so.
+    assumptionsInclude: ["mixed row"],
+  });
+
+  // D-10a-plain, FINDING B negative case: three ordinary real-aircraft
+  // entries, no simulator time anywhere — the mixed-row disclosure must
+  // not render when no mixed row was counted.
+  var d10aPlain = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
+    entries: threeDated("d10aplain", ["2026-06-01", "2026-06-02", "2026-06-03"], { dayTakeoffs: 1, dayLandingsFullStop: 1 }) });
+  checkResult("D-10a-plain", "FINDING B: no mixed row counted, so its disclosure must not render", d10aPlain, {
+    status: "estimated_current", missing: [],
+    assumptionsExclude: ["mixed row"],
   });
 
   // D-10a-r3, R3: role and sole-manipulator both unrecorded on a WHOLLY-

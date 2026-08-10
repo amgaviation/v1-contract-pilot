@@ -13,6 +13,7 @@
 import { withinInclusive } from "./window";
 import { gearMatches, sameCategoryClassAndType } from "./match";
 import { missingFactCouldChangeAnswer } from "./ambiguous-facts";
+import { isWhollySimulatorEntry } from "./simulator";
 import type { AircraftFacts, CountedEntry, CurrencyEntry, DateWindow, IsoDate, MissingInput } from "./types";
 
 /**
@@ -149,42 +150,25 @@ export type EntryClassification = { certain: CurrencyEntry[]; ambiguous: Ambiguo
  * a "register the aircraft" remedy no one can act on), generalized here
  * past the instrument card it was first found on.
  *
- * "WHOLLY-simulator" is `simulatorTime > 0` AND `totalTime === simulatorTime`
+ * "WHOLLY-simulator" is `simulatorTime > 0` AND `totalTime <= simulatorTime`
  * — this schema's own definition, reused rather than invented here (see
- * isWhollySimulatorEntry below and totalTime's own comment in types.ts). A
- * row with simulatorTime > 0 whose totalTime EXCEEDS simulatorTime is a
- * MIXED row — real aircraft time and unrelated simulator/debrief time on
- * the same entry — and is handled as an ordinary real-aircraft row from
- * here on: its takeoffs and landings are real movements in a real
- * aircraft, exactly what 61.57(a)/(b)/135.247(a) count, and discarding
- * them because the entry also happens to log simulator time (R1) throws
- * away a movement the pilot actually flew. instrument.ts solved this same
- * shape first, with its own condition-based discriminator (P9); this is
- * the equivalent for the three 90-day cards, in the terms this schema
- * already uses for the split (20260810020000's CHECK, pilot.logbook_totals).
+ * ./simulator's isWhollySimulatorEntry and totalTime's own comment in
+ * types.ts). A row with simulatorTime > 0 whose totalTime EXCEEDS
+ * simulatorTime is a MIXED row — real aircraft time and unrelated
+ * simulator/debrief time on the same entry — and is handled as an
+ * ordinary real-aircraft row from here on: its takeoffs and landings are
+ * real movements in a real aircraft, exactly what 61.57(a)/(b)/135.247(a)
+ * count, and discarding them because the entry also happens to log
+ * simulator time (R1) throws away a movement the pilot actually flew.
+ * This schema records no split of a mixed row's movements between the
+ * aircraft and the device, so all of them are taken as flown in the
+ * aircraft — disclosed on the card, not left implicit, by
+ * mixedSimulatorRowAssumption below. instrument.ts solved this same
+ * WHOLLY-vs-MIXED split first (P9); the two modules now import the
+ * identical predicate from ./simulator rather than each keeping their own
+ * test of it (Finding A) — see that file's header for why the two had
+ * drifted and how they could disagree about the same row.
  */
-function isWhollySimulatorEntry(e: CurrencyEntry): boolean {
-  const sim = e.simulatorTime ?? 0;
-  // `<=`, NOT `===`, and that difference is the whole safety direction.
-  //
-  // lib/logbook-import/resolve-row.ts's isWhollySimulator uses `===` because
-  // it mirrors logbook_entries_role_required_unless_simulator exactly, and an
-  // importer's job is to agree with the constraint. Right there; wrong here.
-  //
-  // Nothing forbids a row whose simulator_time EXCEEDS its total_time. That
-  // CHECK governs only when a crew role may be ABSENT, so a row carrying a
-  // role and sim > total satisfies the database happily. Under `===` such a
-  // row is not "wholly simulator", falls through to the real-aircraft path,
-  // and has its takeoffs and landings CREDITED — the engine would manufacture
-  // currency out of a pure simulator session. A review caught this one round
-  // after the mixed-row fix that introduced it.
-  //
-  // `<=` puts the nonsensical case on the safe side: an entry with no aircraft
-  // time left over cannot have produced a movement in an aircraft. Erring this
-  // way costs a pilot nothing they are entitled to, because there is no real
-  // flight time in the row to lose.
-  return sim > 0 && e.totalTime <= sim;
-}
 
 export function classifyForCurrency(
   inWindow: readonly CurrencyEntry[],
@@ -310,6 +294,32 @@ export function ambiguousFactGates(
  */
 export const NINETY_DAY_BOUNDARY_ASSUMPTION =
   "The 90-day window runs from this date back through the 89 days before it — a takeoff or landing made exactly 90 days before this date falls one day outside the window and does not count.";
+
+/**
+ * FINDING B: an undisclosed attribution, now disclosed. classifyForCurrency
+ * (this file's own header, "A WHOLLY-SIMULATOR ROW") already credits a
+ * MIXED entry's takeoffs and landings as real-aircraft movements — real
+ * aircraft time is left over once simulatorTime is subtracted from
+ * totalTime, so the movement columns are real. But this schema records no
+ * split of a mixed entry's takeoffs/landings between the aircraft portion
+ * and the device portion, so crediting ALL of them to the aircraft is an
+ * assumption, not a certainty read off the row — the only assumption
+ * available, and a defensible one, but one this engine's own posture
+ * (every conservative choice stated on the card, never left implicit)
+ * requires saying out loud rather than leaving a pilot to infer it from a
+ * number. Only rendered when it actually applied — an eligible (certain,
+ * counted) entry with `simulatorTime > 0` is definitionally a mixed row
+ * here, since a WHOLLY-simulator entry can never reach `certain` (see
+ * isWhollySimulatorEntry above; it is always routed to `ambiguous` with
+ * unresolvable_simulator_row) — matching how typeMatchAssumption and the
+ * tailwheel sentences in general.ts/part135.ts are also conditional rather
+ * than unconditional strings.
+ */
+export function mixedSimulatorRowAssumption(eligible: readonly CurrencyEntry[]): string | null {
+  const countedAMixedRow = eligible.some((e) => (e.simulatorTime ?? 0) > 0);
+  if (!countedAMixedRow) return null;
+  return "At least one counted entry also logs simulator/device time alongside real aircraft time (a mixed row) — this schema records no split of its takeoffs and landings between the aircraft and the device, so all of them were taken as flown in the aircraft.";
+}
 
 export function countedFrom(
   eligible: readonly CurrencyEntry[],

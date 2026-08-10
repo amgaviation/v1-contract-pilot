@@ -74,8 +74,10 @@ function entry(overrides = {}) {
     // default's value). Every fixture below that sets simulatorTime also
     // sets totalTime explicitly, to WHOLLY-simulator (totalTime ===
     // simulatorTime) or MIXED (totalTime > simulatorTime) as that
-    // fixture's own name says — see passenger-shared.ts's
-    // isWhollySimulatorEntry for what the two mean.
+    // fixture's own name says — see lib/currency/simulator.ts's
+    // isWhollySimulatorEntry for what the two mean, and why instrument.ts
+    // and passenger-shared.ts both import it rather than each testing it
+    // their own way (Finding A).
     totalTime: 1.0,
     aircraft: aircraft(),
     ...overrides,
@@ -505,6 +507,39 @@ test("61.57(a), R1: a MIXED row (totalTime > simulatorTime — real aircraft tim
   assert.equal(r.observed.landings, 3);
 });
 
+test("61.57(a), FINDING B: crediting a mixed row's movements to the aircraft is an assumption this schema cannot avoid making, and the card must say so", () => {
+  const mixedEntries = [
+    entry({ entryDate: "2026-07-01", dayTakeoffs: 1, dayLandingsFullStop: 1 }),
+    entry({ entryDate: "2026-07-10", dayTakeoffs: 1, dayLandingsFullStop: 1 }),
+    entry({
+      entryDate: "2026-07-15", dayTakeoffs: 1, dayLandingsFullStop: 1,
+      totalTime: 2.0, simulatorTime: 0.5, simulatorDeviceType: "ffs",
+    }),
+  ];
+  const withMixed = evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries: mixedEntries });
+  assert.equal(withMixed.status, "estimated_current");
+  assert.ok(
+    withMixed.assumptions.some((a) => a.includes("mixed row") && a.includes("taken as flown in the aircraft")),
+    "a mixed row's takeoffs/landings were credited to the aircraft — that attribution is not recorded anywhere in the schema, so it must be disclosed, not left implicit"
+  );
+
+  // No mixed row counted (all three entries are ordinary real-aircraft
+  // rows) — the disclosure must NOT render when it does not apply, the
+  // same discipline typeMatchAssumption and the tailwheel sentence already
+  // follow.
+  const plainEntries = [
+    entry({ entryDate: "2026-07-01", dayTakeoffs: 1, dayLandingsFullStop: 1 }),
+    entry({ entryDate: "2026-07-10", dayTakeoffs: 1, dayLandingsFullStop: 1 }),
+    entry({ entryDate: "2026-07-15", dayTakeoffs: 1, dayLandingsFullStop: 1 }),
+  ];
+  const withoutMixed = evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries: plainEntries });
+  assert.equal(withoutMixed.status, "estimated_current");
+  assert.ok(
+    !withoutMixed.assumptions.some((a) => a.includes("mixed row")),
+    "no mixed row was counted, so the mixed-row disclosure must not render"
+  );
+});
+
 test("61.57(a): a simulator row that could never be the difference never gates, whether wholly-simulator or mixed", () => {
   // Zero movements, wholly-simulator.
   const zeroMovement = evaluateGeneralExperience({
@@ -845,6 +880,92 @@ test("61.57(c), P9: a MIXED row (real approaches in ACTUAL conditions, alongside
   assert.equal(r.status, "estimated_current", "the real-aircraft approaches must not be silently zeroed out by the unrelated simulatorTime field");
   assert.equal(r.observed.approaches, 6);
   assert.deepEqual(r.missing, []);
+});
+
+test("61.57(c), FINDING A: a MIXED row (totalTime 2.0 > simulatorTime 0.5) logged 'simulated' rather than 'actual' is a real-aircraft row here — the row instrument.ts's old approachCondition proxy and passenger-shared.ts's totalTime/simulatorTime test used to classify differently", () => {
+  // This is the exact disagreement Finding A named. Under the OLD code:
+  //   - instrument.ts: `simulatorTime > 0 && approachCondition !== 'actual'`
+  //     read this row as a device session (never certain — see the old
+  //     P2/I-11-shaped device branch) because its condition is 'simulated',
+  //     not 'actual'.
+  //   - passenger-shared.ts: `totalTime <= simulatorTime` read the SAME
+  //     shape of row (real aircraft time left over) as an ordinary
+  //     real-aircraft row — see the "R1: a MIXED row ... is CREDITED" test
+  //     above, same totalTime/simulatorTime numbers, on a 90-day card.
+  // One card would have counted it; the other could only ask about it.
+  // Both modules now import lib/currency/simulator.ts's
+  // isWhollySimulatorEntry, so they agree: this row has real aircraft time
+  // (2.0 > 0.5), so it is not a device row, and its approaches — flown
+  // under a view-limiting device IN THE AIRCRAFT per 61.57(c)(1), not in
+  // the unrelated device session this same entry also logs — are
+  // real-aircraft evidence, credited the same way P9's 'actual' row is.
+  const entries = [
+    entry({
+      entryDate: "2026-07-01",
+      approachesCount: 6,
+      approachType: "ils",
+      approachCondition: "simulated",
+      totalTime: 2.0,
+      simulatorTime: 0.5,
+      simulatorDeviceType: "ffs",
+      holds: 1,
+      coursesInterceptedTracked: true,
+    }),
+  ];
+  const r = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
+  assert.equal(r.status, "estimated_current", "a mixed row's real-aircraft approaches must be credited the same way a mixed row's real-aircraft movements already are (R1)");
+  assert.equal(r.observed.approaches, 6);
+  assert.deepEqual(r.missing, []);
+  assert.ok(
+    r.assumptions.some((a) => a.includes("mixed row") && a.includes("taken as flown in the aircraft")),
+    "crediting a mixed row's approaches to the aircraft is an assumption this schema cannot avoid making, and Finding B's posture requires stating it, not just applying it silently"
+  );
+});
+
+test("61.57(c), FINDING A: the SAME mixed-row shape, when it is the only chance at currency, is still credited rather than left unresolvable", () => {
+  // Sole evidence, not padded onto an already-current card — proves the
+  // credit is real, not merely non-gating (mirroring R1's own "sole
+  // evidence" discipline for the 90-day cards).
+  const entries = [
+    entry({
+      entryDate: "2026-07-01",
+      approachesCount: 6,
+      approachType: "ils",
+      approachCondition: "simulated",
+      totalTime: 1.5,
+      simulatorTime: 0.5,
+      simulatorDeviceType: "ftd",
+      holds: 1,
+      coursesInterceptedTracked: true,
+    }),
+  ];
+  const r = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
+  assert.equal(r.status, "estimated_current");
+  assert.equal(r.observed.approaches, 6);
+  assert.deepEqual(r.missing, []);
+});
+
+test("61.57(c), FINDING A: a mixed row logged 'simulated' with NO real aircraft time left over (simulatorTime >= totalTime) is still a device row, never certain", () => {
+  // The safe side of the `<=` in isWhollySimulatorEntry, exercised through
+  // instrument.ts now that it imports the same predicate — mirrors "a row
+  // whose simulator time exceeds its total time never credits a movement"
+  // for the 90-day cards.
+  const entries = [
+    entry({
+      entryDate: "2026-07-01",
+      approachesCount: 6,
+      approachType: "ils",
+      approachCondition: "simulated",
+      totalTime: 1.0,
+      simulatorTime: 1.5,
+      simulatorDeviceType: "ftd",
+      holds: 1,
+      coursesInterceptedTracked: true,
+    }),
+  ];
+  const r = evaluateInstrumentExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
+  assert.equal(r.status, "insufficient_data");
+  assert.deepEqual(r.missing, ["device_category_unconfirmed"]);
 });
 
 test("61.57(c), REGU-4/CORR-1: an unrelated device row with no aircraft must not poison an otherwise-current instrument card", () => {

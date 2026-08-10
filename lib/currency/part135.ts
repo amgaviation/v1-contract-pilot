@@ -45,6 +45,7 @@ import {
   countedFrom,
   inWindowEntries,
   limitingDateFor,
+  mixedSimulatorRowAssumption,
   typeMatchAssumption,
 } from "./passenger-shared";
 import { categoryKey, typeKey } from "./match";
@@ -191,6 +192,8 @@ function evaluateVariant(
   }
   const typeAssumption = typeMatchAssumption(aircraft);
   if (typeAssumption) assumptions.push(typeAssumption);
+  const mixedAssumption = mixedSimulatorRowAssumption(eligible);
+  if (mixedAssumption) assumptions.push(mixedAssumption);
 
   return {
     currencyType,

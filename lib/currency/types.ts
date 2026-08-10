@@ -157,8 +157,11 @@ export type CurrencyEntry = {
    * only when `total_time = simulator_time`, and pilot.logbook_totals /
    * pilot.logbook_time_by_type (20260810110000/20260810150000) compute
    * AIRCRAFT time the same way, as total_time minus simulator_time. See
-   * passenger-shared.ts's classifyForCurrency, which is the one place
-   * this module compares the two.
+   * simulator.ts's isWhollySimulatorEntry — the one place this engine
+   * compares the two — imported by both passenger-shared.ts's
+   * classifyForCurrency and instrument.ts's classifyInstrumentEntry, so
+   * "is this row wholly a device session" is answered identically by
+   * every module that asks it.
    */
   totalTime: number;
   /** null = tail not in pilot.aircraft (unregistered), not "no aircraft flown." */
