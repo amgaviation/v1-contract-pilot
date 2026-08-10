@@ -39,10 +39,6 @@ const SOURCE_BADGE: Record<LogbookSource, SourceBadge> = {
 // for their own numerics, so a string doesn't silently become NaN-shaped
 // arithmetic three renders downstream.
 
-/** total_time is NOT NULL; every other time column can be null. */
-function sum(entries: LogbookEntryRow[], pick: (e: LogbookEntryRow) => number | null): number {
-  return entries.reduce((total, entry) => total + Number(pick(entry) ?? 0), 0);
-}
 
 function landings(entry: LogbookEntryRow): number {
   return (
@@ -53,32 +49,59 @@ function landings(entry: LogbookEntryRow): number {
   );
 }
 
-// Supabase's Data API caps rows (commonly 1000) and TRUNCATES SILENTLY —
-// an explicit .limit makes that boundary visible instead of invisible, and
-// truncatedEntries below turns it into a caveat rather than a quietly
-// wrong sum. The real fix is a server-side aggregate (an RPC or a view),
-// deferred to a later pass.
-const ENTRIES_LIMIT = 1000;
+/** One screenful. Entries beyond it are a page away, not unreachable. */
+const PAGE_SIZE = 200;
 
-export default async function LogbookPage() {
+export default async function LogbookPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   await requireAccount("/logbook");
+  const { page: pageParam } = await searchParams;
+  const parsed = Number(pageParam ?? "1");
+  const page = Number.isInteger(parsed) && parsed >= 1 ? parsed : 1;
+  const from = (page - 1) * PAGE_SIZE;
 
   const supabase = await createClient();
-  const { data, error } = await logbookFrom(supabase, "logbook_entries")
-    .select("*")
-    .order("entry_date", { ascending: false })
-    .limit(ENTRIES_LIMIT);
+  const [{ data, error, count }, { data: totalsData, error: totalsError }] =
+    await Promise.all([
+      logbookFrom(supabase, "logbook_entries")
+        .select("*", { count: "exact" })
+        .order("entry_date", { ascending: false })
+        .range(from, from + PAGE_SIZE - 1),
+      // TOTALS COME FROM THE DATABASE, over every entry the pilot owns.
+      // Summing the page would make total time — the number an employer
+      // and an underwriter ask for — a function of pagination. A career
+      // pilot with 8,000 entries used to see a figure computed from the
+      // most recent 1,000.
+      logbookFrom(supabase, "logbook_totals").select("*").maybeSingle(),
+    ]);
 
   const entries = (data ?? []) as LogbookEntryRow[];
-  const truncatedEntries = entries.length === ENTRIES_LIMIT;
+  const totalCount = count ?? entries.length;
+  const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const totalsRow = totalsData as {
+    entry_count: number;
+    total_time: number;
+    pic_time: number;
+    night_time: number;
+    instrument_time: number;
+    landings: number;
+  } | null;
 
-  const totals = {
-    total: sum(entries, (e) => e.total_time),
-    pic: sum(entries, (e) => e.pic_time),
-    night: sum(entries, (e) => e.night_time),
-    instrument: sum(entries, (e) => (e.instrument_actual_time ?? 0) + (e.instrument_simulated_time ?? 0)),
-    landings: entries.reduce((total, e) => total + landings(e), 0),
-  };
+  // A failed totals read is NOT zero hours. Falling back to the page's own
+  // sum would be worse than showing nothing — it would look authoritative
+  // and be wrong by however much did not fit.
+  const totals = totalsRow
+    ? {
+        total: Number(totalsRow.total_time),
+        pic: Number(totalsRow.pic_time),
+        night: Number(totalsRow.night_time),
+        instrument: Number(totalsRow.instrument_time),
+        landings: Number(totalsRow.landings),
+      }
+    : null;
 
   return (
     <PageShell
@@ -86,7 +109,9 @@ export default async function LogbookPage() {
       subtitle={
         error
           ? "Couldn't load your logbook."
-          : `${entries.length} entr${entries.length === 1 ? "y" : "ies"}`
+          : `${totalCount} entr${totalCount === 1 ? "y" : "ies"}${
+              pageCount > 1 ? ` · page ${page} of ${pageCount}` : ""
+            }`
       }
       action={
         <>
@@ -125,25 +150,29 @@ export default async function LogbookPage() {
         </Callout.Root>
       ) : (
         <Flex direction="column" gap="4">
-          {truncatedEntries ? (
+          {totalsError ? (
             <Callout.Root color="amber">
               <Callout.Icon>
                 <ExclamationTriangleIcon />
               </Callout.Icon>
               <Callout.Text>
-                {`Totals below may be partial — there are more than ${ENTRIES_LIMIT} entries and only the first ${ENTRIES_LIMIT} were totaled.`}
+                Your career totals couldn&rsquo;t be loaded, so they aren&rsquo;t
+                shown — the entries below are still complete and correct.
               </Callout.Text>
             </Callout.Root>
           ) : null}
 
           <Grid columns={{ initial: "2", md: "5" }} gap="3">
-            {[
-              { label: "Total time", value: totals.total, decimals: 1 },
-              { label: "PIC", value: totals.pic, decimals: 1 },
-              { label: "Night", value: totals.night, decimals: 1 },
-              { label: "Instrument", value: totals.instrument, decimals: 1 },
-              { label: "Landings", value: totals.landings, decimals: 0 },
-            ].map((stat) => (
+            {(totals
+              ? [
+                  { label: "Total time", value: totals.total, decimals: 1 },
+                  { label: "PIC", value: totals.pic, decimals: 1 },
+                  { label: "Night", value: totals.night, decimals: 1 },
+                  { label: "Instrument", value: totals.instrument, decimals: 1 },
+                  { label: "Landings", value: totals.landings, decimals: 0 },
+                ]
+              : []
+            ).map((stat) => (
               <Card key={stat.label}>
                 <Flex direction="column" align="center" gap="1" p="1">
                   <Text size="1" color="gray" weight="bold" style={{ textTransform: "uppercase" }}>
@@ -250,6 +279,29 @@ export default async function LogbookPage() {
               </Table.Root>
             )}
           </Card>
+
+          {/* Entries past the first page used to be unreachable — not
+              merely un-totalled, but unviewable, in the product's copy of
+              a record 61.51 makes the pilot responsible for keeping.
+              Plain links so a page is bookmarkable and the browser's back
+              button behaves. */}
+          {pageCount > 1 ? (
+            <Flex justify="between" align="center" gap="3" wrap="wrap">
+              <Button asChild variant="soft" disabled={page <= 1}>
+                <NextLink href={page <= 2 ? "/logbook" : `/logbook?page=${page - 1}`}>
+                  Newer
+                </NextLink>
+              </Button>
+              <Text size="2" color="gray">
+                {`Showing ${from + 1}–${Math.min(from + PAGE_SIZE, totalCount)} of ${totalCount}`}
+              </Text>
+              <Button asChild variant="soft" disabled={page >= pageCount}>
+                <NextLink href={`/logbook?page=${Math.min(page + 1, pageCount)}`}>
+                  Older
+                </NextLink>
+              </Button>
+            </Flex>
+          ) : null}
         </Flex>
       )}
     </PageShell>

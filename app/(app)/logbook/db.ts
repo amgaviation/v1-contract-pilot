@@ -27,7 +27,11 @@ export type PilotClient = Awaited<ReturnType<typeof createClient>>;
 export type LogbookTableName =
   | "logbook_entries"
   | "logbook_import_batches"
-  | "logbook_source_files";
+  | "logbook_source_files"
+  // A view, not a table — pilot.logbook_totals (20260810090000). Reached
+  // through the same helper because it is subject to the same RLS and the
+  // same hand-authored-types gap the helper exists to bridge.
+  | "logbook_totals";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function logbookFrom(supabase: PilotClient, table: LogbookTableName): any {
