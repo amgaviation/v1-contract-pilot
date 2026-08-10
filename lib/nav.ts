@@ -33,8 +33,20 @@ export type NavItem = {
  *
  * So the fix is not seven corrected literals — that is the same bug waiting
  * for the next move. It is that there is now exactly one string, and
- * tests/dashboard-path.test.mjs fails the build if a new "/" -as-dashboard
- * literal appears anywhere in the app.
+ * tests/dashboard-path.test.mjs fails the build if any file spells the
+ * dashboard by hand: either the retired "/" or whatever value this constant
+ * currently holds. The first version of that test only knew about "/", which
+ * made it a record of one migration rather than a guard — a reviewer caught
+ * that, and four hand-written "/overview" literals with it.
+ *
+ * WHAT MOVING THIS ACTUALLY COSTS, stated precisely so the claim is not
+ * overstated: changing this line updates every REFERENCE — links, redirects,
+ * revalidation, the post-login return path, and robots.txt's disallow list,
+ * all of which derive from it. It does NOT move the page. The route still
+ * comes from the directory name, so a real move is this line plus renaming
+ * app/(app)/overview/. Verified by doing it: with this constant repointed,
+ * test:unit, typecheck and build all stay green and no reference is left
+ * behind — which is the part that used to break.
  */
 export const DASHBOARD_PATH = "/overview";
 

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import NextLink from "next/link";
 import { Box, Button, Card, Container, Flex, Grid, Heading, Section, Text } from "@/components/ui";
 import { BRAND } from "@/lib/brand";
+import { DASHBOARD_PATH } from "@/lib/nav";
 import { getSessionContext } from "@/lib/supabase/account";
 
 // Kept in sync by hand with app/(auth)/welcome/page.tsx's PRICE_LABEL and
@@ -83,7 +84,7 @@ const FEATURES: { title: string; body: string }[] = [
  */
 export default async function LandingPage() {
   const ctx = await getSessionContext();
-  if (ctx?.account) redirect("/overview");
+  if (ctx?.account) redirect(DASHBOARD_PATH);
   if (ctx) redirect("/welcome");
 
   return (
