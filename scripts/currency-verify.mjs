@@ -1455,6 +1455,53 @@ insert into pilot.account_members (account_id, user_id, role) values
     equals("S-15 the view returns exactly one row for that (airman, currency_type)", latest.out, "1");
     const theirsLatest = asTenant(B.user, `select count(*) from pilot.currency_snapshots_latest;`);
     equals("S-16 tenant B sees zero rows through the view — security_invoker is actually on it", theirsLatest.out, "0");
+
+    // -------------------------------------------------------------------
+    // S-18 — THE ORDERING REGRESSION. The view once ordered `as_of desc,
+    // computed_at desc`, so DISTINCT ON kept whichever row carried the
+    // furthest-forward EVALUATION DATE and a later RECOMPUTATION could never
+    // be seen.
+    //
+    // That matters because the shadowed row is not a redundant recompute of
+    // the same facts — it is computed from CORRECTED ones, and the
+    // corrections that matter most all REMOVE credit (a landing count fixed
+    // downward, an aircraft's gear recorded, a role corrected to
+    // DUAL_RECEIVED, a truncated read). So the surviving stale row is the
+    // PERMISSIVE one, and the pilot reads "current" for arithmetic the
+    // engine has since revised. Permissive staleness on a currency card is
+    // the one direction this engine may never fail in.
+    //
+    // No future-dated write is needed to reach it. lib/currency/read.ts
+    // documents that a client-local as_of runs a day behind a server-side
+    // UTC date for any client west of Greenwich after 17:00 local, so two
+    // recomputes either side of local midnight suffice — which is exactly
+    // what this fixture builds: the EARLIER computation carries the LATER
+    // as_of.
+    //
+    // Fixed by 20260811050000_currency_snapshots_latest_by_computation.sql.
+    // This fails if anyone puts as_of back in front of computed_at.
+    // -------------------------------------------------------------------
+    const shadowCols =
+      "account_id, airman_user_id, currency_type, status, rule_basis, as_of, window_start, window_end, limitations, computed_at";
+    asAdmin(
+      `insert into pilot.currency_snapshots (${shadowCols}) values
+        ('${A.account}', '${A.user2}', 'passenger_day', 'estimated_current', '61.57(a)',
+         date '2026-08-11', date '2026-05-11', date '2026-08-11', '${DISCLAIMER}',
+         timestamptz '2026-08-10 23:50:00+00'),
+        ('${A.account}', '${A.user2}', 'passenger_day', 'estimated_not_current', '61.57(a)',
+         date '2026-08-10', date '2026-05-10', date '2026-08-10', '${DISCLAIMER}',
+         timestamptz '2026-08-11 00:10:00+00');`,
+      "two snapshots whose as_of order disagrees with their computed_at order"
+    );
+    const shadowed = asTenant(
+      A.user2,
+      `select status from pilot.currency_snapshots_latest where airman_user_id = '${A.user2}' and currency_type = 'passenger_day';`
+    );
+    equals(
+      "S-18 the LATER COMPUTATION wins though its as_of is earlier — a stale permissive verdict cannot shadow a newer stricter one",
+      shadowed.out,
+      "estimated_not_current"
+    );
   }
 
   note("\nProvenance columns cannot be forged through a direct POST");

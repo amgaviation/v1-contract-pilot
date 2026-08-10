@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { DASHBOARD_PATH } from "@/lib/nav";
 
 export type ResetPasswordState = { error: string | null };
 
@@ -41,5 +42,5 @@ export async function setNewPassword(
     return { error: error.message };
   }
 
-  redirect("/");
+  redirect(DASHBOARD_PATH);
 }

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSessionContext } from "@/lib/supabase/account";
+import { DASHBOARD_PATH } from "@/lib/nav";
 import LoginForm from "./login-form";
 import { safeNextPath } from "@/lib/safe-next";
 
@@ -17,7 +18,7 @@ export default async function LoginPage({
   searchParams: Promise<{ next?: string }>;
 }) {
   const ctx = await getSessionContext();
-  if (ctx?.account) redirect("/");
+  if (ctx?.account) redirect(DASHBOARD_PATH);
   if (ctx) redirect("/welcome");
 
   const { next } = await searchParams;

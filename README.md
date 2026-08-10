@@ -2,7 +2,15 @@
 
 A standalone SaaS for independent contract pilots to run their own business:
 clients, trips, invoices, expenses, logbook, documents. **Log the trip once —
-logbook entry, invoice line, and expense file all post from it.**
+your logbook draft and your invoice lines come from it, and your receipts
+attach to it.**
+
+(`docs/PLAN.md`'s thesis line still reads "expense file all post from it". That
+third output was checked during the launch-ready review and does not exist:
+nothing here creates an expense from a trip. The plan is Tony's decision record
+and is not rewritten by an agent, so the correction lives in the copy — the
+landing hero, the Trips feature card, `/welcome`, and `app/layout.tsx`'s
+description — and is noted here and in the plan's delta log.)
 
 This is a separate product from AMG's own operational site and crew portal —
 different brand, different Supabase project, different codebase, by design.

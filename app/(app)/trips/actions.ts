@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
+import { DASHBOARD_PATH } from "@/lib/nav";
 import { parseDollarsToCents, parseTenth } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import type { Database } from "@/lib/supabase/database.types";
@@ -549,7 +550,21 @@ export async function markTripCompleted(
   revalidatePath(`/trips/${id}`);
   revalidatePath("/invoices/new");
   revalidatePath("/logbook/drafts");
-  revalidatePath("/");
+  // The dashboard, whose "Unbilled work" figure, "Ready to invoice" panel and
+  // "N trips still marked Scheduled" subtitle all move on this write. This
+  // said "/" until the landing page took that path, at which point the one
+  // line whose entire job was "refresh Overview" was refreshing a marketing
+  // page instead — and unlike the six redirects in the same class, no
+  // bounce covered for it.
+  //
+  // Honest about the size of it: nothing was visibly stale, because Overview
+  // reads cookies (requireAccount) and so is dynamically rendered with no
+  // route cache to purge, and any revalidatePath inside a server action drops
+  // the client router cache regardless of which path it names. This was a
+  // DEAD REFERENCE, not a live staleness bug. It becomes a live one the day
+  // anyone adds `export const revalidate` or PPR to Overview, which is
+  // precisely the kind of delayed fuse a stale route string leaves behind.
+  revalidatePath(DASHBOARD_PATH);
   return { error: null };
 }
 
