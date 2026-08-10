@@ -490,6 +490,69 @@ export async function updateTrip(
   return { error: null, saved: true, daysRemoved };
 }
 
+/**
+ * Mark a trip flown.
+ *
+ * ***************************************************************************
+ * WHY THIS EXISTS, AND WHY IT IS THE MOST IMPORTANT BUTTON IN THE PRODUCT
+ * ***************************************************************************
+ * A trip is created as 'scheduled'. Everything downstream — the invoice
+ * picker, the logbook drafts queue, Overview's "flown but not yet
+ * invoiced" — filters on status = 'completed', and until now NOTHING in
+ * the product ever advanced it. There is no trigger and no date rule; a
+ * review checked.
+ *
+ * So a pilot could fly ten trips, open the app to bill them, and be told
+ * by three separate screens that they had nothing: "0 trips flown and
+ * logged but not yet invoiced", "No completed, unbilled trips for this
+ * client yet", "Nothing waiting — every completed trip's legs are already
+ * in your logbook." All three false, none of them naming the cause, and
+ * the only cure a Status dropdown buried in the middle of a long edit
+ * form. That single field gated 100% of this product's value.
+ *
+ * The state stays the pilot's to set — a trip is not complete because a
+ * date passed, and auto-advancing would be the silent write this codebase
+ * refuses everywhere else. What changes is that asking for it is now one
+ * tap from the list and from the trip, and the screens that used to lie
+ * now say what is actually true.
+ */
+export async function markTripCompleted(
+  id: string
+): Promise<{ error: string | null }> {
+  const { account } = await requireAccount("/trips");
+  if (!UUID_RE.test(id)) return { error: "That trip couldn't be found." };
+
+  const supabase = await createClient();
+  // { count: "exact" }: PostgREST answers 200 for a write that matched no
+  // rows, and "we marked it flown" when nothing moved is the failure this
+  // whole action exists to end, not to reproduce.
+  const { error, count } = await supabase
+    .from("trips")
+    .update({ status: "completed" } as never, { count: "exact" })
+    .eq("id", id)
+    .eq("account_id", account.id)
+    // Only from a state that can still advance. A canceled trip is not
+    // flown, and a completed one is already there — narrowing here rather
+    // than reading first keeps it a single statement, so two taps on a
+    // slow connection cannot race.
+    .in("status", ["scheduled", "in_progress"]);
+
+  if (error) return { error: billedTripDbError(error, "trips.update") };
+  if (!count) {
+    return {
+      error:
+        "That trip couldn't be marked flown — it may already be completed, or canceled.",
+    };
+  }
+
+  revalidatePath("/trips");
+  revalidatePath(`/trips/${id}`);
+  revalidatePath("/invoices/new");
+  revalidatePath("/logbook/drafts");
+  revalidatePath("/");
+  return { error: null };
+}
+
 export async function deleteTrip(id: string): Promise<{ error: string | null }> {
   const { account } = await requireAccount("/trips");
 

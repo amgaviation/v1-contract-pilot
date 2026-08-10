@@ -17,6 +17,7 @@ import { formatCents, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import { tripValueCents, type TripDayValueRow } from "@/lib/trip-value";
 import PageShell from "../page-shell";
+import MarkFlownButton from "./mark-flown-button";
 
 export const metadata = { title: "Trips" };
 
@@ -216,7 +217,17 @@ export default async function TripsPage() {
                         </Table.Cell>
                       )}
                       <Table.Cell>
-                        <Badge color={status.color}>{status.label}</Badge>
+                        {/* The badge and the way to change it, together.
+                            A pilot scanning a month of flying can mark
+                            each trip flown from here without opening it —
+                            which is the difference between billing a
+                            month in a minute and not billing it at all. */}
+                        <Flex gap="2" align="center" wrap="wrap">
+                          <Badge color={status.color}>{status.label}</Badge>
+                          {trip.status === "scheduled" || trip.status === "in_progress" ? (
+                            <MarkFlownButton id={trip.id} size="1" variant="soft" />
+                          ) : null}
+                        </Flex>
                       </Table.Cell>
                       <Table.Cell>
                         <Badge color={billing.color}>{billing.label}</Badge>

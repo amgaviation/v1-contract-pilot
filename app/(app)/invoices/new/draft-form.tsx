@@ -57,6 +57,7 @@ export default function DraftForm({
   selectedClientId,
   trips,
   tripsError,
+  unmarkedTripCount = 0,
 }: {
   action: (state: InvoiceFormState, formData: FormData) => Promise<InvoiceFormState>;
   clients: ClientOption[];
@@ -66,6 +67,13 @@ export default function DraftForm({
    * never as "this client has no billable trips", which is what an empty
    * array and a failed read are otherwise indistinguishable from. */
   tripsError?: string | null;
+  /**
+   * Trips for this client sitting at Scheduled / In progress. An empty
+   * picker is ambiguous — no work done, or work done and never marked
+   * flown — and saying only the first is how a pilot with a month of
+   * unbilled flying got told they had nothing.
+   */
+  unmarkedTripCount?: number;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -183,7 +191,11 @@ export default function DraftForm({
               </Text>
             ) : trips.length === 0 ? (
               <Text size="2" color="gray">
-                No completed, unbilled trips for this client yet.
+                {unmarkedTripCount > 0
+                  ? `No trips are marked flown for this client yet — ${unmarkedTripCount} ${
+                      unmarkedTripCount === 1 ? "is" : "are"
+                    } still Scheduled. Open the trip and press "Mark flown" to bill it.`
+                  : "No completed, unbilled trips for this client yet."}
               </Text>
             ) : (
               <Table.Root variant="ghost">

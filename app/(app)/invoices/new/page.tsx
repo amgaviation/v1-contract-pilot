@@ -34,6 +34,9 @@ export default async function NewInvoicePage({
 
   let trips: TripOption[] = [];
   let tripsErrorMessage: string | null = null;
+  // Declared out here because it is read at render, below the branch that
+  // only runs once a client is picked.
+  let unmarkedTripCount = 0;
   if (clientId) {
     // Only what's actually billable: unbilled AND completed. A scheduled
     // or in-progress trip's day count/expenses aren't final yet, so
@@ -41,6 +44,7 @@ export default async function NewInvoicePage({
     const [
       { data: tripData, error: tripsError },
       { data: expenseData, error: expensesError },
+      { count: unmarkedForClient },
     ] = await Promise.all([
       supabase
         .from("trips")
@@ -55,7 +59,19 @@ export default async function NewInvoicePage({
         .from("expenses")
         .select("id, trip_id, amount_cents")
         .eq("treatment", "rebill"),
+      // Trips for this client that are flown-but-unmarked. An empty
+      // picker used to say "No completed, unbilled trips for this client
+      // yet" — true, and the wrong thing to tell a pilot whose trips are
+      // all sitting at Scheduled because nothing in the product ever
+      // advanced them.
+      supabase
+        .from("trips")
+        .select("id", { count: "exact", head: true })
+        .eq("client_id", clientId)
+        .in("status", ["scheduled", "in_progress"]),
     ]);
+
+    unmarkedTripCount = unmarkedForClient ?? 0;
 
     // A failed query here must not read as "this client has no billable
     // trips" — that's indistinguishable from an empty result otherwise,
@@ -224,6 +240,7 @@ export default async function NewInvoicePage({
         selectedClientId={clientId ?? ""}
         trips={trips}
         tripsError={tripsErrorMessage}
+        unmarkedTripCount={unmarkedTripCount ?? 0}
       />
     </PageShell>
   );

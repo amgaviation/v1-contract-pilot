@@ -150,6 +150,7 @@ export default async function OverviewPage() {
     expirationsRes,
     operatorQualExpirationsRes,
     voidInvoicesRes,
+    unmarkedTripsRes,
   ] = await Promise.all([
     supabase
       .from("trips")
@@ -226,6 +227,16 @@ export default async function OverviewPage() {
     // year" must filter those out itself rather than trusting the raw
     // ledger, or a voided invoice's old payment counts as money collected.
     supabase.from("invoices").select("id").eq("status", "void"),
+    // Trips logged but never marked flown. "Ready to invoice" below stays
+    // strictly completed trips — widening THAT query would put unflown
+    // work in front of a pilot as billable. This count only feeds the
+    // sentence that used to read "0 trips flown and logged but not yet
+    // invoiced" to a pilot with a month of unbilled flying, because
+    // nothing in the product ever advanced a trip out of Scheduled.
+    supabase
+      .from("trips")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["scheduled", "in_progress"]),
   ]);
 
   const trips = (tripsRes.data ?? []) as UnbilledTripRow[];
@@ -236,6 +247,7 @@ export default async function OverviewPage() {
   const payments = (paymentsRes.data ?? []) as PaymentRow[];
   const expirations = (expirationsRes.data ?? []) as ExpirationRow[];
   const operatorQualExpirations = (operatorQualExpirationsRes.data ?? []) as ExpirationRow[];
+  const unmarkedTripCount = unmarkedTripsRes.count ?? 0;
   const voidInvoiceIds = new Set(
     ((voidInvoicesRes.data ?? []) as { id: string }[]).map((i) => i.id)
   );
@@ -616,6 +628,10 @@ export default async function OverviewPage() {
               overdue.length
                 ? `${pluralize(overdue.length, "invoice")} past due.`
                 : "No invoices past due."
+            }${
+              unmarkedTripCount
+                ? ` ${pluralize(unmarkedTripCount, "trip")} still marked Scheduled — mark them flown to invoice them.`
+                : ""
             }`
       }
       action={

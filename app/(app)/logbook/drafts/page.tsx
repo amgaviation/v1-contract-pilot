@@ -25,11 +25,24 @@ export default async function LogbookDraftsPage() {
   const { account } = await requireAccount("/logbook/drafts");
 
   const supabase = await createClient();
-  const { data: tripData, error: tripError } = await supabase
-    .from("trips")
-    .select("id, starts_on, ends_on, aircraft_ident, aircraft_type, status")
-    .eq("status", "completed")
-    .order("starts_on", { ascending: false });
+  const [
+    { data: tripData, error: tripError },
+    { count: notYetFlownCount },
+  ] = await Promise.all([
+    supabase
+      .from("trips")
+      .select("id, starts_on, ends_on, aircraft_ident, aircraft_type, status")
+      .eq("status", "completed")
+      .order("starts_on", { ascending: false }),
+    // Trips the pilot has logged but not yet marked flown. Without this,
+    // an empty queue told them "every completed trip's legs are already in
+    // your logbook" — true, and deeply misleading, when the real answer
+    // was that none of their trips had been marked completed yet.
+    supabase
+      .from("trips")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["scheduled", "in_progress"]),
+  ]);
 
   // friendlyDbError throughout this file — see confirmedError below; a raw
   // error.message carries internal schema (table/constraint names) that
@@ -115,7 +128,11 @@ export default async function LogbookDraftsPage() {
       title="Trip drafts"
       subtitle={
         pendingTrips.length === 0
-          ? "Nothing waiting — every completed trip's legs are already in your logbook."
+          ? notYetFlownCount
+            ? `Nothing waiting here — but ${notYetFlownCount} trip${
+                notYetFlownCount === 1 ? " is" : "s are"
+              } still marked Scheduled. Mark a trip flown and its legs show up here.`
+            : "Nothing waiting — every completed trip's legs are already in your logbook."
           : `${pendingTrips.length} completed trip${pendingTrips.length === 1 ? "" : "s"} with unconfirmed legs`
       }
     >
