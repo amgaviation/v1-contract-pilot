@@ -56,14 +56,6 @@ $$;
 create schema if not exists extensions;
 create extension if not exists pgcrypto with schema extensions;
 
--- The migrations call extensions.gen_random_bytes() from SECURITY INVOKER
--- paths (the share-token generators), so the app roles need to reach the
--- schema. Without this, invoice-share:verify dies with "permission denied for
--- schema extensions" partway through — which reads like a product bug and is
--- not one.
-grant usage on schema extensions to anon, authenticated, service_role;
-grant execute on all functions in schema extensions to anon, authenticated, service_role;
-
 do $$
 begin
   if not exists (select 1 from pg_roles where rolname = 'anon') then
@@ -79,6 +71,22 @@ end $$;
 
 grant usage on schema auth to anon, authenticated, service_role;
 grant select on auth.users to anon, authenticated, service_role;
+
+-- The migrations call extensions.gen_random_bytes() from SECURITY INVOKER
+-- paths (the share-token generators), so the app roles need to reach the
+-- schema. Without this, invoice-share:verify dies with "permission denied for
+-- schema extensions" partway through — which reads like a product bug and is
+-- not one.
+--
+-- THESE GRANTS MUST STAY BELOW THE ROLE-CREATION BLOCK ABOVE. They were first
+-- written directly under `create extension pgcrypto`, where they read
+-- naturally and failed with 'role "anon" does not exist' — but only on a
+-- machine that had never run this file before. Every local cluster already had
+-- the roles from an earlier run, so it passed locally and broke on the first
+-- clean CI runner, which is exactly the class of bug a scaffold exists to
+-- prevent rather than create.
+grant usage on schema extensions to anon, authenticated, service_role;
+grant execute on all functions in schema extensions to anon, authenticated, service_role;
 
 -- storage stub
 create schema if not exists storage;
