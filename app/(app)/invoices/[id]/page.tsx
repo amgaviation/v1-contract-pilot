@@ -266,6 +266,7 @@ export default async function InvoicePage({
             invoiceId={invoice.id}
             status={invoice.status}
             payments={payments}
+            paymentsLoadError={Boolean(paymentError)}
             connectAccountConnected={Boolean(account.connect_account_id)}
             // A payment link created in the other mode (e.g. a test link
             // left over from before the deployment went live-keyed) is

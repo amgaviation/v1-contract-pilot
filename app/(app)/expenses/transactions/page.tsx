@@ -49,7 +49,11 @@ export default async function TransactionsPage() {
   await requireAccount("/expenses/transactions");
   const supabase = await createClient();
 
-  const [{ data: txnData, error }, { data: accountData }, { data: tripData }] = await Promise.all([
+  const [
+    { data: txnData, error },
+    { data: accountData, error: accountsError },
+    { data: tripData, error: tripsError },
+  ] = await Promise.all([
     supabase
       .from("bank_transactions")
       .select("id, posted_on, description, amount_cents, suggested_category, bank_account_id")
@@ -85,6 +89,12 @@ export default async function TransactionsPage() {
     id: t.id,
     label: `${formatDateRange(t.starts_on, t.ends_on)}${t.aircraft_ident ? ` · ${t.aircraft_ident}` : ""}`,
   }));
+  // S2: same shape as U5's trip picker, on the other queue that assigns a
+  // transaction to a trip. A failed read here used to empty the Trip
+  // picker on every row and blank the bank-account label with no
+  // explanation — advisory rather than blocking, since nothing on this
+  // page prints a wrong dollar figure from either read.
+  const pickersDegraded = Boolean(accountsError || tripsError);
 
   // -------------------------------------------------------------------
   // DUPLICATE SPEND — the one that reaches a paying client
@@ -181,6 +191,20 @@ export default async function TransactionsPage() {
       title="Review imported transactions"
       subtitle="Nothing here is in your books yet. Pick a category and treatment for each transaction to turn it into an expense — or dismiss it if it isn't one."
     >
+      {pickersDegraded ? (
+        <Callout.Root color="amber" mb="3">
+          <Callout.Icon>
+            <ExclamationTriangleIcon />
+          </Callout.Icon>
+          <Callout.Text>
+            Couldn&rsquo;t load your trips or bank accounts, so the Trip
+            picker below is empty and the account label may be blank on
+            some rows. Reload before confirming these if you need to
+            assign one to a trip.
+          </Callout.Text>
+        </Callout.Root>
+      ) : null}
+
       {duplicateCheckFailed ? (
         <Callout.Root color="amber" mb="3">
           <Callout.Icon>

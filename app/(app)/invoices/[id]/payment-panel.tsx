@@ -300,6 +300,7 @@ export default function PaymentPanel({
   invoiceId,
   status,
   payments,
+  paymentsLoadError = false,
   connectAccountConnected,
   existingPaymentLinkUrl,
   existingPaymentLinkAmountCents,
@@ -308,6 +309,16 @@ export default function PaymentPanel({
   invoiceId: string;
   status: "draft" | "sent" | "partial" | "paid" | "void";
   payments: PaymentRow[];
+  /**
+   * U3: a failed invoice_payments read degrades `payments` to `[]` the same
+   * way an empty ledger would — see page.tsx's own comment on why
+   * `moneyError` couldn't cover this by itself: it gates the totals block,
+   * not this panel. On an invoice a client has partly paid, telling the
+   * pilot "No payments recorded yet" because the READ failed is worse than
+   * showing nothing, per this repo's rule that a failed query must never
+   * render the same as an honest empty state.
+   */
+  paymentsLoadError?: boolean;
   connectAccountConnected: boolean;
   existingPaymentLinkUrl: string | null;
   existingPaymentLinkAmountCents: number | null;
@@ -346,7 +357,13 @@ export default function PaymentPanel({
         Payments
       </Text>
 
-      {payments.length === 0 ? (
+      {paymentsLoadError ? (
+        <Text color="red">
+          Couldn&rsquo;t load payments on this invoice. This is not a
+          statement that none have been recorded — reload before assuming
+          the balance below is current.
+        </Text>
+      ) : payments.length === 0 ? (
         <Text color="gray">No payments recorded yet.</Text>
       ) : (
         <Flex direction="column" gap="3" mb={canRecordPayment ? "4" : "0"}>

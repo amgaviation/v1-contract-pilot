@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+import { rowsOf } from "@/lib/supabase/rows";
 import type { Database } from "@/lib/supabase/database.types";
 import PageShell from "../../page-shell";
 import { computeYearTotals } from "@/lib/mileage";
@@ -44,9 +45,9 @@ export default async function MileagePage() {
   const supabase = await createClient();
   const [
     { data: entryData, error },
-    { data: tripData },
-    { data: clientData },
-    { data: rateData },
+    { data: tripData, error: tripsError },
+    { data: clientData, error: clientsError },
+    ratesResult,
   ] = await Promise.all([
     supabase
       .from("mileage_entries")
@@ -64,8 +65,23 @@ export default async function MileagePage() {
   const entries = (entryData ?? []) as MileageEntryRow[];
   const trips = (tripData ?? []) as TripRow[];
   const clients = (clientData ?? []) as ClientRow[];
-  const rates = (rateData ?? []) as RateRow[];
   const truncated = entries.length === ENTRIES_LIMIT;
+  // S1: same shape as U2, on a different screen for the same money — this
+  // read used to destructure `{ data: rateData }` only. On failure
+  // `ratesByYear` built from `[]` is indistinguishable from a pilot who
+  // genuinely has no rate on file, and this page used to say exactly that
+  // ("You haven't recorded a mileage rate yet") and print "No rate on
+  // file" for every year below, discarding a real Schedule C deduction
+  // the pilot already recorded.
+  const rates = rowsOf<RateRow>(ratesResult);
+  const mileageRatesFailed = !rates.ok;
+  const ratesByYear: RatesByYear = mileageRatesFailed
+    ? {}
+    : Object.fromEntries(rates.rows.map((r) => [r.tax_year, r.rate_cents_per_mile]));
+  // Advisory only — a failed trips/clients read degrades the log form's
+  // pickers to empty rather than asserting a wrong dollar figure, so it
+  // doesn't get the same "must not compute" treatment as the rate read.
+  const tripsOrClientsFailed = Boolean(tripsError || clientsError);
 
   const tripOptions: TripOption[] = trips.map((trip) => ({
     id: trip.id,
@@ -74,9 +90,6 @@ export default async function MileagePage() {
     }`,
   }));
   const clientOptions: ClientOption[] = clients.map((c) => ({ id: c.id, name: c.name }));
-  const ratesByYear: RatesByYear = Object.fromEntries(
-    rates.map((r) => [r.tax_year, r.rate_cents_per_mile])
-  );
 
   // DEFECT 5 FIX (20260809050000): the old headline summed each row's own
   // amount_cents (already round(miles * rate) PER ROW) and called the
@@ -141,6 +154,26 @@ export default async function MileagePage() {
               </Callout.Root>
             </Card>
           ) : null}
+          {/* S1: same shape as U2 — see the ratesByYear comment above. A
+              failed mileage_rates read must not render as "no rate on
+              file"; every cell below that would otherwise print that
+              phrase prints "Couldn't load" instead, and the day-one hint
+              beneath the form is suppressed in favour of this callout. */}
+          {mileageRatesFailed ? (
+            <Card size="3" mb="4">
+              <Callout.Root color="red">
+                <Callout.Icon>
+                  <ExclamationTriangleIcon />
+                </Callout.Icon>
+                <Callout.Text>
+                  Couldn&rsquo;t load your mileage rates. This is not a
+                  statement that none are on file — the figures below are
+                  withheld rather than shown as $0 or &ldquo;no rate&rdquo;.
+                  Reload to try again.
+                </Callout.Text>
+              </Callout.Root>
+            </Card>
+          ) : null}
           {yearTotals.length > 0 ? (
             <Card size="3" mb="4">
               <Text as="div" size="3" weight="bold" mb="2">
@@ -168,14 +201,20 @@ export default async function MileagePage() {
                       </Table.Cell>
                       <Table.Cell justify="end">
                         <Text className="tnum" color="gray">
-                          {yt.rateCentsPerMile === null
-                            ? "—"
-                            : `${yt.rateCentsPerMile}¢/mi`}
+                          {mileageRatesFailed
+                            ? "Couldn't load"
+                            : yt.rateCentsPerMile === null
+                              ? "—"
+                              : `${yt.rateCentsPerMile}¢/mi`}
                         </Text>
                       </Table.Cell>
                       <Table.Cell justify="end">
                         <Text weight="medium" className="tnum">
-                          {yt.amountCents === null ? "No rate on file" : formatCents(yt.amountCents)}
+                          {mileageRatesFailed
+                            ? "Couldn't load"
+                            : yt.amountCents === null
+                              ? "No rate on file"
+                              : formatCents(yt.amountCents)}
                         </Text>
                       </Table.Cell>
                     </Table.Row>
@@ -189,13 +228,31 @@ export default async function MileagePage() {
               </Text>
             </Card>
           ) : null}
+          {/* S1, advisory half: a failed trips/clients read only empties
+              this form's pickers — it never asserts a wrong dollar figure
+              the way the rate read above does, so it gets a note rather
+              than withholding the whole form. */}
+          {tripsOrClientsFailed ? (
+            <Card size="3" mb="4">
+              <Callout.Root color="amber">
+                <Callout.Icon>
+                  <ExclamationTriangleIcon />
+                </Callout.Icon>
+                <Callout.Text>
+                  Couldn&rsquo;t load your trips or clients, so those
+                  pickers below are empty. Drives can still be logged;
+                  reload before assigning one to a trip or client.
+                </Callout.Text>
+              </Callout.Root>
+            </Card>
+          ) : null}
           <MileageForm
             entries={entries}
             trips={tripOptions}
             clients={clientOptions}
             rates={ratesByYear}
           />
-          {Object.keys(ratesByYear).length === 0 ? (
+          {!mileageRatesFailed && Object.keys(ratesByYear).length === 0 ? (
             <Card size="3" mt="4">
               <Text size="2" color="gray">
                 {"You haven't recorded a mileage rate yet. Add one under "}

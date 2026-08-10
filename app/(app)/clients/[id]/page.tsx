@@ -155,11 +155,25 @@ export default async function EditClientPage({
     label: d.label,
     expiresOn: d.expires_on,
   }));
+  // U4: packetDocsResult.error used to be discarded entirely. On failure
+  // `packetDocuments` degrades to `[]` exactly like "this client really has
+  // no documents yet" — PacketPanel would tell a pilot with a W-9,
+  // certificate of insurance and day-rate agreement all on file "Nothing
+  // to send yet" and hide the create-link form, because the READ failed,
+  // not because the documents don't exist.
+  const packetDocumentsLoadError = Boolean(packetDocsResult.error);
   const packetShareRow = packetShareResult.data as {
     token: string;
     expires_at: string;
     revoked_at: string | null;
   } | null;
+  // Same U4 shape as packetDocumentsLoadError above, on the read right next
+  // to it: packetShareResult.error used to be discarded entirely, so a
+  // failed lookup degraded packetShareRow (and therefore livePacket) to
+  // null exactly like "no live packet exists" would — hiding PacketPanel's
+  // live-link block from a pilot whose credential packet IS out with this
+  // client, and risking a second one being created on top of it.
+  const packetShareLoadError = Boolean(packetShareResult.error);
   // A revoked or expired row still exists; neither is a live link, and
   // showing one would offer the pilot a URL that 404s for their client.
   const livePacket =
@@ -338,7 +352,9 @@ export default async function EditClientPage({
           clientId={client.id}
           clientName={client.name}
           documents={packetDocuments}
+          documentsLoadError={packetDocumentsLoadError}
           existing={livePacket}
+          existingLoadError={packetShareLoadError}
         />
       </Box>
 

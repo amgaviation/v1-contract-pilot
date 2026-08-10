@@ -4,6 +4,7 @@ import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { friendlyDbError } from "@/lib/db-errors";
+import { countOf } from "@/lib/supabase/rows";
 import PageShell from "../../page-shell";
 import { logbookFrom, type DraftLegRow, type DraftTripRow } from "../db";
 import TripDraftCard from "./trip-draft-card";
@@ -39,9 +40,14 @@ export const metadata = { title: "Trip drafts" };
  * app/(app)/logbook/export/route.ts pages logbook_entries, instead of
  * capping and disclosing.
  *
- * notYetFlownCount, further down, is exempt from all of this for a third
- * reason: it's a head:true exact count, not a row fetch, so the row cap
- * and the silent truncation this comment is about don't apply to it.
+ * notYetFlownCount, further down, is exempt from the row-cap concern above
+ * for a third reason: it's a head:true exact count, not a row fetch, so
+ * the row cap and the silent truncation this comment is about don't apply
+ * to it. That exemption is about truncation ONLY — the count still binds
+ * and checks its own error via countOf (lib/supabase/rows.ts), the same as
+ * tripError/legsError/confirmedError above, because a failed count and a
+ * genuine zero are a different pair of facts than a capped read and a
+ * complete one.
  */
 const TRIP_LIMIT = 1000;
 const LEG_LIMIT = 1000;
@@ -96,7 +102,7 @@ export default async function LogbookDraftsPage() {
   const supabase = await createClient();
   const [
     { data: tripData, error: tripError },
-    { count: notYetFlownCount },
+    notYetFlownCountRes,
   ] = await Promise.all([
     supabase
       .from("trips")
@@ -113,6 +119,13 @@ export default async function LogbookDraftsPage() {
       .select("id", { count: "exact", head: true })
       .in("status", ["scheduled", "in_progress"]),
   ]);
+  // A failed count here must not fall to 0 — that's the exact value that
+  // makes the subtitle below print the reassuring "every completed trip's
+  // legs are already in your logbook" claim instead of admitting it
+  // couldn't check.
+  const notYetFlownResult = countOf(notYetFlownCountRes);
+  const notYetFlownCount = notYetFlownResult.ok ? notYetFlownResult.count : 0;
+  const notYetFlownCountFailed = !notYetFlownResult.ok;
 
   // friendlyDbError throughout this file — see confirmedError below; a raw
   // error.message carries internal schema (table/constraint names) that
@@ -230,7 +243,9 @@ export default async function LogbookDraftsPage() {
               ? `Nothing waiting here — but ${notYetFlownCount} trip${
                   notYetFlownCount === 1 ? " is" : "s are"
                 } still marked Scheduled. Mark a trip flown and its legs show up here.`
-              : "Nothing waiting — every completed trip's legs are already in your logbook."
+              : notYetFlownCountFailed
+                ? "Nothing waiting here — but this screen couldn't check whether any trips are still marked Scheduled, so that isn't confirmed either."
+                : "Nothing waiting — every completed trip's legs are already in your logbook."
           : `${pendingTrips.length} completed trip${pendingTrips.length === 1 ? "" : "s"} with unconfirmed legs`
       }
     >

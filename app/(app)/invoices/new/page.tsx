@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { friendlyDbError } from "@/lib/db-errors";
+import { countOf } from "@/lib/supabase/rows";
 import { tripValueCents, type TripDayValueRow } from "@/lib/trip-value";
 import PageShell from "../../page-shell";
 import { createInvoiceDraft } from "../actions";
@@ -37,6 +38,11 @@ export default async function NewInvoicePage({
   // Declared out here because it is read at render, below the branch that
   // only runs once a client is picked.
   let unmarkedTripCount = 0;
+  // Set when the scheduled/in-progress count below fails — see its own
+  // comment for why a swallowed error here used to make draft-form.tsx
+  // assert "no completed, unbilled trips" instead of admitting it doesn't
+  // know.
+  let unmarkedTripCountFailed = false;
   if (clientId) {
     // Only what's actually billable: unbilled AND completed. A scheduled
     // or in-progress trip's day count/expenses aren't final yet, so
@@ -44,7 +50,7 @@ export default async function NewInvoicePage({
     const [
       { data: tripData, error: tripsError },
       { data: expenseData, error: expensesError },
-      { count: unmarkedForClient },
+      unmarkedForClientResult,
     ] = await Promise.all([
       supabase
         .from("trips")
@@ -71,7 +77,9 @@ export default async function NewInvoicePage({
         .in("status", ["scheduled", "in_progress"]),
     ]);
 
-    unmarkedTripCount = unmarkedForClient ?? 0;
+    const unmarkedForClient = countOf(unmarkedForClientResult);
+    unmarkedTripCount = unmarkedForClient.ok ? unmarkedForClient.count : 0;
+    unmarkedTripCountFailed = !unmarkedForClient.ok;
 
     // A failed query here must not read as "this client has no billable
     // trips" — that's indistinguishable from an empty result otherwise,
@@ -241,6 +249,7 @@ export default async function NewInvoicePage({
         trips={trips}
         tripsError={tripsErrorMessage}
         unmarkedTripCount={unmarkedTripCount ?? 0}
+        unmarkedTripCountFailed={unmarkedTripCountFailed}
       />
     </PageShell>
   );

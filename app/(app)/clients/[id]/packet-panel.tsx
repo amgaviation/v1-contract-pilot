@@ -48,12 +48,29 @@ export default function PacketPanel({
   clientId,
   clientName,
   documents,
+  documentsLoadError = false,
   existing,
+  existingLoadError = false,
 }: {
   clientId: string;
   clientName: string;
   documents: PacketDocument[];
+  /**
+   * U4: a failed documents read degrades `documents` to `[]` the same way
+   * genuinely having none would — telling a pilot with a W-9, certificate
+   * of insurance and day-rate agreement all on file "Nothing to send yet"
+   * and hiding the create-link form is a defect, not a graceful fallback.
+   */
+  documentsLoadError?: boolean;
   existing: ExistingPacket | null;
+  /**
+   * Same shape as documentsLoadError, on the read next to it: a failed
+   * document_shares lookup degrades `existing` to `null` the same way
+   * "no live packet" would, hiding the live-link block below from a pilot
+   * whose credential packet IS out with this client — risking a second
+   * one being created on top of it.
+   */
+  existingLoadError?: boolean;
 }) {
   const [state, formAction, creating] = useActionState(createPacketShare, initial);
   const [revokeState, revokeAction, revoking] = useActionState(revokePacketShare, initial);
@@ -113,7 +130,15 @@ export default function PacketPanel({
         own, and you can revoke it at any time.
       </Text>
 
-      {documents.length === 0 ? (
+      {documentsLoadError ? (
+        <Callout.Root color="red" size="1">
+          <Callout.Text>
+            Couldn&rsquo;t load this client&rsquo;s documents, so nothing is
+            offered below. This is not a statement that none are on
+            file — reload before assuming there&rsquo;s nothing to send.
+          </Callout.Text>
+        </Callout.Root>
+      ) : documents.length === 0 ? (
         <Text size="2" color="gray">
           Nothing to send yet — add a W-9, a certificate of insurance or your
           day-rate agreement under Documents first.
@@ -174,6 +199,19 @@ export default function PacketPanel({
         <Text as="p" size="1" color="gray" mt="2">
           The previous link was revoked.
         </Text>
+      ) : null}
+
+      {/* Also gated on `!url`: a freshly created token this render (state.
+          token) is the current truth regardless of whether the earlier
+          server-side lookup failed, so this must not cover that case. */}
+      {existingLoadError && !url ? (
+        <Callout.Root color="red" size="1" mt="2">
+          <Callout.Text>
+            Couldn&rsquo;t check whether a live link already exists for{" "}
+            {clientName} — this is not a statement that none is out.
+            Reload before creating a new one.
+          </Callout.Text>
+        </Callout.Root>
       ) : null}
 
       {url ? (
