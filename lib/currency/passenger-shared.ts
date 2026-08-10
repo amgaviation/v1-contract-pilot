@@ -45,11 +45,15 @@ export function typeMatchAssumption(intended: AircraftFacts): string | null {
  * only trims and case-folds, so an entry logged as "Airplane Single-Engine
  * Land" is a KNOWN, DIFFERENT category from an intended aircraft recorded
  * as "ASEL," and is silently excluded rather than credited. Rendered on
- * every 90-day card unconditionally (unlike typeMatchAssumption above,
- * which only applies when the intended type rating is blank) because this
- * exact-string comparison runs regardless of whether a type rating is
- * recorded, and previously had no equivalent to instrument.ts's own CORR-2
- * disclosure of the identical compare.
+ * every 90-day card that reaches an ANSWER — estimated_current or
+ * estimated_not_current — unconditionally at that point (unlike
+ * typeMatchAssumption above, which only applies there when the intended
+ * type rating is blank), because this exact-string comparison runs
+ * regardless of whether a type rating is recorded, and previously had no
+ * equivalent to instrument.ts's own CORR-2 disclosure of the identical
+ * compare. NOT rendered on the insufficient_data path: general.ts,
+ * night.ts and part135.ts all return `assumptions: []` there, since no
+ * comparison has produced a number for this sentence to caveat yet.
  */
 export const CATEGORY_MATCH_ASSUMPTION =
   "An entry's aircraft category/class is compared to the intended aircraft's as one exact, pilot-typed field (e.g. \"ASEL\") — a different wording of the same category, such as \"Airplane Single-Engine Land,\" reads as a different aircraft, and its takeoffs/landings are excluded, not corrected for you.";
@@ -125,22 +129,63 @@ export type EntryClassification = { certain: CurrencyEntry[]; ambiguous: Ambiguo
  *   3. CERTAIN or AMBIGUOUS. CERTAIN means every fact this function checks
  *      is KNOWN and passing; its takeoffs/landings go straight into the
  *      card's certain total. AMBIGUOUS means at least one fact is
- *      genuinely unknown (null, or a device/simulator row this schema
- *      cannot confirm) — its takeoffs/landings count only toward the
- *      BEST-CASE total, and it names every unresolved fact so the caller
- *      can ask `missingFactCouldChangeAnswer` whether any of them is worth
- *      surfacing to the pilot.
+ *      genuinely unknown (null, or a WHOLLY-simulator row this schema
+ *      cannot confirm — see below) — its takeoffs/landings count only
+ *      toward the BEST-CASE total, and it names every unresolved fact so
+ *      the caller can ask `missingFactCouldChangeAnswer` whether any of
+ *      them is worth surfacing to the pilot.
  *
- * A SIMULATOR/DEVICE ROW (`simulatorTime > 0`) is always outcome 3, never
- * certain: 61.57(a)(3)/(b)(2)/135.247(a)(3) each carry a device-approval
- * and part-142-course condition this schema has no field for, so crediting
- * it asserts an approval the pilot never stated. It is ALSO never checked
- * against the aircraft registry or gear below — a device session has no
- * tail number by design, and routing it through those checks anyway is the
- * Q1/REGU-4/CORR-1 failure shape (an unrelated simulator row poisoning the
- * whole card with a "register the aircraft" remedy no one can act on),
- * generalized here past the instrument card it was first found on.
+ * A WHOLLY-SIMULATOR ROW is always outcome 3, never certain:
+ * 61.57(a)(3)/(b)(2)/135.247(a)(3) each carry a device-approval and
+ * part-142-course condition this schema has no field for, so crediting it
+ * asserts an approval the pilot never stated. It is ALSO never checked
+ * against the aircraft registry, gear, role, or sole-manipulator below —
+ * a device session has no tail number, crew role, or sole-manipulator
+ * fact by design (supabase/migrations/20260810020000's own header: "in an
+ * FFS there is no aircraft, and 'who was acting as pilot in command of
+ * the aircraft' has no answer"), and asking for one anyway is a remedy
+ * with only one, unreachable answer (R3) as well as the Q1/REGU-4/CORR-1
+ * failure shape (an unrelated simulator row poisoning the whole card with
+ * a "register the aircraft" remedy no one can act on), generalized here
+ * past the instrument card it was first found on.
+ *
+ * "WHOLLY-simulator" is `simulatorTime > 0` AND `totalTime === simulatorTime`
+ * — this schema's own definition, reused rather than invented here (see
+ * isWhollySimulatorEntry below and totalTime's own comment in types.ts). A
+ * row with simulatorTime > 0 whose totalTime EXCEEDS simulatorTime is a
+ * MIXED row — real aircraft time and unrelated simulator/debrief time on
+ * the same entry — and is handled as an ordinary real-aircraft row from
+ * here on: its takeoffs and landings are real movements in a real
+ * aircraft, exactly what 61.57(a)/(b)/135.247(a) count, and discarding
+ * them because the entry also happens to log simulator time (R1) throws
+ * away a movement the pilot actually flew. instrument.ts solved this same
+ * shape first, with its own condition-based discriminator (P9); this is
+ * the equivalent for the three 90-day cards, in the terms this schema
+ * already uses for the split (20260810020000's CHECK, pilot.logbook_totals).
  */
+function isWhollySimulatorEntry(e: CurrencyEntry): boolean {
+  const sim = e.simulatorTime ?? 0;
+  // `<=`, NOT `===`, and that difference is the whole safety direction.
+  //
+  // lib/logbook-import/resolve-row.ts's isWhollySimulator uses `===` because
+  // it mirrors logbook_entries_role_required_unless_simulator exactly, and an
+  // importer's job is to agree with the constraint. Right there; wrong here.
+  //
+  // Nothing forbids a row whose simulator_time EXCEEDS its total_time. That
+  // CHECK governs only when a crew role may be ABSENT, so a row carrying a
+  // role and sim > total satisfies the database happily. Under `===` such a
+  // row is not "wholly simulator", falls through to the real-aircraft path,
+  // and has its takeoffs and landings CREDITED — the engine would manufacture
+  // currency out of a pure simulator session. A review caught this one round
+  // after the mixed-row fix that introduced it.
+  //
+  // `<=` puts the nonsensical case on the safe side: an entry with no aircraft
+  // time left over cannot have produced a movement in an aircraft. Erring this
+  // way costs a pilot nothing they are entitled to, because there is no real
+  // flight time in the row to lose.
+  return sim > 0 && e.totalTime <= sim;
+}
+
 export function classifyForCurrency(
   inWindow: readonly CurrencyEntry[],
   airmanUserId: string,
@@ -162,15 +207,22 @@ export function classifyForCurrency(
 
     const missing: MissingInput[] = [];
     if (e.airmanUserId === null) missing.push("airman_unattributed");
-    if (e.role === null) missing.push("role_unrecorded");
-    if (e.soleManipulator === null) missing.push("sole_manipulator_unrecorded");
     if (options.checkNightWindow && e.nightWindowAsserted === null) missing.push("night_window_unasserted");
 
-    if ((e.simulatorTime ?? 0) > 0) {
+    if (isWhollySimulatorEntry(e)) {
+      // R3: role/sole-manipulator are never asked about here — a wholly
+      // device session has neither fact, and asking is a remedy with no
+      // reachable answer (see this function's header).
       missing.push("unresolvable_simulator_row");
       ambiguous.push({ entry: e, missing });
       continue;
     }
+
+    // Real-aircraft row, including a MIXED row whose totalTime exceeds
+    // simulatorTime (R1) — role and sole-manipulator are real questions
+    // here, unlike on a wholly-simulator row above.
+    if (e.role === null) missing.push("role_unrecorded");
+    if (e.soleManipulator === null) missing.push("sole_manipulator_unrecorded");
 
     if (e.aircraft === null) {
       missing.push("aircraft_unregistered");

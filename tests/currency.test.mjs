@@ -70,6 +70,13 @@ function entry(overrides = {}) {
     coursesInterceptedTracked: false,
     simulatorTime: null,
     simulatorDeviceType: null,
+    // Irrelevant whenever simulatorTime is null (the common case, and this
+    // default's value). Every fixture below that sets simulatorTime also
+    // sets totalTime explicitly, to WHOLLY-simulator (totalTime ===
+    // simulatorTime) or MIXED (totalTime > simulatorTime) as that
+    // fixture's own name says — see passenger-shared.ts's
+    // isWhollySimulatorEntry for what the two mean.
+    totalTime: 1.0,
     aircraft: aircraft(),
     ...overrides,
   };
@@ -466,36 +473,74 @@ test("61.57(a): a second airman's entries in a shared account never count toward
   assert.equal(r.observed.takeoffs, 0);
 });
 
-test("61.57(a): a simulator row that COULD be the difference is unresolvable, never counted and never ignored silently", () => {
+test("61.57(a), R1: a WHOLLY-simulator row (totalTime === simulatorTime, this schema's own definition — 20260810020000) that COULD be the difference is unresolvable, never counted and never ignored silently", () => {
   const entries = [
-    entry({ entryDate: "2026-07-01", dayTakeoffs: 3, dayLandingsFullStop: 3, simulatorTime: 1.0, simulatorDeviceType: "ffs" }),
+    entry({ entryDate: "2026-07-01", dayTakeoffs: 3, dayLandingsFullStop: 3, totalTime: 1.0, simulatorTime: 1.0, simulatorDeviceType: "ffs" }),
   ];
   const r = evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
   assert.equal(r.status, "insufficient_data");
   assert.ok(r.missing.includes("unresolvable_simulator_row"));
 });
 
-test("61.57(a): a simulator row that could never be the difference never gates", () => {
-  // Zero movements.
+test("61.57(a), R1: a MIXED row (totalTime > simulatorTime — real aircraft time plus unrelated simulator time on the same entry) is CREDITED as sole evidence, not discarded as unresolvable", () => {
+  // Short by one on its own (2/2 from two certain entries) — this mixed
+  // row is the only source of the third takeoff/landing, so whether its
+  // real movements are credited is the WHOLE answer here, not merely
+  // whether it gates (R2: a padded-to-already-current construction cannot
+  // tell the two apart).
+  const entries = [
+    entry({ entryDate: "2026-07-01", dayTakeoffs: 1, dayLandingsFullStop: 1 }),
+    entry({ entryDate: "2026-07-10", dayTakeoffs: 1, dayLandingsFullStop: 1 }),
+    entry({
+      entryDate: "2026-07-15", dayTakeoffs: 1, dayLandingsFullStop: 1,
+      // totalTime (2.0) > simulatorTime (0.5): a real leg plus an
+      // unrelated debrief session logged on the same entry.
+      totalTime: 2.0, simulatorTime: 0.5, simulatorDeviceType: "ffs",
+    }),
+  ];
+  const r = evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
+  assert.equal(r.status, "estimated_current", "a real takeoff and landing in the registered aircraft must count even though the same entry also logs unrelated simulator time");
+  assert.deepEqual(r.missing, []);
+  assert.equal(r.observed.takeoffs, 3);
+  assert.equal(r.observed.landings, 3);
+});
+
+test("61.57(a): a simulator row that could never be the difference never gates, whether wholly-simulator or mixed", () => {
+  // Zero movements, wholly-simulator.
   const zeroMovement = evaluateGeneralExperience({
     asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(),
-    entries: [entry({ entryDate: "2026-07-01", simulatorTime: 1.0, simulatorDeviceType: "ffs" })],
+    entries: [entry({ entryDate: "2026-07-01", totalTime: 1.0, simulatorTime: 1.0, simulatorDeviceType: "ffs" })],
   });
   assert.equal(zeroMovement.status, "estimated_not_current");
   assert.deepEqual(zeroMovement.missing, []);
 
-  // Already current on three OTHER certain entries.
+  // Already current on three OTHER certain entries — a wholly-simulator
+  // fourth entry could never change that.
   const alreadyCurrent = evaluateGeneralExperience({
     asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(),
     entries: [
       entry({ entryDate: "2026-07-01", dayTakeoffs: 1, dayLandingsFullStop: 1 }),
       entry({ entryDate: "2026-07-10", dayTakeoffs: 1, dayLandingsFullStop: 1 }),
       entry({ entryDate: "2026-07-20", dayTakeoffs: 1, dayLandingsFullStop: 1 }),
-      entry({ entryDate: "2026-07-15", dayTakeoffs: 3, dayLandingsFullStop: 3, simulatorTime: 1.0, simulatorDeviceType: "ffs" }),
+      entry({ entryDate: "2026-07-15", dayTakeoffs: 3, dayLandingsFullStop: 3, totalTime: 1.0, simulatorTime: 1.0, simulatorDeviceType: "ffs" }),
     ],
   });
   assert.equal(alreadyCurrent.status, "estimated_current");
   assert.deepEqual(alreadyCurrent.missing, []);
+});
+
+test("61.57(a), R3: a WHOLLY-simulator row with role and sole-manipulator both unrecorded is asked about ONLY unresolvable_simulator_row — role_unrecorded/sole_manipulator_unrecorded name a fact a device session does not have (20260810020000)", () => {
+  const entries = [
+    entry({ entryDate: "2026-07-01", dayTakeoffs: 1, dayLandingsFullStop: 1 }),
+    entry({ entryDate: "2026-07-10", dayTakeoffs: 1, dayLandingsFullStop: 1 }),
+    entry({
+      entryDate: "2026-07-15", dayTakeoffs: 1, dayLandingsFullStop: 1,
+      role: null, soleManipulator: null, totalTime: 2.0, simulatorTime: 2.0, simulatorDeviceType: "ffs",
+    }),
+  ];
+  const r = evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: aircraft(), entries });
+  assert.equal(r.status, "insufficient_data");
+  assert.deepEqual(r.missing, ["unresolvable_simulator_row"], "role_unrecorded and sole_manipulator_unrecorded must not be asked about a row this schema never records either fact for");
 });
 
 // ---------------------------------------------------------------------------
@@ -1503,6 +1548,20 @@ test("INVARIANT: adding one more ambiguous logbook entry to an already-current p
   // difference" tests elsewhere in this file for that half). `includeGear`
   // is false for night.ts, which has no gear axis of its own (see that
   // module's header) and true everywhere else.
+  //
+  // R2: the "mixed real-and-device row" entry below is NOT an ambiguous
+  // fact once R1 is fixed — its totalTime exceeds its simulatorTime, so
+  // classifyForCurrency reads it as an ordinary real-aircraft row and its
+  // movements go straight into `certain`. It stays in this table (padded
+  // onto an already-3/3 base) only to prove it is harmless there too; the
+  // claim this table's own construction CANNOT prove — that its movements
+  // are actually CREDITED, not merely non-gating — is pinned separately by
+  // MIXED_VARIANT_NAME's extra observed-total assertion in
+  // assertNeverBecomesInsufficient below, and (as sole, necessary evidence)
+  // by the dedicated "R1: a MIXED row ... is CREDITED as sole evidence"
+  // test above.
+  const MIXED_VARIANT_NAME = "mixed real-and-device row (totalTime > simulatorTime: real movements plus unrelated simulator time on the same entry)";
+
   function ninetyDayAmbiguousVariants(movementFields, ac, includeGear) {
     const variants = {
       "null role": { ...movementFields, role: null, aircraft: ac },
@@ -1514,14 +1573,16 @@ test("INVARIANT: adding one more ambiguous logbook entry to an already-current p
         ...movementFields,
         aircraft: { ...ac, typeRating: null, typeDesignator: null },
       },
-      "simulator row (device, unconfirmable approval — 61.57(a)(3)/(b)(2)/135.247(a)(3))": {
+      "wholly-simulator row (totalTime === simulatorTime, unconfirmable approval — 61.57(a)(3)/(b)(2)/135.247(a)(3))": {
         ...movementFields,
+        totalTime: 1.0,
         simulatorTime: 1.0,
         simulatorDeviceType: "ffs",
         aircraft: null,
       },
-      "mixed real-and-device row (real movements plus unrelated simulatorTime on the same entry)": {
+      [MIXED_VARIANT_NAME]: {
         ...movementFields,
+        totalTime: 2.0,
         simulatorTime: 0.5,
         simulatorDeviceType: "ffs",
         aircraft: ac,
@@ -1533,11 +1594,23 @@ test("INVARIANT: adding one more ambiguous logbook entry to an already-current p
     return variants;
   }
 
-  function assertNeverBecomesInsufficient(cardLabel, base, variants, evaluate) {
+  function assertNeverBecomesInsufficient(cardLabel, base, variants, evaluate, opts = {}) {
     for (const [name, overrides] of Object.entries(variants)) {
       const withExtra = evaluate([...base, entry({ entryDate: "2026-07-15", ...overrides })]);
       assert.equal(withExtra.status, "estimated_current", `${cardLabel} + ${name} must stay estimated_current`);
       assert.deepEqual(withExtra.missing, [], `${cardLabel} + ${name} must carry no missing input`);
+      if (name === MIXED_VARIANT_NAME && opts.mixedRowCreditedTotal !== undefined) {
+        // R1/R2: the padded construction above proves the mixed row does
+        // not WRONGLY gate, but says nothing about whether its own
+        // movements were counted at all — a card already at base's total
+        // would read identically either way. Assert the credited total
+        // directly: base's 3 plus this entry's own 3 must both land in
+        // `observed`, which is only true once the mixed row is classified
+        // as a real-aircraft row rather than routed to
+        // unresolvable_simulator_row.
+        assert.equal(withExtra.observed.takeoffs, opts.mixedRowCreditedTotal, `${cardLabel} + ${name}: the mixed row's real takeoffs must be CREDITED, not merely non-gating`);
+        assert.equal(withExtra.observed.landings, opts.mixedRowCreditedTotal, `${cardLabel} + ${name}: the mixed row's real landings must be CREDITED, not merely non-gating`);
+      }
     }
   }
 
@@ -1548,7 +1621,8 @@ test("INVARIANT: adding one more ambiguous logbook entry to an already-current p
 
     const variants = ninetyDayAmbiguousVariants({ dayTakeoffs: 3, dayLandingsFullStop: 3 }, TAILWHEEL, true);
     assertNeverBecomesInsufficient("61.57(a)", base, variants, (entries) =>
-      evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: TAILWHEEL, entries })
+      evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: TAILWHEEL, entries }),
+      { mixedRowCreditedTotal: 6 }
     );
   });
 
@@ -1569,7 +1643,8 @@ test("INVARIANT: adding one more ambiguous logbook entry to an already-current p
       aircraft: TRICYCLE,
     };
     assertNeverBecomesInsufficient("61.57(b)", base, variants, (entries) =>
-      evaluateNightExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: TRICYCLE, entries })
+      evaluateNightExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: TRICYCLE, entries }),
+      { mixedRowCreditedTotal: 6 }
     );
   });
 
@@ -1586,7 +1661,8 @@ test("INVARIANT: adding one more ambiguous logbook entry to an already-current p
       evaluatePart135Recency({
         asOf: "2026-08-07", airmanUserId: AIRMAN, operatingRule: "part_135", exemptionAsserted: false,
         intendedAircraft: TAILWHEEL, entries,
-      }).day
+      }).day,
+      { mixedRowCreditedTotal: 6 }
     );
   });
 
@@ -1613,7 +1689,8 @@ test("INVARIANT: adding one more ambiguous logbook entry to an already-current p
       evaluatePart135Recency({
         asOf: "2026-08-07", airmanUserId: AIRMAN, operatingRule: "part_135", exemptionAsserted: false,
         intendedAircraft: TAILWHEEL, entries,
-      }).night
+      }).night,
+      { mixedRowCreditedTotal: 6 }
     );
   });
 
@@ -1677,4 +1754,50 @@ test("INVARIANT: adding one more ambiguous logbook entry to an already-current p
   // separate, fully-certain entry) — which is a different logbook, not "one
   // more entry."
   // -------------------------------------------------------------------------
+});
+
+test("a row whose simulator time exceeds its total time never credits a movement", async (t) => {
+  // The one-round-later defect: isWhollySimulatorEntry originally tested
+  // `totalTime === simulatorTime`, so sim > total fell through to the
+  // real-aircraft path and had its takeoffs and landings credited. Nothing in
+  // the schema forbids that row — the CHECK it was modelled on only governs
+  // when a crew role may be absent — so the engine could manufacture currency
+  // from a pure simulator session. This pins the safe side of the line.
+  const { evaluateGeneralExperience } = await import("../lib/currency/general.ts");
+
+  const intended = {
+    tailKey: "N1V", categoryClass: "AMEL", typeRating: "CE560",
+    typeDesignator: "C560", gear: "tricycle",
+  };
+  const base = {
+    airmanUserId: "airman-1", role: "PIC", soleManipulator: true,
+    aircraft: intended, simulatorDeviceType: "ffs",
+    dayTakeoffs: 1, dayLandingsFullStop: 1,
+    nightTakeoffs: 0, nightLandingsFullStop: 0,
+  };
+  const impossible = [1, 2, 3].map((n) => ({
+    ...base,
+    id: `sim-over-${n}`,
+    entryDate: `2026-08-0${n}`,
+    // sim EXCEEDS total. Under the old `===` these three rows read as real
+    // flights and produced three takeoffs and three landings.
+    totalTime: 1.0,
+    simulatorTime: 2.0,
+  }));
+
+  const result = evaluateGeneralExperience({
+    asOf: "2026-08-10",
+    airmanUserId: "airman-1",
+    intendedAircraft: intended,
+    entries: impossible,
+  });
+
+  await t.test("no movement is credited from it", () => {
+    assert.equal(result.observed.takeoffs ?? 0, 0);
+    assert.equal(result.observed.landings ?? 0, 0);
+  });
+
+  await t.test("and the card does not claim the pilot is current on it", () => {
+    assert.notEqual(result.status, "estimated_current");
+  });
 });

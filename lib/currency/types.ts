@@ -149,6 +149,18 @@ export type CurrencyEntry = {
   coursesInterceptedTracked: boolean;
   simulatorTime: number | null;
   simulatorDeviceType: "ffs" | "ftd" | "atd" | "other" | null;
+  /**
+   * pilot.logbook_entries.total_time — NOT NULL in the schema. This
+   * product's own definition of a WHOLLY-simulator entry, reused rather
+   * than invented here: supabase/migrations/20260810020000's CHECK
+   * (logbook_entries_role_required_unless_simulator) permits a null role
+   * only when `total_time = simulator_time`, and pilot.logbook_totals /
+   * pilot.logbook_time_by_type (20260810110000/20260810150000) compute
+   * AIRCRAFT time the same way, as total_time minus simulator_time. See
+   * passenger-shared.ts's classifyForCurrency, which is the one place
+   * this module compares the two.
+   */
+  totalTime: number;
   /** null = tail not in pilot.aircraft (unregistered), not "no aircraft flown." */
   aircraft: AircraftFacts | null;
 };

@@ -81,6 +81,7 @@ type LogbookEntryRow = {
   courses_intercepted_tracked: boolean;
   simulator_time: number | null;
   simulator_device_type: "ffs" | "ftd" | "atd" | "other" | null;
+  total_time: number;
 };
 
 type AircraftRow = {
@@ -161,6 +162,7 @@ function toCurrencyEntry(row: LogbookEntryRow, registry: Map<string, AircraftRow
     coursesInterceptedTracked: row.courses_intercepted_tracked,
     simulatorTime: row.simulator_time,
     simulatorDeviceType: row.simulator_device_type,
+    totalTime: row.total_time,
     aircraft: resolveAircraft(row.aircraft_ident, registry),
   };
 }
@@ -217,7 +219,7 @@ export async function loadCurrencyInput(opts: { asOf: IsoDate; intendedTail: str
     const wantCount = offset === 0;
     const { data, error, count } = await logbookFrom(supabase, "logbook_entries")
       .select(
-        "id, entry_date, airman_user_id, aircraft_ident, role, sole_manipulator, day_takeoffs, night_takeoffs, day_landings_full_stop, day_landings_touch_go, night_landings_full_stop, night_landings_touch_go, night_window_asserted, night_time, approaches_count, approach_type, approach_condition, holds, courses_intercepted_tracked, simulator_time, simulator_device_type",
+        "id, entry_date, airman_user_id, aircraft_ident, role, sole_manipulator, day_takeoffs, night_takeoffs, day_landings_full_stop, day_landings_touch_go, night_landings_full_stop, night_landings_touch_go, night_window_asserted, night_time, approaches_count, approach_type, approach_condition, holds, courses_intercepted_tracked, simulator_time, simulator_device_type, total_time",
         wantCount ? { count: "exact" } : undefined
       )
       .eq("account_id", account.id)

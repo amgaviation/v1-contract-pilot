@@ -323,6 +323,13 @@ function mkEntry(id, overrides) {
     coursesInterceptedTracked: false,
     simulatorTime: null,
     simulatorDeviceType: null,
+    // Irrelevant whenever simulatorTime is null (the default and common
+    // case). Every fixture below that sets simulatorTime also sets
+    // totalTime explicitly, to WHOLLY-simulator (totalTime ===
+    // simulatorTime) or MIXED (totalTime > simulatorTime) as that
+    // fixture's own name says — see passenger-shared.ts's
+    // isWhollySimulatorEntry for what the two mean.
+    totalTime: 1.0,
     aircraft: N1V,
   };
   return Object.assign(base, overrides || {});
@@ -631,9 +638,31 @@ section("N — 61.57(b) night takeoff/landing experience");
   checkResult("N-7-inside", "(b)'s own 90-day boundary, inside", n7in, { status: "estimated_current", missing: [] });
 
   var n8 = evaluateNightExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
-    entries: [mkEntry("n8-0", { entryDate: "2026-06-01", nightTakeoffs: 3, nightLandingsFullStop: 3, nightWindowAsserted: true, simulatorTime: 4.0, simulatorDeviceType: "ffs" })] });
-  checkResult("N-8", "61.57(b)(2) needs device approval and a part 142 course this schema cannot assert", n8, {
+    entries: [mkEntry("n8-0", { entryDate: "2026-06-01", nightTakeoffs: 3, nightLandingsFullStop: 3, nightWindowAsserted: true, totalTime: 4.0, simulatorTime: 4.0, simulatorDeviceType: "ffs" })] });
+  checkResult("N-8", "WHOLLY-simulator (totalTime === simulatorTime) — 61.57(b)(2) needs device approval and a part 142 course this schema cannot assert", n8, {
     status: "insufficient_data", missing: ["unresolvable_simulator_row"],
+  });
+
+  // N-8b, R3: role and sole-manipulator are never asked about on a
+  // WHOLLY-simulator row — 20260810020000's own header: "in an FFS there
+  // is no aircraft, and 'who was acting as pilot in command' has no
+  // answer." Isolated from N-8's device-approval question: the only
+  // missing input this row can carry is unresolvable_simulator_row.
+  var n8b = evaluateNightExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
+    entries: [mkEntry("n8b-0", { entryDate: "2026-06-01", nightTakeoffs: 3, nightLandingsFullStop: 3, nightWindowAsserted: true, role: null, soleManipulator: null, totalTime: 4.0, simulatorTime: 4.0, simulatorDeviceType: "ffs" })] });
+  checkResult("N-8b", "R3: a wholly-simulator row with role AND sole-manipulator both unrecorded is asked about ONLY unresolvable_simulator_row", n8b, {
+    status: "insufficient_data", missing: ["unresolvable_simulator_row"],
+  });
+
+  // N-8c, R1: the IDENTICAL movements, but MIXED — totalTime (4.5) exceeds
+  // simulatorTime (0.5), so this is a real night leg plus an unrelated
+  // debrief on the same entry, and its takeoffs/landings must be CREDITED,
+  // not routed into unresolvable_simulator_row the way N-8's wholly-
+  // simulator row correctly is.
+  var n8c = evaluateNightExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
+    entries: [mkEntry("n8c-0", { entryDate: "2026-06-01", nightTakeoffs: 3, nightLandingsFullStop: 3, nightWindowAsserted: true, totalTime: 4.5, simulatorTime: 0.5, simulatorDeviceType: "ffs" })] });
+  checkResult("N-8c", "R1: a MIXED row (totalTime > simulatorTime) is credited as sole evidence, not discarded as unresolvable", n8c, {
+    status: "estimated_current", observed: { takeoffs: 3, landings: 3 }, missing: [],
   });
 }
 
@@ -987,8 +1016,34 @@ section("D — insufficient_data is the default posture");
   checkResult("D-9", "the gate fires only for entries that could change the answer", d9, { status: "estimated_current", missing: [] });
 
   var d10a = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
-    entries: [mkEntry("d10a-0", { entryDate: "2026-06-01", dayTakeoffs: 3, dayLandingsFullStop: 3, simulatorTime: 1.0, simulatorDeviceType: "ffs" })] });
-  checkResult("D-10a", "an FFS row in the (a) window", d10a, { status: "insufficient_data", missing: ["unresolvable_simulator_row"] });
+    entries: [mkEntry("d10a-0", { entryDate: "2026-06-01", dayTakeoffs: 3, dayLandingsFullStop: 3, totalTime: 1.0, simulatorTime: 1.0, simulatorDeviceType: "ffs" })] });
+  checkResult("D-10a", "a WHOLLY-simulator row (totalTime === simulatorTime) in the (a) window", d10a, { status: "insufficient_data", missing: ["unresolvable_simulator_row"] });
+
+  // D-10a-mixed, R1: the review's own reproduction of the bug this fixture
+  // used to pin — dayTakeoffs 3 + dayLandingsFullStop 3 in the registered
+  // aircraft (N1V), role PIC, soleManipulator true, PLUS unrelated
+  // simulator time on the same entry (totalTime 1.5 > simulatorTime 0.5).
+  // classifyForCurrency used to route ANY simulatorTime > 0 row here
+  // straight to unresolvable_simulator_row before ever looking at the
+  // aircraft, discarding three real takeoffs and three real full-stop
+  // landings in a registered aircraft. Fixed: this is a MIXED row, credited
+  // like any other real-aircraft entry.
+  var d10aMixed = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
+    entries: [mkEntry("d10amixed-0", { entryDate: "2026-06-01", dayTakeoffs: 3, dayLandingsFullStop: 3, totalTime: 1.5, simulatorTime: 0.5, simulatorDeviceType: "ffs" })] });
+  checkResult("D-10a-mixed", "R1: a MIXED row (totalTime > simulatorTime) is credited, not discarded as unresolvable", d10aMixed, {
+    status: "estimated_current", observed: { takeoffs: 3, landings: 3 }, missing: [],
+  });
+
+  // D-10a-r3, R3: role and sole-manipulator both unrecorded on a WHOLLY-
+  // simulator row must not be asked about — neither remedy is reachable
+  // (20260810020000: a device session has no crew role or sole-manipulator
+  // fact). Isolated from D-10a's own device-approval question above.
+  var d10aR3 = evaluateGeneralExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
+    entries: [mkEntry("d10ar3-0", { entryDate: "2026-06-01", dayTakeoffs: 3, dayLandingsFullStop: 3, role: null, soleManipulator: null, totalTime: 1.0, simulatorTime: 1.0, simulatorDeviceType: "ffs" })] });
+  checkResult("D-10a-r3", "R3: a wholly-simulator row with role AND sole-manipulator both unrecorded is asked about ONLY unresolvable_simulator_row", d10aR3, {
+    status: "insufficient_data", missing: ["unresolvable_simulator_row"],
+  });
+
   var d10b = evaluateInstrumentExperience({ asOf: ASOF, airmanUserId: AIRMAN, intendedAircraft: N1V,
     entries: [mkEntry("d10b-0", { entryDate: "2026-03-01", simulatorTime: 1.0, simulatorDeviceType: "ffs", approachesCount: 6, approachType: "ils", approachCondition: "simulated", holds: 1, coursesInterceptedTracked: true })] });
   checkResult("D-10b", "the IDENTICAL row shape, in the (c) window — (c) does not copy (a)/(b)'s blanket unresolvable_simulator_row gate, but a device row still can't singlehandedly prove currency (P2): it gates by the more specific device_category_unconfirmed instead", d10b, {
