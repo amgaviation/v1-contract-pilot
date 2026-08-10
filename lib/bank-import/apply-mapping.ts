@@ -1,4 +1,5 @@
-import { parseBankAmount } from "./amount";
+import { ambiguousCommaReason, parseBankAmount } from "./amount";
+import { parseStatementDate } from "./date";
 import type { CsvRecord } from "./csv";
 import type {
   BankAccountKind,
@@ -8,52 +9,22 @@ import type {
   CsvColumnKey,
   ParsedBankRow,
   RejectedBankRow,
+  SignInterpretation,
 } from "./types";
 
 /**
- * Small, self-contained date parser — "YYYY-MM-DD" or "M/D/YYYY" —
- * arithmetically validated (rejects "2026-02-30" rather than rolling it
- * over), same approach as lib/logbook-import/fields.ts's
- * parseFlexibleDate. This one is small enough (and different enough —
- * bank exports also occasionally use "MM-DD-YYYY" with dashes, handled
- * below, which the logbook date parser has no reason to support) that
- * copying the ~25 lines seemed more honest than importing across the
- * feature boundary for a near-but-not-quite-identical rule.
+ * True when the cell's own text states which direction the money went —
+ * parentheses (the accounting negative), or a trailing CR/DR marker.
+ *
+ * This is the signal that overrides every column convention and every
+ * account-kind inference downstream: a cell reading "214.88 DR" has said
+ * "money out" in words, and no amount of "but credit-card exports usually
+ * write purchases positive" should be allowed to argue with it.
  */
-function parseStatementDate(raw: string): string | null {
-  const value = raw.trim();
-  if (!value) return null;
-
-  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(value);
-  const us = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value);
-  const usDash = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(value);
-
-  let y: number, m: number, d: number;
-  if (iso) {
-    y = Number(iso[1]);
-    m = Number(iso[2]);
-    d = Number(iso[3]);
-  } else if (us) {
-    m = Number(us[1]);
-    d = Number(us[2]);
-    y = Number(us[3]);
-  } else if (usDash) {
-    m = Number(usDash[1]);
-    d = Number(usDash[2]);
-    y = Number(usDash[3]);
-  } else {
-    return null;
-  }
-
-  if (m < 1 || m > 12) return null;
-  const isLeap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
-  const daysInMonth = [31, isLeap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  const maxDay = daysInMonth[m - 1] ?? 31;
-  if (d < 1 || d > maxDay) return null;
-  if (y < 1900 || y > 2100) return null;
-
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${y}-${pad(m)}-${pad(d)}`;
+function declaresOwnSign(raw: string): boolean {
+  const v = raw.trim();
+  if (v.startsWith("(") && v.endsWith(")")) return true;
+  return /\s*(CR|DR)$/i.test(v);
 }
 
 /**
@@ -143,12 +114,41 @@ export function applyCsvMapping(params: {
     };
   }
 
+  // Pass 1 collects; the credit-card sign decision needs to see the whole
+  // column before it can be made, so nothing is emitted until pass 2.
+  type Staged = ParsedBankRow & { signSelfDeclared: boolean };
+  const staged: Staged[] = [];
+
   dataRecords.forEach((record, i) => {
     const rowNumber = i + 1;
-    const fields = record.fields;
+    let fields = record.fields;
     const reject = (reason: string) => rejected.push({ rowNumber, raw: record.raw, reason });
 
     if (fields.every((f) => f.trim() === "")) return;
+
+    // ARITY (fixed after review). A row with MORE fields than the header
+    // was silently accepted and the extras dropped — so an unquoted
+    // European decimal, "2026-03-15,COFFEE,4,75", parsed as four fields
+    // against a three-column header and stored the amount as "4": the
+    // pilot saw +$4.00 for a €4,75 charge, with rejected: 0. A row with
+    // FEWER fields lost cells from the source_row blob that is supposed to
+    // preserve the file verbatim.
+    //
+    // This is the rule lib/logbook-import/foreflight.ts already applies
+    // (pad short, reject long by name, keep parsing the rest) — ported
+    // here rather than reinvented, because the two importers drifting on
+    // something this basic is how the CSV path ended up without it.
+    if (fields.length !== headerRow.length) {
+      if (fields.length > headerRow.length) {
+        reject(
+          `This row has ${fields.length} values but the header has ${headerRow.length} columns, so we can't tell which value belongs to which column. A common cause is a number written with a comma (like 4,75) in a file that separates columns with commas.`
+        );
+        return;
+      }
+      // Short: pad, so the row still parses and source_row keeps a slot
+      // for every header column rather than silently losing the tail.
+      fields = [...fields, ...Array<string>(headerRow.length - fields.length).fill("")];
+    }
 
     const sourceRow: Record<string, string> = {};
     uniqueHeaderKeys.forEach((key, idx) => {
@@ -173,6 +173,7 @@ export function applyCsvMapping(params: {
     }
 
     let amountCents: number | undefined;
+    let signSelfDeclared = false;
     if (hasAmount) {
       const raw = (fields[amountIdx] ?? "").trim();
       if (!raw) {
@@ -181,20 +182,27 @@ export function applyCsvMapping(params: {
       }
       amountCents = parseBankAmount(raw);
       if (amountCents === undefined) {
-        reject(`Amount isn't a recognized number: "${raw}".`);
+        // A comma-decimal gets its own sentence — "isn't a recognized
+        // number" would send the pilot hunting for a typo that isn't there.
+        reject(ambiguousCommaReason(raw) ?? `Amount isn't a recognized number: "${raw}".`);
         return;
       }
+      signSelfDeclared = declaresOwnSign(raw);
     } else {
       const debitRaw = debitIdx >= 0 ? (fields[debitIdx] ?? "").trim() : "";
       const creditRaw = creditIdx >= 0 ? (fields[creditIdx] ?? "").trim() : "";
       const debitVal = debitRaw ? parseBankAmount(debitRaw) : undefined;
       const creditVal = creditRaw ? parseBankAmount(creditRaw) : undefined;
       if (debitRaw && debitVal === undefined) {
-        reject(`Debit amount isn't a recognized number: "${debitRaw}".`);
+        reject(
+          ambiguousCommaReason(debitRaw) ?? `Debit amount isn't a recognized number: "${debitRaw}".`
+        );
         return;
       }
       if (creditRaw && creditVal === undefined) {
-        reject(`Credit amount isn't a recognized number: "${creditRaw}".`);
+        reject(
+          ambiguousCommaReason(creditRaw) ?? `Credit amount isn't a recognized number: "${creditRaw}".`
+        );
         return;
       }
       const debitPresent = debitRaw !== "" && debitVal !== undefined && debitVal !== 0;
@@ -207,30 +215,96 @@ export function applyCsvMapping(params: {
         reject("Neither debit nor credit has a nonzero value.");
         return;
       }
-      // debit = money out = canonical negative; credit = money in = canonical positive.
-      // parseBankAmount returns whatever sign the cell's own text encoded
-      // (a debit column is almost always written as a plain positive
-      // number, but Math.abs guards a bank that writes it pre-signed too).
-      amountCents = debitPresent ? -Math.abs(debitVal!) : Math.abs(creditVal!);
+
+      // debit = money out = canonical negative; credit = money in =
+      // canonical positive — but ONLY when the cell itself is silent about
+      // direction.
+      //
+      // This used to be `debitPresent ? -Math.abs(v) : Math.abs(v)`, which
+      // DELETED a direction the cell had stated in words. amount.ts
+      // documents trailing CR as money in and DR as money out by name, so
+      // a Withdrawal cell reading "45.00 CR" — a reversal, stated
+      // explicitly — was stored as -4500 while the identical text in a
+      // signed Amount column stored +4500. A $90 swing on the same input,
+      // decided by nothing but which header the bank happened to use.
+      const rawCell = debitPresent ? debitRaw : creditRaw;
+      const parsed = debitPresent ? debitVal! : creditVal!;
+      if (declaresOwnSign(rawCell)) {
+        // The text said which way the money went. Believe it over the
+        // column, and record that we did so this row is never flipped
+        // again downstream.
+        amountCents = parsed;
+        signSelfDeclared = true;
+      } else if (/^\s*-/.test(rawCell)) {
+        // A bare leading minus inside a debit/credit column is genuinely
+        // ambiguous — "-45.00" in a Withdrawal column could mean a $45
+        // withdrawal or a $45 reversal of one, and the file gives no way
+        // to tell. Rejected by name rather than guessed at, matching this
+        // module's treatment of every other ambiguity.
+        reject(
+          `"${rawCell}" is a negative value in the ${debitPresent ? "debit" : "credit"} column, which could mean either a ${debitPresent ? "withdrawal" : "deposit"} or a reversal of one. Re-export with a single signed amount column, or enter this transaction by hand.`
+        );
+        return;
+      } else {
+        amountCents = debitPresent ? -Math.abs(parsed) : Math.abs(parsed);
+      }
     }
 
-    // THE credit-card flip — see file header / migration header. A
-    // checking/savings row is already in canonical sign at this point
-    // (a signed column already reads negative-for-debit; the
-    // debit/credit branch above already produced canonical sign) — this
-    // flip therefore applies ONLY to accountKind === 'credit_card', and
-    // ONLY to the single-signed-amount shape, since that is the shape a
-    // credit card issuer actually exports (positive = charge). A
-    // debit/credit-shaped credit card export is not a real thing this
-    // parser has seen documented by any issuer, so it is deliberately
-    // NOT flipped — if one surfaces, canonicalizing it needs its own
-    // judgment call, not a silent guess here.
-    if (accountKind === "credit_card" && hasAmount) {
-      amountCents = -amountCents!;
-    }
-
-    valid.push({ rowNumber, raw: record.raw, sourceRow, postedOn, description, amountCents: amountCents! });
+    staged.push({
+      rowNumber,
+      raw: record.raw,
+      sourceRow,
+      postedOn,
+      description,
+      amountCents: amountCents!,
+      signSelfDeclared,
+    });
   });
 
-  return { format, header: headerRow, valid, rejected };
+  // ---------------------------------------------------------------------
+  // PASS 2 — the credit-card sign decision (fixed after review)
+  // ---------------------------------------------------------------------
+  // This used to be an unconditional `amountCents = -amountCents` for every
+  // credit_card signed-amount file, on the premise that card issuers write
+  // a purchase as a positive charge. Many do. Some do not — and for those,
+  // the flip inverted the ENTIRE statement: a real $214.88 hotel charge
+  // became +21488, was refused by confirmTransaction as "a deposit or
+  // refund", and produced no expense at all, while the month's one refund
+  // became the only row the pilot could file.
+  //
+  // The premise isn't wrong, it was just applied without checking. So:
+  // infer it from the file instead. A credit-card statement is
+  // overwhelmingly purchases, so whichever direction the majority of
+  // amounts run IS that file's "money out" — a majority-negative column is
+  // already canonical and must not be touched.
+  //
+  // Rows whose own text declared direction (parens, CR, DR) are excluded
+  // from the vote AND exempt from the flip: "214.88 DR" already said money
+  // out, and no amount of column convention overrides the cell saying so.
+  let signInterpretation: SignInterpretation | undefined;
+  let flip = false;
+  if (accountKind === "credit_card" && hasAmount) {
+    const votable = staged.filter((r) => !r.signSelfDeclared && r.amountCents !== 0);
+    const negatives = votable.filter((r) => r.amountCents < 0).length;
+    const positives = votable.length - negatives;
+    // Majority-positive (the classic issuer convention) is the only case
+    // that gets flipped. A tie, or an empty vote, leaves the file alone —
+    // when in doubt, do not silently rewrite the pilot's money.
+    flip = positives > negatives;
+    signInterpretation = {
+      flipped: flip,
+      moneyOutRows: flip ? positives : negatives,
+      moneyInRows: flip ? negatives : positives,
+      selfDeclaredRows: staged.length - votable.length,
+    };
+  }
+
+  for (const row of staged) {
+    const { signSelfDeclared: declared, ...rest } = row;
+    valid.push(
+      flip && !declared ? { ...rest, amountCents: -rest.amountCents } : rest
+    );
+  }
+
+  return { format, header: headerRow, valid, rejected, signInterpretation };
 }

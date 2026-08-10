@@ -136,6 +136,16 @@ export type ConfirmImportResult = {
   duplicateDetailTruncated?: boolean;
   rejectedCount?: number;
   /**
+   * Every row from the file that did not make it in, with the reason —
+   * the client parser's own rejections and this action's validation
+   * rejections merged into one list, sorted by row number.
+   *
+   * Returned rather than only persisted to the batch's error_summary,
+   * because the pilot needs to see it in the same breath as "203
+   * imported" and nothing in the product reads a batch row back.
+   */
+  rejectedDetail?: { rowNumber: number; raw: string; reason: string }[];
+  /**
    * True when some rows landed in the logbook but the confirm didn't
    * finish (a later chunk/row failed after earlier ones committed).
    * `error` is null in this case on purpose — it isn't a failure the
@@ -339,6 +349,63 @@ function validateRow(values: LogbookEntryFlightFields): string | null {
   return null;
 }
 
+/**
+ * Turns validateRow's terse internal reason into a sentence that tells the
+ * pilot what is actually wrong with THEIR row and what to do about it.
+ *
+ * validateRow's strings ("missing or invalid role", "invalid total_time")
+ * are written for the developer reading a server log, which is where they
+ * used to go and stop. Now that they reach the pilot, they need to name
+ * the thing in the vocabulary of the logbook rather than the column.
+ *
+ * The role case is the one that matters most in practice: a ForeFlight
+ * export of a professional pilot's logbook routinely contains full-flight-
+ * simulator sessions with no PIC, SIC, solo or dual-received time on them
+ * at all — there is nothing to infer a role from, because in the sim there
+ * wasn't one in the FAA's four-value sense.
+ */
+function explainValidationFailure(problem: string, values: LogbookEntryFlightFields): string {
+  if (problem.startsWith("missing or invalid role")) {
+    if ((values.simulator_time ?? 0) > 0) {
+      return "This is a simulator session with no PIC, SIC, solo or dual-received time on it, so there's no way to tell which role to log it under. Add it by hand from the logbook, choosing the role yourself.";
+    }
+    return "No PIC, SIC, solo or dual-received time is recorded on this flight, so there's no way to tell which role to log it under. Add it by hand from the logbook, choosing the role yourself.";
+  }
+  const overTotal = /^(\w+) cannot be greater than total_time$/.exec(problem);
+  if (overTotal) {
+    const label: Record<string, string> = {
+      pic_time: "PIC time",
+      sic_time: "SIC time",
+      solo_time: "solo time",
+      cross_country_time: "cross-country time",
+      night_time: "night time",
+      instrument_actual_time: "actual instrument time",
+      instrument_simulated_time: "simulated instrument time",
+    };
+    const field = overTotal[1] ?? "";
+    const name = label[field] ?? field.replace(/_/g, " ");
+    const value = values[field as keyof LogbookEntryFlightFields];
+    return `The ${name} on this flight (${String(value)}) is greater than its total time (${values.total_time}), which can't be right — each of those is a portion of the same flight. Fix it in ForeFlight and re-import, or add this flight by hand.`;
+  }
+  if (problem === "simulator time without a device type") {
+    return "This row logs simulator time but doesn't say what kind of device it was (FFS, FTD or ATD), which the logbook needs in order to record it.";
+  }
+  if (problem === "approach type without an approach count") {
+    return "This row names an approach type but records zero approaches.";
+  }
+  if (problem.startsWith("invalid entry_date")) {
+    return "This row's date isn't a real calendar date.";
+  }
+  if (problem.startsWith("invalid total_time")) {
+    return "This row's total time isn't a number the logbook can record (it must be zero or more, in tenths of an hour).";
+  }
+  const invalidField = /^invalid (\w+)/.exec(problem);
+  if (invalidField) {
+    return `This row's ${(invalidField[1] ?? "").replace(/_/g, " ")} isn't a value the logbook can record.`;
+  }
+  return problem;
+}
+
 export async function confirmImport(payload: ConfirmImportPayload): Promise<ConfirmImportResult> {
   const { account, user } = await requireAccount("/logbook/import");
 
@@ -462,14 +529,63 @@ export async function confirmImport(payload: ConfirmImportPayload): Promise<Conf
   sourceFileId = (fileInsert.data as { id: string }).id;
 
   // 3. Validate every row's shape before anything is fingerprinted or
-  // inserted — one bad row aborts the whole confirm rather than landing
-  // a partially-validated batch, since these rows never went through
-  // parseEntryForm's server-side checks the way a manual entry does.
+  // inserted, since these rows never went through parseEntryForm's
+  // server-side checks the way a manual entry does.
+  //
+  // A ROW THAT CANNOT BE STORED IS REJECTED ON ITS OWN. It used to abort
+  // the entire confirm: `return await fail("row N: ...", null, 0)`, which
+  // deleted the batch and told the pilot "Couldn't complete that import.
+  // Nothing was added to your logbook — check the file and try again."
+  // The row number and the actual reason went to console.error, where no
+  // pilot will ever see them.
+  //
+  // Found the hard way against a real 221-row ForeFlight export: 20 rows
+  // tripped this (18 full-flight-simulator sessions with no PIC/SIC/solo/
+  // dual time to infer a role from, one row logging PIC and SIC and Solo
+  // simultaneously, and one whose CrossCountry exceeded its TotalTime) —
+  // and all 221 rows were refused, with no way to tell which 20 or why.
+  // 201 perfectly good entries were unreachable because of 20 the file
+  // itself could not express.
+  //
+  // That is the wrong trade for a logbook. An import is not a
+  // transaction the pilot asked to be atomic; it is a bulk entry of
+  // independent legal records, and one unusable row says nothing about
+  // the other 220. This product already has the right surface for this —
+  // `rejected` rows flow into the batch's error_summary and render in the
+  // import workspace — the validator simply wasn't using it.
+  const serverRejected: { rowNumber: number; raw: string; reason: string }[] = [];
+  const acceptedRows: ConfirmImportRow[] = [];
   for (const row of payload.rows) {
     const problem = validateRow(row.values);
     if (problem) {
-      return await fail(`row ${row.rowNumber}: ${problem}`, null, 0);
+      serverRejected.push({
+        rowNumber: row.rowNumber,
+        raw: "",
+        reason: explainValidationFailure(problem, row.values),
+      });
+      continue;
     }
+    acceptedRows.push(row);
+  }
+
+  // Every row unusable is still worth reporting precisely rather than
+  // generically — the pilot gets the same per-row reasons, and the batch
+  // is cleaned up exactly as `fail` would have done.
+  if (acceptedRows.length === 0) {
+    if (sourceFileId) {
+      await logbookFrom(supabase, "logbook_source_files")
+        .delete()
+        .eq("id", sourceFileId)
+        .eq("account_id", account.id);
+    }
+    await logbookFrom(supabase, "logbook_import_batches")
+      .delete()
+      .eq("id", batchId)
+      .eq("account_id", account.id);
+    const first = serverRejected[0];
+    return {
+      error: `None of the ${payload.rows.length} row${payload.rows.length === 1 ? "" : "s"} in that file could be imported. The first problem is on row ${first?.rowNumber ?? 1}: ${first?.reason ?? "the row could not be read."}`,
+    };
   }
 
   // 4. Fingerprint + dedup. row_fingerprint is ALWAYS computed here, never
@@ -478,7 +594,7 @@ export async function confirmImport(payload: ConfirmImportPayload): Promise<Conf
   // written with a fingerprint, so manual/trip-derived rows can never be
   // matched or overwritten by this dedup — see that partial unique
   // index's WHERE clause.
-  const withFingerprint = payload.rows.map((row) => ({
+  const withFingerprint = acceptedRows.map((row) => ({
     row,
     fingerprint: rowFingerprint(row.values),
   }));
@@ -623,7 +739,19 @@ export async function confirmImport(payload: ConfirmImportPayload): Promise<Conf
   // silently dropped." Capped the same way the logbook page caps its own
   // entries list, with the same kind of truncation note rather than an
   // unbounded blob.
-  const rejectedForSummary = payload.rejected.slice(0, MAX_STORED_REJECTIONS).map((r) => ({
+  //
+  // The two rejection sources are merged, not tracked separately: the
+  // client parser's own rejections (a row it could not read at all) and
+  // this action's validation rejections (a row it read fine but the
+  // logbook cannot store) are the same thing from the pilot's side — a
+  // row from their file that did not make it in, with a reason. Keeping
+  // them apart would mean two counts to reconcile and two places for one
+  // to be forgotten, which is how the validation rejections came to be
+  // invisible in the first place.
+  const allRejected = [...payload.rejected, ...serverRejected].sort(
+    (a, b) => a.rowNumber - b.rowNumber
+  );
+  const rejectedForSummary = allRejected.slice(0, MAX_STORED_REJECTIONS).map((r) => ({
     rowNumber: r.rowNumber,
     raw: r.raw.slice(0, 500),
     reason: r.reason,
@@ -631,7 +759,7 @@ export async function confirmImport(payload: ConfirmImportPayload): Promise<Conf
   const duplicateDetailTruncated = duplicateDetail.length >= MAX_STORED_REJECTIONS;
   const errorSummary = JSON.stringify({
     rejected: rejectedForSummary,
-    rejectedTruncated: payload.rejected.length > MAX_STORED_REJECTIONS,
+    rejectedTruncated: allRejected.length > MAX_STORED_REJECTIONS,
     duplicatesInLogbook,
     duplicatesInFile,
     duplicateDetail,
@@ -644,7 +772,7 @@ export async function confirmImport(payload: ConfirmImportPayload): Promise<Conf
       {
         status: "completed",
         imported_rows: imported,
-        rejected_rows: payload.rejected.length,
+        rejected_rows: allRejected.length,
         error_summary: errorSummary,
       } as never,
       { count: "exact" }
@@ -671,6 +799,7 @@ export async function confirmImport(payload: ConfirmImportPayload): Promise<Conf
     duplicatesInFile,
     duplicateDetail,
     duplicateDetailTruncated,
-    rejectedCount: payload.rejected.length,
+    rejectedCount: allRejected.length,
+    rejectedDetail: rejectedForSummary,
   };
 }

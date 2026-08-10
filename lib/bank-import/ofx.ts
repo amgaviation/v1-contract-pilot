@@ -1,5 +1,61 @@
 import { parseBankAmount } from "./amount";
+import { parseOfxDate } from "./date";
 import type { BankParseResult, ParsedBankRow, RejectedBankRow } from "./types";
+
+/**
+ * Decodes the five predefined SGML/XML entities plus numeric character
+ * references, in ONE pass over a single alternation.
+ *
+ * The single pass is the point, not a micro-optimisation: sequential
+ * `.replace()` calls decode `&amp;lt;` into `<`, because the `&amp;` pass
+ * produces an `&lt;` that the later `&lt;` pass then eats. One alternation
+ * cannot do that — each match is consumed exactly once.
+ *
+ * Why this is needed at all: OFX 2.x is XML, so a bare `&` is a hard parse
+ * error and any merchant with an ampersand in its name MUST arrive
+ * escaped. Undecoded, "AT&amp;T MOBILITY" was stored verbatim, reached
+ * `pilot.expenses.vendor`, and rendered to the pilot literally — React
+ * escapes JSX text children, so the entity is what they see. It also made
+ * the fingerprint diverge from the CSV export of the same charge, so both
+ * rows landed.
+ *
+ * Unrecognised entities are left verbatim rather than mangled: a bank that
+ * emits something exotic gets its text through unchanged instead of
+ * half-decoded.
+ *
+ * Parser-forward only. Rows already imported are deliberately NOT
+ * re-decoded — their fingerprints were computed from the stored text, and
+ * changing it would break dedup against the very statements it protects.
+ */
+function decodeEntities(value: string): string {
+  return value.replace(
+    /&(?:(amp|lt|gt|quot|apos)|#(\d{1,7})|#[xX]([0-9a-fA-F]{1,6}));/g,
+    (whole, named: string | undefined, dec: string | undefined, hex: string | undefined) => {
+      if (named) {
+        switch (named) {
+          case "amp":
+            return "&";
+          case "lt":
+            return "<";
+          case "gt":
+            return ">";
+          case "quot":
+            return '"';
+          case "apos":
+            return "'";
+        }
+      }
+      const code = dec ? Number.parseInt(dec, 10) : hex ? Number.parseInt(hex, 16) : NaN;
+      // Reject non-characters rather than throwing from fromCodePoint.
+      if (!Number.isFinite(code) || code < 0x20 || code > 0x10ffff) return whole;
+      try {
+        return String.fromCodePoint(code);
+      } catch {
+        return whole;
+      }
+    }
+  );
+}
 
 /**
  * A focused OFX/QFX parser for exactly the records this feature needs:
@@ -14,6 +70,40 @@ import type { BankParseResult, ParsedBankRow, RejectedBankRow } from "./types";
  * `<STMTTRN>` — nothing this parser reads lives in that block, so QFX and
  * OFX share this exact code path; the only difference the caller sees is
  * which format label gets stored on the batch.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THE BLOCK REGEX REFUSES TO CROSS AN OPENER (fixed after review)
+ * ---------------------------------------------------------------------------
+ * The original pattern was `/<STMTTRN>([\s\S]*?)<\/STMTTRN>/gi`. Lazy, but
+ * with nothing stopping the body from swallowing a nested `<STMTTRN>`. So a
+ * file whose second record is missing its closing tag — truncation, or a
+ * merely sloppy export — had that record's body merged into the third
+ * record's. Reproduced against this exact parser:
+ *
+ *   openers in file: 3   valid: 2   rejected: 0
+ *     row 1  2026-03-15  -1000     SYNTH ONE
+ *     row 2  2026-03-17  -999900   SYNTH BRAVO — SYNTH MEMO CHARLIE
+ *
+ * Note what that second row IS. It is not the lost transaction and it is
+ * not the surviving one: the leaf-tag scan is last-write-wins, so it took
+ * BRAVO's name and CHARLIE's date and amount and produced a $9,999.00
+ * charge **that does not appear anywhere in the file**. The real BRAVO was
+ * $20.00. That row passes every validation, renders in the preview as
+ * ordinary, and is offered to the pilot to file against a client.
+ *
+ * Silently losing a transaction is bad. Silently inventing one, with a
+ * plausible merchant name and a four-figure amount, is the reason this is
+ * the most severe defect this feature had.
+ *
+ * Two changes, and both are load-bearing:
+ *   1. `(?:(?!<STMTTRN>)[\s\S])*?` — the body may not contain another
+ *      opener, so an unclosed record can no longer absorb its successor.
+ *      This alone converts fabrication into plain loss.
+ *   2. Reconcile the opener count against the block count and reject once,
+ *      by name, per unaccounted opener. THIS is what makes the loss loud;
+ *      without it the file quietly reports fewer transactions than it has,
+ *      and `totalRows` (computed downstream as valid + rejected) agrees
+ *      with the wrong number instead of contradicting it.
  */
 export function parseOfx(text: string, format: "ofx" | "qfx"): BankParseResult {
   const valid: ParsedBankRow[] = [];
@@ -22,12 +112,18 @@ export function parseOfx(text: string, format: "ofx" | "qfx"): BankParseResult {
   // Normalize line endings once; every downstream regex assumes \n only.
   const body = text.replace(/\r\n?/g, "\n");
 
-  const blockRe = /<STMTTRN>([\s\S]*?)<\/STMTTRN>/gi;
+  // The body may not contain a further opener — see the header comment.
+  const blockRe = /<STMTTRN>((?:(?!<STMTTRN>)[\s\S])*?)<\/STMTTRN>/gi;
   const blocks: string[] = [];
   let m: RegExpExecArray | null;
   while ((m = blockRe.exec(body))) {
     blocks.push(m[1] ?? "");
   }
+
+  // Counted from the file's own bytes, independently of what the parser
+  // managed to pair up — so "how many records are in this file" and "how
+  // many did we read" can disagree out loud instead of agreeing quietly.
+  const openerCount = (body.match(/<STMTTRN>/gi) ?? []).length;
 
   if (blocks.length === 0) {
     return {
@@ -44,6 +140,19 @@ export function parseOfx(text: string, format: "ofx" | "qfx"): BankParseResult {
     };
   }
 
+  // One named rejection per record the file opened but this parser could
+  // not close. The pilot sees "3 transactions found, 1 couldn't be read"
+  // instead of a clean-looking import that is quietly short.
+  const unaccounted = openerCount - blocks.length;
+  for (let i = 0; i < unaccounted; i += 1) {
+    rejected.push({
+      rowNumber: blocks.length + i + 1,
+      raw: "",
+      reason:
+        "A <STMTTRN> transaction record in this file is missing its closing </STMTTRN> tag, so it couldn't be read. The file may have been truncated during download — re-download the statement and import it again.",
+    });
+  }
+
   blocks.forEach((block, i) => {
     const rowNumber = i + 1;
     const reject = (reason: string) => rejected.push({ rowNumber, raw: block.trim(), reason });
@@ -56,7 +165,10 @@ export function parseOfx(text: string, format: "ofx" | "qfx"): BankParseResult {
     let t: RegExpExecArray | null;
     while ((t = tagRe.exec(block))) {
       const tag = t[1]!.toUpperCase();
-      const value = t[2]!.trim();
+      // Decode on the leaf value, once, before anything reads it — so the
+      // description, the fingerprint and pilot.expenses.vendor all see the
+      // same decoded text rather than three different opinions of it.
+      const value = decodeEntities(t[2]!).trim();
       if (value !== "") fields[tag] = value;
     }
 
@@ -65,19 +177,27 @@ export function parseOfx(text: string, format: "ofx" | "qfx"): BankParseResult {
       reject("Missing DTPOSTED (posted date).");
       return;
     }
-    const dateMatch = /^(\d{4})(\d{2})(\d{2})/.exec(dtposted);
-    if (!dateMatch) {
-      reject(`DTPOSTED isn't a recognized OFX date: "${dtposted}".`);
+    // Arithmetically validated, not string-sliced — see date.ts's header
+    // for what "2026-02-31" used to do to the preview.
+    const postedOn = parseOfxDate(dtposted);
+    if (!postedOn) {
+      reject(
+        `DTPOSTED isn't a real calendar date: "${dtposted}". Expected YYYYMMDD (for example 20260315).`
+      );
       return;
     }
-    const postedOn = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}`;
 
     const trnamt = fields.TRNAMT;
     if (!trnamt) {
       reject("Missing TRNAMT (amount).");
       return;
     }
-    const amountCents = parseBankAmount(trnamt);
+    // "decimal", not the CSV default: OFX 2.0.2 §3.2.9.2 requires an amount
+    // to carry "a decimal point or comma to indicate the start of the
+    // fractional amount" and forbids thousands punctuation outright, so
+    // `-540,32` here means $540.32 and is not ambiguous the way the same
+    // string in a CSV would be. See amount.ts's comma section.
+    const amountCents = parseBankAmount(trnamt, "decimal");
     if (amountCents === undefined) {
       reject(`TRNAMT isn't a recognized number: "${trnamt}".`);
       return;

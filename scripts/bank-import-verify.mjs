@@ -109,21 +109,72 @@ check("CSV-1: signed-amount CSV with BOM+CRLF+thousands+quoted-comma parses to 3
   assert.equal(result.valid[2].amountCents, -8999, "(89.99) parens negative");
 });
 
-check("CSV-2: the SAME credit_card account flips a signed purchase to negative", () => {
-  const parsed = parseCsv(csvSigned);
-  const [header, ...data] = parsed;
+// --- CSV: the credit-card sign decision ------------------------------------
+// REWRITTEN. The previous CSV-2 asserted that a credit_card account ALWAYS
+// flips a signed amount column — which is exactly what the code did, so
+// the test encoded the premise instead of testing it and could never have
+// caught the defect that premise causes. It also contradicted its own
+// fixture, describing "-4.75 STARBUCKS #1234, 5TH AVE" as "a credit/refund"
+// when a coffee shop line on a card statement is a purchase.
+//
+// The real contract is: infer the file's own convention, and never argue
+// with a cell that stated its direction itself. Case (b) is the regression
+// that mattered — it used to invert an entire statement.
+
+check("CSV-2a: a majority-POSITIVE card file is the classic issuer convention and IS flipped", () => {
+  const csv =
+    "Date,Description,Amount\n" +
+    "2026-03-04,SYNTHETIC HOTEL,214.88\n" +
+    "2026-03-05,SYNTHETIC FUEL,512.10\n" +
+    "2026-03-06,SYNTHETIC REFUND,-64.10\n";
+  const [header, ...data] = parseCsv(csv);
   const mapping = suggestColumnMapping(header.fields);
-  const result = applyCsvMapping({ headerRow: header.fields, dataRecords: data, mapping, accountKind: "credit_card" });
-  // A credit card issuer writes a purchase as POSITIVE; our canonical sign
-  // is negative-for-expense, so row 1 (-4.75 in the raw file, i.e. what
-  // the issuer would call a NEGATIVE = a credit/refund on their own
-  // statement) flips to +4.75 canonical, and row 3's parenthesized
-  // (89.99) — the issuer's refund/credit notation — flips to +89.99
-  // canonical. This is intentionally the mirror image of CSV-1's checking
-  // result for the identical input file, proving the flip is real and
-  // account-kind-driven, not a no-op.
-  assert.equal(result.valid[0].amountCents, 475);
-  assert.equal(result.valid[2].amountCents, 8999);
+  const r = applyCsvMapping({ headerRow: header.fields, dataRecords: data, mapping, accountKind: "credit_card" });
+  assert.equal(r.signInterpretation?.flipped, true, "2 positive vs 1 negative => issuer writes purchases positive");
+  assert.equal(r.valid[0].amountCents, -21488, "the hotel purchase becomes canonical money-out");
+  assert.equal(r.valid[2].amountCents, 6410, "the refund becomes canonical money-in");
+});
+
+check("CSV-2b: a majority-NEGATIVE card file is ALREADY canonical and is NOT flipped", () => {
+  // An issuer whose CSV writes purchases negative had its entire statement
+  // inverted: every real purchase became a "deposit" the confirm screen
+  // refused to file, and the month's one refund was the only row the pilot
+  // could turn into an expense.
+  const csv =
+    "Date,Description,Amount\n" +
+    "2026-03-04,SYNTHETIC HOTEL,-214.88\n" +
+    "2026-03-05,SYNTHETIC FUEL,-512.10\n" +
+    "2026-03-06,SYNTHETIC REFUND,64.10\n";
+  const [header, ...data] = parseCsv(csv);
+  const mapping = suggestColumnMapping(header.fields);
+  const r = applyCsvMapping({ headerRow: header.fields, dataRecords: data, mapping, accountKind: "credit_card" });
+  assert.equal(r.signInterpretation?.flipped, false, "2 negative vs 1 positive => already canonical");
+  assert.equal(r.valid[0].amountCents, -21488, "the hotel purchase STAYS money-out");
+  assert.equal(r.valid[2].amountCents, 6410, "the refund STAYS money-in");
+});
+
+check("CSV-2c: a cell that states its own direction (CR/DR/parens) is never flipped", () => {
+  const csv =
+    "Date,Description,Amount\n" +
+    "2026-03-04,SYNTHETIC HOTEL,214.88 DR\n" +
+    "2026-03-05,SYNTHETIC FUEL,512.10\n" +
+    "2026-03-06,SYNTHETIC MEALS,88.00\n";
+  const [header, ...data] = parseCsv(csv);
+  const mapping = suggestColumnMapping(header.fields);
+  const r = applyCsvMapping({ headerRow: header.fields, dataRecords: data, mapping, accountKind: "credit_card" });
+  assert.equal(r.signInterpretation?.flipped, true, "the two unmarked positives still set the file convention");
+  assert.equal(r.signInterpretation?.selfDeclaredRows, 1);
+  assert.equal(r.valid[0].amountCents, -21488, '"214.88 DR" already said money out — the flip must not touch it');
+  assert.equal(r.valid[1].amountCents, -51210, "the unmarked purchase is flipped as usual");
+});
+
+check("CSV-2d: a checking account is never sign-transformed at all", () => {
+  const [header, ...data] = parseCsv(csvSigned);
+  const mapping = suggestColumnMapping(header.fields);
+  const r = applyCsvMapping({ headerRow: header.fields, dataRecords: data, mapping, accountKind: "checking" });
+  assert.equal(r.signInterpretation, undefined, "no sign decision is made for a non-card account");
+  assert.equal(r.valid[0].amountCents, -475);
+  assert.equal(r.valid[2].amountCents, -8999);
 });
 
 // --- CSV: separate debit/credit columns ------------------------------------
