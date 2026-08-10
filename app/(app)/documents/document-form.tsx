@@ -101,7 +101,7 @@ export default function DocumentForm({
               </Select.Root>
               <input type="hidden" name="kind" value={kind} />
             </Flex>
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
               <Text as="label" size="1" color="gray" htmlFor="label">
                 Label
               </Text>

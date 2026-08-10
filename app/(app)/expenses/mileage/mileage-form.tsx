@@ -270,7 +270,7 @@ function EntryFields({
           </>
         )}
       </Flex>
-      <Box style={{ gridColumn: "span 2" }}>
+      <Box gridColumn={{ md: "span 2" }}>
         <Flex direction="column" gap="1">
           <Text as="label" size="2" weight="medium" htmlFor={`${idPrefix}-notes`}>
             Notes

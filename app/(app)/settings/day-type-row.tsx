@@ -118,7 +118,7 @@ export default function DayTypeRow({
           </Flex>
 
           <Grid columns={{ initial: "2", md: "12" }} gap="3" align="start">
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 3" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
               <Text size="1" color="gray">
                 Label
               </Text>
@@ -129,7 +129,7 @@ export default function DayTypeRow({
                 defaultValue={initial("label", dayType.label)}
               />
             </Flex>
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }} justify="center">
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }} justify="center">
               <Text as="label" size="2" color="gray">
                 <Flex gap="2" align="center" mt="4">
                   <Switch
@@ -143,7 +143,7 @@ export default function DayTypeRow({
                 </Flex>
               </Text>
             </Flex>
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 3" }} justify="center">
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }} justify="center">
               <Text as="label" size="2" color="gray">
                 <Flex gap="2" align="center" mt="4">
                   <Switch
@@ -157,7 +157,7 @@ export default function DayTypeRow({
                 </Flex>
               </Text>
             </Flex>
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
               <Text size="1" color="gray">
                 Default rate (USD)
               </Text>
@@ -171,7 +171,7 @@ export default function DayTypeRow({
                 Blank = no rate agreed
               </Text>
             </Flex>
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
               <Text size="1" color="gray">
                 Default rate fraction
               </Text>
@@ -189,7 +189,7 @@ export default function DayTypeRow({
                 0.5 = half rate. Blank = full rate
               </Text>
             </Flex>
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
               <Text size="1" color="gray">
                 Order
               </Text>
@@ -204,7 +204,7 @@ export default function DayTypeRow({
               </Text>
             </Flex>
 
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 5" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 5" }}>
               <Text as="label" size="1" color="gray" id={`bills-as-label-${dayType.id}`}>
                 Bills as
               </Text>
@@ -224,7 +224,7 @@ export default function DayTypeRow({
               </Select.Root>
               <input type="hidden" name="invoice_line_type" value={invoiceLineType} />
             </Flex>
-            <Flex direction="column" justify="center" style={{ gridColumn: "span 7" }}>
+            <Flex direction="column" justify="center" gridColumn={{ md: "span 7" }}>
               <Text size="1" color="gray">
                 The name is yours to change. Which invoice line it bills as is fixed, because the
                 invoice&rsquo;s own billing rules depend on it.

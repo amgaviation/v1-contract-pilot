@@ -77,7 +77,7 @@ export default async function SettingsPage({
         initialTab={tab}
         business={
           <Grid columns={{ initial: "1", lg: "3" }} gap="4">
-            <Flex direction="column" gap="4" style={{ gridColumn: "span 2" }}>
+            <Flex direction="column" gap="4" gridColumn={{ md: "span 2" }}>
               <SettingsForm values={settingsValues} canEdit={canEdit} />
             </Flex>
             <Flex direction="column" gap="4">

@@ -128,7 +128,7 @@ export default function DraftForm({
         ))}
 
         <Grid columns={{ initial: "1", md: "3" }} gap="4">
-          <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+          <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
             <Text as="label" size="2" weight="medium" id="draft-client-label">
               Client
             </Text>

@@ -52,7 +52,7 @@ export default function AddDayTypeForm() {
           </Flex>
 
           <Grid columns={{ initial: "2", md: "12" }} gap="3" align="start">
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 4" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 4" }}>
               <Text size="1" color="gray">
                 Label
               </Text>
@@ -61,7 +61,7 @@ export default function AddDayTypeForm() {
                 Ground school day, for example
               </Text>
             </Flex>
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
               <Text as="label" size="2" color="gray">
                 <Flex gap="2" align="center" mt="4">
                   <Switch
@@ -74,7 +74,7 @@ export default function AddDayTypeForm() {
                 </Flex>
               </Text>
             </Flex>
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
               <Text as="label" size="2" color="gray">
                 <Flex gap="2" align="center" mt="4">
                   <Switch
@@ -87,7 +87,7 @@ export default function AddDayTypeForm() {
                 </Flex>
               </Text>
             </Flex>
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
               <Text size="1" color="gray">
                 Default rate (USD)
               </Text>
@@ -96,7 +96,7 @@ export default function AddDayTypeForm() {
                 Optional
               </Text>
             </Flex>
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
               <Text size="1" color="gray">
                 Default rate fraction
               </Text>
@@ -110,7 +110,7 @@ export default function AddDayTypeForm() {
                 0.5 = half rate. Optional, defaults to full rate
               </Text>
             </Flex>
-            <Flex direction="column" gap="1" style={{ gridColumn: "span 2" }}>
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
               <Text as="label" size="1" color="gray" id="add-bills-as-label">
                 Bills as
               </Text>
