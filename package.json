@@ -20,7 +20,8 @@
     "test:unit": "node --test --experimental-strip-types --import ./scripts/lib/ts-extensionless-loader.mjs \"tests/*.test.mjs\"",
     "predev": "node scripts/sync-ocr-assets.mjs",
     "prebuild": "node scripts/sync-ocr-assets.mjs",
-    "receipt-ocr:verify": "node scripts/receipt-ocr-verify.mjs"
+    "receipt-ocr:verify": "node scripts/receipt-ocr-verify.mjs",
+    "estimates:verify": "node scripts/estimates-verify.mjs"
   },
   "dependencies": {
     "@radix-ui/colors": "^3.0.0",
