@@ -11,8 +11,30 @@ export const metadata: Metadata = {
     default: `${BRAND.name} — ${BRAND.descriptor}`,
     template: `%s | ${BRAND.name}`,
   },
+  // THE ONE DESCRIPTION, and it is now a crawlable marketing claim rather
+  // than an internal string. app/(marketing)/layout.tsx makes "/", /pricing,
+  // /terms and /privacy indexable on the production deployment, and it
+  // redeclares `robots` ONLY — Next resolves each metadata field at the
+  // nearest segment that sets it, so those four public pages inherit this
+  // sentence verbatim into search results and link previews.
+  //
+  // It used to end "...logbook entry, invoice, and expenses all post from
+  // it", and that clause is false. Nothing in this product creates an
+  // expense from a trip: expenses come from the pilot, a scanned receipt,
+  // or a bank import, and a trip is what they get ATTACHED to. Three
+  // separate screens had already been corrected for exactly this — the
+  // landing hero, the Trips feature card, and /welcome each carry a comment
+  // saying so — while the sentence a stranger would actually read on Google
+  // still advertised generation that does not exist. Corrected here, at the
+  // root, rather than by adding a second description to the marketing
+  // layout: two copies of a claim are two things to keep in step, and this
+  // repo's whole quality bar (docs/research/FLIGHTDEPTPRO-INSPIRATION.md
+  // section B) is one source of truth per fact.
+  //
+  // Kept in step with app/(marketing)/page.tsx's hero. If that copy changes,
+  // change this with it.
   description:
-    "Log the trip once — logbook entry, invoice, and expenses all post from it. A business tool for independent contract pilots.",
+    "Log the trip once — your logbook draft and your invoice lines come from it, and your receipts attach to it. A business tool for independent contract pilots.",
   // Kept noindex product-wide even now that the Phase 1 auth gate is in
   // place (app/(app)/layout.tsx redirects anyone without a session to
   // /login). A product whose trust story is "AMG cannot see your client

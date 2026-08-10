@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Button, Card, Flex, Text } from "@/components/ui";
 import { getSessionContext } from "@/lib/supabase/account";
+import { DASHBOARD_PATH } from "@/lib/nav";
 import { signOut } from "./actions";
 import { StartTrialButton } from "./welcome-actions";
 
@@ -24,7 +25,7 @@ export default async function WelcomePage({
 }) {
   const ctx = await getSessionContext();
   if (!ctx) redirect("/login");
-  if (ctx.account) redirect("/");
+  if (ctx.account) redirect(DASHBOARD_PATH);
 
   const { checkout } = await searchParams;
 

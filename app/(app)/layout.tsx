@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Box, Button, Container, Flex, Separator, Text } from "@/components/ui";
 import { Logo } from "@/components/ui/logo";
 import { BRAND } from "@/lib/brand";
+import { DASHBOARD_PATH } from "@/lib/nav";
 import { requireAccount } from "@/lib/supabase/account";
 import { NavRail, NavStrip } from "./nav-rail";
 import SkipLink from "./skip-link";
@@ -13,7 +14,8 @@ import { signOut } from "./actions";
  * redirects a signed-out visitor to /login and a signed-in-but-
  * unprovisioned one to /welcome before any chrome or tenant data is
  * rendered. Route groups don't change URLs, so pages here still serve at
- * "/", "/invoices", etc.
+ * "/overview", "/invoices", etc. (Overview served at "/" until the public
+ * landing page took that path — see lib/nav.ts's DASHBOARD_PATH.)
  *
  * The shell is a server component and the rail is the only client piece
  * (it needs the current path). The kit this replaced inverted that — a
@@ -46,7 +48,7 @@ export default async function AppLayout({
         }}
       >
         <Flex align="center" gap="2" px="3" pt="3">
-          <Link href="/overview" aria-label={`${BRAND.name} — ${BRAND.descriptor}`}>
+          <Link href={DASHBOARD_PATH} aria-label={`${BRAND.name} — ${BRAND.descriptor}`}>
             <Logo />
           </Link>
         </Flex>
@@ -66,7 +68,7 @@ export default async function AppLayout({
         <aside>
           <Flex direction="column" height="100%">
             <Box p="4">
-              <Link href="/overview" aria-label={`${BRAND.name} — ${BRAND.descriptor}`}>
+              <Link href={DASHBOARD_PATH} aria-label={`${BRAND.name} — ${BRAND.descriptor}`}>
                 <Logo />
               </Link>
               <Text as="div" size="1" color="gray" mt="1">

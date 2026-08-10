@@ -1115,3 +1115,58 @@ defensible, but this engine's posture is that its assumptions are visible.
 **Still not verified:** the database-contract half of `currency:verify` did not run in that session,
 and the new mixed-row instrument case was not added to the property-test invariant table. Neither
 blocks anything while the flag is off, and both belong to whoever picks this up.
+
+### 12.9 Addendum — the "latest snapshot" view returned the wrong snapshot
+
+Found by an automated reviewer on PR #26 after that PR had already merged, and confirmed by an
+independent adversarial pass that overturned a first investigation's "not a defect" verdict.
+
+**What was wrong.** `pilot.currency_snapshots_latest` selected `distinct on (account_id,
+airman_user_id, currency_type)` ordered by `as_of desc, computed_at desc, id desc`. `DISTINCT ON`
+keeps the first row per group, so the *evaluation date* decided which snapshot a reader got and
+the *computation time* only broke ties within one evaluation date. Once two rows existed whose
+`as_of` order disagreed with their `computed_at` order, the earlier computation won permanently
+and no later recomputation could ever be seen.
+
+**Why that is a currency defect and not a tidiness one.** The shadowed row is not a redundant
+recompute of the same facts — it is computed from *corrected* facts, and every correction this
+product supports that changes an answer removes credit rather than adding it: a landing count
+fixed downward, an aircraft's gear recorded (after which a tricycle-gear landing stops counting
+toward 61.57(a)(1)(ii)), a role corrected to `DUAL_RECEIVED` (which §2 requires never count toward
+61.57(a) or (b)), or a truncated read that becomes `insufficient_data`. So the newer computation is
+the stricter one, the shadowing row says `estimated_current`, and the card shows a pilot a verdict
+the engine has since revised downward. Permissive staleness is the one direction this engine may
+never fail in.
+
+**It needed no future-dated write.** The first investigation discounted the finding on the grounds
+that nothing in the product writes a planned-trip snapshot with a future `as_of`, which is true.
+The adversarial pass established that the premise is not load-bearing: `lib/currency/read.ts`
+already documents that an `as_of` taken in the pilot's local timezone runs a day behind a
+server-side UTC date for any client west of Greenwich after 17:00 local. Two recomputes either side
+of local midnight reproduce it. This is the second time in this engine's history that a defect was
+dismissed because the named trigger did not exist while the *shape* did — see §12.8 and the six
+rounds before it.
+
+**The fix.** `20260811050000_currency_snapshots_latest_by_computation.sql` reorders to
+`computed_at desc, as_of desc, id desc` and rebuilds the supporting index to match. It is a new
+migration rather than an edit to `20260811040000` for two reasons: whether that file has been
+applied is not determinable from this repository (see `supabase/migrations/README.md` on recorded
+versions), and its index is created with `create index if not exists`, which matches on **name and
+not definition** — re-running an edited copy against a database that already holds the index would
+silently skip it and leave a live index disagreeing with the view, with no error. The new file
+drops the index by name and recreates it.
+
+**What the view now commits to,** stated so the next edit does not have to infer it: the most
+recently *computed* assessment of the pilot's *current* state. That is what §12.8's file already
+claimed in prose — its own comments frame the view in recomputation terms and never mention
+`as_of` — so the ORDER BY was the only part implementing a different meaning.
+
+**A constraint on future work.** If planned-trip or what-if evaluation is ever built, it must not
+share this table without a discriminator column. No single ordering over a mixed table answers
+both "what is my currency now" and "what would it be on the 20th", and this view answers only the
+first.
+
+**Verified this session:** `currency:verify` now runs 605 checks, of which S-18 is this regression,
+asserted against a real Postgres with both halves running. S-18 was proved to bite by restoring the
+old ordering and watching it fail, then restoring the fix and watching it pass. The engine remains
+dark: `CURRENCY_ENGINE_ENABLED` is off and no screen imports `read.ts`.

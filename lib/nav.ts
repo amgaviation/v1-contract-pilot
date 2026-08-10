@@ -14,8 +14,44 @@ export type NavItem = {
   label: string;
 };
 
+/**
+ * WHERE THE DASHBOARD LIVES, and the only place that fact is written down.
+ *
+ * This constant exists because moving it once already left seven stale
+ * references behind. Overview used to serve at "/"; when the public landing
+ * page took that path (app/(marketing)/page.tsx), every call site that had
+ * spelled the dashboard as "/" kept compiling and kept passing review, because
+ * a route is a string and a string cannot be wrong at build time.
+ *
+ * Six of the seven were invisible: app/(marketing)/page.tsx redirects a
+ * provisioned session to the dashboard, so a login that sent a pilot to "/"
+ * still ARRIVED at Overview, one wasted round trip later — correct by
+ * accident, and only for as long as the marketing page keeps bouncing. The
+ * seventh had no such safety net: markTripCompleted's revalidatePath("/")
+ * simply stopped naming the screen it existed to refresh and started poking a
+ * marketing page instead.
+ *
+ * So the fix is not seven corrected literals — that is the same bug waiting
+ * for the next move. It is that there is now exactly one string, and
+ * tests/dashboard-path.test.mjs fails the build if any file spells the
+ * dashboard by hand: either the retired "/" or whatever value this constant
+ * currently holds. The first version of that test only knew about "/", which
+ * made it a record of one migration rather than a guard — a reviewer caught
+ * that, and four hand-written "/overview" literals with it.
+ *
+ * WHAT MOVING THIS ACTUALLY COSTS, stated precisely so the claim is not
+ * overstated: changing this line updates every REFERENCE — links, redirects,
+ * revalidation, the post-login return path, and robots.txt's disallow list,
+ * all of which derive from it. It does NOT move the page. The route still
+ * comes from the directory name, so a real move is this line plus renaming
+ * app/(app)/overview/. Verified by doing it: with this constant repointed,
+ * test:unit, typecheck and build all stay green and no reference is left
+ * behind — which is the part that used to break.
+ */
+export const DASHBOARD_PATH = "/overview";
+
 export const NAV_SECTIONS: readonly NavItem[] = [
-  { href: "/overview", label: "Overview" },
+  { href: DASHBOARD_PATH, label: "Overview" },
   { href: "/trips", label: "Trips" },
   { href: "/invoices", label: "Invoices" },
   { href: "/expenses", label: "Expenses" },

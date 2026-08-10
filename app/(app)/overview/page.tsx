@@ -4,6 +4,7 @@ import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
+import { DASHBOARD_PATH } from "@/lib/nav";
 import { formatCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import { tripValueCents, type TripDayValueRow } from "@/lib/trip-value";
@@ -128,7 +129,12 @@ const EXPIRATIONS_LIMIT = 6;
 const AGGREGATE_LIMIT = 1000;
 
 export default async function OverviewPage() {
-  await requireAccount("/");
+  // The argument is the post-login return path (lib/supabase/account.ts
+  // threads it through as ?next=), so it must name THIS screen. It said "/"
+  // — left over from when Overview served at the root — which is the only
+  // one of the repo's ~70 requireAccount call sites that did not pass its
+  // own route.
+  await requireAccount(DASHBOARD_PATH);
 
   const supabase = await createClient();
 

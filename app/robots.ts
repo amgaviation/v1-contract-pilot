@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { NAV_SECTIONS, NAV_SETTINGS } from "@/lib/nav";
 
 /**
  * Only "/" and "/pricing" are indexable — see app/(marketing)/layout.tsx.
@@ -40,15 +41,19 @@ export default function robots(): MetadataRoute.Robots {
       userAgent: "*",
       allow: ["/$", "/pricing"],
       disallow: [
-        "/overview",
-        "/trips",
-        "/clients",
-        "/invoices",
-        "/expenses",
-        "/logbook",
-        "/documents",
-        "/reports",
-        "/settings",
+        // EVERY SIGNED-IN SECTION, derived rather than retyped. This list used
+        // to spell all nine out, which made it a second copy of lib/nav.ts
+        // that nothing kept in step: add a section and forget this file and
+        // the new screen is crawlable by omission, and move a section — as
+        // Overview was moved from "/" to "/overview" — and the disallow goes
+        // on naming a route that no longer exists while the real one is
+        // uncovered. Neither failure produces an error; both produce a
+        // robots.txt that reads as complete. Derivation is what makes
+        // "every section is disallowed" true by construction, and
+        // tests/dashboard-path.test.mjs asserts it stays true.
+        ...NAV_SECTIONS.map((section) => section.href),
+        NAV_SETTINGS.href,
+        // The rest are not nav sections and are listed on purpose.
         "/login",
         "/signup",
         "/welcome",

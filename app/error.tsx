@@ -2,6 +2,7 @@
 
 import NextLink from "next/link";
 import { Button, Card, Flex, Text } from "@/components/ui";
+import { DASHBOARD_PATH } from "@/lib/nav";
 
 /**
  * Root error boundary. An unhandled throw anywhere below the root layout
@@ -29,7 +30,7 @@ export default function Error({
           <Flex gap="3">
             <Button onClick={reset}>Try again</Button>
             <Button asChild variant="outline">
-              <NextLink href="/overview">Back to overview</NextLink>
+              <NextLink href={DASHBOARD_PATH}>Back to overview</NextLink>
             </Button>
           </Flex>
         </Flex>

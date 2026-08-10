@@ -18,6 +18,21 @@ a billable line, and expenses. Every existing tool makes them enter it three tim
 **Log the trip once → logbook entry, invoice line, and expense file all post from it.**
 Every decision below is tested against whether it preserves that.
 
+> **Delta, 2026-08-10 — the third output does not exist, and the shipped copy now says so.**
+> The thesis line above is left as Tony wrote it; this note is the correction. A review of the
+> launch-ready branch checked whether a trip produces expenses and found that nothing in this
+> product does: an expense originates with the pilot, a scanned receipt, or a bank statement
+> import, and a trip is what an expense gets **attached to** — which is what routes it to the
+> right invoice and the right tax year. Two records are generated from a trip (the logbook
+> draft and the invoice lines) and a third is *organised* by it.
+>
+> The honest version is still the whole pitch, because the re-typing is what goes away either
+> way. Every user-facing surface now says the honest version: the landing hero and the Trips
+> feature card (`app/(marketing)/page.tsx`), `/welcome`, `README.md`, and — the one a stranger
+> actually reads, now that the marketing pages are indexable in production — the `description`
+> in `app/layout.tsx`. Each carries a comment pointing back here so a later edit does not
+> quietly restore the claim.
+
 **Tony is a software vendor here, nothing more.** AMG does not participate in, broker, or take
 a position in the pilot's relationship with the pilot's clients. Nothing in this product may
 surface a pilot's clients, rates, or revenue into AMG's CRM, outreach, or crew sourcing. That

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionContext } from "@/lib/supabase/account";
+import { DASHBOARD_PATH } from "@/lib/nav";
 import { getStripe, getSoloPriceId, TRIAL_PERIOD_DAYS } from "@/lib/stripe/server";
 
 export async function signOut() {
@@ -27,7 +28,7 @@ export async function startCheckout(
 ): Promise<CheckoutState> {
   const ctx = await getSessionContext();
   if (!ctx) redirect("/login");
-  if (ctx.account) redirect("/");
+  if (ctx.account) redirect(DASHBOARD_PATH);
 
   const origin = (await headers()).get("origin");
   if (!origin) {
