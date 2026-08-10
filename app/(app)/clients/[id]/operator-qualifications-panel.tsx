@@ -9,6 +9,7 @@ import {
   COMPETENCY_CHECK_REQUIREMENT,
   IPC_REQUIREMENT,
   LINE_CHECK_REQUIREMENT,
+  currentIpcRotationId,
 } from "./operator-qualification-kinds";
 import OperatorQualificationRow from "./operator-qualification-row";
 
@@ -99,8 +100,10 @@ export default function OperatorQualificationsPanel({
     [IPC_REQUIREMENT]:
       "135.297(e): if you're assigned more than one type for this operator, your IPC rotates " +
       "through your types (one flight check per 6-month period, not one per type per period). " +
-      "Record each check by the type it was flown in — this panel does not compute whether your " +
-      "rotation satisfies 297(e); that is on you and your chief pilot to track.",
+      "Record each check by the type it was flown in — only your most recently completed check, " +
+      "in whichever type, is weighed against the 6-month window below; older type rows show as " +
+      "rotation history, not a lapse. This panel still does not determine whether your rotation " +
+      "itself satisfies 297(e); that is on you and your chief pilot to track.",
   };
 
   return (
@@ -158,6 +161,16 @@ export default function OperatorQualificationsPanel({
             const rows = (byRequirement.get(req.value) ?? []).sort((a, b) =>
               a.type_designator.localeCompare(b.type_designator)
             );
+            // H-ipc-per-type fix: 135.297(e)'s rotation means only the
+            // most-recently-completed IPC row is "current" for 297(a)'s
+            // window — every other type a pilot has rotated through is
+            // expected to show a lapsed row of its own, by design (see
+            // currentIpcRotationId's comment). Competency checks
+            // (135.293(b)) have no analogous rotation clause, so this
+            // stays null for that requirement and every row keeps
+            // judging its own expires_on, unchanged.
+            const currentIpcId =
+              req.value === IPC_REQUIREMENT ? currentIpcRotationId(rows) : null;
             return (
               <div key={req.value}>
                 <Separator size="4" my="1" />
@@ -177,6 +190,7 @@ export default function OperatorQualificationsPanel({
                     typeDesignator={row.type_designator}
                     existing={row}
                     allowDelete
+                    rotationCurrent={req.value !== IPC_REQUIREMENT || row.id === currentIpcId}
                   />
                 ))}
 

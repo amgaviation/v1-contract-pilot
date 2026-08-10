@@ -20,6 +20,7 @@ const SECTIONS = [
   "deductible",
   "rebilled",
   "unassigned",
+  "mileage",
   "tax-forms",
 ] as const;
 type Section = (typeof SECTIONS)[number];
@@ -83,6 +84,7 @@ export async function GET(request: NextRequest) {
     deductible: report.deductibleTruncated,
     rebilled: report.rebilledTruncated,
     unassigned: report.unassignedTruncated,
+    mileage: report.mileageTruncated,
   };
   if (truncatedBySection[sectionParam]) {
     return NextResponse.json(
@@ -185,6 +187,29 @@ export async function GET(request: NextRequest) {
         csvRow(["", "", "Total", centsToDollarsString(report.unassignedTotalCents)])
       );
       filenamePart = "unassigned-receipts";
+      break;
+    }
+    case "mileage": {
+      // One summary row, not a per-drive listing: the query behind this
+      // (loadYearEndReport's section E) is bounded to this one tax year,
+      // and the figure Schedule C wants is total miles x the year's OWN
+      // rate on file rounded once (lib/mileage.ts) — a per-drive amount
+      // column here would show each row's own SNAPSHOTTED rate, which can
+      // legitimately differ from the year's current rate and would not
+      // sum to the total below. Miles and the rate basis are still both
+      // present, per the task this section exists to satisfy.
+      rows.push(csvRow(["Drives", "Miles", "Rate (cents/mile)", "Amount"]));
+      rows.push(
+        csvRow([
+          report.mileageCount,
+          report.mileageMiles.toFixed(1),
+          report.mileageRateCentsPerMile ?? "",
+          report.mileageAmountCents === null
+            ? ""
+            : centsToDollarsString(report.mileageAmountCents),
+        ])
+      );
+      filenamePart = "mileage";
       break;
     }
     case "tax-forms": {

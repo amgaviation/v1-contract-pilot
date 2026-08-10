@@ -25,6 +25,9 @@ import { friendlyDbError } from "@/lib/db-errors";
 export type PacketState = {
   error: string | null;
   token?: string;
+  /** True on a revoke that actually committed, so the panel can drop the
+   * dead token off screen without waiting on revalidatePath's re-render. */
+  revoked?: boolean;
 };
 
 const UUID_RE =
@@ -79,12 +82,33 @@ export async function createPacketShare(
   return { error: null, token: data as string };
 }
 
-export async function revokePacketShare(formData: FormData): Promise<void> {
+export async function revokePacketShare(
+  _prev: PacketState,
+  formData: FormData
+): Promise<PacketState> {
   const clientId = String(formData.get("client_id") ?? "");
-  if (!UUID_RE.test(clientId)) return;
+  if (!UUID_RE.test(clientId)) return { error: "Missing client." };
 
   await requireAccount("/clients");
   const supabase = await createClient();
-  await supabase.rpc("document_share_revoke", { p_client_id: clientId } as never);
+
+  // document_share_revoke returns void — it is an UPDATE with a WHERE
+  // clause, not a set-returning function, so there is no row count the
+  // client can ask PostgREST for (`{ count: "exact" }` only counts rows
+  // OUT of a function; postgrest-js says so on the rpc() signature). What
+  // this call CAN still fail on is the RPC itself erroring — a dropped
+  // connection, a permission problem — and that failure was previously
+  // thrown away outright: the caller never even captured `{ error }`, so
+  // a failed revoke rendered byte-identical to a successful one and a
+  // pilot would believe a link carrying their passport was dead when it
+  // was still live. Capture it and report it, the same way every other
+  // RPC wrapper in this file and share-actions.ts already does.
+  const { error } = await supabase.rpc("document_share_revoke", { p_client_id: clientId } as never);
+
+  if (error) {
+    return { error: friendlyDbError(error, "document_share_revoke") };
+  }
+
   revalidatePath(`/clients/${clientId}`);
+  return { error: null, revoked: true };
 }

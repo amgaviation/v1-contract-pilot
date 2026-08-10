@@ -28,9 +28,18 @@
  *     type... in rotation, but not more than one flight check during
  *     each period." This product records each IPC by the type it was
  *     flown in (also a repeatable-by-type sub-list, so the rotation
- *     history is at least visible) but does NOT compute whether a
- *     pilot's rotation across periods satisfies 297(e) — that is a
- *     judgment call the copy states plainly rather than faking.
+ *     history is at least visible). (H-ipc-per-type fix, 2026-08-10) A
+ *     pilot rotating types exactly as 297(e) contemplates will always
+ *     have every type EXCEPT the one most recently checked sitting past
+ *     its OWN row's expires_on — that is what compliant rotation looks
+ *     like, not a lapse, because 297(a)'s 6-calendar-month window binds
+ *     the pilot under this operator, not any one type. currentIpcRotationId()
+ *     below picks out whichever row has the latest completed_on across a
+ *     client's ipc_135_297 rows; only that row is ever judged against the
+ *     ladder, and every other row renders as rotation history with no red
+ *     badge of its own. Still NOT a determination that the rotation
+ *     itself satisfies 297(e) — only that the most recent check is inside
+ *     297(a)'s window — the panel copy says so.
  *
  * TYPE_SPECIFIC_REQUIREMENTS is the exception set — the panel renders
  * those two as repeatable-by-type sub-lists; every other requirement in
@@ -92,7 +101,9 @@ export const OPERATOR_QUALIFICATION_REQUIREMENTS = [
       "135.297(a) — 6 calendar months, PIC-under-IFR only. 135.297(e): if you're assigned more " +
       "than one type for this operator, the check rotates through your types — one flight check " +
       "per 6-month period, not one per type per period. This product records each check by the " +
-      "type it was flown in but does not compute whether your rotation satisfies 297(e).",
+      "type it was flown in; only your most recently completed check (in whichever type) is " +
+      "weighed against the 6-month window below, and older type rows show as rotation history, " +
+      "never as a lapse in their own right.",
   },
   {
     value: LINE_CHECK_REQUIREMENT,
@@ -141,6 +152,65 @@ export const DERIVED_EXPIRY_REQUIREMENTS = new Set<string>([
   IPC_REQUIREMENT,
   LINE_CHECK_REQUIREMENT,
 ]);
+
+/**
+ * H-ipc-per-type fix (2026-08-10): which of a client's ipc_135_297 rows
+ * is "the current IPC" for 297(a)/(e) purposes.
+ *
+ * 14 CFR 135.297(e), verbatim (eCFR title 14, current text — verified via
+ * the Cornell LII mirror 2026-08-10; eCFR's own site still returns a
+ * bot-detection redirect to this environment's fetcher, the same block
+ * the 20260807060000 migration header notes): "If the pilot in command
+ * is assigned to pilot more than one type of aircraft, that pilot must
+ * take the instrument proficiency check required by paragraph (a) of
+ * this section in each type of aircraft to which that pilot is assigned,
+ * in rotation, but not more than one flight check during each period
+ * described in paragraph (a) of this section." Paragraph (a)'s
+ * 6-calendar-month window is not type-indexed — one check, in whichever
+ * type the rotation lands on next, satisfies it. A pilot who legitimately
+ * rotates types therefore has, at any moment, exactly one "live" row
+ * (the one most recently completed) and zero or more older rows whose
+ * own trigger-derived expires_on has already lapsed by design — that
+ * lapse IS the rotation working as intended, not a compliance gap.
+ *
+ * Returns the id of the row with the latest completed_on (null if none
+ * of the rows has one yet — a brand-new operator relationship with no
+ * IPC recorded at all). Only that row may ever render a red "expired"
+ * badge; every other row is rotation history. This is a client-side
+ * judgment over rows the panel already has loaded — it does not touch
+ * the trigger-derived expires_on stored on any row (that arithmetic, and
+ * the 135.301(a) provision, stay exactly where
+ * pilot.compute_operator_qualification_expiry() already puts them; see
+ * that migration). It also does NOT determine that the pilot's rotation
+ * across periods satisfies 297(e) — only that the most recently
+ * completed check is still inside 297(a)'s window — the panel copy says
+ * so, and this stays a planning aid, never a compliance verdict.
+ *
+ * NOTE: pilot.expirations (the dashboard's Needs-attention union, joined
+ * outside this fix's file allowlist in app/(app)/page.tsx) still unions
+ * EVERY ipc_135_297 row's own expires_on independently, so it does not
+ * yet get this correction — a rotating pilot can still see a stale
+ * per-type row flagged there. Fixing that needs pilot.expirations itself
+ * to union one row per (account_id, client_id) driven by
+ * MAX(completed_on) across ipc_135_297 rows rather than one row per
+ * qualification id; that is a migration, out of scope here.
+ */
+export function currentIpcRotationId(
+  ipcRows: readonly { id: string; completed_on: string | null }[]
+): string | null {
+  let currentId: string | null = null;
+  let latestCompletedOn = "";
+  for (const row of ipcRows) {
+    // "YYYY-MM-DD" strings compare correctly with plain `>` — same trick
+    // isPastLocalDate (operator-qualification-row.tsx) relies on, for the
+    // same reason: no Date parsing, no timezone to get wrong.
+    if (row.completed_on && row.completed_on > latestCompletedOn) {
+      latestCompletedOn = row.completed_on;
+      currentId = row.id;
+    }
+  }
+  return currentId;
+}
 
 export const STATUS_OPTIONS = [
   { value: "not_started", label: "Not started" },

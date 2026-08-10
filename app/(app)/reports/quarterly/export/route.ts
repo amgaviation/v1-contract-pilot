@@ -50,11 +50,11 @@ export async function GET(request: NextRequest) {
   // this covers the whole year in one file, so a truncation anywhere
   // means every period's total downstream of it is suspect, not just one
   // period's row.
-  if (report.paymentsTruncated || report.deductibleTruncated) {
+  if (report.paymentsTruncated || report.deductibleTruncated || report.mileageTruncated) {
     return NextResponse.json(
       {
         error:
-          "There are more payments or deductible expenses in this year than the export can safely total in one file. Contact support — exporting a silently partial total would misstate your quarterly figures.",
+          "There are more payments, deductible expenses, or logged drives in this year than the export can safely total in one file. Contact support — exporting a silently partial total would misstate your quarterly figures.",
       },
       { status: 500 }
     );
@@ -73,6 +73,10 @@ export async function GET(request: NextRequest) {
       "Net profit",
       "Unassigned receipts (count)",
       "Unassigned receipts total",
+      "Mileage drives",
+      "Mileage miles",
+      "Mileage rate (cents/mile)",
+      "Mileage amount (informational — not in net profit)",
     ])
   );
   for (const pf of report.periods) {
@@ -88,6 +92,10 @@ export async function GET(request: NextRequest) {
         centsToDollarsString(pf.netProfitCents),
         pf.unassigned.length,
         centsToDollarsString(pf.unassignedTotalCents),
+        pf.mileageCount,
+        pf.mileageMiles.toFixed(1),
+        pf.mileageRateCentsPerMile ?? "",
+        pf.mileageAmountCents === null ? "" : centsToDollarsString(pf.mileageAmountCents),
       ])
     );
   }

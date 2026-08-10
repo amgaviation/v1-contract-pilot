@@ -168,6 +168,19 @@ export default async function QuarterlyReportPage({
             </Callout.Root>
           ) : null}
 
+          {report.mileageTruncated ? (
+            <Callout.Root color="amber">
+              <Callout.Icon>
+                <ExclamationTriangleIcon />
+              </Callout.Icon>
+              <Callout.Text>
+                There are more drives logged in {year} than this page totals
+                — the mileage figures below and the downloaded CSV may both
+                be partial.
+              </Callout.Text>
+            </Callout.Root>
+          ) : null}
+
           {/* Set-aside rate: a plain GET form, not client state — see
               parseSetAsidePercent's comment above for why. Submitting
               re-requests this same page with ?setAside= added, so the
@@ -292,6 +305,47 @@ export default async function QuarterlyReportPage({
                       </Text>
                     </Table.Cell>
                   </Table.Row>
+                  {/* Informational only — deliberately NOT in netProfitCents
+                      above. The standard mileage rate and actual vehicle
+                      expenses (fuel, rental car) are alternative deduction
+                      methods for the same vehicle, never additive, and this
+                      report can't tell which one a pilot elected — see
+                      app/(app)/reports/year-end/queries.ts's identical
+                      reasoning. Hidden at zero so a pilot who logs no
+                      mileage doesn't carry a line that means nothing to
+                      them. */}
+                  {pf.mileageCount > 0 ? (
+                    <Table.Row>
+                      <Table.RowHeaderCell>
+                        Mileage, standard rate (informational — not in net
+                        profit)
+                      </Table.RowHeaderCell>
+                      <Table.Cell justify="end">
+                        <Text className="tnum">{pf.mileageCount}</Text>
+                      </Table.Cell>
+                      <Table.Cell justify="end">
+                        <Text className="tnum">
+                          {pf.mileageAmountCents === null
+                            ? "No rate on file"
+                            : formatCents(pf.mileageAmountCents)}
+                        </Text>
+                      </Table.Cell>
+                    </Table.Row>
+                  ) : null}
+                  {pf.mileageCount > 0 ? (
+                    <Table.Row>
+                      <Table.RowHeaderCell>
+                        <Text size="2" color="gray">
+                          {pf.mileageMiles.toFixed(1)} mi
+                          {pf.mileageRateCentsPerMile === null
+                            ? `, no IRS rate on file for ${year}`
+                            : ` @ ${pf.mileageRateCentsPerMile}¢/mi`}
+                        </Text>
+                      </Table.RowHeaderCell>
+                      <Table.Cell justify="end" />
+                      <Table.Cell justify="end" />
+                    </Table.Row>
+                  ) : null}
                   <Table.Row>
                     <Table.RowHeaderCell>
                       Set aside

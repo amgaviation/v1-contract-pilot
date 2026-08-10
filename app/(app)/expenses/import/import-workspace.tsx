@@ -91,6 +91,14 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
   const [dataRecords, setDataRecords] = useState<{ fields: string[]; raw: string }[]>([]);
   const [mapping, setMapping] = useState<ColumnMapping>([]);
 
+  // Held only for OFX/QFX. CSV survives an account switch because its
+  // headerRow/dataRecords/mapping stay put and step 3 has a "Parse N rows"
+  // button to redo the read; OFX has no such button (step 3 is CSV-only)
+  // and parseOfx never looked at the account anyway, so re-running it from
+  // this text is strictly better than losing the preview — see the
+  // Select's onValueChange below.
+  const [ofxText, setOfxText] = useState<string | null>(null);
+
   const [parseResult, setParseResult] = useState<BankParseResult | null>(null);
   const [excluded, setExcluded] = useState<Set<number>>(new Set());
 
@@ -119,11 +127,13 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
       setDetectedFormat(fmt);
       setHeaderRow([]);
       setDataRecords([]);
+      setOfxText(text);
       if (selectedAccount) runOfx(text, fmt);
       return;
     }
 
     setDetectedFormat("csv");
+    setOfxText(null);
     const parsed = parseCsv(text);
     if ("error" in parsed) {
       setFileError(parsed.error);
@@ -223,7 +233,21 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
               value={bankAccountId}
               onValueChange={(v) => {
                 setBankAccountId(v);
-                setParseResult(null);
+                // OFX/QFX has no re-parse button (step 3 below is CSV-only)
+                // and re-picking the identical file doesn't reliably re-fire
+                // <input type="file">'s change event in Chrome/Safari — so
+                // wiping the preview here used to strand the pilot exactly
+                // when the wrong-ledger warning told them to switch the
+                // account. parseOfx never reads the account anyway, so
+                // there's a stored copy of the text to re-run it against
+                // instead of losing the preview. CSV keeps the old
+                // behavior: its headerRow/dataRecords survive untouched and
+                // step 3's "Parse N rows" button re-applies the mapping.
+                if ((detectedFormat === "ofx" || detectedFormat === "qfx") && ofxText) {
+                  runOfx(ofxText, detectedFormat);
+                } else {
+                  setParseResult(null);
+                }
               }}
             >
               <Select.Trigger placeholder="Pick an account" />

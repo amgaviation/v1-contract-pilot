@@ -1,5 +1,6 @@
 import "server-only";
 import type { createClient } from "@/lib/supabase/server";
+import { computeYearTotals, type RatesByYear } from "@/lib/mileage";
 import { estimatedTaxPeriods, type EstimatedTaxPeriod } from "./periods";
 
 type Supa = Awaited<ReturnType<typeof createClient>>;
@@ -18,6 +19,11 @@ type Supa = Awaited<ReturnType<typeof createClient>>;
 // than ship a partial total" behaviour off these flags were dead code.
 const PAYMENTS_LIMIT = 1000;
 const EXPENSES_LIMIT = 1000;
+// Mileage — this report used to have no query against mileage_entries at
+// all, so the pilot's standard-mileage deduction never fed the "what to
+// set aside" figure or appeared anywhere on this screen. Same cap
+// discipline as every other list query in this file.
+const MILEAGE_LIMIT = 1000;
 
 export type UnassignedRow = {
   id: string;
@@ -44,6 +50,22 @@ export type PeriodFigures = {
   unassigned: UnassignedRow[];
   unassignedTotalCents: number;
   unassignedTruncated: boolean;
+
+  /**
+   * Standard-mileage-rate drives incurred in this period — informational
+   * only, NOT folded into netProfitCents. Same non-additive reasoning as
+   * app/(app)/reports/year-end/queries.ts's identical section: the
+   * standard mileage rate and actual vehicle expenses are alternative
+   * deduction methods for the same vehicle, and this report can't tell
+   * which one a pilot elected. Computed via lib/mileage.ts's
+   * computeYearTotals on just this period's drives against the year's own
+   * rate — one multiplication, one rounding, same discipline as every
+   * other mileage figure in this product.
+   */
+  mileageCount: number;
+  mileageMiles: number;
+  mileageRateCentsPerMile: number | null;
+  mileageAmountCents: number | null;
 };
 
 export type QuarterlyReport = {
@@ -53,6 +75,8 @@ export type QuarterlyReport = {
   /** True if ANY period's income or expense query hit its row cap. */
   paymentsTruncated: boolean;
   deductibleTruncated: boolean;
+  /** True if the whole-year mileage_entries fetch hit its row cap. */
+  mileageTruncated: boolean;
 };
 
 /**
@@ -101,6 +125,8 @@ export async function loadQuarterlyReport(
     { data: invoiceData, error: invoiceError },
     { data: rebillData, error: rebillError },
     { data: unassignedData, error: unassignedError },
+    { data: mileageData, error: mileageError },
+    { data: mileageRateData, error: mileageRateError },
   ] = await Promise.all([
     // CASH-BASIS income: one row per pilot.invoice_payments payment whose
     // paid_on falls in the tax year — NOT invoices issued/sent in the
@@ -161,6 +187,23 @@ export async function loadQuarterlyReport(
       .lte("incurred_on", yearEnd)
       .order("incurred_on", { ascending: true })
       .limit(EXPENSES_LIMIT),
+    // Mileage — drove_on and miles ONLY, never the per-row snapshotted
+    // amount_cents, per lib/mileage.ts's header. Whole-year fetch, bucketed
+    // into periods below, same shape as the unassigned-receipts query above.
+    supabase
+      .from("mileage_entries")
+      .select("id, drove_on, miles")
+      .eq("account_id", accountId)
+      .gte("drove_on", yearStart)
+      .lte("drove_on", yearEnd)
+      .limit(MILEAGE_LIMIT),
+    // The pilot's own per-year IRS rate. Never hardcoded — see the
+    // mileage_rates table comment for why a baked-in figure would silently
+    // misstate every year it is stale for.
+    supabase
+      .from("mileage_rates")
+      .select("tax_year, rate_cents_per_mile")
+      .eq("account_id", accountId),
   ]);
 
   const firstError =
@@ -172,6 +215,11 @@ export async function loadQuarterlyReport(
     invoiceError?.message ??
     rebillError?.message ??
     unassignedError?.message ??
+    mileageError?.message ??
+    // A failed rate read is not "no rate on file" — it would silently zero
+    // the whole mileage deduction on the screen a pilot uses to plan an
+    // IRS payment. Same reasoning as year-end/profit-loss's identical check.
+    mileageRateError?.message ??
     null;
 
   const payments = (paymentData ?? []) as {
@@ -227,6 +275,18 @@ export async function loadQuarterlyReport(
   // happens to contain row #EXPENSES_LIMIT.
   const unassignedTruncatedWholeYear = unassignedAll.length === EXPENSES_LIMIT;
 
+  const mileageAll = (mileageData ?? []) as {
+    id: string;
+    drove_on: string;
+    miles: number;
+  }[];
+  const mileageTruncated = mileageAll.length === MILEAGE_LIMIT;
+  const mileageRatesByYear: RatesByYear = Object.fromEntries(
+    ((mileageRateData ?? []) as { tax_year: number; rate_cents_per_mile: number }[]).map(
+      (r) => [r.tax_year, r.rate_cents_per_mile]
+    )
+  );
+
   const inPeriod = (dateIso: string, period: EstimatedTaxPeriod): boolean =>
     dateIso >= period.start && dateIso <= period.end;
 
@@ -239,6 +299,12 @@ export async function loadQuarterlyReport(
     const periodUnassignedRaw = unassignedAll.filter((e) =>
       inPeriod(e.incurred_on, period)
     );
+    const periodMileage = mileageAll.filter((e) => inPeriod(e.drove_on, period));
+    // All four periods fall within the same `year`, so this is the same
+    // "at most one group" reasoning as year-end/queries.ts's identical call
+    // — computeYearTotals groups by the tax year read out of drove_on, and
+    // every drove_on here is already bounded to `year`.
+    const [periodMileageTotal] = computeYearTotals(periodMileage, mileageRatesByYear);
 
     const incomeCents = periodPayments.reduce(
       (sum, p) => sum + p.amount_cents,
@@ -278,6 +344,11 @@ export async function loadQuarterlyReport(
       // Whole-year cap applies to every period's bucket, per the note
       // above — not recomputed per period.
       unassignedTruncated: unassignedTruncatedWholeYear,
+
+      mileageCount: periodMileage.length,
+      mileageMiles: periodMileageTotal?.miles ?? 0,
+      mileageRateCentsPerMile: periodMileageTotal?.rateCentsPerMile ?? null,
+      mileageAmountCents: periodMileageTotal?.amountCents ?? null,
     };
   });
 
@@ -287,5 +358,6 @@ export async function loadQuarterlyReport(
     periods: periodFigures,
     paymentsTruncated,
     deductibleTruncated,
+    mileageTruncated,
   };
 }

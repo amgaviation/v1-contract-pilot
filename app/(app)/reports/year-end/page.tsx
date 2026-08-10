@@ -466,7 +466,114 @@ export default async function YearEndReportPage({
             )}
           </Card>
 
-          {/* ---------------- E. 1099 reconciliation ---------------- */}
+          {/* ---------------- E. Mileage, standard rate ---------------- */}
+          <Card size="3">
+            <Flex justify="between" align="start" mb="3" wrap="wrap" gap="2">
+              <Box>
+                <Heading as="h2" size="4">
+                  Mileage, standard rate
+                </Heading>
+                <Text as="div" size="2" color="gray">
+                  Standard-mileage-rate drives logged in {year} — excluded
+                  from Deductible expenses above. The standard mileage rate
+                  and actual vehicle expenses (fuel, rental car) are
+                  alternative deduction methods for the same vehicle, never
+                  additive, and this report can&rsquo;t tell which one
+                  applies to a given vehicle and year — folding this in
+                  automatically risks a double-claimed deduction. Review it
+                  in{" "}
+                  <RadixLink asChild>
+                    <NextLink href="/expenses/mileage">Mileage</NextLink>
+                  </RadixLink>{" "}
+                  before filing.
+                </Text>
+              </Box>
+              <Button asChild variant="outline" size="2">
+                <a href={csvHref(year, "mileage")} download>
+                  Download CSV
+                </a>
+              </Button>
+            </Flex>
+
+            {report.mileageTruncated ? (
+              <Callout.Root color="amber" mb="3">
+                <Callout.Icon>
+                  <ExclamationTriangleIcon />
+                </Callout.Icon>
+                <Callout.Text>
+                  There are more drives logged in {year} than this page
+                  totals — the downloaded CSV may also be partial.
+                </Callout.Text>
+              </Callout.Root>
+            ) : null}
+
+            {report.mileageCount === 0 ? (
+              <Text size="2" color="gray">
+                No mileage logged in {year}.
+              </Text>
+            ) : (
+              <>
+                <Table.Root variant="ghost">
+                  <Table.Header>
+                    <Table.Row>
+                      <Table.ColumnHeaderCell>Drives</Table.ColumnHeaderCell>
+                      <Table.ColumnHeaderCell justify="end">
+                        Miles
+                      </Table.ColumnHeaderCell>
+                      <Table.ColumnHeaderCell justify="end">
+                        Rate
+                      </Table.ColumnHeaderCell>
+                      <Table.ColumnHeaderCell justify="end">
+                        Amount
+                      </Table.ColumnHeaderCell>
+                    </Table.Row>
+                  </Table.Header>
+                  <Table.Body>
+                    <Table.Row>
+                      <Table.RowHeaderCell>
+                        <Text className="tnum">{report.mileageCount}</Text>
+                      </Table.RowHeaderCell>
+                      <Table.Cell justify="end">
+                        <Text className="tnum">
+                          {report.mileageMiles.toFixed(1)}
+                        </Text>
+                      </Table.Cell>
+                      <Table.Cell justify="end">
+                        <Text className="tnum" color="gray">
+                          {report.mileageRateCentsPerMile === null
+                            ? "—"
+                            : `${report.mileageRateCentsPerMile}¢/mi`}
+                        </Text>
+                      </Table.Cell>
+                      <Table.Cell justify="end">
+                        <Text weight="medium" className="tnum">
+                          {report.mileageAmountCents === null
+                            ? "No rate on file"
+                            : formatCents(report.mileageAmountCents)}
+                        </Text>
+                      </Table.Cell>
+                    </Table.Row>
+                  </Table.Body>
+                </Table.Root>
+                {report.mileageAmountCents === null ? (
+                  <Callout.Root color="amber" mt="3">
+                    <Callout.Icon>
+                      <ExclamationTriangleIcon />
+                    </Callout.Icon>
+                    <Callout.Text>
+                      {`There's no IRS standard rate on file for ${year}, so the ${report.mileageMiles.toFixed(1)} miles above have no dollar figure yet. Add a rate in `}
+                      <RadixLink asChild>
+                        <NextLink href="/expenses/mileage">Mileage</NextLink>
+                      </RadixLink>
+                      {" and this recomputes."}
+                    </Callout.Text>
+                  </Callout.Root>
+                ) : null}
+              </>
+            )}
+          </Card>
+
+          {/* ---------------- F. 1099 reconciliation ---------------- */}
           <Card size="3">
             <Flex justify="between" align="start" mb="3" wrap="wrap" gap="2">
               <Box>

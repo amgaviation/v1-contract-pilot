@@ -1,5 +1,6 @@
 import "server-only";
 import type { createClient } from "@/lib/supabase/server";
+import { computeYearTotals, type RatesByYear } from "@/lib/mileage";
 import { reportsFrom, yearBounds, type ClientTaxFormRow } from "./db";
 
 type Supa = Awaited<ReturnType<typeof createClient>>;
@@ -18,6 +19,12 @@ type Supa = Awaited<ReturnType<typeof createClient>>;
 // sixth is handed to a CPA with nothing on screen saying so.
 const PAYMENTS_LIMIT = 1000;
 const EXPENSES_LIMIT = 1000;
+// Mileage — this report used to have no query against mileage_entries at
+// all (see app/(app)/reports/profit-loss/queries.ts's identical fix for
+// the same defect): pilot.mileage_entries carries a real, dollar-valued
+// Schedule C deduction and it appeared in NO tax report. Same cap
+// discipline as every other list query in this file.
+const MILEAGE_LIMIT = 1000;
 
 export type IncomeByClient = {
   clientId: string;
@@ -109,6 +116,28 @@ export type YearEndReport = {
   unassignedTotalCents: number;
   unassignedTruncated: boolean;
 
+  /**
+   * Standard-mileage-rate drives for `year`, computed the SAME way
+   * app/(app)/expenses/mileage/page.tsx and
+   * app/(app)/reports/profit-loss/queries.ts do — lib/mileage.ts's
+   * computeYearTotals, from total miles x that year's OWN rate on file,
+   * rounded once, never a sum of the per-row snapshotted amounts. Deliberately
+   * NOT folded into deductibleTotalCents: the standard mileage rate and actual
+   * vehicle expenses (fuel, rental car — pilot.expenses category='fuel'/
+   * 'rental_car') are alternative deduction methods for the same vehicle,
+   * never additive, and this report cannot tell which one a pilot elected for
+   * a given vehicle/year (see the mileage migration's own header). Bounded to
+   * [Jan 1, Dec 31] of `year` like every other section, so every row here
+   * belongs to that one tax year — there is at most one entry.
+   */
+  mileageCount: number;
+  mileageMiles: number;
+  /** cents/mile on file in pilot.mileage_rates for `year`, or null if never entered. */
+  mileageRateCentsPerMile: number | null;
+  /** round(mileageMiles * mileageRateCentsPerMile), or null when no rate is on file — never a guessed figure. */
+  mileageAmountCents: number | null;
+  mileageTruncated: boolean;
+
   taxForms: TaxFormReconciliationRow[];
 };
 
@@ -143,6 +172,8 @@ export async function loadYearEndReport(
     { data: unassignedData, error: unassignedError },
     { data: clientData, error: clientError },
     { data: taxFormData, error: taxFormError },
+    { data: mileageData, error: mileageError },
+    { data: mileageRateData, error: mileageRateError },
   ] = await Promise.all([
     // A. CASH-BASIS income: one row per pilot.invoice_payments payment
     // whose paid_on falls in [start, end]. Both bounds are plain
@@ -206,6 +237,25 @@ export async function loadYearEndReport(
       )
       .eq("account_id", accountId)
       .eq("tax_year", year),
+    // F. Mileage — drove_on and miles ONLY, never the per-row snapshotted
+    // amount_cents: Schedule C wants total miles for the year x that
+    // year's OWN rate on file (queried next), rounded once — see
+    // lib/mileage.ts's header for why summing per-row amounts drifts from
+    // that figure.
+    supabase
+      .from("mileage_entries")
+      .select("id, drove_on, miles")
+      .eq("account_id", accountId)
+      .gte("drove_on", start)
+      .lte("drove_on", end)
+      .limit(MILEAGE_LIMIT),
+    // The pilot's own per-year IRS rate. Never hardcoded — see the
+    // mileage_rates table comment for why a baked-in figure would silently
+    // misstate every year it is stale for.
+    supabase
+      .from("mileage_rates")
+      .select("tax_year, rate_cents_per_mile")
+      .eq("account_id", accountId),
   ]);
 
   const firstError =
@@ -215,6 +265,11 @@ export async function loadYearEndReport(
     unassignedError ??
     clientError ??
     taxFormError ??
+    mileageError ??
+    // A failed rate read is not "no rate on file" — it would silently
+    // zero the whole mileage deduction on a report headed for a tax
+    // filing, same reasoning as profit-loss/queries.ts's identical check.
+    mileageRateError ??
     null;
 
   const clients = (clientData ?? []) as { id: string; name: string }[];
@@ -428,7 +483,25 @@ export async function loadYearEndReport(
     0
   );
 
-  // ---- E. 1099-NEC reconciliation ---------------------------------------
+  // ---- E. Mileage, standard rate (flagged, non-additive) ---------------
+  const mileageRaw = (mileageData ?? []) as {
+    id: string;
+    drove_on: string;
+    miles: number;
+  }[];
+  const mileageTruncated = mileageRaw.length === MILEAGE_LIMIT;
+  const mileageRatesByYear: RatesByYear = Object.fromEntries(
+    ((mileageRateData ?? []) as { tax_year: number; rate_cents_per_mile: number }[]).map(
+      (r) => [r.tax_year, r.rate_cents_per_mile]
+    )
+  );
+  // Bounded to [start, end] of exactly `year` above, so computeYearTotals
+  // (which groups by the tax year read out of drove_on) can produce at
+  // most one group here — unlike profit-loss, which can span a year
+  // boundary and genuinely needs the array.
+  const [mileageYearTotal] = computeYearTotals(mileageRaw, mileageRatesByYear);
+
+  // ---- F. 1099-NEC reconciliation ---------------------------------------
   const taxForms = (taxFormData ?? []) as ClientTaxFormRow[];
   const formsByClient = new Map<string, ClientTaxFormRow[]>();
   for (const form of taxForms) {
@@ -507,6 +580,12 @@ export async function loadYearEndReport(
     unassigned,
     unassignedTotalCents,
     unassignedTruncated,
+
+    mileageCount: mileageRaw.length,
+    mileageMiles: mileageYearTotal?.miles ?? 0,
+    mileageRateCentsPerMile: mileageYearTotal?.rateCentsPerMile ?? null,
+    mileageAmountCents: mileageYearTotal?.amountCents ?? null,
+    mileageTruncated,
 
     taxForms: taxFormRows,
   };

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { Badge, Box, Button, Card, Container, Flex, Separator, Table, Text } from "@/components/ui";
+import { Badge, Box, Button, Callout, Card, Container, Flex, Separator, Table, Text } from "@/components/ui";
 import { Logo } from "@/components/ui/logo";
 import { createClient } from "@/lib/supabase/server";
 import { isLiveMode } from "@/lib/stripe/server";
@@ -80,14 +80,30 @@ export const dynamic = "force-dynamic";
  *                           rather than re-deriving keeps the client-
  *                           facing total byte-for-byte identical to what
  *                           the pilot sees on their own screen.
- *   payment.url/livemode     The Stripe Payment Link, if one exists — the
- *                           whole point of this feature (see PLAN.md
- *                           decision #8). `url` is not a secret: it is the
- *                           exact string Stripe already hands anyone who
- *                           has it. `livemode` is compared against
- *                           isLiveMode() below, mirroring PaymentPanel's
- *                           own test/live guard, so a test-mode link is
- *                           never rendered as payable to a real client.
+ *   payment.url/livemode/amount_cents  The Stripe Payment Link, if one
+ *                           exists — the whole point of this feature (see
+ *                           PLAN.md decision #8). `url` is not a secret: it
+ *                           is the exact string Stripe already hands
+ *                           anyone who has it. `livemode` is compared
+ *                           against isLiveMode() below, mirroring
+ *                           PaymentPanel's own test/live guard, so a
+ *                           test-mode link is never rendered as payable to
+ *                           a real client. `amount_cents` (20260811010000)
+ *                           is the balance the link was SNAPSHOTTED for at
+ *                           generation time — a Payment Link prices off a
+ *                           Stripe Price made once, at creation, and never
+ *                           re-priced afterwards, so a link generated
+ *                           against an earlier balance keeps charging that
+ *                           earlier figure even after the balance changes
+ *                           (a correction, a partial payment). Without this
+ *                           field the page could only label the button
+ *                           with balance_due_cents while the link itself
+ *                           charged something else — one number shown, a
+ *                           different one charged. `payable` below requires
+ *                           amount_cents to equal the live balance, and the
+ *                           button is labelled with amount_cents, never
+ *                           balance_due_cents, so it can never state a
+ *                           figure Stripe will not actually charge.
  *                           stripe_payment_link_id is deliberately NOT
  *                           returned — the client never needs Stripe's
  *                           internal object id, only the URL.
@@ -143,6 +159,7 @@ type PublicInvoice = {
   payment: {
     url: string | null;
     livemode: boolean | null;
+    amount_cents: number | null;
   };
 };
 
@@ -207,10 +224,35 @@ export default async function PublicInvoicePage({
 
   const invoice = data as unknown as PublicInvoice;
   const status = STATUS_LABEL[invoice.invoice.status] ?? STATUS_LABEL.sent!;
-  const payable =
-    invoice.totals.balance_due_cents > 0 &&
-    invoice.payment.url !== null &&
-    invoice.payment.livemode === isLiveMode();
+
+  // A stored Payment Link is priced once, at generation time, and never
+  // re-priced — see this page's own header comment on payment.amount_cents.
+  // "Live" here only means "exists and matches this deployment's Stripe
+  // mode"; it says nothing about whether the price it charges still matches
+  // what's owed, which is the separate check below.
+  const linkLooksLive =
+    invoice.payment.url !== null && invoice.payment.livemode === isLiveMode();
+  // amount_cents === null covers a link generated before this column
+  // existed (20260810010000) and never regenerated since — there is no way
+  // to know what it charges without a Stripe round trip this page
+  // deliberately doesn't make (see the migration's own "no second signed-
+  // URL surface" reasoning for the logo, the same tradeoff applies here),
+  // so an unknown snapshot is treated exactly like a stale one: not payable.
+  const linkCurrent =
+    linkLooksLive &&
+    invoice.payment.amount_cents !== null &&
+    invoice.payment.amount_cents === invoice.totals.balance_due_cents;
+  // The button must never state a figure Stripe will not actually charge —
+  // gating on the snapshot matching the LIVE balance, not merely on a link
+  // existing, is what closes that gap.
+  const payable = invoice.totals.balance_due_cents > 0 && linkCurrent;
+  // A link that exists and looks live but is priced for a different
+  // balance than what's actually owed — a client paid $600 less than they
+  // thought, or a pilot corrected a payment, without anyone regenerating
+  // the link. The balance is still real and still owed; the client just
+  // cannot be handed a button that would charge the wrong amount for it.
+  const linkStale =
+    invoice.totals.balance_due_cents > 0 && linkLooksLive && !linkCurrent;
 
   return (
     <Box style={{ minHeight: "100vh", background: "var(--gray-2)" }}>
@@ -316,13 +358,28 @@ export default async function PublicInvoicePage({
           ) : null}
 
           {payable ? (
+            // Labelled with the LINK's own snapshotted amount, never
+            // balance_due_cents — `payable` already proved the two are
+            // equal, but the button states what Stripe will actually
+            // charge, not what this page separately computed.
             <>
               <Separator size="4" my="4" />
               <Button asChild size="3" style={{ width: "100%" }}>
                 <a href={invoice.payment.url!} target="_blank" rel="noopener noreferrer">
-                  Pay {formatCents(invoice.totals.balance_due_cents)} online
+                  Pay {formatCents(invoice.payment.amount_cents!)} online
                 </a>
               </Button>
+            </>
+          ) : linkStale ? (
+            <>
+              <Separator size="4" my="4" />
+              <Callout.Root color="amber" size="2">
+                <Callout.Text>
+                  Balance due: {formatCents(invoice.totals.balance_due_cents)}. The
+                  online payment link for this invoice is out of date — contact
+                  your pilot for an updated one rather than using it.
+                </Callout.Text>
+              </Callout.Root>
             </>
           ) : null}
         </Card>

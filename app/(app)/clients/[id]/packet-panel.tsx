@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import {
+  AlertDialog,
   Button,
   Callout,
   Card,
@@ -54,13 +55,23 @@ export default function PacketPanel({
   documents: PacketDocument[];
   existing: ExistingPacket | null;
 }) {
-  const [state, formAction, pending] = useActionState(createPacketShare, initial);
+  const [state, formAction, creating] = useActionState(createPacketShare, initial);
+  const [revokeState, revokeAction, revoking] = useActionState(revokePacketShare, initial);
   const [days, setDays] = useState("30");
   const [copied, setCopied] = useState(false);
 
-  // The freshly minted token, else whatever is already live. The RPC
-  // rotates on re-share, so at most one is ever current.
-  const token = state.token ?? existing?.token ?? null;
+  const pending = creating || revoking;
+
+  // The freshly minted token, else whatever is already live, UNLESS a
+  // revoke on THIS render just committed. revalidatePath re-renders the
+  // server component and `existing` correctly turns null, but
+  // revokeState lives in useActionState on the client and survives that
+  // re-render on its own — without this check the panel kept resolving
+  // existing?.token (or a stale state.token from an earlier create) and
+  // kept showing "send this to them" for a link that 404s the instant a
+  // client opens it. The RPC rotates on re-share, so at most one of
+  // state.token / existing?.token is ever current when neither applies.
+  const token = revokeState.revoked ? null : state.token ?? existing?.token ?? null;
   const url = token
     ? `${typeof window === "undefined" ? "" : window.location.origin}/packet/${token}`
     : null;
@@ -116,7 +127,7 @@ export default function PacketPanel({
               </Select.Root>
             </Flex>
             <Button type="submit" disabled={pending}>
-              {pending ? "Creating…" : existing?.token ? "Replace the link" : "Create the link"}
+              {creating ? "Creating…" : existing?.token ? "Replace the link" : "Create the link"}
             </Button>
           </Flex>
 
@@ -127,6 +138,12 @@ export default function PacketPanel({
           ) : null}
         </form>
       )}
+
+      {!url && revokeState.revoked ? (
+        <Text as="p" size="1" color="gray" mt="2">
+          The previous link was revoked.
+        </Text>
+      ) : null}
 
       {url ? (
         <Flex direction="column" gap="2" mt="4">
@@ -155,12 +172,46 @@ export default function PacketPanel({
               {`Stops working ${existing.expiresAt}. Replacing the link makes the old one dead immediately.`}
             </Text>
           ) : null}
-          <form action={revokePacketShare}>
-            <input type="hidden" name="client_id" value={clientId} />
-            <Button type="submit" variant="ghost" size="1">
-              Revoke this link
-            </Button>
-          </form>
+          {/* CONFIRMED, same reasoning as SharePanel's Revoke: clicking this
+              breaks a link the pilot may already have emailed, and the
+              client's browser tab gives no warning that it is about to
+              404. An unconfirmed one-click revoke on a passport/insurance
+              link is the wrong shape. */}
+          <AlertDialog.Root>
+            <AlertDialog.Trigger>
+              <Button type="button" variant="ghost" size="1" color="red" disabled={pending}>
+                {revoking ? "Revoking…" : "Revoke this link"}
+              </Button>
+            </AlertDialog.Trigger>
+            <AlertDialog.Content maxWidth="420px">
+              <AlertDialog.Title>Revoke this client link?</AlertDialog.Title>
+              <AlertDialog.Description size="2">
+                The link stops working immediately. If your client has it bookmarked or in
+                their email, it will 404 for them — create a new one if they still need these
+                documents.
+              </AlertDialog.Description>
+              <Flex gap="3" mt="4" justify="end">
+                <AlertDialog.Cancel>
+                  <Button variant="soft" color="gray">
+                    Cancel
+                  </Button>
+                </AlertDialog.Cancel>
+                <AlertDialog.Action>
+                  <form action={revokeAction}>
+                    <input type="hidden" name="client_id" value={clientId} />
+                    <Button type="submit" variant="solid" color="red" disabled={pending}>
+                      Revoke
+                    </Button>
+                  </form>
+                </AlertDialog.Action>
+              </Flex>
+            </AlertDialog.Content>
+          </AlertDialog.Root>
+          {revokeState.error ? (
+            <Callout.Root color="red" size="1">
+              <Callout.Text>{revokeState.error}</Callout.Text>
+            </Callout.Root>
+          ) : null}
         </Flex>
       ) : null}
     </Card>

@@ -69,6 +69,7 @@ export default function OperatorQualificationRow({
   existing,
   allowDelete = false,
   allowTypeEdit = false,
+  rotationCurrent = true,
 }: {
   clientId: string;
   requirement: string;
@@ -90,6 +91,15 @@ export default function OperatorQualificationRow({
    * own handling. False everywhere else, where type_designator is a
    * fixed hidden value. */
   allowTypeEdit?: boolean;
+  /** H-ipc-per-type fix: whether THIS row's own expires_on should ever
+   * drive the red/gray badge below. Defaults true — correct for every
+   * requirement except ipc_135_297, where 135.297(e)'s rotation means
+   * only the most-recently-completed row across a client's types is
+   * "current" for 297(a)'s window; the panel computes that with
+   * currentIpcRotationId() and passes false for every older type row,
+   * since an older row's own lapse is the rotation working as designed,
+   * not something to flag red. See operator-qualification-kinds.ts. */
+  rotationCurrent?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(saveOperatorQualification, initialState);
   const [deleting, startDelete] = useTransition();
@@ -219,11 +229,18 @@ export default function OperatorQualificationRow({
             {derived ? (
               existing?.expires_on ? (
                 <>
-                  <Badge color={isPastLocalDate(existing.expires_on) ? "red" : "gray"}>
+                  <Badge
+                    color={rotationCurrent && isPastLocalDate(existing.expires_on) ? "red" : "gray"}
+                  >
                     {formatDate(existing.expires_on)}
                   </Badge>
                   <Text size="1" color="gray">
-                    Planning aid, not a determination of regulatory compliance.
+                    {rotationCurrent
+                      ? "Planning aid, not a determination of regulatory compliance."
+                      : "Rotation history, not a lapse — 135.297(e) allows one flight check per " +
+                        "6-month period across your assigned types; your most recently completed " +
+                        "check is the one judged against that window. Planning aid, not a " +
+                        "determination of regulatory compliance."}
                   </Text>
                 </>
               ) : (
