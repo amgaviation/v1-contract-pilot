@@ -1010,11 +1010,40 @@ export async function createInvoiceDraft(
         // IDEMPOTENCY: a different invoice already settled this month —
         // the common shape being a second invoice for the same client,
         // drafted later, that happens to also cover a trip inside an
-        // already-topped-up month. Warn, and add no second line.
+        // already-topped-up month. No second TOP-UP line is added.
+        //
+        // BUT SKIPPING THE TOP-UP IS NOT THE SAME AS BILLING CORRECTLY,
+        // and this warning used to imply it was. The day lines for this
+        // month are still on the invoice below, and the earlier top-up
+        // already charged the client for a guaranteed number of days that
+        // these ones now duplicate.
+        //
+        // Worked example, from the review that found this: a 10-day
+        // monthly minimum at $1,200/day, four 3-day trips in August
+        // invoiced one at a time — the product's own default flow, since
+        // the picker offers completed unbilled trips singly. Invoice A
+        // bills 3 flight days plus a 7-day top-up. Invoices B, C and D
+        // bill 3 days each on top. The client is billed 19 days for a
+        // month whose honest total is 12, and whose guarantee is 10.
+        // $8,400 of days nobody flew, on documents an owner's AP
+        // department reads.
+        //
+        // A full fix reconciles: it credits back the overlap between what
+        // this invoice adds and what the earlier top-up already covered.
+        // That needs guarantee_periods to record how many days were billed
+        // into the month at settlement, which it does not — it stores
+        // guaranteed_days and settled_invoice_id and nothing about days
+        // worked. So this warning states the exposure in the terms it can
+        // actually compute — how many days THIS invoice adds to a month
+        // already topped up — without inventing a precise credit figure
+        // the data does not support.
         const settledLabel =
           settledInvoiceLabelById.get(alreadySettled) ?? "a draft invoice";
+        const addedDays = roundQuantity(bucket.qty);
         warnings.push(
-          `${monthLabel}: this client's monthly guarantee for this month was already settled on invoice ${settledLabel} — no second top-up line added.`
+          `${monthLabel}: this client's monthly guarantee was already settled on invoice ${settledLabel}, so no second top-up line was added — but this invoice still bills ${formatMinDays(
+            addedDays
+          )} ${addedDays === 1 ? "day" : "days"} in that month. Invoice ${settledLabel}'s top-up already charged for the guaranteed days, so check these aren't being billed twice before you send this.`
         );
         continue;
       }
