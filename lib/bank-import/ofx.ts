@@ -112,6 +112,52 @@ export function parseOfx(text: string, format: "ofx" | "qfx"): BankParseResult {
   // Normalize line endings once; every downstream regex assumes \n only.
   const body = text.replace(/\r\n?/g, "\n");
 
+  // ---------------------------------------------------------------------
+  // ONE FILE, ONE ACCOUNT (added after review)
+  // ---------------------------------------------------------------------
+  // "Download all accounts" is a spec-legal OFX response: one
+  // <BANKMSGSRSV1> holding several <STMTRS>, plus a <CCSTMTRS> for a card.
+  // This parser scans the whole document for <STMTTRN> and hands back one
+  // flat list, and the import screen attributes every row to the single
+  // bank account the pilot picked. So a three-account download booked the
+  // savings and the card into the checking ledger, and — because the dedup
+  // index is scoped (account_id, bank_account_id, fingerprint) — the
+  // misattributed rows sat in the wrong namespace, so importing the
+  // savings statement properly afterwards did NOT collide and recorded
+  // every one of those charges a second time.
+  //
+  // ACCTID lives in the enclosing <BANKACCTFROM>/<CCACCTFROM> aggregate,
+  // which the per-<STMTTRN> scan never sees. Rather than teach this parser
+  // the full statement hierarchy — a much larger change, on a format where
+  // getting the nesting subtly wrong is how the last three defects
+  // happened — it refuses a file that names more than one account, by
+  // name, and tells the pilot what to do instead. A statement per account
+  // is what every bank offers and what the import screen's one-account
+  // model already assumes.
+  const accountIds = Array.from(
+    new Set(
+      Array.from(body.matchAll(/<ACCTID>([^<\r\n]*)/gi))
+        .map((match) => (match[1] ?? "").trim())
+        .filter((id) => id !== "")
+    )
+  );
+  if (accountIds.length > 1) {
+    return {
+      format,
+      header: [],
+      valid: [],
+      rejected: [
+        {
+          rowNumber: 0,
+          raw: "",
+          reason: `This file contains statements for ${accountIds.length} different accounts (${accountIds
+            .map((id) => `···${id.slice(-4)}`)
+            .join(", ")}). Importing it would file every transaction against the one account you picked. Re-download one account at a time and import them separately.`,
+        },
+      ],
+    };
+  }
+
   // The body may not contain a further opener — see the header comment.
   // Every opener in the file, BY POSITION — this is the numbering the
   // pilot's file actually has, and the only numbering worth reporting.
@@ -254,5 +300,11 @@ export function parseOfx(text: string, format: "ofx" | "qfx"): BankParseResult {
     });
   });
 
-  return { format, header: [], valid, rejected };
+  // The single account this statement is for, when it named one. The
+  // import screen compares it to the last4 of the account the pilot
+  // picked, so filing a card statement against the checking ledger is
+  // caught before it happens rather than after — the misattribution is
+  // otherwise invisible, and the scoped dedup index means the corrective
+  // import doesn't collide with it either.
+  return { format, header: [], valid, rejected, statementAccountId: accountIds[0] ?? null };
 }

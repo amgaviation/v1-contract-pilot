@@ -388,6 +388,29 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                 pilot can reverse it in one click. Amber when the file
                 didn't settle the question, because then this is a
                 question and not a note. */}
+            {/* WRONG LEDGER. An OFX statement names the account it is for;
+                the pilot picks one here. When those disagree, every row
+                lands in the wrong ledger — and because the dedup index is
+                scoped per bank account, importing the right statement
+                afterwards does NOT collide, so the same charges get
+                recorded twice. Compared on the last four digits, which is
+                all the account picker shows and all a statement reliably
+                carries. */}
+            {parseResult.statementAccountId &&
+            selectedAccount?.last4 &&
+            parseResult.statementAccountId.slice(-4) !== selectedAccount.last4 ? (
+              <Callout.Root color="amber" size="1">
+                <Callout.Text>
+                  This statement is for an account ending{" "}
+                  ···{parseResult.statementAccountId.slice(-4)}, but you picked{" "}
+                  {selectedAccount.label} ···{selectedAccount.last4}. Importing it
+                  would file these transactions against the wrong account — and a
+                  later import of the right statement wouldn&rsquo;t catch it as a
+                  duplicate. Check the account above before continuing.
+                </Callout.Text>
+              </Callout.Root>
+            ) : null}
+
             {parseResult.signInterpretation ? (
               <Callout.Root
                 color={parseResult.signInterpretation.decisive ? "gray" : "amber"}

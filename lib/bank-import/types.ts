@@ -79,6 +79,13 @@ export type BankParseResult = {
   valid: ParsedBankRow[];
   rejected: RejectedBankRow[];
   signInterpretation?: SignInterpretation;
+  /**
+   * OFX/QFX only: the account number the statement names (`<ACCTID>`), or
+   * null when it names none. A file naming MORE than one account is
+   * refused outright by parseOfx — see its header for why booking three
+   * accounts into one ledger is worse than it sounds.
+   */
+  statementAccountId?: string | null;
 };
 
 /**
