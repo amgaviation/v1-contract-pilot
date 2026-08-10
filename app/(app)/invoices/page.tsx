@@ -5,6 +5,7 @@ import {
   Callout,
   Card,
   Flex,
+  Grid,
   Link as RadixLink,
   Table,
   Text,
@@ -49,8 +50,46 @@ const STATUS_BADGE: Record<string, Badge> = {
   void: { color: "gray", label: "Void" },
 };
 
-export default async function InvoicesPage() {
+/**
+ * Supabase's Data API caps rows and TRUNCATES SILENTLY (200, not an
+ * error). Every other list in this app carries this; these three reads did
+ * not, and a truncated invoice_totals read renders formatCents(undefined
+ * ?? 0) — "$0.00", in the gray styling reserved for settled — for an
+ * invoice whose detail page shows the real balance.
+ */
+const LIST_LIMIT = 1000;
+
+/** The buckets an accountant and a chasing pilot both think in. */
+const AGING_BUCKETS = [
+  { key: "current", label: "Not yet due", from: -Infinity, to: 0 },
+  { key: "d1_30", label: "1–30 days", from: 1, to: 30 },
+  { key: "d31_60", label: "31–60 days", from: 31, to: 60 },
+  { key: "d61_90", label: "61–90 days", from: 61, to: 90 },
+  { key: "d90", label: "90+ days", from: 91, to: Infinity },
+] as const;
+
+const FILTERS = [
+  { key: "outstanding", label: "Outstanding" },
+  { key: "overdue", label: "Overdue" },
+  { key: "draft", label: "Drafts" },
+  { key: "paid", label: "Paid" },
+  { key: "all", label: "All" },
+] as const;
+type FilterKey = (typeof FILTERS)[number]["key"];
+
+export default async function InvoicesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ show?: string }>;
+}) {
   await requireAccount("/invoices");
+  const { show } = await searchParams;
+  // "Outstanding" is the default view, not "all". A contract pilot opens
+  // this screen to find out who owes them money — the reference calls
+  // chasing payment a top-three pain — and a reverse-chronological list of
+  // every invoice they have ever issued is not that answer.
+  const filter: FilterKey =
+    (FILTERS.find((f) => f.key === show)?.key as FilterKey) ?? "outstanding";
 
   const supabase = await createClient();
   // invoice_totals/invoices_overdue are the one source for money and
@@ -68,10 +107,16 @@ export default async function InvoicesPage() {
     supabase
       .from("invoices")
       .select("id, client_id, invoice_number, status, issued_on, due_on")
-      .order("created_at", { ascending: false }),
-    supabase.from("invoice_totals").select("invoice_id, total_cents, balance_due_cents"),
-    supabase.from("invoices_overdue").select("invoice_id"),
-    supabase.from("clients").select("id, name"),
+      .order("created_at", { ascending: false })
+      .limit(LIST_LIMIT),
+    supabase
+      .from("invoice_totals")
+      .select("invoice_id, total_cents, balance_due_cents")
+      .limit(LIST_LIMIT),
+    // days_overdue, not just the id: it is already computed by the view and
+    // it is the whole basis of the aging strip below.
+    supabase.from("invoices_overdue").select("invoice_id, days_overdue").limit(LIST_LIMIT),
+    supabase.from("clients").select("id, name").limit(LIST_LIMIT),
     // Best-effort: a failed read here only costs the "due to create" count
     // its accuracy, not the whole invoice list, so it's kept out of
     // firstError (matching how invoices/recurring/page.tsx treats its own
@@ -111,9 +156,16 @@ export default async function InvoicesPage() {
   const totalsByInvoice = new Map(
     ((totalsData ?? []) as TotalsRow[]).map((t) => [t.invoice_id, t])
   );
-  const overdueIds = new Set(
-    ((overdueData ?? []) as { invoice_id: string }[]).map((o) => o.invoice_id)
+  const overdueRows = (overdueData ?? []) as {
+    invoice_id: string;
+    days_overdue: number;
+  }[];
+  const overdueIds = new Set(overdueRows.map((o) => o.invoice_id));
+  const daysOverdueById = new Map(
+    overdueRows.map((o) => [o.invoice_id, o.days_overdue])
   );
+  const truncated =
+    invoices.length === LIST_LIMIT || (totalsData ?? []).length === LIST_LIMIT;
   // Resolved in memory rather than a PostgREST embed — same reason as
   // trips/page.tsx: the embed's return type resolves to `never` against
   // the hand-authored types file, and a pilot's client list is small.
@@ -122,6 +174,47 @@ export default async function InvoicesPage() {
   );
 
   const overdueCount = overdueIds.size;
+
+  // RECEIVABLES. Balance owed, bucketed by how late it is. Only invoices
+  // that can still be paid count — a draft has not been sent and a void
+  // one is not owed, so including either would inflate what a pilot
+  // believes is coming to them.
+  const owedRows = invoices.filter(
+    (i) => i.status === "sent" || i.status === "partial"
+  );
+  const aging = new Map<string, { cents: number; count: number }>(
+    AGING_BUCKETS.map((b) => [b.key, { cents: 0, count: 0 }])
+  );
+  let outstandingCents = 0;
+  for (const invoice of owedRows) {
+    const balance = totalsByInvoice.get(invoice.id)?.balance_due_cents ?? 0;
+    if (balance <= 0) continue;
+    outstandingCents += balance;
+    // Absent from invoices_overdue means not yet due — the view is the one
+    // source for past-due-ness, so lateness is never recomputed here.
+    const days = daysOverdueById.get(invoice.id) ?? 0;
+    const bucket =
+      AGING_BUCKETS.find((b) => days >= b.from && days <= b.to) ?? AGING_BUCKETS[0];
+    const cell = aging.get(bucket.key)!;
+    cell.cents += balance;
+    cell.count += 1;
+  }
+
+  const visible = invoices.filter((invoice) => {
+    const balance = totalsByInvoice.get(invoice.id)?.balance_due_cents ?? 0;
+    switch (filter) {
+      case "outstanding":
+        return (invoice.status === "sent" || invoice.status === "partial") && balance > 0;
+      case "overdue":
+        return overdueIds.has(invoice.id);
+      case "draft":
+        return invoice.status === "draft";
+      case "paid":
+        return invoice.status === "paid";
+      default:
+        return true;
+    }
+  });
 
   return (
     <PageShell
@@ -168,6 +261,71 @@ export default async function InvoicesPage() {
           </Callout.Text>
         </Callout.Root>
       ) : null}
+      {truncated ? (
+        <Callout.Root color="amber">
+          <Callout.Icon>
+            <ExclamationTriangleIcon />
+          </Callout.Icon>
+          <Callout.Text>
+            Only the most recent {LIST_LIMIT} invoices could be loaded, so the
+            figures below cover those and not your whole history.
+          </Callout.Text>
+        </Callout.Root>
+      ) : null}
+
+      {!firstError && outstandingCents > 0 ? (
+        <Card size="3">
+          <Flex justify="between" align="baseline" wrap="wrap" gap="2" mb="3">
+            <Text size="2" weight="bold">
+              Owed to you
+            </Text>
+            <Text size="5" weight="bold" className="tnum">
+              {formatCents(outstandingCents)}
+            </Text>
+          </Flex>
+          <Grid columns={{ initial: "1", sm: "5" }} gap="3">
+            {AGING_BUCKETS.map((bucket) => {
+              const cell = aging.get(bucket.key)!;
+              return (
+                <Flex key={bucket.key} direction="column" gap="1">
+                  <Text size="1" color="gray">
+                    {bucket.label}
+                  </Text>
+                  <Text
+                    size="3"
+                    weight="medium"
+                    className="tnum"
+                    // Only real lateness is coloured. A pilot glancing at
+                    // this needs the 90+ column to be the one that shouts.
+                    color={cell.cents === 0 ? "gray" : bucket.key === "d90" ? "red" : undefined}
+                  >
+                    {formatCents(cell.cents)}
+                  </Text>
+                  <Text size="1" color="gray">
+                    {cell.count === 1 ? "1 invoice" : `${cell.count} invoices`}
+                  </Text>
+                </Flex>
+              );
+            })}
+          </Grid>
+        </Card>
+      ) : null}
+
+      <Flex gap="2" wrap="wrap">
+        {FILTERS.map((f) => (
+          <Button
+            key={f.key}
+            asChild
+            size="2"
+            variant={filter === f.key ? "solid" : "soft"}
+          >
+            <NextLink href={f.key === "outstanding" ? "/invoices" : `/invoices?show=${f.key}`}>
+              {f.label}
+            </NextLink>
+          </Button>
+        ))}
+      </Flex>
+
       <Card size="3">
         {firstError ? (
           <Callout.Root color="red">
@@ -176,20 +334,43 @@ export default async function InvoicesPage() {
             </Callout.Icon>
             <Callout.Text>{friendlyDbError(firstError, "invoices.select")}</Callout.Text>
           </Callout.Root>
-        ) : invoices.length === 0 ? (
-          <Flex direction="column" align="center" gap="3" py="6">
-            <Text size="4" weight="bold">
-              No invoices yet
-            </Text>
-            <Text size="2" color="gray" align="center">
-              Draft one from a client and the trips you&rsquo;ve already flown
-              for them — the flight days, travel days, and rebilled expenses
-              fill themselves in.
-            </Text>
-            <Button asChild>
-              <NextLink href="/invoices/new">Draft your first invoice</NextLink>
-            </Button>
-          </Flex>
+        ) : visible.length === 0 ? (
+          // "No invoices yet" is only true when there are none at all.
+          // Saying it while a filter is hiding forty of them is the same
+          // class of lie the trips screens used to tell.
+          invoices.length === 0 ? (
+            <Flex direction="column" align="center" gap="3" py="6">
+              <Text size="4" weight="bold">
+                No invoices yet
+              </Text>
+              <Text size="2" color="gray" align="center">
+                Draft one from a client and the trips you&rsquo;ve already flown
+                for them — the flight days, travel days, and rebilled expenses
+                fill themselves in.
+              </Text>
+              <Button asChild>
+                <NextLink href="/invoices/new">Draft your first invoice</NextLink>
+              </Button>
+            </Flex>
+          ) : (
+            <Flex direction="column" align="center" gap="3" py="6">
+              <Text size="4" weight="bold">
+                {filter === "outstanding"
+                  ? "Nothing outstanding"
+                  : filter === "overdue"
+                    ? "Nothing past due"
+                    : "Nothing here"}
+              </Text>
+              <Text size="2" color="gray" align="center">
+                {filter === "outstanding"
+                  ? `Every invoice you've sent has been paid. You have ${invoices.length} in total.`
+                  : `None of your ${invoices.length} invoices match this filter.`}
+              </Text>
+              <Button asChild variant="soft">
+                <NextLink href="/invoices?show=all">Show all invoices</NextLink>
+              </Button>
+            </Flex>
+          )
         ) : (
           <Table.Root variant="ghost">
             <Table.Header>
@@ -198,13 +379,14 @@ export default async function InvoicesPage() {
                 <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
                 <Table.ColumnHeaderCell>Issued</Table.ColumnHeaderCell>
                 <Table.ColumnHeaderCell>Due</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell justify="end">Late</Table.ColumnHeaderCell>
                 <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
                 <Table.ColumnHeaderCell justify="end">Total</Table.ColumnHeaderCell>
                 <Table.ColumnHeaderCell justify="end">Balance due</Table.ColumnHeaderCell>
               </Table.Row>
             </Table.Header>
             <Table.Body>
-              {invoices.map((invoice) => {
+              {visible.map((invoice) => {
                 const badge = STATUS_BADGE[invoice.status] ?? STATUS_FALLBACK;
                 const totals = totalsByInvoice.get(invoice.id);
                 const overdue = overdueIds.has(invoice.id);
@@ -226,8 +408,20 @@ export default async function InvoicesPage() {
                     <Table.Cell>
                       <Text color={overdue ? "red" : "gray"} weight={overdue ? "medium" : "regular"}>
                         {formatDate(invoice.due_on)}
-                        {overdue ? " · overdue" : ""}
                       </Text>
+                    </Table.Cell>
+                    <Table.Cell justify="end">
+                      {/* The number a pilot actually quotes when they
+                          chase: "that one's 74 days out". The word
+                          "overdue" used to sit next to the due date and
+                          said less. */}
+                      {overdue ? (
+                        <Text color="red" weight="medium" className="tnum">
+                          {`${daysOverdueById.get(invoice.id) ?? 0}d`}
+                        </Text>
+                      ) : (
+                        <Text color="gray">—</Text>
+                      )}
                     </Table.Cell>
                     <Table.Cell>
                       {overdue ? (
