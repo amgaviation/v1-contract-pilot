@@ -4,6 +4,7 @@ import { Box, Button, Card, Flex, Grid, Heading, Text } from "@/components/ui";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
+import { loadFleetOptions } from "@/lib/fleet";
 import { formatCents, formatDateRange } from "@/lib/format";
 import { tripValueCents } from "@/lib/trip-value";
 import PageShell from "../../page-shell";
@@ -152,6 +153,7 @@ export default async function TripPage({
   // number" defect this screen's comment used to warn about: a figure the
   // invoice will not bill.
   const hasDayRows = tripDays.length > 0;
+  const fleet = await loadFleetOptions();
   const billableByDayType = new Map(dayTypes.map((t) => [t.id, t.billable]));
   const value = tripValueCents(trip, tripDays, billableByDayType);
 
@@ -244,6 +246,7 @@ export default async function TripPage({
             cancelHref="/trips"
             locked={locked}
             hasDayRows={hasDayRows}
+            fleet={fleet}
           />
         </Box>
         <Box gridColumn={{ lg: "span 5" }}>

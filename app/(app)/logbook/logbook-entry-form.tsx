@@ -3,6 +3,8 @@
 import { useActionState, useEffect, useId, useState } from "react";
 import NextLink from "next/link";
 import { Button, Card, Checkbox, Flex, Grid, Heading, Select, Text, TextArea, TextField } from "@/components/ui";
+import TailNumberField from "@/components/tail-number-field";
+import type { FleetOption } from "@/lib/fleet";
 import type { LogbookFormState } from "./actions";
 
 export type LogbookEntryFormValues = {
@@ -108,12 +110,19 @@ export default function LogbookEntryForm({
   values = {},
   submitLabel,
   provenanceNote,
+  fleet = [],
 }: {
   action: (state: LogbookFormState, formData: FormData) => Promise<LogbookFormState>;
   values?: LogbookEntryFormValues;
   submitLabel: string;
   /** Read-only context shown above the form, e.g. "Confirmed from a trip on 12 AUG 2026". */
   provenanceNote?: string;
+  /**
+   * The pilot's registered airframes, offered as suggestions on the tail
+   * number. Defaults to none so the field degrades to exactly the plain
+   * text box it was before pilot.aircraft existed.
+   */
+  fleet?: FleetOption[];
 }) {
   // Select.Root never controls the native <select> Radix mounts for form
   // submission (it always renders `defaultValue`, never `value` — see
@@ -222,11 +231,13 @@ export default function LogbookEntryForm({
               />
             </LabeledField>
             <LabeledField label="Tail number" htmlFor="aircraft_ident" gridColumn={{ md: "span 3" }}>
-              <TextField.Root
+              <TailNumberField
                 id="aircraft_ident"
                 name="aircraft_ident"
+                fleet={fleet}
                 placeholder="Tail number"
                 defaultValue={initial("aircraft_ident")}
+                typeFieldId="aircraft_type"
               />
             </LabeledField>
             <LabeledField label="Aircraft type" htmlFor="aircraft_type" gridColumn={{ md: "span 3" }}>
