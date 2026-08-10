@@ -24,7 +24,21 @@ import { friendlyDbError } from "@/lib/db-errors";
 
 export type PacketState = {
   error: string | null;
+  /** The freshly minted token, set only by a successful createPacketShare. */
   token?: string;
+  /** True on a revoke that returned without error, so the panel can drop
+   * the dead token off screen without waiting on revalidatePath's
+   * re-render. Scoped to `revokedToken` below, not a whole-panel latch —
+   * see packet-panel.tsx's `token` derivation for why that scoping is
+   * load-bearing. */
+  revoked?: boolean;
+  /** The token the revoke click targeted, echoed back on success or
+   * failure once past the client-id check below. Comparing this against
+   * the token a render would otherwise show is how the panel tells a
+   * revoke that is still about the link on screen from a stale one left
+   * over from earlier in the same mount (a revoke before the most recent
+   * create). */
+  revokedToken?: string;
 };
 
 const UUID_RE =
@@ -79,12 +93,55 @@ export async function createPacketShare(
   return { error: null, token: data as string };
 }
 
-export async function revokePacketShare(formData: FormData): Promise<void> {
+export async function revokePacketShare(
+  _prev: PacketState,
+  formData: FormData
+): Promise<PacketState> {
   const clientId = String(formData.get("client_id") ?? "");
-  if (!UUID_RE.test(clientId)) return;
+  if (!UUID_RE.test(clientId)) return { error: "Missing client." };
+
+  // Which token this click meant to kill, echoed straight back below on
+  // BOTH the success and error path so the panel can tell whether its own
+  // still-visible token is the one this dispatch was about — see
+  // packet-panel.tsx's `token` derivation. The panel fills this hidden
+  // input from the same value it is currently rendering, not a fresh read
+  // of the database, which is exactly what makes it a reliable "was this
+  // MY link" check rather than another latch.
+  const revokingToken = String(formData.get("revoking_token") ?? "") || undefined;
 
   await requireAccount("/clients");
   const supabase = await createClient();
-  await supabase.rpc("document_share_revoke", { p_client_id: clientId } as never);
+
+  // document_share_revoke returns void — it is an UPDATE with a WHERE
+  // clause, not a set-returning function, so there is no row count the
+  // client can ask PostgREST for (`{ count: "exact" }` only counts rows
+  // OUT of a function; postgrest-js says so on the rpc() signature). That
+  // means this action cannot distinguish "revoked one" from "there was
+  // nothing to revoke" — and deliberately does not claim to: the only
+  // copy this state drives is "the previous link was revoked"
+  // (packet-panel.tsx), which is true either way once this call succeeds,
+  // since it never asserts THIS click was the one that killed the link,
+  // only that the token on screen is now dead. The Revoke button itself
+  // only ever renders while a live link is showing, so a genuine
+  // zero-row outcome here can only happen via a race (a second tab
+  // revoking the same packet a moment earlier) — the sibling
+  // pilot.invoice_share_revoke documents the identical void-returning
+  // shape as "idempotent no-op if already revoked or never shared" by
+  // design, and this one matches it on purpose rather than by omission.
+  // What this call CAN and DOES still fail on is the RPC itself erroring
+  // — a dropped connection, a permission problem — and that failure was
+  // previously thrown away outright: the caller never even captured
+  // `{ error }`, so a failed revoke rendered byte-identical to a
+  // successful one and a pilot would believe a link carrying their
+  // passport was dead when it was still live. Capture it and report it,
+  // the same way every other RPC wrapper in this file and
+  // share-actions.ts already does.
+  const { error } = await supabase.rpc("document_share_revoke", { p_client_id: clientId } as never);
+
+  if (error) {
+    return { error: friendlyDbError(error, "document_share_revoke"), revokedToken: revokingToken };
+  }
+
   revalidatePath(`/clients/${clientId}`);
+  return { error: null, revoked: true, revokedToken: revokingToken };
 }

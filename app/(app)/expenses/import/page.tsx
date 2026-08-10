@@ -1,3 +1,5 @@
+import { Callout, Card } from "@/components/ui";
+import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { requireAccount } from "@/lib/supabase/account";
 import PageShell from "../../page-shell";
 import ImportWorkspace from "./import-workspace";
@@ -22,7 +24,21 @@ export default async function BankImportPage() {
       title="Import a bank or card statement"
       subtitle="Download a CSV, OFX, or QFX statement from your bank's online portal and bring it in — nothing is added to your books until you review and categorize each transaction."
     >
-      {error ? <p>{error}</p> : <ImportWorkspace initialAccounts={accounts} />}
+      {error ? (
+        <Card size="3">
+          <Callout.Root color="red">
+            <Callout.Icon>
+              <ExclamationTriangleIcon />
+            </Callout.Icon>
+            {/* listBankAccounts already runs error through friendlyDbError
+                before returning it, so `error` here is a sentence, not a
+                raw PostgREST message. */}
+            <Callout.Text>{error}</Callout.Text>
+          </Callout.Root>
+        </Card>
+      ) : (
+        <ImportWorkspace initialAccounts={accounts} />
+      )}
     </PageShell>
   );
 }

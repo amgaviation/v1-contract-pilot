@@ -27,8 +27,10 @@ export type InvoiceFormState = {
   values?: Record<string, string>;
   /**
    * Something that happened as a SIDE EFFECT of a successful action and
-   * that the pilot needs to know — currently only "recording this payment
-   * switched off the online payment link". Not an error (the thing they
+   * that the pilot needs to know — currently only "recording (or
+   * correcting) this payment switched off the online payment link", set by
+   * recordPayment and correctPayment alike (both change balance_due_cents,
+   * both retire a stale link the same way). Not an error (the thing they
    * asked for worked) and not a validation message, so it renders
    * separately from `error`.
    */
@@ -583,8 +585,31 @@ export async function createInvoiceDraft(
 
   const lines: LineInsert[] = [];
   let sortOrder = 0;
+  let skippedFlightDays = false;
   let skippedTravelDays = false;
   const warnings: string[] = [...preselectionWarnings];
+
+  // D: guarantee_periods.settled_invoice_id must never be stamped for a
+  // month before the invoice_lines that settlement is supposed to justify
+  // are actually written — there is no DB transaction spanning the two
+  // (see the "no cross-table transaction available" note on the
+  // invoice_lines insert below), so writing the settlement first meant a
+  // rejected lines batch (most commonly invoice_lines_validate_trip's
+  // double-bill guard) permanently burned that month's guarantee against
+  // an invoice that ended up with zero lines. The monthly-guarantee loop
+  // below only fills this array; the actual write happens in the loop
+  // right after invoice_lines lands, which is the earliest point the
+  // lines are known-written (a lines-insert failure redirects and never
+  // reaches it).
+  type PendingGuaranteeSettlement = {
+    monthKey: string;
+    monthLabel: string;
+    existingPeriodId: string | null;
+    minDays: number;
+  };
+  const pendingGuaranteeSettlements: PendingGuaranteeSettlement[] = [];
+  type GuaranteePeriodInsert =
+    Database["pilot"]["Tables"]["guarantee_periods"]["Insert"];
 
   for (const trip of trips) {
     const tripDayRows = dayRowsByTrip.get(trip.id) ?? [];
@@ -796,22 +821,35 @@ export async function createInvoiceDraft(
       lines.push(...tripDayLines);
     } else {
       // ---------------------------------------------------------------
-      // SCALAR PATH — byte-for-byte the pre-Phase-9 logic. Left untouched
-      // so a trip with zero trip_days rows bills exactly as it did before
-      // this change, with no minimum-days or other new behavior applied.
+      // SCALAR PATH — otherwise the pre-Phase-9 logic, unchanged: a trip
+      // with zero trip_days rows still bills with no minimum-days or other
+      // Phase-9 behavior applied. The one deliberate departure from
+      // byte-for-byte is the day_rate_cents > 0 guard just below, which
+      // brings the flight-day line in line with the travel-day line right
+      // after it (both were previously asymmetric — see that branch).
       // ---------------------------------------------------------------
       if (Number(trip.day_count) > 0) {
-        lines.push({
-          account_id: account.id,
-          invoice_id: invoiceId,
-          line_type: "flight_day",
-          description: `Flight days — ${formatDateRange(trip.starts_on, trip.ends_on)}`,
-          quantity: trip.day_count,
-          unit_amount_cents: trip.day_rate_cents,
-          taxable: true,
-          trip_id: trip.id,
-          sort_order: sortOrder++,
-        });
+        // A trip with no day rate set has nothing to price flight days
+        // with — dropped rather than billed at $0, and reported in the
+        // warning so the pilot notices instead of the trip silently
+        // invoicing for free. Mirrors the travel-day branch immediately
+        // below (trip.day_rate_cents is `bigint not null default 0`, so a
+        // blank rate on the trip form lands here as 0, not null).
+        if (Number(trip.day_rate_cents) > 0) {
+          lines.push({
+            account_id: account.id,
+            invoice_id: invoiceId,
+            line_type: "flight_day",
+            description: `Flight days — ${formatDateRange(trip.starts_on, trip.ends_on)}`,
+            quantity: trip.day_count,
+            unit_amount_cents: trip.day_rate_cents,
+            taxable: true,
+            trip_id: trip.id,
+            sort_order: sortOrder++,
+          });
+        } else {
+          skippedFlightDays = true;
+        }
       }
       if (Number(trip.travel_day_count) > 0) {
         // A travel day with no rate on the trip has nothing to price it
@@ -997,9 +1035,6 @@ export async function createInvoiceDraft(
       }
     }
 
-    type GuaranteePeriodInsert =
-      Database["pilot"]["Tables"]["guarantee_periods"]["Insert"];
-
     for (const monthKey of monthKeys) {
       const bucket = monthlyBillable.get(monthKey)!;
       const monthLabel = formatMonthLabel(monthKey);
@@ -1084,82 +1119,16 @@ export async function createInvoiceDraft(
       // recording it here is what stops a later invoice from re-deriving
       // (and potentially double-counting) the same month.
       //
-      // C2 FIX — lookup-then-insert-or-update, the same shape
-      // trips/actions.ts's trip_days save and
-      // clients/[id]/rate-overrides-actions.ts's client_rates write both
-      // already use, and for the same reason: PostgREST's `.upsert()`
-      // compiles to `ON CONFLICT ... DO UPDATE SET <every payload column>
-      // = excluded.<col>`, and Postgres checks UPDATE privilege on every
-      // column named in that SET list STATICALLY — before any conflict is
-      // even evaluated, and even when the incoming value matches the
-      // stored one. The payload here is (account_id, client_id,
-      // period_month, guaranteed_days, settled_invoice_id); this
-      // migration's UPDATE grant is only (guaranteed_days,
-      // settled_invoice_id) — account_id/client_id/period_month identify
-      // the row and are insert-only, the same discipline client_rates
-      // already uses for (account_id, client_id, day_type_id). So
-      // `.upsert()` 42501'd for `authenticated` on every call, the table
-      // was never actually written, and the monthly guarantee double-
-      // billed every month split across two invoices (see this file's own
-      // header comment above). The row is already in hand from
-      // periodRows/existingPeriodByMonth above, so no extra read is
-      // needed — just branch on it, and check `{count:"exact"}` on the
-      // write so a silently-denied write surfaces here instead of at a
-      // client's AP department.
-      if (existingPeriod) {
-        const { error: updateError, count: updateCount } = await supabase
-          .from("guarantee_periods")
-          .update(
-            {
-              guaranteed_days: minDays,
-              settled_invoice_id: invoiceId,
-            } as never,
-            { count: "exact" }
-          )
-          .eq("id", existingPeriod.id)
-          .eq("account_id", account.id);
-
-        if (updateError) {
-          // The invoice line(s) above already landed in `lines` and will
-          // still be inserted below — losing the settlement record is a
-          // "this month might get topped up again" risk, not a "this
-          // invoice is wrong" one, so it's a warning, not a hard failure.
-          warnings.push(
-            `Couldn't record ${monthLabel}'s guarantee settlement (${friendlyDbError(
-              updateError,
-              "guarantee_periods.update"
-            )}). A later invoice for this client may re-offer the same month.`
-          );
-        } else if (updateCount === 0) {
-          warnings.push(
-            `Couldn't record ${monthLabel}'s guarantee settlement — no matching record to update. A later invoice for this client may re-offer the same month.`
-          );
-        }
-      } else {
-        const insertPayload: GuaranteePeriodInsert = {
-          account_id: account.id,
-          client_id: clientId,
-          period_month: monthKey,
-          guaranteed_days: minDays,
-          settled_invoice_id: invoiceId,
-        };
-        const { error: insertError, count: insertCount } = await supabase
-          .from("guarantee_periods")
-          .insert(insertPayload as never, { count: "exact" });
-
-        if (insertError) {
-          warnings.push(
-            `Couldn't record ${monthLabel}'s guarantee settlement (${friendlyDbError(
-              insertError,
-              "guarantee_periods.insert"
-            )}). A later invoice for this client may re-offer the same month.`
-          );
-        } else if (insertCount !== 1) {
-          warnings.push(
-            `Couldn't record ${monthLabel}'s guarantee settlement — the write didn't take. A later invoice for this client may re-offer the same month.`
-          );
-        }
-      }
+      // NOT WRITTEN HERE — see pendingGuaranteeSettlements's own comment
+      // above. This pass only records what to write; the actual
+      // guarantee_periods write happens in the loop right after
+      // invoice_lines is inserted, below.
+      pendingGuaranteeSettlements.push({
+        monthKey,
+        monthLabel,
+        existingPeriodId: existingPeriod?.id ?? null,
+        minDays,
+      });
     }
   }
 
@@ -1241,8 +1210,96 @@ export async function createInvoiceDraft(
     }
   }
 
+  // D: guarantee_periods is stamped ONLY here — after invoice_lines is
+  // known-written (the redirect() above throws and never falls through to
+  // this point on a rejected batch). See pendingGuaranteeSettlements's own
+  // comment near the top of this function for what used to go wrong when
+  // the settlement write ran ahead of the lines it was meant to justify.
+  for (const settlement of pendingGuaranteeSettlements) {
+    // C2 FIX — lookup-then-insert-or-update, the same shape
+    // trips/actions.ts's trip_days save and
+    // clients/[id]/rate-overrides-actions.ts's client_rates write both
+    // already use, and for the same reason: PostgREST's `.upsert()`
+    // compiles to `ON CONFLICT ... DO UPDATE SET <every payload column> =
+    // excluded.<col>`, and Postgres checks UPDATE privilege on every
+    // column named in that SET list STATICALLY — before any conflict is
+    // even evaluated, and even when the incoming value matches the stored
+    // one. The payload here is (account_id, client_id, period_month,
+    // guaranteed_days, settled_invoice_id); this migration's UPDATE grant
+    // is only (guaranteed_days, settled_invoice_id) — account_id/
+    // client_id/period_month identify the row and are insert-only, the
+    // same discipline client_rates already uses for (account_id,
+    // client_id, day_type_id). So `.upsert()` 42501'd for `authenticated`
+    // on every call, the table was never actually written, and the
+    // monthly guarantee double-billed every month split across two
+    // invoices (see this file's own header comment above).
+    // existingPeriodId is already in hand from the loop above, so no
+    // extra read is needed — just branch on it, and check
+    // `{count:"exact"}` on the write so a silently-denied write surfaces
+    // here instead of at a client's AP department.
+    if (settlement.existingPeriodId) {
+      const { error: updateError, count: updateCount } = await supabase
+        .from("guarantee_periods")
+        .update(
+          {
+            guaranteed_days: settlement.minDays,
+            settled_invoice_id: invoiceId,
+          } as never,
+          { count: "exact" }
+        )
+        .eq("id", settlement.existingPeriodId)
+        .eq("account_id", account.id);
+
+      if (updateError) {
+        // The invoice's lines are already committed by this point —
+        // losing the settlement record is a "this month might get topped
+        // up again" risk, not a "this invoice is wrong" one, so it's a
+        // warning, not a hard failure.
+        warnings.push(
+          `Couldn't record ${settlement.monthLabel}'s guarantee settlement (${friendlyDbError(
+            updateError,
+            "guarantee_periods.update"
+          )}). A later invoice for this client may re-offer the same month.`
+        );
+      } else if (updateCount === 0) {
+        warnings.push(
+          `Couldn't record ${settlement.monthLabel}'s guarantee settlement — no matching record to update. A later invoice for this client may re-offer the same month.`
+        );
+      }
+    } else {
+      const insertPayload: GuaranteePeriodInsert = {
+        account_id: account.id,
+        client_id: clientId,
+        period_month: settlement.monthKey,
+        guaranteed_days: settlement.minDays,
+        settled_invoice_id: invoiceId,
+      };
+      const { error: insertError, count: insertCount } = await supabase
+        .from("guarantee_periods")
+        .insert(insertPayload as never, { count: "exact" });
+
+      if (insertError) {
+        warnings.push(
+          `Couldn't record ${settlement.monthLabel}'s guarantee settlement (${friendlyDbError(
+            insertError,
+            "guarantee_periods.insert"
+          )}). A later invoice for this client may re-offer the same month.`
+        );
+      } else if (insertCount !== 1) {
+        warnings.push(
+          `Couldn't record ${settlement.monthLabel}'s guarantee settlement — the write didn't take. A later invoice for this client may re-offer the same month.`
+        );
+      }
+    }
+  }
+
   revalidatePath("/invoices");
   revalidatePath("/trips");
+  if (skippedFlightDays) {
+    warnings.push(
+      "One or more trips had flight days but no day rate set, so those days weren't billed. Add a rate on the trip and re-draft, or add a line by hand."
+    );
+  }
   if (skippedTravelDays) {
     warnings.push(
       "One or more trips had travel days but no travel day rate set, so those days weren't billed. Add a rate on the trip and re-draft, or add a line by hand."
@@ -1934,14 +1991,16 @@ export async function recordPayment(
 
 /**
  * Deactivates a Payment Link on Stripe and clears the invoice's four stored
- * link columns. Returns the sentence to show the pilot, or undefined when
- * there is nothing worth saying.
+ * link columns. Returns the sentence to show the pilot.
  *
- * The two outcomes are deliberately different sentences, because they ask
- * different things of the pilot: a clean retirement is just information
- * ("that link is dead, make a new one if you need it"), while a failed
- * deactivation is a task only they can finish, in a dashboard this app
- * cannot reach.
+ * The Stripe outcome and the DB outcome are deliberately different
+ * sentences, because they ask different things of the pilot: a clean
+ * retirement is just information ("that link is dead, make a new one if
+ * you need it"); a failed Stripe deactivation is a task only they can
+ * finish, in a dashboard this app cannot reach; and a failed or zero-row
+ * clear of the four columns below means the app's OWN record of the link
+ * is now wrong regardless of what Stripe did, which is worth its own
+ * warning rather than silently trusting a screen that may be lying.
  */
 async function retirePaymentLink(params: {
   supabase: Awaited<ReturnType<typeof createClient>>;
@@ -1949,7 +2008,7 @@ async function retirePaymentLink(params: {
   connectAccountId: string | null;
   invoiceId: string;
   paymentLinkId: string;
-}): Promise<string | undefined> {
+}): Promise<string> {
   let notice =
     "The online payment link for this invoice was switched off, because it was priced for the previous balance. Generate a new one if you still need it.";
 
@@ -1971,22 +2030,39 @@ async function retirePaymentLink(params: {
     notice = LINK_STILL_LIVE_WARNING;
   }
 
-  const { error } = await params.supabase
+  const { error, count } = await params.supabase
     .from("invoices")
-    .update({
-      stripe_payment_link_id: null,
-      stripe_payment_link_url: null,
-      stripe_payment_link_livemode: null,
-      stripe_payment_link_amount_cents: null,
-    } as never)
+    .update(
+      {
+        stripe_payment_link_id: null,
+        stripe_payment_link_url: null,
+        stripe_payment_link_livemode: null,
+        stripe_payment_link_amount_cents: null,
+      } as never,
+      { count: "exact" }
+    )
     .eq("id", params.invoiceId)
     .eq("account_id", params.accountId);
 
   if (error) {
-    // The link is off on Stripe but the row still points at it. Not worth
-    // failing the payment over — the screen would keep showing a dead
-    // link, which the next generate replaces anyway.
+    // Not worth failing the caller's payment/correction over — that already
+    // landed — but the row still points at a link this app can no longer
+    // manage, so the pilot needs telling, not just a server log.
     console.error(`[db] invoices.update(clear payment_link) ${error.message}`);
+    return `${notice} This invoice's own record of that link also failed to clear — reload the page before trusting what it shows.`;
+  }
+
+  if (count === 0) {
+    // PostgREST returns 200 even when the WHERE clause matches nothing —
+    // wrong account_id (RLS) or the row moved between the read that found
+    // paymentLinkId and this write. Either way the four columns above were
+    // NOT cleared, so the screen would otherwise keep offering a link that
+    // may already be dead on Stripe (or, if the Stripe call above also
+    // failed, one that's still live) with no way to tell which.
+    console.error(
+      `[db] invoices.update(clear payment_link) matched 0 rows for invoice ${params.invoiceId}`
+    );
+    return `${notice} This invoice's own record of that link couldn't be updated — reload the page before trusting what it shows.`;
   }
 
   return notice;
@@ -2067,8 +2143,47 @@ export async function correctPayment(
     return { error: friendlyDbError(error, "invoice_payments.correct") };
   }
 
+  // RETIRE ANY LIVE PAYMENT LINK — a correction changes balance_due_cents
+  // for exactly the same reason recordPayment's own payment does (see that
+  // function's comment above retirePaymentLink), so a stored link must be
+  // killed here too. Without this, correcting an overstated payment leaves
+  // a Payment Link on Stripe still priced for the WRONG, smaller balance —
+  // the invoice screen would keep handing a client a link that charges
+  // less than they actually owe. Read fresh rather than reused: nothing
+  // earlier in this function touched pilot.invoices.
+  const { data: invoiceData, error: invoiceReadError } = await supabase
+    .from("invoices")
+    .select("stripe_payment_link_id")
+    .eq("id", invoiceId)
+    .eq("account_id", account.id)
+    .maybeSingle();
+
+  let linkNotice: string | undefined;
+  if (invoiceReadError) {
+    // The correction already landed — the payment ledger is right either
+    // way. A stale link surviving this read failure is the same "generate
+    // a fresh one if the balance is off" recovery path recordPayment
+    // leaves for its own Stripe-side failures, not a reason to fail a
+    // correction that has already happened.
+    console.error(
+      `[db] invoices.select(stripe_payment_link_id) after correctPayment ${invoiceReadError.message}`
+    );
+  } else {
+    const linkId = (invoiceData as { stripe_payment_link_id: string | null } | null)
+      ?.stripe_payment_link_id;
+    if (linkId) {
+      linkNotice = await retirePaymentLink({
+        supabase,
+        accountId: account.id,
+        connectAccountId: account.connect_account_id,
+        invoiceId,
+        paymentLinkId: linkId,
+      });
+    }
+  }
+
   revalidatePath(`/invoices/${invoiceId}`);
   revalidatePath("/invoices");
   revalidatePath("/reports");
-  return { error: null, saved: true };
+  return { error: null, saved: true, notice: linkNotice };
 }

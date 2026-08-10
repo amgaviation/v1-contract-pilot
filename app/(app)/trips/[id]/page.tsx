@@ -32,8 +32,8 @@ export default async function TripPage({
   const supabase = await createClient();
   const [
     { data: tripData, error: tripError },
-    { data: legData },
-    { data: clientData },
+    { data: legData, error: legError },
+    { data: clientData, error: clientError },
     { data: dayTypeData, error: dayTypeError },
     { data: tripDayData, error: tripDayError },
     { data: clientRateData, error: clientRateError },
@@ -92,6 +92,18 @@ export default async function TripPage({
   // trip they never lost; the error boundary is the honest answer.
   if (tripError) {
     throw new Error(`Couldn't load trip ${id}: ${tripError.message}`);
+  }
+  // Same reasoning as tripError above, for the two reads this page used to
+  // let fail silently: a failed trip_legs read must not render as a trip
+  // with zero legs (subtitle "0 legs", an empty editable LegEditor — a
+  // tired pilot re-enters legs that already exist, producing duplicate
+  // logbook drafts), and a failed clients read must not empty the client
+  // picker on a form that posts client_id.
+  if (legError) {
+    throw new Error(`Couldn't load trip ${id}'s legs: ${legError.message}`);
+  }
+  if (clientError) {
+    throw new Error(`Couldn't load clients: ${clientError.message}`);
   }
   if (dayTypeError) {
     throw new Error(`Couldn't load day types: ${dayTypeError.message}`);

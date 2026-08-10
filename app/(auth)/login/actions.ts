@@ -2,19 +2,10 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { safeNextPath } from "@/lib/safe-next";
 
 export type SignInState = { error: string | null };
 
-/**
- * Only ever redirect to an app-internal path. A `next` value that isn't a
- * single-leading-slash path (protocol-relative `//evil.com`, an absolute
- * URL, anything else) is discarded in favour of the app root — otherwise
- * the post-login redirect is an open-redirect primitive.
- */
-function safeNext(next: string): string {
-  if (next.startsWith("/") && !next.startsWith("//")) return next;
-  return "/";
-}
 
 export async function signIn(
   _prev: SignInState,
@@ -22,7 +13,7 @@ export async function signIn(
 ): Promise<SignInState> {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
-  const next = safeNext(String(formData.get("next") ?? "/"));
+  const next = safeNextPath(String(formData.get("next") ?? "/"));
 
   if (!email || !password) {
     return { error: "Enter your email and password." };

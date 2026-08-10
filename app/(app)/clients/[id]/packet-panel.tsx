@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import {
+  AlertDialog,
   Button,
   Callout,
   Card,
@@ -47,23 +48,77 @@ export default function PacketPanel({
   clientId,
   clientName,
   documents,
+  documentsLoadError = false,
   existing,
+  existingLoadError = false,
 }: {
   clientId: string;
   clientName: string;
   documents: PacketDocument[];
+  /**
+   * U4: a failed documents read degrades `documents` to `[]` the same way
+   * genuinely having none would — telling a pilot with a W-9, certificate
+   * of insurance and day-rate agreement all on file "Nothing to send yet"
+   * and hiding the create-link form is a defect, not a graceful fallback.
+   */
+  documentsLoadError?: boolean;
   existing: ExistingPacket | null;
+  /**
+   * Same shape as documentsLoadError, on the read next to it: a failed
+   * document_shares lookup degrades `existing` to `null` the same way
+   * "no live packet" would, hiding the live-link block below from a pilot
+   * whose credential packet IS out with this client — risking a second
+   * one being created on top of it.
+   */
+  existingLoadError?: boolean;
 }) {
-  const [state, formAction, pending] = useActionState(createPacketShare, initial);
+  const [state, formAction, creating] = useActionState(createPacketShare, initial);
+  const [revokeState, revokeAction, revoking] = useActionState(revokePacketShare, initial);
   const [days, setDays] = useState("30");
   const [copied, setCopied] = useState(false);
 
-  // The freshly minted token, else whatever is already live. The RPC
-  // rotates on re-share, so at most one is ever current.
-  const token = state.token ?? existing?.token ?? null;
+  const pending = creating || revoking;
+
+  // The freshest token this render should show: a freshly minted one from
+  // THIS create beats whatever the server already had, so the pilot sees
+  // the new link immediately without waiting on revalidatePath's
+  // re-render (same reasoning as SharePanel's `liveToken`).
+  const candidateToken = state.token ?? existing?.token ?? null;
+
+  // A revoke nulls OUT the specific token it targeted, not "whatever
+  // token this panel is showing right now". revokeState.revokedToken is
+  // echoed back by revokePacketShare from the hidden `revoking_token`
+  // input, i.e. it names the exact token that revoke dispatch tried to
+  // kill. Scoping the check to that identity — rather than a bare
+  // `revokeState.revoked` latch — is what lets it self-clear: once a
+  // LATER create mints a different token, candidateToken no longer
+  // equals revokedToken and this branch is simply moot, so the new link
+  // renders normally without anything having to reset revokeState. A
+  // bare latch cannot do that — it stays true for the rest of the mount,
+  // so create A, revoke A, create B would render NO link for B while the
+  // panel simultaneously said "the previous link was revoked" under a
+  // "Replace the link" button: three contradictory statements about the
+  // same packet on one render.
+  // `revokedToken ?? candidateToken` rather than a bare `revokedToken`
+  // comparison: if a dispatch ever came back without a token to name (the
+  // hidden `revoking_token` field missing or empty), this must not read as
+  // "doesn't match, so show the link" — it fails toward hiding a possibly
+  // revoked link, not toward showing one.
+  const token =
+    candidateToken &&
+    revokeState.revoked &&
+    (revokeState.revokedToken ?? candidateToken) === candidateToken
+      ? null
+      : candidateToken;
   const url = token
     ? `${typeof window === "undefined" ? "" : window.location.origin}/packet/${token}`
     : null;
+
+  // Copied is per-link: it must not survive a token change and claim a
+  // different link is on the clipboard than the one actually copied.
+  useEffect(() => {
+    setCopied(false);
+  }, [token]);
 
   return (
     <Card size="3">
@@ -75,7 +130,15 @@ export default function PacketPanel({
         own, and you can revoke it at any time.
       </Text>
 
-      {documents.length === 0 ? (
+      {documentsLoadError ? (
+        <Callout.Root color="red" size="1">
+          <Callout.Text>
+            Couldn&rsquo;t load this client&rsquo;s documents, so nothing is
+            offered below. This is not a statement that none are on
+            file — reload before assuming there&rsquo;s nothing to send.
+          </Callout.Text>
+        </Callout.Root>
+      ) : documents.length === 0 ? (
         <Text size="2" color="gray">
           Nothing to send yet — add a W-9, a certificate of insurance or your
           day-rate agreement under Documents first.
@@ -116,7 +179,7 @@ export default function PacketPanel({
               </Select.Root>
             </Flex>
             <Button type="submit" disabled={pending}>
-              {pending ? "Creating…" : existing?.token ? "Replace the link" : "Create the link"}
+              {creating ? "Creating…" : token ? "Replace the link" : "Create the link"}
             </Button>
           </Flex>
 
@@ -127,6 +190,29 @@ export default function PacketPanel({
           ) : null}
         </form>
       )}
+
+      {/* Gated on `!url`, which is itself already derived from the
+          revokedToken match above — so this only shows once the token it
+          is talking about has actually been cleared off screen, not for
+          the whole remaining lifetime of the mount. */}
+      {!url && revokeState.revoked ? (
+        <Text as="p" size="1" color="gray" mt="2">
+          The previous link was revoked.
+        </Text>
+      ) : null}
+
+      {/* Also gated on `!url`: a freshly created token this render (state.
+          token) is the current truth regardless of whether the earlier
+          server-side lookup failed, so this must not cover that case. */}
+      {existingLoadError && !url ? (
+        <Callout.Root color="red" size="1" mt="2">
+          <Callout.Text>
+            Couldn&rsquo;t check whether a live link already exists for{" "}
+            {clientName} — this is not a statement that none is out.
+            Reload before creating a new one.
+          </Callout.Text>
+        </Callout.Root>
+      ) : null}
 
       {url ? (
         <Flex direction="column" gap="2" mt="4">
@@ -155,12 +241,63 @@ export default function PacketPanel({
               {`Stops working ${existing.expiresAt}. Replacing the link makes the old one dead immediately.`}
             </Text>
           ) : null}
-          <form action={revokePacketShare}>
-            <input type="hidden" name="client_id" value={clientId} />
-            <Button type="submit" variant="ghost" size="1">
-              Revoke this link
-            </Button>
-          </form>
+          {/* CONFIRMED, same reasoning as SharePanel's Revoke: clicking this
+              breaks a link the pilot may already have emailed, and the
+              client's browser tab gives no warning that it is about to
+              404. An unconfirmed one-click revoke on a passport/insurance
+              link is the wrong shape. */}
+          <AlertDialog.Root>
+            <AlertDialog.Trigger>
+              <Button type="button" variant="ghost" size="1" color="red" disabled={pending}>
+                {revoking ? "Revoking…" : "Revoke this link"}
+              </Button>
+            </AlertDialog.Trigger>
+            <AlertDialog.Content maxWidth="420px">
+              <AlertDialog.Title>Revoke this client link?</AlertDialog.Title>
+              <AlertDialog.Description size="2">
+                The link stops working immediately. If your client has it bookmarked or in
+                their email, it will 404 for them — create a new one if they still need these
+                documents.
+              </AlertDialog.Description>
+              <Flex gap="3" mt="4" justify="end">
+                <AlertDialog.Cancel>
+                  <Button variant="soft" color="gray">
+                    Cancel
+                  </Button>
+                </AlertDialog.Cancel>
+                <AlertDialog.Action>
+                  <form action={revokeAction}>
+                    <input type="hidden" name="client_id" value={clientId} />
+                    {/* Echoes back exactly the token this render is
+                        showing, so revokePacketShare's returned
+                        revokedToken can be compared against a later
+                        render's own token — see the `token` derivation
+                        above and packet-actions.ts's comment on it. */}
+                    <input type="hidden" name="revoking_token" value={token ?? ""} />
+                    <Button type="submit" variant="solid" color="red" disabled={pending}>
+                      Revoke
+                    </Button>
+                  </form>
+                </AlertDialog.Action>
+              </Flex>
+            </AlertDialog.Content>
+          </AlertDialog.Root>
+          {/* Scoped to the token this failed revoke was actually about, the
+              same way the success path is scoped above — otherwise a
+              revoke that failed on an old token would keep showing this
+              error underneath a brand new link a subsequent create just
+              made live, which is not a failure of anything on screen
+              anymore. `revokedToken ?? token`, not a bare comparison: an
+              error path that returns without echoing revoking_token (the
+              client_id check in revokePacketShare, before revokingToken
+              is even read) must not read as "doesn't match, so drop the
+              error" — the same fail-closed reasoning as the `token`
+              derivation above. */}
+          {revokeState.error && (revokeState.revokedToken ?? token) === token ? (
+            <Callout.Root color="red" size="1">
+              <Callout.Text>{revokeState.error}</Callout.Text>
+            </Callout.Root>
+          ) : null}
         </Flex>
       ) : null}
     </Card>

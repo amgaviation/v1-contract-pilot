@@ -41,8 +41,8 @@ function csvHref(year: number): string {
 }
 
 /**
- * Parses the ?setAside= query param into a whole-number percentage
- * (0-100), or null if absent/invalid. This is deliberately NOT React
+ * Parses the ?setAside= query param into a percentage (0-100), or null
+ * if absent/invalid. This is deliberately NOT React
  * client state and NOT persisted anywhere: the set-aside rate is a
  * scratch "what if" figure, not a record, so it lives in the URL — the
  * same mechanism this page's own year selector uses (below), and the one
@@ -125,14 +125,19 @@ export default async function QuarterlyReportPage({
             not a tax calculation, and not tax advice.
           </Text>
           <Text as="div" size="2">
-            Net profit below is your own cash-basis income minus your own
-            deductible expenses, nothing more. It does not account for
-            self-employment tax, the QBI deduction, your filing status, a
-            spouse&rsquo;s withholding, or other income. The &ldquo;Set
-            aside&rdquo; column is simple arithmetic on a percentage you
-            choose — not a number this product is asserting as correct.
-            Confirm amounts and due dates with a tax professional or the
-            IRS before you pay.
+            Net profit below is income minus deductible expenses and
+            rebilled costs. It does NOT include the standard-mileage
+            deduction, which is informational only — the standard rate and
+            actual vehicle expenses are alternative deduction methods,
+            never both, and this report can&rsquo;t tell which one you
+            elected. It also does not account for self-employment tax, the
+            QBI deduction, your filing status, a spouse&rsquo;s
+            withholding, or other income. The &ldquo;Set aside&rdquo;
+            column is simple arithmetic on a percentage you choose, applied
+            to that same net profit, and also does not include mileage —
+            not a number this product is asserting as correct. Confirm
+            amounts and due dates with a tax professional or the IRS
+            before you pay.
           </Text>
         </Callout.Text>
       </Callout.Root>
@@ -164,6 +169,19 @@ export default async function QuarterlyReportPage({
                 {year} than this page totals — the figures below and the
                 downloaded CSV may both be partial. Contact support if your
                 totals look short.
+              </Callout.Text>
+            </Callout.Root>
+          ) : null}
+
+          {report.mileageTruncated ? (
+            <Callout.Root color="amber">
+              <Callout.Icon>
+                <ExclamationTriangleIcon />
+              </Callout.Icon>
+              <Callout.Text>
+                There are more drives logged in {year} than this page totals
+                — the mileage figures below and the downloaded CSV may both
+                be partial.
               </Callout.Text>
             </Callout.Root>
           ) : null}
@@ -292,6 +310,47 @@ export default async function QuarterlyReportPage({
                       </Text>
                     </Table.Cell>
                   </Table.Row>
+                  {/* Informational only — deliberately NOT in netProfitCents
+                      above. The standard mileage rate and actual vehicle
+                      expenses (fuel, rental car) are alternative deduction
+                      methods for the same vehicle, never additive, and this
+                      report can't tell which one a pilot elected — see
+                      app/(app)/reports/year-end/queries.ts's identical
+                      reasoning. Hidden at zero so a pilot who logs no
+                      mileage doesn't carry a line that means nothing to
+                      them. */}
+                  {pf.mileageCount > 0 ? (
+                    <Table.Row>
+                      <Table.RowHeaderCell>
+                        Mileage, standard rate (informational — not in net
+                        profit)
+                      </Table.RowHeaderCell>
+                      <Table.Cell justify="end">
+                        <Text className="tnum">{pf.mileageCount}</Text>
+                      </Table.Cell>
+                      <Table.Cell justify="end">
+                        <Text className="tnum">
+                          {pf.mileageAmountCents === null
+                            ? "No rate on file"
+                            : formatCents(pf.mileageAmountCents)}
+                        </Text>
+                      </Table.Cell>
+                    </Table.Row>
+                  ) : null}
+                  {pf.mileageCount > 0 ? (
+                    <Table.Row>
+                      <Table.RowHeaderCell>
+                        <Text size="2" color="gray">
+                          {pf.mileageMiles.toFixed(1)} mi
+                          {pf.mileageRateCentsPerMile === null
+                            ? `, no IRS rate on file for ${year}`
+                            : ` @ ${pf.mileageRateCentsPerMile}¢/mi`}
+                        </Text>
+                      </Table.RowHeaderCell>
+                      <Table.Cell justify="end" />
+                      <Table.Cell justify="end" />
+                    </Table.Row>
+                  ) : null}
                   <Table.Row>
                     <Table.RowHeaderCell>
                       Set aside

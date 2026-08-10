@@ -91,6 +91,28 @@ export default function SignUpForm() {
             {pending ? "Creating account…" : "Create account"}
           </Button>
 
+          {/*
+            "See our", NOT "by creating an account you agree to our". Both
+            linked pages say in their own bodies that no document has been
+            published yet and that nothing on them is binding. Printing an
+            agreement sentence over them would assert a legal fact at the exact
+            moment a pilot hands over a card — one this product has no basis
+            for and records nowhere. The links are honest; the sentence was
+            not. It comes back when counsel's text lands and acceptance is
+            actually captured (docs/LAUNCH-GATES.md G3).
+          */}
+          <Text size="1" color="gray" align="center">
+            See our{" "}
+            <Text asChild size="1">
+              <NextLink href="/terms">Terms</NextLink>
+            </Text>{" "}
+            and{" "}
+            <Text asChild size="1">
+              <NextLink href="/privacy">Privacy Policy</NextLink>
+            </Text>
+            .
+          </Text>
+
           <Text size="1" color="gray" align="center">
             Already have an account?{" "}
             <Text asChild size="1">

@@ -19,7 +19,7 @@ export default function NotFound() {
             There&rsquo;s nothing at this address.
           </Text>
           <Button asChild>
-            <NextLink href="/">Back to overview</NextLink>
+            <NextLink href="/">Back home</NextLink>
           </Button>
         </Flex>
       </Card>

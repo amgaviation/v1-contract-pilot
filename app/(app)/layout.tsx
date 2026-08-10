@@ -46,7 +46,7 @@ export default async function AppLayout({
         }}
       >
         <Flex align="center" gap="2" px="3" pt="3">
-          <Link href="/" aria-label={`${BRAND.name} — ${BRAND.descriptor}`}>
+          <Link href="/overview" aria-label={`${BRAND.name} — ${BRAND.descriptor}`}>
             <Logo />
           </Link>
         </Flex>
@@ -66,7 +66,7 @@ export default async function AppLayout({
         <aside>
           <Flex direction="column" height="100%">
             <Box p="4">
-              <Link href="/" aria-label={`${BRAND.name} — ${BRAND.descriptor}`}>
+              <Link href="/overview" aria-label={`${BRAND.name} — ${BRAND.descriptor}`}>
                 <Logo />
               </Link>
               <Text as="div" size="1" color="gray" mt="1">

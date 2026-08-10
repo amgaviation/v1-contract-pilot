@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1396" height="930" viewBox="0 0 1396 930">
+  <title>V1 logo presentation</title>
+  <defs>
+    <g id="v1-mark">
+      <polygon points="0,0 76.923,0 176.923,210.256 176.923,300 153.846,300"/>
+      <polygon points="289.744,0 364.103,0 212.821,300 189.744,300 189.744,210.256"/>
+      <polygon points="413.019375,0 497.564375,0 497.564375,300 423.928375,300 423.928375,73.636 377.564375,73.636"/>
+    </g>
+  </defs>
+  <rect width="1396" height="930" fill="#0B1F33"/>
+  <use href="#v1-mark" xlink:href="#v1-mark" transform="translate(111.7306875 390) scale(.6)" fill="#FFFFFF"/>
+  <use href="#v1-mark" xlink:href="#v1-mark" transform="translate(518.97425 315) scale(.8)" fill="#FFFFFF"/>
+  <text x="749.108825" y="615" fill="#FFFFFF" text-anchor="middle"
+        font-family="Arial, Helvetica, sans-serif" font-size="28">Powered by AMG Aviation</text>
+  <rect x="1050" y="345" width="244" height="244" rx="42" fill="#FFFFFF"/>
+  <use href="#v1-mark" xlink:href="#v1-mark" transform="translate(1083.931105625 414) scale(.354)" fill="#0B1F33"/>
+</svg>

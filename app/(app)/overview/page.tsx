@@ -7,8 +7,8 @@ import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import { tripValueCents, type TripDayValueRow } from "@/lib/trip-value";
-import { EXPIRY_LADDER_BADGE, type ExpiryBadge } from "./documents/expiry-badge";
-import PageShell from "./page-shell";
+import { EXPIRY_LADDER_BADGE, type ExpiryBadge } from "../documents/expiry-badge";
+import PageShell from "../page-shell";
 
 export const metadata = { title: "Overview" };
 
@@ -337,6 +337,15 @@ export default async function OverviewPage() {
     { context: "trip day grids", error: dayRowsRes.error },
     { context: "day types", error: dayTypesRes.error },
     { context: "operator qualification clients", error: operatorQualClientsRes.error },
+    // The fifteenth read, and the one that was missing from this list. It is a
+    // head:true COUNT rather than a row read, which is exactly why it got
+    // skipped — the eye scans this file for `.data` and this one has none.
+    // Its failure was the quiet kind: `count ?? 0` becomes 0, no banner
+    // renders because this array stays empty, and the screen silently drops
+    // the "N trips are still marked Scheduled" clause that exists to stop a
+    // pilot with a month of unbilled flying being told there is nothing to
+    // invoice.
+    { context: "trips still marked scheduled", error: unmarkedTripsRes.error },
   ].filter((e) => e.error);
 
   // -----------------------------------------------------------------------
@@ -423,38 +432,63 @@ export default async function OverviewPage() {
   const deductibleExpenses = expenses.filter((e) => e.treatment === "deduct");
   const deductibleCents = deductibleExpenses.reduce((sum, e) => sum + e.amount_cents, 0);
 
+  // THE RULE: a query error is not "no data" — see the block comment above
+  // `errors`. Every KPI below is a sum over at least one of the reads in
+  // that array (day types and trip day grids feed unbilledCents via
+  // tripValueCents; invoice balances/live invoices feed awaitingCents;
+  // payments/void invoices feed paidCents; expenses feeds deductibleCents),
+  // so any read failing means every one of these four sums is potentially
+  // built on a partial or empty input. Rather than track which specific
+  // combination of the fourteen reads above happens to back each card —
+  // fragile, and wrong the next time a query is added to Phase 1 above
+  // this without its dependants being re-audited — a failure ANYWHERE on
+  // this page holds back the concrete figure on ALL four. This is exactly
+  // the U2 defect (a failed day_types read prints "$0.00" of real billable
+  // work) and it is not unique to that one card: an awaitingCents built
+  // from a failed invoice_totals read would print "No invoices
+  // outstanding" to a pilot who has several, which is the Rule's own
+  // worked example of the worse lie.
+  const moneyOk = errors.length === 0;
   const KPIS = [
     {
       id: "unbilled",
       label: "Unbilled work",
-      value: formatCents(unbilledCents),
-      sub: trips.length
-        ? `${pluralize(trips.length, "trip")} · oldest ${pluralize(oldestTripDays, "day")}`
-        : "No unbilled trips",
+      value: moneyOk ? formatCents(unbilledCents) : "—",
+      sub: !moneyOk
+        ? "Couldn't load"
+        : trips.length
+          ? `${pluralize(trips.length, "trip")} · oldest ${pluralize(oldestTripDays, "day")}`
+          : "No unbilled trips",
     },
     {
       id: "awaiting",
       label: "Awaiting payment",
-      value: formatCents(awaitingCents),
-      sub: liveInvoices.length
-        ? pluralize(liveInvoices.length, "invoice")
-        : "No invoices outstanding",
+      value: moneyOk ? formatCents(awaitingCents) : "—",
+      sub: !moneyOk
+        ? "Couldn't load"
+        : liveInvoices.length
+          ? pluralize(liveInvoices.length, "invoice")
+          : "No invoices outstanding",
     },
     {
       id: "paid",
       label: "Paid this year",
-      value: formatCents(paidCents),
-      sub: yearPayments.length
-        ? pluralize(yearPayments.length, "payment")
-        : "No payments recorded this year",
+      value: moneyOk ? formatCents(paidCents) : "—",
+      sub: !moneyOk
+        ? "Couldn't load"
+        : yearPayments.length
+          ? pluralize(yearPayments.length, "payment")
+          : "No payments recorded this year",
     },
     {
       id: "deductible",
       label: "Deductible expenses",
-      value: formatCents(deductibleCents),
-      sub: deductibleExpenses.length
-        ? `${pluralize(deductibleExpenses.length, "receipt")} filed`
-        : "No deductible expenses filed",
+      value: moneyOk ? formatCents(deductibleCents) : "—",
+      sub: !moneyOk
+        ? "Couldn't load"
+        : deductibleExpenses.length
+          ? `${pluralize(deductibleExpenses.length, "receipt")} filed`
+          : "No deductible expenses filed",
     },
   ];
 
@@ -618,6 +652,20 @@ export default async function OverviewPage() {
 
   const expirationRows = expirations.slice(0, EXPIRATIONS_LIMIT);
 
+  // Day one: the screen every other first-run empty state (/trips,
+  // /clients, /invoices, /expenses, /logbook) is reached from, but with
+  // nothing logged anywhere it renders four $0.00 KPI cards and says
+  // nothing about what the product is for. True zero-data across every
+  // panel this page reads — not just "no unbilled trips", which a
+  // pilot with a month of paid-off history also sees.
+  const isDayOne =
+    readyCount === 0 &&
+    unmarkedTripCount === 0 &&
+    clients.length === 0 &&
+    expenses.length === 0 &&
+    liveInvoices.length === 0 &&
+    yearPayments.length === 0;
+
   return (
     <PageShell
       title="Overview"
@@ -670,6 +718,31 @@ export default async function OverviewPage() {
         </Callout.Root>
       ) : null}
 
+      {/* Day-one orientation — the KPI cards below are correctly $0.00
+          with nothing logged, but a zero-state dashboard alone doesn't
+          say what to do next. Same thesis /trips states in its own
+          empty state, said once here since this is the screen every
+          other one is reached from. */}
+      {!errors.length && isDayOne ? (
+        <Card>
+          <Flex direction="column" gap="2" py="2">
+            <Text size="4" weight="medium">
+              Nothing logged yet
+            </Text>
+            <Text size="2" color="gray">
+              Log the trip once. Its legs feed your logbook, its days feed
+              the invoice, and its expenses file themselves against it —
+              the figures below fill in from there.
+            </Text>
+            <Flex mt="1">
+              <Button asChild>
+                <NextLink href="/trips/new">Log your first trip</NextLink>
+              </Button>
+            </Flex>
+          </Flex>
+        </Card>
+      ) : null}
+
       {/* Row 1 — KPI statistics cards. */}
       <Grid columns={{ initial: "1", sm: "2", lg: "4" }} gap="4">
         {KPIS.map((kpi) => (
@@ -702,7 +775,20 @@ export default async function OverviewPage() {
           </Text>
         </Flex>
 
-        {expirationRows.length === 0 ? (
+        {/* U1: a failed read here is not "you have no documents on file" —
+            it used to render exactly that, inviting a pilot to re-enter a
+            medical or flight-review date the query simply couldn't reach.
+            Gated on the same page-wide `errors` this file already builds
+            for the banner above (see its own comment) and the day-one
+            card below — a query error is not "no data". */}
+        {errors.length ? (
+          <Flex direction="column" align="center" gap="3" py="5">
+            <Text size="2" color="gray" align="center">
+              Couldn&rsquo;t load your document expirations — see the notice
+              above. This is not a statement that you have none on file.
+            </Text>
+          </Flex>
+        ) : expirationRows.length === 0 ? (
           <Flex direction="column" align="center" gap="3" py="5">
             <Text size="2" color="gray">
               No document dates on file yet.
@@ -772,11 +858,26 @@ export default async function OverviewPage() {
             </Text>
           </Flex>
 
-          {readyTrips.length === 0 ? (
-            <Flex align="center" justify="center" py="5">
-              <Text size="2" color="gray">
+          {/* U1/U2: a failed read (trips itself, or one of the day-grid /
+              day-type reads readyTrips prices off — see moneyOk above)
+              must not render as "nothing to bill" or price a trip from a
+              partial billableByDayType map. Same page-wide gate as the
+              document-expirations panel above. */}
+          {errors.length ? (
+            <Flex direction="column" align="center" gap="3" py="5">
+              <Text size="2" color="gray" align="center">
+                Couldn&rsquo;t load your unbilled trips — see the notice
+                above. This is not a statement that none are waiting.
+              </Text>
+            </Flex>
+          ) : readyTrips.length === 0 ? (
+            <Flex direction="column" align="center" gap="3" py="5">
+              <Text size="2" color="gray" align="center">
                 No completed trips are waiting to be billed.
               </Text>
+              <Button asChild variant="outline">
+                <NextLink href="/trips/new">Log a trip</NextLink>
+              </Button>
             </Flex>
           ) : (
             <>
@@ -845,7 +946,18 @@ export default async function OverviewPage() {
             </Text>
           </Flex>
 
-          {NEEDS_ATTENTION.length === 0 ? (
+          {/* U1: this panel carries lapsed 135.293/.297/.299 operator
+              qualifications — the one item on this page a false "all
+              clear" is most expensive to believe. Same page-wide gate as
+              the two panels above. */}
+          {errors.length ? (
+            <Flex align="center" justify="center" py="5">
+              <Text size="2" color="gray" align="center">
+                Couldn&rsquo;t load — see the notice above. This is not a
+                statement that nothing needs attention.
+              </Text>
+            </Flex>
+          ) : NEEDS_ATTENTION.length === 0 ? (
             <Flex align="center" justify="center" py="5">
               <Text size="2" color="gray">
                 Nothing needs attention right now.

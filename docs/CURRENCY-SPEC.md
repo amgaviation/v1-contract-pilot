@@ -967,3 +967,151 @@ Noted here rather than fixed, per this document's own scope.
    is whatever the pilot typed — including a date that is arithmetically impossible under
    61.56(c). §2.7 proposes deriving it from a completion date instead; until then the engine
    cannot distinguish a correct date from a typo.
+
+---
+
+## 12. Addendum — 2026-08-10: implementation review
+
+The engine described above was implemented on 2026-08-10 on branch `claude/launch-ready`. This
+section records what re-verification found. **§§1–11 above are unchanged and remain the reviewed
+document**; nothing here is edited into them, because a spec whose body is silently rewritten is
+not reviewable. Read this section alongside them.
+
+### 12.1 Regulatory drift: none
+
+Every section quoted above was re-fetched from the eCFR versioner API at **both** issue date
+`2026-08-05` (the date §§1–11 were written against) and `2026-08-06` (the API's current ceiling for
+title 14), and the two were byte-compared: **61.57, 61.56, 61.23, 61.51, 61.58, 1.1, 135.247,
+135.267, 135.301, 91.7 and 91.403 are byte-identical between the two dates.** No arithmetic above
+needs re-deriving because the text moved. Title 14's `latest_issue_date` is 2026-08-05 and it is
+`up_to_date_as_of` 2026-08-06; **requesting a later date returns HTTP 404**, which is worth knowing
+before someone reads a 404 as "the section was withdrawn".
+
+§2.4's headline finding was re-confirmed directly: the current text of **61.57(d) contains no
+12-month element.** Do not build to the structure the original brief described.
+
+### 12.2 Corrections owed to the body
+
+Three defects in §§1–11, none of which change a computed answer, all of which matter because this
+document's authority rests on the claim that it quotes exactly:
+
+1. **§2.4 truncates 61.57(d)(1) mid-paragraph with no ellipsis.** The text continues: *"The
+   instrument proficiency check must include the areas of operation contained in the applicable
+   Airman Certification Standards (incorporated by reference, see § 61.14) as listed in appendix A
+   of this part as appropriate to the rating held."*
+2. **§2.4's quotation of 61.57(d)(3)(iii) drops a clause silently.** The marked ellipsis covers the
+   subpart K insertion, but the trailing *"or fractional ownership program manager, as applicable"*
+   is dropped unmarked.
+3. **§11 defect 3's mitigation is stated backwards.** It directs the engine to count zero qualifying
+   approaches when `approach_type = 'visual'` and `approaches_count > 1` — but a visual row is
+   already excluded wholesale by §2.3's own filter and by `20260807140000`'s CHECK, so that branch
+   can never fire. The real, undetectable hazard is the mirror image: an entry tagged `ils` with
+   `approaches_count = 3` where one of the three was flown visually. The implementation counts them
+   and discloses the assumption in the expanded arithmetic; a per-approach child table is the
+   eventual fix.
+
+### 12.3 The highest-severity finding: 135.247(b)
+
+**§2.5's Part 135 branch, built exactly as written, would tell a tailwheel pilot they are
+night-current on touch-and-goes.** 135.247(b)'s tailwheel full-stop rule is absent from §2.5. The
+implementation carries it; the spec does not. This is the one item in this addendum that would have
+produced a wrong answer about whether a pilot may carry passengers at night.
+
+Also missing from §2.5: 61.57(e)(3) disapplies **all** of 61.57 for a qualifying Part 135 pilot, and
+the text conditions that on compliance with **both** 135.243 and 135.247 — not 135.247 alone.
+
+### 12.4 Where the spec is stale against the repo
+
+Five migrations landed on 2026-08-10 that §§1–11 never saw. The load-bearing ones:
+
+- **§1's "no aircraft record exists at all" is now false.** `pilot.aircraft` exists with `gear`,
+  which closes the `is_tailwheel` input 61.57(a)(1)(ii) needs. Critically, the correct grouping unit
+  is **`type_rating`, not `type_designator`** — one CE-500 rating covers five ICAO designators, so
+  matching on the designator would tell a CE-500 pilot their Citation Bravo landings do not count
+  toward their Citation V, and they do. There is deliberately **no** `aircraft_id` foreign key on
+  `logbook_entries`, because that table is a 61.51 legal record; the registry annotates at read time
+  by normalised tail key, and the engine reuses the existing `tailKey()` rather than writing a third
+  implementation of a normalisation that has already disagreed once.
+- **§1's "there is no airman record" is half true, and the half that changed is safety-critical.**
+  `logbook_entries.airman_user_id` exists. §2.1's pseudocode keys only on `account_id`, which in a
+  multi-seat business account **sums two pilots' landings into one verdict that is true of neither,
+  in the permissive direction.** Every query and every snapshot must key on
+  `(account_id, airman_user_id)`, and an entry in the window with a null airman must force
+  `insufficient_data` rather than be attributed by guess.
+- **§2.7 and §6 treat 61.56 as computable today and O-1(b) recommends enabling the flag on that
+  basis. It is not computable.** `pilot.documents` records `expires_on` but no completion date of
+  any kind, and 61.56 arithmetic runs from the completion. This is one nullable column, but it is
+  not zero, and **O-1(b) should not be read as ready until it ships.**
+- **§2.5 and §5's `operating_rule` vocabulary does not match what shipped.** `trips.operating_rule`
+  is NOT NULL with a two-value CHECK, so §5's `unspecified` branch is unreachable at trip level;
+  and `clients.operating_rule` carries a fourth value, `both`, that §§1–11 never mention — which is
+  exactly the fact pattern 61.57(e)(3) describes.
+- **§9 proposes `sole_manipulator boolean not null default false`. Do not build that.** A NOT NULL
+  default backfills every existing row with an assertion the pilot never made, collapsing
+  "unrecorded" into "asserted not sole manipulator" — the two states the engine most needs to tell
+  apart, since one yields `insufficient_data` and the other yields `estimated_not_current`. Ship it
+  nullable, for the same reason `20260807140000` gave for `approach_condition`.
+- **§9's account-level hour rollups must not feed 61.57(e)(4)(A)'s 1,500-hour test.** Those are the
+  hours a pilot entered into this product, which is not aeronautical experience — a twenty-year
+  captain's first entry here is not hour one.
+
+### 12.5 One deliberate departure from §6, for review
+
+§6 lists a multi-crew-certification flag among the gates that force `insufficient_data` for
+61.57(a). That flag answers whether (a) **binds** on an empty leg — a question about scope, not
+about the count — so leaving it as a computation gate makes 61.57(a) return "not enough
+information" permanently, even after every other field in §9 ships. That is precisely the panel of
+cards-saying-nothing that O-1 warns against. The implementation handles it in copy instead and takes
+it off the gate list. **Flagged here rather than done silently, because it is a change to a reviewed
+decision.**
+
+### 12.6 Scope exclusions that were silent and should be explicit
+
+§8 is the list of deliberate refusals, and silence there is indistinguishable from oversight. Three
+paragraphs carry currency arithmetic this engine does not implement: **61.57(c)(3)** (the glider
+instrument track, with its own six-calendar-month window), and **61.57(f) and (g)** (NVG, on two-
+and four-calendar-month windows). All three are correctly out of scope for this market. They should
+be named in §8 rather than absent from it.
+
+### 12.7 Status
+
+The flag is `CURRENCY_ENGINE_ENABLED` and it is **off**: it requires the exact string `true`, so an
+unset variable, an empty variable, and the string `false` all read as off. Nothing renders currency
+to a pilot today. **The gates in `docs/LAUNCH-GATES.md` are unchanged — counsel reviews the
+disclaimer, Tony reviews this document, and only then does the flag move.**
+
+### 12.8 Addendum — the sixth round, and one behaviour change worth your eyes
+
+The two remaining findings from the fifth review are closed, and this section records the one that
+changes an answer rather than a word.
+
+**Two discriminators became one.** The engine asked "does this row have any real aircraft time?" in
+two places with two different proxies. `instrument.ts` keyed on `approachCondition` — actual weather
+cannot happen in a box, so a row logged `actual` must be real. Sound reasoning, but a proxy, and it
+was wrong in exactly one shape: a MIXED row (real aircraft time left over after subtracting simulator
+time) whose approaches were flown under a view-limiting device **in the aircraft** per 61.57(c)(1),
+not in the device session the same entry also logs. `passenger-shared.ts` read that row correctly as
+real-aircraft; `instrument.ts` read the identical row as a device session and could never make it
+certain. `lib/currency/simulator.ts` is now the single predicate both import, on this schema's own
+definition of wholly-simulator (`total_time <= simulator_time`, the condition
+`20260810020000`'s CHECK already uses to permit a null crew role).
+
+A reviewer constructed the disagreeing row and ran it: the old `instrument.ts` test called it a
+device session, the old `passenger-shared.ts` test called it real, and all five cards now agree it is
+real and credit it.
+
+**THE BEHAVIOUR CHANGE.** A consequence of using one predicate in both modules is that a mixed row
+logged `simulated` can now become **certain, credited instrument evidence**, where before it was
+permanently ambiguous. That is correct — the row genuinely has real aircraft time and the approaches
+were genuinely flown in the aircraft — but it credits approaches the previous code never could, so it
+is a change to a currency verdict and not merely to a disclosure. It is flagged here rather than
+buried in a diff.
+
+**And the assumption behind it is now stated.** Where a mixed row is counted, the card says its
+movements were taken as flown in the aircraft. The schema records no split of movements between the
+aircraft and the device, so that attribution is an assumption — the only one available, and
+defensible, but this engine's posture is that its assumptions are visible.
+
+**Still not verified:** the database-contract half of `currency:verify` did not run in that session,
+and the new mixed-row instrument case was not added to the property-test invariant table. Neither
+blocks anything while the flag is off, and both belong to whoever picks this up.

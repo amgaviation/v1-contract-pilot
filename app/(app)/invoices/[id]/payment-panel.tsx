@@ -32,18 +32,50 @@ export type PaymentRow = {
 function CorrectPaymentForm({
   invoiceId,
   payment,
+  wasCorrected,
 }: {
   invoiceId: string;
   payment: PaymentRow;
+  /**
+   * True once `payments` (refetched via revalidatePath after a successful
+   * correction) shows a row naming this one as reversed. The parent used
+   * to unmount this component outright the instant that flipped true —
+   * but that refetch and this form's OWN useActionState result land in
+   * the same render (both are driven by the same server action response),
+   * so an unmount here would have deleted a just-arrived LINK_STILL_LIVE_
+   * WARNING before the pilot ever saw it. Keep rendering until any notice
+   * has been shown and acknowledged.
+   */
+  wasCorrected: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
   const [state, formAction, pending] = useActionState(correctPayment, initialState);
+  const notice = dismissed ? undefined : state.notice;
+  // `wasCorrected` comes from the refetched `payments` prop and can lag a
+  // correction THIS form just submitted (revalidatePath race). state.saved
+  // is this form's own ground truth for that case, so either one means the
+  // correction has landed — without state.saved here, a dismissed notice
+  // with a not-yet-refreshed `wasCorrected` fell through to the full
+  // correction form again on a payment already corrected.
+  const corrected = wasCorrected || state.saved;
 
   useEffect(() => {
-    if (state.saved) setOpen(false);
-  }, [state.saved]);
+    // Close on a clean correction, but NOT when retiring the payment link
+    // came back with LINK_STILL_LIVE_WARNING (actions.ts's retirePaymentLink)
+    // — that is a task only the pilot can finish on Stripe's own dashboard,
+    // and closing the dialog the instant `saved` flips true (the previous
+    // bug here) would hide it before it could ever be read.
+    if (state.saved && !state.notice) setOpen(false);
+  }, [state.saved, state.notice]);
 
-  if (!open) {
+  // The correction has landed and there's nothing left to tell the pilot —
+  // the row's own "· corrected" label already covers it.
+  if (corrected && !notice) {
+    return null;
+  }
+
+  if (!open && !notice) {
     return (
       <Button type="button" variant="ghost" size="1" color="gray" onClick={() => setOpen(true)}>
         Correct
@@ -56,28 +88,47 @@ function CorrectPaymentForm({
       <input type="hidden" name="invoice_id" value={invoiceId} />
       <input type="hidden" name="payment_id" value={payment.id} />
       <Flex direction="column" gap="2" mt="2">
-        <Text size="1" color="gray">
-          {`This cancels the ${formatCents(payment.amount_cents)} entry with a matching
-            correction — both stay on the invoice, so the record shows what happened.
-            Enter the right payment afterwards.`}
-        </Text>
-        <TextField.Root
-          name="reversal_reason"
-          placeholder="Why? e.g. typo — meant 450.00"
-          aria-label="Why you're correcting this"
-        />
-        <Flex gap="2">
-          <Button type="submit" size="1" disabled={pending}>
-            {pending ? "Correcting…" : "Correct it"}
+        {!corrected ? (
+          <>
+            <Text size="1" color="gray">
+              {`This cancels the ${formatCents(payment.amount_cents)} entry with a matching
+                correction — both stay on the invoice, so the record shows what happened.
+                Enter the right payment afterwards.`}
+            </Text>
+            <TextField.Root
+              name="reversal_reason"
+              placeholder="Why? e.g. typo — meant 450.00"
+              aria-label="Why you're correcting this"
+            />
+            <Flex gap="2">
+              <Button type="submit" size="1" disabled={pending}>
+                {pending ? "Correcting…" : "Correct it"}
+              </Button>
+              <Button type="button" size="1" variant="ghost" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+            </Flex>
+          </>
+        ) : (
+          // The correction already landed; this row is only still mounted
+          // to show the notice below. "Cancel" would be the wrong word for
+          // an action that already happened, so this dismisses instead.
+          <Button type="button" size="1" variant="ghost" onClick={() => setDismissed(true)}>
+            Dismiss
           </Button>
-          <Button type="button" size="1" variant="ghost" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-        </Flex>
+        )}
         {state.error ? (
           <Text size="1" color="red">
             {state.error}
           </Text>
+        ) : null}
+        {/* Mirrors the notice rendering in PaymentPanel's own record-payment
+            form below — a side effect of a SUCCESSFUL correction, not a
+            failure, so it renders separately from `error`. */}
+        {notice ? (
+          <Callout.Root color="amber" size="1">
+            <Callout.Text>{notice}</Callout.Text>
+          </Callout.Root>
         ) : null}
       </Flex>
     </form>
@@ -126,17 +177,27 @@ function PayOnlinePanel({
   balanceDueCents: number | null;
 }) {
   const [state, formAction, pending] = useActionState(createInvoicePaymentLink, initialLinkState);
-  // A link generated in this render is priced at the current balance by
-  // construction — only one loaded from the server can be stale.
-  const justCreated = Boolean(state.url);
-  const url = state.url ?? existingLinkUrl;
-  const linkAmountCents = justCreated ? balanceDueCents : existingLinkAmountCents;
+  // Rendered from the server-refreshed props for THIS render, never from
+  // state.url — that flag is set once by a successful creation and never
+  // clears (useActionState state never clears), so after a LATER action on
+  // this same screen (recordPayment/correctPayment) retires the link,
+  // state.url would still name a link that is now dead on Stripe and erased
+  // from the row. createInvoicePaymentLink also calls revalidatePath, so by
+  // the time state.url is set here, existingLinkUrl/existingLinkAmountCents
+  // already reflect the same link — nothing is lost by reading only them.
+  const url = existingLinkUrl;
+  const linkAmountCents = existingLinkAmountCents;
+  // A null existingLinkAmountCents is a link generated before this column
+  // existed (20260810010000) and never regenerated — there's no way to know
+  // what it actually charges without a Stripe round trip this panel doesn't
+  // make. app/invoice/[token]/page.tsx's `linkCurrent` treats that same
+  // null identically to a mismatched amount, not as "unknown, so assume
+  // fine" — this has to agree, or the client reads "out of date, contact
+  // your pilot" while the pilot's own screen says nothing is wrong.
   const stale =
-    !justCreated &&
     url !== null &&
-    existingLinkAmountCents !== null &&
     balanceDueCents !== null &&
-    existingLinkAmountCents !== balanceDueCents;
+    (existingLinkAmountCents === null || existingLinkAmountCents !== balanceDueCents);
 
   if (!connected) {
     return (
@@ -150,11 +211,13 @@ function PayOnlinePanel({
     <Flex direction="column" gap="2" align="start">
       {url ? (
         <Flex direction="column" gap="1" width="100%">
-          <Text size="1" color="gray">
-            {linkAmountCents !== null
-              ? `Send this link to your client to pay ${formatCents(linkAmountCents)} by card:`
-              : "Send this link to your client to pay by card:"}
-          </Text>
+          {!stale ? (
+            <Text size="1" color="gray">
+              {linkAmountCents !== null
+                ? `Send this link to your client to pay ${formatCents(linkAmountCents)} by card:`
+                : "Send this link to your client to pay by card:"}
+            </Text>
+          ) : null}
           <TextField.Root readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
           <Text size="1" color="gray">
             It can only be paid once — Stripe switches it off after the first
@@ -163,12 +226,12 @@ function PayOnlinePanel({
           </Text>
         </Flex>
       ) : null}
-      {stale && existingLinkAmountCents !== null && balanceDueCents !== null ? (
+      {stale && balanceDueCents !== null ? (
         <Callout.Root color="amber" size="1">
           <Callout.Text>
-            This link still charges {formatCents(existingLinkAmountCents)}, but
-            the balance due is now {formatCents(balanceDueCents)}. Generate a new
-            link before you send it.
+            {existingLinkAmountCents !== null
+              ? `This link still charges ${formatCents(existingLinkAmountCents)}, but the balance due is now ${formatCents(balanceDueCents)}. Generate a new link before you send it.`
+              : "This link predates this app tracking what it charges, so there's no way to confirm it still matches the balance due. Generate a new link before you send it."}
           </Callout.Text>
         </Callout.Root>
       ) : null}
@@ -237,6 +300,7 @@ export default function PaymentPanel({
   invoiceId,
   status,
   payments,
+  paymentsLoadError = false,
   connectAccountConnected,
   existingPaymentLinkUrl,
   existingPaymentLinkAmountCents,
@@ -245,6 +309,16 @@ export default function PaymentPanel({
   invoiceId: string;
   status: "draft" | "sent" | "partial" | "paid" | "void";
   payments: PaymentRow[];
+  /**
+   * U3: a failed invoice_payments read degrades `payments` to `[]` the same
+   * way an empty ledger would — see page.tsx's own comment on why
+   * `moneyError` couldn't cover this by itself: it gates the totals block,
+   * not this panel. On an invoice a client has partly paid, telling the
+   * pilot "No payments recorded yet" because the READ failed is worse than
+   * showing nothing, per this repo's rule that a failed query must never
+   * render the same as an honest empty state.
+   */
+  paymentsLoadError?: boolean;
   connectAccountConnected: boolean;
   existingPaymentLinkUrl: string | null;
   existingPaymentLinkAmountCents: number | null;
@@ -283,7 +357,13 @@ export default function PaymentPanel({
         Payments
       </Text>
 
-      {payments.length === 0 ? (
+      {paymentsLoadError ? (
+        <Text color="red">
+          Couldn&rsquo;t load payments on this invoice. This is not a
+          statement that none have been recorded — reload before assuming
+          the balance below is current.
+        </Text>
+      ) : payments.length === 0 ? (
         <Text color="gray">No payments recorded yet.</Text>
       ) : (
         <Flex direction="column" gap="3" mb={canRecordPayment ? "4" : "0"}>
@@ -311,8 +391,12 @@ export default function PaymentPanel({
                     >
                       {formatCents(payment.amount_cents)}
                     </Text>
-                    {!isCorrection && !wasCorrected ? (
-                      <CorrectPaymentForm invoiceId={invoiceId} payment={payment} />
+                    {!isCorrection ? (
+                      <CorrectPaymentForm
+                        invoiceId={invoiceId}
+                        payment={payment}
+                        wasCorrected={wasCorrected}
+                      />
                     ) : null}
                   </Flex>
                 </Flex>

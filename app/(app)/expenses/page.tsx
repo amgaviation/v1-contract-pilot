@@ -78,10 +78,10 @@ export default async function ExpensesPage() {
   const supabase = await createClient();
   const [
     { data: expenseData, error },
-    { data: tripData },
+    { data: tripData, error: tripsError },
     unreviewedCount,
     { data: mileageData, error: mileageError },
-    { data: mileageRateData },
+    { data: mileageRateData, error: mileageRateError },
   ] = await Promise.all([
     supabase
       .from("expenses")
@@ -121,12 +121,25 @@ export default async function ExpensesPage() {
       (r) => [r.tax_year, r.rate_cents_per_mile]
     )
   );
-  const { amountCents: mileageTotalCents } = scheduleCMileageCents(
+  const { amountCents: mileageTotalCents, milesWithoutRate } = scheduleCMileageCents(
     mileageRows,
     mileageRatesByYear
   );
   const mileageTotalMiles = mileageRows.reduce((sum, r) => sum + r.miles, 0);
   const mileageTruncated = mileageRows.length === MILEAGE_LIMIT;
+  // A failed mileage_rates read must read the same as a failed
+  // mileage_entries read, not as "no rate on file" — that day-one wording
+  // is only honest when the rates query actually came back empty, not when
+  // it errored and ratesByYear was silently built from nothing.
+  const mileageFailed = Boolean(mileageError || mileageRateError);
+
+  // U5: the trips read used to destructure `{ data: tripData }` only. On
+  // failure `trips` degrades to `[]` exactly like a pilot with no trips
+  // logged — every row in the Needs-filing queue below then shows a Trip
+  // picker offering just "No trip" with its Rebill button disabled and no
+  // explanation, and the Trip column here reads "—" for every trip that
+  // does have one on file.
+  const tripsLoadError = Boolean(tripsError);
 
   const tripLabel = (trip: TripRow) =>
     `${formatDateRange(trip.starts_on, trip.ends_on)}${
@@ -147,6 +160,11 @@ export default async function ExpensesPage() {
     .filter((e) => e.treatment === "deduct")
     .reduce((sum, e) => sum + e.amount_cents, 0);
 
+  // U5: this count-only read carried no error binding at all — a failed
+  // read and "nothing to review" both collapsed to `count ?? 0`, silently
+  // hiding the "Imported transactions to review" nudge on the one queue
+  // whose entire point is that nothing sits unreviewed.
+  const unreviewedCountError = Boolean(unreviewedCount.error);
   const unreviewedTransactions = unreviewedCount.count ?? 0;
 
   const queueRows: QueueRow[] = unassigned.map((expense) => ({
@@ -210,7 +228,27 @@ export default async function ExpensesPage() {
             </Box>
           ) : null}
 
-          {unreviewedTransactions > 0 ? (
+          {/* U5: a failed count read must not silently look identical to
+              "nothing to review" — it used to, because `count ?? 0` cannot
+              tell "checked, found none" from "couldn't check" apart. */}
+          {unreviewedCountError ? (
+            <Box mb="4">
+              <Callout.Root color="amber">
+                <Callout.Icon>
+                  <ExclamationTriangleIcon />
+                </Callout.Icon>
+                <Callout.Text>
+                  Couldn&rsquo;t check for imported transactions awaiting
+                  review. This is not a statement that there are none —
+                  reload, or check{" "}
+                  <NextLink href="/expenses/transactions">
+                    the review queue
+                  </NextLink>{" "}
+                  directly.
+                </Callout.Text>
+              </Callout.Root>
+            </Box>
+          ) : unreviewedTransactions > 0 ? (
             <Box mb="4">
               <Card size="3">
                 <Flex align="center" justify="between" wrap="wrap" gap="3">
@@ -243,6 +281,18 @@ export default async function ExpensesPage() {
                   {queueRows.length === 1 ? "" : "s"} that are neither billed
                   to a client nor claimed as a deduction.
                 </Text>
+                {/* U5: a failed trips read used to leave every row's Trip
+                    picker offering just "No trip" with the Rebill button
+                    disabled and no explanation why. */}
+                {tripsLoadError ? (
+                  <Callout.Root color="amber" size="1" mb="3">
+                    <Callout.Text>
+                      Couldn&rsquo;t load your trips, so the Trip picker
+                      below only offers &ldquo;No trip&rdquo; and
+                      Rebill is unavailable. Reload before filing these.
+                    </Callout.Text>
+                  </Callout.Root>
+                ) : null}
                 <UnassignedQueue rows={queueRows} trips={tripOptions} />
               </Card>
             </Box>
@@ -256,7 +306,7 @@ export default async function ExpensesPage() {
                     Mileage
                   </Text>
                   <Text as="div" size="2" color="gray">
-                    {mileageError
+                    {mileageFailed
                       ? "Couldn't load your mileage total."
                       : `${mileageTotalMiles.toFixed(1)} mi logged at the standard mileage rate${
                           mileageTruncated ? " (partial — see the mileage log)" : ""
@@ -264,16 +314,46 @@ export default async function ExpensesPage() {
                   </Text>
                 </Flex>
                 <Flex align="center" gap="4">
-                  {!mileageError ? (
-                    <Text size="5" weight="bold" className="tnum">
-                      {formatCents(mileageTotalCents)}
-                    </Text>
+                  {!mileageFailed ? (
+                    // A rate-less year must never render as a $0.00
+                    // deduction — that reads as "your mileage is worth
+                    // nothing" to a pilot who logged real drives. Same
+                    // "No rate on file" wording as /expenses/mileage's
+                    // by-tax-year table, which is the correct handling of
+                    // this exact case. A MIXED set (some years priced, some
+                    // not) falls through to the total below instead — see
+                    // the Callout beneath the Card for how that case says
+                    // so.
+                    mileageTotalCents === 0 && milesWithoutRate > 0 ? (
+                      <Text size="2" color="gray">
+                        No rate on file
+                      </Text>
+                    ) : (
+                      <Text size="5" weight="bold" className="tnum">
+                        {formatCents(mileageTotalCents)}
+                      </Text>
+                    )
                   ) : null}
                   <Button asChild variant="soft">
                     <NextLink href="/expenses/mileage">Log a drive</NextLink>
                   </Button>
                 </Flex>
               </Flex>
+              {/* Same wording and shape as /reports/profit-loss's own
+                  mileageMilesWithoutRate Callout — a MIXED set (some tax
+                  years priced, some not) prints the total above with no
+                  caveat otherwise, which quietly omits the rate-less
+                  years' miles from a figure that looks complete. */}
+              {!mileageFailed && mileageTotalCents > 0 && milesWithoutRate > 0 ? (
+                <Callout.Root color="amber" mt="3">
+                  <Callout.Icon>
+                    <ExclamationTriangleIcon />
+                  </Callout.Icon>
+                  <Callout.Text>
+                    {`${milesWithoutRate} miles are not in the figure above — there's no IRS standard rate on file for their tax year. Add it in Settings and this recomputes.`}
+                  </Callout.Text>
+                </Callout.Root>
+              ) : null}
             </Card>
           </Box>
 

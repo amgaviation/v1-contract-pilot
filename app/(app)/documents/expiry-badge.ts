@@ -5,7 +5,7 @@
  * `pilot.expirations` computes the ladder ONCE (see the migration's own
  * comment on that view) so there is one definition of "due soon" in the
  * schema. Before this file existed, app/(app)/documents/page.tsx and
- * app/(app)/page.tsx each re-forked that vocabulary in TypeScript — the
+ * app/(app)/overview/page.tsx each re-forked that vocabulary in TypeScript — the
  * same medical certificate showed a red "Due soon" on one screen and an
  * amber "1 week" on the other. Both screens import this map instead of
  * declaring their own.

@@ -1,8 +1,10 @@
-import { Box, Callout, Table, Text } from "@/components/ui";
+import NextLink from "next/link";
+import { Box, Button, Callout, Card, Flex, Table, Text } from "@/components/ui";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatDateRange } from "@/lib/format";
+import { friendlyDbError } from "@/lib/db-errors";
 import PageShell from "../../page-shell";
 import TransactionRow, {
   type DuplicateCandidate,
@@ -47,7 +49,11 @@ export default async function TransactionsPage() {
   await requireAccount("/expenses/transactions");
   const supabase = await createClient();
 
-  const [{ data: txnData, error }, { data: accountData }, { data: tripData }] = await Promise.all([
+  const [
+    { data: txnData, error },
+    { data: accountData, error: accountsError },
+    { data: tripData, error: tripsError },
+  ] = await Promise.all([
     supabase
       .from("bank_transactions")
       .select("id, posted_on, description, amount_cents, suggested_category, bank_account_id")
@@ -59,9 +65,21 @@ export default async function TransactionsPage() {
   ]);
 
   if (error) {
+    // error.message is a raw PostgREST message — table/constraint names,
+    // no help to the pilot reading it. friendlyDbError logs the detail
+    // server-side and returns a sentence instead; see lib/db-errors.ts.
     return (
       <PageShell title="Review transactions">
-        <Text color="red">{error.message}</Text>
+        <Card size="3">
+          <Callout.Root color="red">
+            <Callout.Icon>
+              <ExclamationTriangleIcon />
+            </Callout.Icon>
+            <Callout.Text>
+              {friendlyDbError(error, "bank_transactions.select")}
+            </Callout.Text>
+          </Callout.Root>
+        </Card>
       </PageShell>
     );
   }
@@ -71,6 +89,12 @@ export default async function TransactionsPage() {
     id: t.id,
     label: `${formatDateRange(t.starts_on, t.ends_on)}${t.aircraft_ident ? ` · ${t.aircraft_ident}` : ""}`,
   }));
+  // S2: same shape as U5's trip picker, on the other queue that assigns a
+  // transaction to a trip. A failed read here used to empty the Trip
+  // picker on every row and blank the bank-account label with no
+  // explanation — advisory rather than blocking, since nothing on this
+  // page prints a wrong dollar figure from either read.
+  const pickersDegraded = Boolean(accountsError || tripsError);
 
   // -------------------------------------------------------------------
   // DUPLICATE SPEND — the one that reaches a paying client
@@ -167,6 +191,20 @@ export default async function TransactionsPage() {
       title="Review imported transactions"
       subtitle="Nothing here is in your books yet. Pick a category and treatment for each transaction to turn it into an expense — or dismiss it if it isn't one."
     >
+      {pickersDegraded ? (
+        <Callout.Root color="amber" mb="3">
+          <Callout.Icon>
+            <ExclamationTriangleIcon />
+          </Callout.Icon>
+          <Callout.Text>
+            Couldn&rsquo;t load your trips or bank accounts, so the Trip
+            picker below is empty and the account label may be blank on
+            some rows. Reload before confirming these if you need to
+            assign one to a trip.
+          </Callout.Text>
+        </Callout.Root>
+      ) : null}
+
       {duplicateCheckFailed ? (
         <Callout.Root color="amber" mb="3">
           <Callout.Icon>
@@ -182,7 +220,19 @@ export default async function TransactionsPage() {
       ) : null}
 
       {rows.length === 0 ? (
-        <Text color="gray">Nothing to review. Import a statement to get started.</Text>
+        <Flex direction="column" align="center" gap="3" py="6">
+          <Text size="4" weight="bold">
+            Nothing to review
+          </Text>
+          <Text size="2" color="gray" align="center">
+            Import a bank statement and its transactions land here — pick
+            a category and treatment for each one to turn it into an
+            expense.
+          </Text>
+          <Button asChild>
+            <NextLink href="/expenses/import">Import a statement</NextLink>
+          </Button>
+        </Flex>
       ) : (
         <Box style={{ overflowX: "auto" }}>
           <Table.Root variant="surface">

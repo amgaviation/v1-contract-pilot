@@ -58,6 +58,7 @@ export default function DraftForm({
   trips,
   tripsError,
   unmarkedTripCount = 0,
+  unmarkedTripCountFailed = false,
 }: {
   action: (state: InvoiceFormState, formData: FormData) => Promise<InvoiceFormState>;
   clients: ClientOption[];
@@ -74,6 +75,12 @@ export default function DraftForm({
    * unbilled flying got told they had nothing.
    */
   unmarkedTripCount?: number;
+  /** Set when the scheduled/in-progress count itself failed. `trips.length
+   * === 0 && unmarkedTripCount === 0` is then not "genuinely nothing to
+   * bill" but "the count that would have said otherwise didn't come
+   * back" — the two must not render the same "No completed, unbilled
+   * trips" sentence. */
+  unmarkedTripCountFailed?: boolean;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -195,7 +202,9 @@ export default function DraftForm({
                   ? `No trips are marked flown for this client yet — ${unmarkedTripCount} ${
                       unmarkedTripCount === 1 ? "is" : "are"
                     } still Scheduled. Open the trip and press "Mark flown" to bill it.`
-                  : "No completed, unbilled trips for this client yet."}
+                  : unmarkedTripCountFailed
+                    ? "Couldn't check whether this client has trips still marked Scheduled — this is not a statement that none are waiting."
+                    : "No completed, unbilled trips for this client yet."}
               </Text>
             ) : (
               <Table.Root variant="ghost">

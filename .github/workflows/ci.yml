@@ -33,3 +33,91 @@ jobs:
       - run: npm test
 
       - run: npm run build
+
+  # The database half of the verification, which never ran before.
+  #
+  # Every DB-backed verify script takes a <NAME>_VERIFY_BOOTSTRAP pointing at a
+  # Supabase-shaped scaffold, and no such file used to ship — so each of them
+  # SKIPPED here and printed its own success line having asserted none of the
+  # RLS refusals, none of the CHECK constraints, and neither side of the
+  # two-tenant isolation gate that docs/PLAN.md makes the gate on Phase 1. A
+  # suite that silently tests nothing is worse than one that is missing,
+  # because it reads as coverage. scripts/lib/verify-bootstrap.sql is that
+  # file, and this job is what makes it run.
+  database:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # The scripts default to this URL, so it is set once here rather than
+      # per-step. Port 55432 matches the default so a local run and a CI run
+      # exercise the same code path.
+      PGHOST: 127.0.0.1
+      PGPORT: 55432
+      PGUSER: postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install psql
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      # These three read an already-migrated database over DATABASE_URL rather
+      # than building their own, so the schema is assembled once here.
+      - name: Build the migrated database
+        run: |
+          set -euo pipefail
+          psql -X -q -v ON_ERROR_STOP=1 \
+            "postgresql://postgres@127.0.0.1:55432/postgres" \
+            -c "create database v1verify"
+          U="postgresql://postgres@127.0.0.1:55432/v1verify"
+          psql -X -q -v ON_ERROR_STOP=1 "$U" -f scripts/lib/verify-bootstrap.sql
+          for m in supabase/migrations/*.sql; do
+            psql -X -q -v ON_ERROR_STOP=1 "$U" -f "$m"
+          done
+
+      - name: Two-tenant isolation, Connect, and the public invoice share
+        env:
+          DATABASE_URL: postgresql://postgres@127.0.0.1:55432/v1verify
+        run: |
+          set -euo pipefail
+          node scripts/tenancy-verify.mjs
+          node scripts/connect-verify.mjs
+          node scripts/invoice-share-verify.mjs
+
+      # These build their own scratch database from the scaffold, so they only
+      # need to be told where it is.
+      - name: Schema-contract suites
+        env:
+          AIRCRAFT_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
+          PAYMENT_REVERSAL_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
+          ESTIMATES_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
+          LOGBOOK_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
+          CURRENCY_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
+        run: |
+          set -euo pipefail
+          npm run aircraft:verify
+          npm run payment-reversal:verify
+          npm run estimates:verify
+          npm run logbook:verify
+          npm run currency:verify
