@@ -342,13 +342,29 @@ function moneyToCents(whole: string, fraction: string): number | undefined {
  *   - A NON-USD FIGURE is not this field. "TOTAL CAD 1,240.55" used to
  *     store $1,240.55.
  *
- * Zero is a real answer and is kept: a direct-billed hotel folio ends
- * "BALANCE DUE 0.00", and discarding that used to fall back to a mid-stay
- * "Total 189.00" line — a $189 room charge the operator had already paid,
- * offered to the pilot to rebill.
+ * Zero is a real answer and is kept — but only when it is the ONLY
+ * answer. A direct-billed folio ends "BALANCE DUE 0.00" with nothing else
+ * labelled, and reading that as zero is right: the operator paid it, and
+ * discarding it used to fall back to a mid-stay "Total 189.00" line, a
+ * room charge offered to the pilot to rebill.
+ *
+ * A SETTLED folio is a different document and used to give the same
+ * answer for the wrong reason:
+ *
+ *     TOTAL CHARGES        648.42
+ *     PAYMENT VISA 4242   -648.42
+ *     BALANCE DUE            0.00
+ *
+ * Last-labelled-total-wins made that $0.00, and the expense form
+ * pre-filled 0.00 for a stay that cost $648.42. So a zero is refused when
+ * a non-zero labelled total appeared earlier on the same receipt — the
+ * two readings ("nothing to pay" and "already paid, this is what it
+ * cost") are genuinely different expenses, and this module does not
+ * choose between them. Null, and the pilot types it.
  */
 export function extractAmountCents(text: string): number | null {
   let found: number | null = null;
+  let sawNonZeroTotal = false;
 
   for (const line of text.split(/\r?\n/)) {
     const lower = line.toLowerCase();
@@ -373,7 +389,14 @@ export function extractAmountCents(text: string): number | null {
     const distinct = Array.from(new Set(candidates));
     if (distinct.length === 1) found = distinct[0]!;
     else if (distinct.length > 1) return null;
+
+    if (found !== null && found > 0) sawNonZeroTotal = true;
   }
+
+  // See the header: a trailing zero after a real total is a BALANCE, not
+  // an amount. Refusing beats offering either number, because which one is
+  // the pilot's expense depends on who settled it.
+  if (found === 0 && sawNonZeroTotal) return null;
 
   return found;
 }

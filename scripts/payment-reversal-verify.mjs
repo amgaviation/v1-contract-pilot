@@ -310,6 +310,44 @@ note("\nCorrecting it");
   );
 }
 
+note("\nA correction on a PARTIALLY paid invoice");
+{
+  // The other half of the walk-back, missed by 20260810120000 and fixed by
+  // 20260810170000. A $450 invoice with a mistyped $200 cheque sits at
+  // 'partial'; correcting it takes amount_paid to zero, and the invoice
+  // must stop claiming a payment it no longer has.
+  //
+  // This needs BOTH halves of that migration: widening the resync guard
+  // alone would make the trigger attempt partial -> sent, which the status
+  // machine did not permit, so the correction would have failed outright
+  // rather than silently doing nothing.
+  asAdmin(
+    `insert into pilot.invoices (id, account_id, client_id, status, invoice_number, issued_on, due_on)
+     values ('55555555-0000-4000-8000-00000000000f', '${A.account}', '${CLIENT}', 'sent', 'ALFA-2026-0003', current_date, current_date + 30);
+     insert into pilot.invoice_lines (account_id, invoice_id, line_type, description, quantity, unit_amount_cents)
+     values ('${A.account}', '55555555-0000-4000-8000-00000000000f', 'flight_day', 'Synthetic', 1, 45000);
+     insert into pilot.invoice_payments (id, account_id, invoice_id, paid_on, amount_cents, method)
+     values ('66666666-0000-4000-8000-00000000000f', '${A.account}', '55555555-0000-4000-8000-00000000000f', current_date, 20000, 'check');
+     update pilot.invoices set status = 'partial' where id = '55555555-0000-4000-8000-00000000000f';`,
+    "a partially paid invoice"
+  );
+
+  const walked = asTenant(
+    A.user,
+    `insert into pilot.invoice_payments
+       (account_id, invoice_id, paid_on, amount_cents, reverses_payment_id)
+     values ('${A.account}', '55555555-0000-4000-8000-00000000000f', current_date, -20000, '66666666-0000-4000-8000-00000000000f');
+     select status || '/' || amount_paid_cents || '/' || balance_due_cents
+     from pilot.invoices i join pilot.invoice_totals t on t.invoice_id = i.id
+     where i.id = '55555555-0000-4000-8000-00000000000f';`
+  );
+  equals(
+    "correcting the only payment stops it reading as partially paid",
+    walked.out,
+    "sent/0/45000"
+  );
+}
+
 note("\nWhat a correction is not");
 {
   refuses(

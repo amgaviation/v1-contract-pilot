@@ -190,13 +190,24 @@ test("a credit memo is never read as money the pilot spent", async (t) => {
   });
 });
 
-test("a zero balance is an answer, not a missing one", () => {
-  // Direct-billed hotel: the operator paid the room, the folio ends at
-  // 0.00. Discarding the zero used to fall back to the mid-stay running
-  // total and offer the pilot a $189.00 room charge to rebill.
+test("a zero balance after a real total is refused, not answered", () => {
+  // CHANGED DELIBERATELY. This used to assert 0, on the reasoning that a
+  // direct-billed hotel ends at 0.00 and the pilot owes nothing.
+  //
+  // The problem is that a SETTLED folio — one the pilot paid with their
+  // own card — has the identical shape: a real total, then a zero
+  // balance. Nothing in the text distinguishes "the operator paid this"
+  // from "I paid this, here's what it cost", and those are two different
+  // expenses. Answering 0 pre-filled the form with 0.00 for a stay that
+  // actually cost the pilot $189.
+  //
+  // The property that mattered in the original test is preserved: the
+  // mid-stay running total is still NOT offered as something to rebill.
+  // Null does not offer it either — it just declines to guess which
+  // document this is, which is what the module's own rule requires.
   assert.equal(
     extractAmountCents("03/13  Room Charge  189.00\n03/13  Total  189.00\nBALANCE DUE  0.00"),
-    0
+    null
   );
 });
 
@@ -388,4 +399,31 @@ test("but the same hint still matches as a real word", () => {
 
 test("multi-word hints survive the boundary rule", () => {
   assert.equal(extractCategory("HERTZ RENTAL CAR\nTOTAL $96.40"), "rental_car");
+});
+
+// ---------------------------------------------------------------------------
+// A settled hotel folio must not read as $0.00.
+//
+// "Last labelled total wins" made a paid 3-night stay extract as zero and
+// pre-fill the expense amount with 0.00 — the pilot's real $648.42 charge
+// silently replaced by the balance remaining after their own card paid it.
+// A zero is only an answer when nothing else on the receipt was.
+// ---------------------------------------------------------------------------
+test("a settled folio refuses rather than reading as zero", () => {
+  const folio = [
+    "GRANDVIEW SUITES",
+    "TOTAL CHARGES 648.42",
+    "PAYMENT VISA XXXX4242 -648.42",
+    "BALANCE DUE 0.00",
+  ].join("\n");
+  assert.equal(extractAmountCents(folio), null);
+});
+
+test("but a direct-billed folio still reads as zero", () => {
+  // Nothing else is labelled, so the zero IS the answer — the operator
+  // paid it and the pilot owes nothing. Refusing here would fall back to
+  // an earlier running total and offer a charge to rebill that was
+  // already settled.
+  const direct = ["GRANDVIEW SUITES", "ROOM 214", "BALANCE DUE 0.00"].join("\n");
+  assert.equal(extractAmountCents(direct), 0);
 });
