@@ -21,7 +21,7 @@ import { ExclamationTriangleIcon, CheckCircledIcon } from "@radix-ui/react-icons
 import { parseForeflight } from "@/lib/logbook-import/foreflight";
 import { parseLogTen } from "@/lib/logbook-import/logten";
 import { parseGenericHeader, suggestMapping, applyGenericMapping, MAPPABLE_FIELDS } from "@/lib/logbook-import/generic";
-import { resolveRow } from "@/lib/logbook-import/resolve-row";
+import { resolveRow, isWhollySimulator } from "@/lib/logbook-import/resolve-row";
 import type { CsvRecord } from "@/lib/logbook-import/csv";
 import type { ColumnMapping, ImportFormat, ParseResult, ParsedRow } from "@/lib/logbook-import/types";
 import type { LogbookRole, SimulatorDeviceType } from "../db";
@@ -195,10 +195,19 @@ export default function ImportWorkspace() {
       const s = stateFor(row);
       if (!s.included) continue;
       includedCount += 1;
-      if (!s.role) needsRole += 1;
+      // A WHOLLY-SIMULATOR row needs no role and must not be counted as
+      // needing one. Getting this wrong made the entire roleless-simulator
+      // path unreachable: for a file of nothing but sim sessions
+      // willImportCount stayed 0, canConfirm requires it to be positive,
+      // and the Import button stayed disabled — the rows resolved
+      // perfectly and could never be sent. Caught in review. This counter
+      // and resolveRow have to agree on what "resolvable" means, so both
+      // now ask isWhollySimulator rather than each deciding for itself.
+      const roleOptional = isWhollySimulator(row.values);
+      if (!s.role && !roleOptional) needsRole += 1;
       if (row.needsSimulatorDeviceType && !s.simulatorDeviceType) needsDevice += 1;
       const deviceOk = !row.needsSimulatorDeviceType || !!s.simulatorDeviceType;
-      if (s.role && deviceOk) willImportCount += 1;
+      if ((s.role || roleOptional) && deviceOk) willImportCount += 1;
     }
     return { needsRole, needsDevice, includedCount, willImportCount };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -379,7 +388,17 @@ export default function ImportWorkspace() {
           {duplicateDetail.length > 0 ? (
             <DuplicateTable rows={duplicateDetail} truncated={outcome.duplicateDetailTruncated ?? false} />
           ) : null}
-          {stage.result.rejected.length > 0 ? (
+          {/* The SERVER's rejections, not just the client parser's.
+              confirmImport now rejects individually any row the logbook
+              cannot store (no crew role on a flight, cross-country time
+              exceeding total time) instead of aborting the whole file —
+              and those reasons are the ones the pilot most needs, because
+              they name something in their own data. Returned as
+              rejectedDetail; rendering only stage.result.rejected showed
+              the count and hid every reason behind it. */}
+          {(outcome.rejectedDetail?.length ?? 0) > 0 ? (
+            <RejectedTable rejected={outcome.rejectedDetail ?? []} />
+          ) : stage.result.rejected.length > 0 ? (
             <RejectedTable rejected={stage.result.rejected} />
           ) : null}
         </Flex>

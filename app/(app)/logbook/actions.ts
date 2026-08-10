@@ -153,11 +153,38 @@ function parseEntryForm(formData: FormData): ParsedEntry {
   // On a legal record there is no safe default crew role — reject it the
   // same way total_time already is, rather than letting a crafted or
   // stale POST assert PIC on the pilot's behalf.
+  //
+  // ONE exception, added with 20260810020000: an entry whose time is
+  // ENTIRELY simulator time may carry no role, because an FFS/FTD/ATD
+  // session has no pilot in command — there is no aircraft. The form
+  // posts an empty string for that, and it is accepted ONLY when the
+  // times make this a wholly-simulator entry. An empty role on a real
+  // flight is still refused, which is what stops this exception becoming
+  // the silent default it replaced.
+  //
+  // Without this branch the roleless entries the importer can now create
+  // were a trap: opening one in this form and saving an unrelated
+  // correction would have posted "PIC" and rewritten the legal record.
   const roleRaw = String(formData.get("role") ?? "");
-  if (!(ROLES as readonly string[]).includes(roleRaw)) {
+  const simulatorTimeForRole = time(formData, "simulator_time");
+  const whollySimulator =
+    typeof simulatorTimeForRole === "number" &&
+    simulatorTimeForRole > 0 &&
+    totalTime === simulatorTimeForRole;
+  let role: (typeof ROLES)[number] | null;
+  if (roleRaw === "" && whollySimulator) {
+    role = null;
+  } else if ((ROLES as readonly string[]).includes(roleRaw)) {
+    role = roleRaw as (typeof ROLES)[number];
+  } else if (roleRaw === "") {
+    return {
+      values: null,
+      error:
+        "Pick a crew role. It can only be left blank when every hour on the entry is simulator time — for a flight, the logbook has to record who was flying.",
+    };
+  } else {
     return { values: null, error: "Pick a crew role — PIC or SIC." };
   }
-  const role = roleRaw as (typeof ROLES)[number];
 
   const timeFields = [
     "pic_time",

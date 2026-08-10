@@ -58,9 +58,18 @@ export type RejectedBankRow = {
  */
 export type SignInterpretation = {
   flipped: boolean;
+  /** True when the pilot overrode the parser's suggestion. */
+  overridden: boolean;
+  /**
+   * Whether the file's own contents settled the question. False means the
+   * counts were close enough that the parser guessed, and the preview must
+   * ASK rather than quietly proceed — a short statement with one charge and
+   * two payments is exactly the shape that fools a majority rule.
+   */
+  decisive: boolean;
   moneyOutRows: number;
   moneyInRows: number;
-  /** Rows whose own text declared direction (parens, CR, DR) and were never flipped. */
+  /** Rows whose own text declared direction (a trailing CR/DR) and were never flipped. */
   selfDeclaredRows: number;
 };
 

@@ -168,6 +168,80 @@ check("CSV-2c: a cell that states its own direction (CR/DR/parens) is never flip
   assert.equal(r.valid[1].amountCents, -51210, "the unmarked purchase is flipped as usual");
 });
 
+check("CSV-2e: parentheses are the file's negative notation, NOT a direction claim", () => {
+  // Regression. declaresOwnSign() used to count parens, so on a
+  // positive-charge card export a parenthesised REFUND was exempted from
+  // the flip and imported as an expense — while the identical refund
+  // written "-89.99" was flipped correctly. Same fact, two answers,
+  // decided by punctuation. Only CR/DR name a direction on their own.
+  const csv =
+    "Date,Description,Amount\n" +
+    "2026-03-04,SYNTHETIC HOTEL,214.88\n" +
+    "2026-03-05,SYNTHETIC FUEL,512.10\n" +
+    "2026-03-06,SYNTHETIC REFUND,(89.99)\n";
+  const [header, ...data] = parseCsv(csv);
+  const mapping = suggestColumnMapping(header.fields);
+  const r = applyCsvMapping({ headerRow: header.fields, dataRecords: data, mapping, accountKind: "credit_card" });
+  assert.equal(r.signInterpretation?.selfDeclaredRows, 0, "parens must not count as self-declared");
+  assert.equal(r.valid[0].amountCents, -21488, "the purchase is money out");
+  assert.equal(r.valid[2].amountCents, 8999, "the parenthesised refund is money IN, like any other negative");
+});
+
+check("CSV-2f: a statement too evenly split is marked non-decisive rather than guessed at", () => {
+  // One charge and two payments: a majority rule points the wrong way and
+  // would invert the file. The parser must say it could not tell, so the
+  // preview asks instead of silently rewriting the pilot's money.
+  const csv =
+    "Date,Description,Amount\n" +
+    "2026-03-04,SYNTHETIC CHARGE,214.88\n" +
+    "2026-03-05,SYNTHETIC PAYMENT,-500.00\n" +
+    "2026-03-06,SYNTHETIC PAYMENT,-300.00\n";
+  const [header, ...data] = parseCsv(csv);
+  const mapping = suggestColumnMapping(header.fields);
+  const r = applyCsvMapping({ headerRow: header.fields, dataRecords: data, mapping, accountKind: "credit_card" });
+  assert.equal(r.signInterpretation?.decisive, false, "counts this close cannot settle the convention");
+
+  const forced = applyCsvMapping({
+    headerRow: header.fields, dataRecords: data, mapping,
+    accountKind: "credit_card", signFlipOverride: true,
+  });
+  assert.equal(forced.signInterpretation?.flipped, true);
+  assert.equal(forced.signInterpretation?.overridden, true, "the override is reported, not silent");
+  assert.equal(forced.valid[0].amountCents, -21488, "the pilot's answer decides the whole file");
+});
+
+check("CSV-2g: an unambiguous file is still decisive and still flips", () => {
+  const csv =
+    "Date,Description,Amount\n" +
+    "2026-03-04,A,10.00\n2026-03-05,B,20.00\n2026-03-06,C,30.00\n2026-03-07,REFUND,-5.00\n";
+  const [header, ...data] = parseCsv(csv);
+  const mapping = suggestColumnMapping(header.fields);
+  const r = applyCsvMapping({ headerRow: header.fields, dataRecords: data, mapping, accountKind: "credit_card" });
+  assert.equal(r.signInterpretation?.decisive, true);
+  assert.equal(r.signInterpretation?.flipped, true);
+  assert.equal(r.valid[0].amountCents, -1000);
+});
+
+check("OFX-3: an unclosed MIDDLE record keeps every row number the file's own", () => {
+  // Numbering by matched-block index renumbered everything after a
+  // malformed record: the third transaction was reported as row 2 and the
+  // rejection as row 3, so both the pilot-facing message and the stored
+  // source_row_number pointed at the wrong lines.
+  const ofx =
+    "<OFX><BANKTRANLIST>\n" +
+    "<STMTTRN><DTPOSTED>20260315<TRNAMT>-10.00<NAME>ONE</STMTTRN>\n" +
+    "<STMTTRN><DTPOSTED>20260316<TRNAMT>-20.00<NAME>TWO\n" +
+    "<STMTTRN><DTPOSTED>20260317<TRNAMT>-30.00<NAME>THREE</STMTTRN>\n" +
+    "</BANKTRANLIST></OFX>";
+  const r = parseOfx(ofx, "ofx");
+  assert.equal(r.valid.length, 2);
+  assert.equal(r.rejected.length, 1);
+  assert.equal(r.valid[0].rowNumber, 1);
+  assert.equal(r.valid[1].rowNumber, 3, "the surviving third record is row 3, not row 2");
+  assert.equal(r.rejected[0].rowNumber, 2, "the unreadable record is row 2, where it actually is");
+  assert.equal(r.valid[1].amountCents, -3000, "and it is genuinely the third record, not a merge");
+});
+
 check("CSV-2d: a checking account is never sign-transformed at all", () => {
   const [header, ...data] = parseCsv(csvSigned);
   const mapping = suggestColumnMapping(header.fields);
@@ -712,6 +786,76 @@ begin
     end if;
   end loop;
   raise notice 'PASS (BANK-GRANT-4): all four bank tables are INSERT-scoped to a strict subset of their columns — read from information_schema, not from the migration text';
+end $$;
+reset role;
+
+-- ===========================================================================
+-- ATOMIC / DUP — confirming is one transaction, and a spend already in the
+-- books is surfaced before it can be double-counted.
+--
+-- The old confirm was three round trips and the gaps were reachable: dying
+-- between the claim and the insert stranded the row 'reviewed' with no
+-- expense (invisible on every surface, and a retry was told it had already
+-- been handled), and a LOST REPLY on the insert was indistinguishable from
+-- a rejection, so the revert-and-retry produced two expenses for one bank
+-- line. ATOMIC-3 is the one that matters most: it asserts the idempotency
+-- index, which is what makes a retry cost a 23505 instead of a duplicate
+-- no matter what the network did.
+-- ===========================================================================
+set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', '${UA}', 'role', 'authenticated')::text, true);
+
+do $$
+declare
+  v_txn uuid;
+  v_exp uuid;
+  v_state text;
+  v_link uuid;
+  n int;
+begin
+  insert into pilot.bank_transactions
+    (account_id, bank_account_id, import_batch_id, source_file_id, source_row_number,
+     source_row, posted_on, description, amount_cents, fingerprint)
+  values ('${A}', '${BANK_A}', '00000000-0000-0000-0000-00000000bd01',
+          '00000000-0000-0000-0000-00000000be01', 801, '{}'::jsonb, '2026-03-03',
+          'SYNTH INN 88 SYNTHETIC RD', -31200, 'fp-atomic-probe')
+  returning id into v_txn;
+
+  -- The same spend, already filed by hand from a photographed receipt.
+  -- Note the vendor text differs, which is exactly why the probe matches
+  -- on amount and date rather than on description.
+  insert into pilot.expenses (account_id, incurred_on, category, vendor, amount_cents, treatment)
+    values ('${A}', '2026-03-03', 'hotel', 'SYNTH INN 88', 31200, 'deduct');
+
+  select count(*) into n from pilot.bank_transaction_duplicate_candidates(v_txn);
+  if n <> 1 then
+    raise exception 'DUP-1 FAILURE: expected the already-recorded receipt to surface, got % candidate(s)', n;
+  end if;
+  raise notice 'PASS (DUP-1): a spend already in the books is surfaced as a duplicate candidate BEFORE the pilot confirms — this is the pair that reached a client invoice as 62400 for one 31200 stay';
+
+  v_exp := pilot.bank_transaction_confirm(v_txn, 'hotel', 'deduct', null, null);
+  select review_state, expense_id into v_state, v_link from pilot.bank_transactions where id = v_txn;
+  if v_state <> 'reviewed' or v_link is distinct from v_exp then
+    raise exception 'ATOMIC-1 FAILURE: state=% link=% expense=%', v_state, v_link, v_exp;
+  end if;
+  raise notice 'PASS (ATOMIC-1): claim, expense and link all land together in one call';
+
+  begin
+    perform pilot.bank_transaction_confirm(v_txn, 'hotel', 'deduct', null, null);
+    raise exception 'ATOMIC-2 FAILURE: the same transaction was confirmed twice';
+  exception when others then
+    if sqlerrm not like '%already been reviewed%' then
+      raise exception 'ATOMIC-2 FAILURE: refused for the wrong reason: %', sqlerrm;
+    end if;
+    raise notice 'PASS (ATOMIC-2): a second confirm of the same transaction is refused';
+  end;
+
+  select count(*) into n from pilot.expenses
+    where account_id = '${A}' and bank_transaction_id = v_txn;
+  if n <> 1 then
+    raise exception 'ATOMIC-3 FAILURE: % expenses carry this transaction id', n;
+  end if;
+  raise notice 'PASS (ATOMIC-3): exactly one expense can ever carry a given bank transaction id — the idempotency index is what makes a lost reply safe to retry';
 end $$;
 reset role;
 

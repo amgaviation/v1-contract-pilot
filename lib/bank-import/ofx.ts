@@ -113,17 +113,36 @@ export function parseOfx(text: string, format: "ofx" | "qfx"): BankParseResult {
   const body = text.replace(/\r\n?/g, "\n");
 
   // The body may not contain a further opener — see the header comment.
+  // Every opener in the file, BY POSITION — this is the numbering the
+  // pilot's file actually has, and the only numbering worth reporting.
+  //
+  // Indexing the matched blocks instead (which an earlier version did)
+  // renumbers everything after a malformed record: for valid / malformed /
+  // valid, the third record was reported as row 2 and the rejection as row
+  // 3, so both the pilot-facing message and the source_row_number stored
+  // as lineage pointed at the wrong lines. Caught in review.
+  const openerPositions: number[] = [];
+  const openerRe = /<STMTTRN>/gi;
+  let o: RegExpExecArray | null;
+  while ((o = openerRe.exec(body))) openerPositions.push(o.index);
+
   const blockRe = /<STMTTRN>((?:(?!<STMTTRN>)[\s\S])*?)<\/STMTTRN>/gi;
-  const blocks: string[] = [];
+  // Body keyed by the position of the opener that starts it, so each block
+  // can be matched back to its ordinal in the file.
+  const blockByStart = new Map<number, string>();
   let m: RegExpExecArray | null;
   while ((m = blockRe.exec(body))) {
-    blocks.push(m[1] ?? "");
+    blockByStart.set(m.index, m[1] ?? "");
   }
 
-  // Counted from the file's own bytes, independently of what the parser
-  // managed to pair up — so "how many records are in this file" and "how
-  // many did we read" can disagree out loud instead of agreeing quietly.
-  const openerCount = (body.match(/<STMTTRN>/gi) ?? []).length;
+  const blocks: { rowNumber: number; body: string }[] = [];
+  const unclosedRowNumbers: number[] = [];
+  openerPositions.forEach((pos, i) => {
+    const rowNumber = i + 1;
+    const found = blockByStart.get(pos);
+    if (found === undefined) unclosedRowNumbers.push(rowNumber);
+    else blocks.push({ rowNumber, body: found });
+  });
 
   if (blocks.length === 0) {
     return {
@@ -141,20 +160,19 @@ export function parseOfx(text: string, format: "ofx" | "qfx"): BankParseResult {
   }
 
   // One named rejection per record the file opened but this parser could
-  // not close. The pilot sees "3 transactions found, 1 couldn't be read"
-  // instead of a clean-looking import that is quietly short.
-  const unaccounted = openerCount - blocks.length;
-  for (let i = 0; i < unaccounted; i += 1) {
+  // not close, carrying the record's REAL position in the file. The pilot
+  // sees "3 transactions found, row 2 couldn't be read" instead of a
+  // clean-looking import that is quietly short.
+  for (const rowNumber of unclosedRowNumbers) {
     rejected.push({
-      rowNumber: blocks.length + i + 1,
+      rowNumber,
       raw: "",
       reason:
-        "A <STMTTRN> transaction record in this file is missing its closing </STMTTRN> tag, so it couldn't be read. The file may have been truncated during download — re-download the statement and import it again.",
+        "This <STMTTRN> transaction record is missing its closing </STMTTRN> tag, so it couldn't be read. The file may have been truncated during download — re-download the statement and import it again.",
     });
   }
 
-  blocks.forEach((block, i) => {
-    const rowNumber = i + 1;
+  blocks.forEach(({ rowNumber, body: block }) => {
     const reject = (reason: string) => rejected.push({ rowNumber, raw: block.trim(), reason });
 
     // Leaf-tag extraction: <TAG>value, value runs to end of line (OFX

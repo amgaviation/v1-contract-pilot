@@ -55,7 +55,12 @@ export type ConfirmTransactionResult = { error: string | null };
  * on.
  */
 export async function confirmTransaction(formData: FormData): Promise<ConfirmTransactionResult> {
-  const { account } = await requireAccount("/expenses/transactions");
+  // The account isn't destructured any more: pilot.bank_transaction_confirm
+  // derives it from the transaction's own row after checking
+  // pilot.current_account_ids(), so an account id passed from here is a
+  // value the database would have to distrust anyway. This call remains
+  // the auth gate.
+  await requireAccount("/expenses/transactions");
 
   const id = String(formData.get("id") ?? "");
   if (!UUID_RE.test(id)) return { error: "That transaction isn't recognized." };
@@ -98,76 +103,51 @@ export async function confirmTransaction(formData: FormData): Promise<ConfirmTra
     return { error: "This transaction is a deposit or refund, not an expense — mark it dismissed instead." };
   }
 
-  // Step 1: claim.
-  const claim = await supabase
-    .from("bank_transactions")
-    .update(
-      {
-        review_state: "reviewed",
-        category: category as Category,
-        treatment: treatment as Treatment,
-        trip_id: tripId,
-        notes,
-      } as never,
-      { count: "exact" }
-    )
-    .eq("id", id)
-    .eq("account_id", account.id)
-    .eq("review_state", "unreviewed");
-  if (claim.error) return { error: friendlyDbError(claim.error, "bank_transactions.claim") };
-  if (claim.count !== 1) {
-    return { error: "That transaction was just reviewed elsewhere — refresh and check." };
-  }
+  // ONE CALL, ONE TRANSACTION (20260810040000).
+  //
+  // This used to be three round trips — claim, insert the expense, attach
+  // the link — and the gaps between them were reachable states, not
+  // theoretical ones:
+  //
+  //   - dying between the claim and the insert left the row 'reviewed'
+  //     with expense_id null and NO expense. It then vanished from every
+  //     surface (the queue filters on 'unreviewed', nothing anywhere
+  //     selects reviewed-with-null-expense), the money was silently
+  //     missing from the books, and a retry was told "That transaction
+  //     has already been reviewed";
+  //
+  //   - a LOST REPLY on the insert was indistinguishable from a REJECTED
+  //     insert — postgrest-js synthesises {error, status: 0} for a dead
+  //     socket — so the code reverted the claim and invited a retry that
+  //     created a SECOND expense for one bank line, both rebillable.
+  //
+  // pilot.bank_transaction_confirm does all three as one statement,
+  // locking the row FOR UPDATE so two confirms racing it serialize. It is
+  // SECURITY DEFINER but scoped by pilot.current_account_ids() — the same
+  // narrow-door pattern as invoice_share_create and
+  // generate_recurring_invoice, not a second service-role caller.
+  //
+  // The retry hazard is also closed underneath: expenses.bank_transaction_id
+  // carries a partial unique index, so a duplicate confirm costs a 23505
+  // rather than a second expense, whatever the network did.
+  const confirmed = await supabase.rpc("bank_transaction_confirm", {
+    p_transaction_id: id,
+    p_category: category,
+    p_treatment: treatment,
+    p_trip_id: tripId,
+    p_notes: notes,
+  } as never);
 
-  const revertClaim = async () => {
-    await supabase
-      .from("bank_transactions")
-      .update(
-        { review_state: "unreviewed", category: null, treatment: null, trip_id: null } as never,
-        { count: "exact" }
-      )
-      .eq("id", id)
-      .eq("account_id", account.id);
-  };
-
-  // Step 2: create the expense. Explicit allowlisted columns, never a
-  // spread of client JSON — same discipline as logbook's confirmImport.
-  const expenseInsertPayload: Database["pilot"]["Tables"]["expenses"]["Insert"] = {
-    account_id: account.id,
-    trip_id: tripId,
-    incurred_on: row.posted_on,
-    category: category as Category,
-    vendor: row.description.slice(0, 500),
-    amount_cents: Math.abs(row.amount_cents),
-    treatment: treatment as Treatment,
-    notes: notes ? `Imported from bank statement — ${notes}` : "Imported from bank statement.",
-  };
-  const expenseInsert = await supabase
-    .from("expenses")
-    .insert(expenseInsertPayload as never)
-    .select("id")
-    .maybeSingle();
-
-  if (expenseInsert.error || !expenseInsert.data) {
-    await revertClaim();
-    return { error: friendlyDbError(expenseInsert.error, "expenses.insert") };
-  }
-  const expenseId = (expenseInsert.data as { id: string }).id;
-
-  // Step 3: attach.
-  const attach = await supabase
-    .from("bank_transactions")
-    .update({ expense_id: expenseId } as never, { count: "exact" })
-    .eq("id", id)
-    .eq("account_id", account.id);
-  if (attach.error || attach.count !== 1) {
-    // The expense is real and correctly reflects the pilot's choice —
-    // only the lineage link back to the transaction failed to attach.
-    // Not reverted: undoing the claim now would leave a real expense
-    // with no bank_transactions row pointing at it as "reviewed",
-    // which is worse (the pilot would see it as still needing review
-    // AND find a duplicate expense on next confirm). Logged, not hidden.
-    console.error("[bank transactions] expense created but link failed", attach.error);
+  if (confirmed.error) {
+    // 23505 here is the idempotency index: this transaction already became
+    // an expense, which after a lost reply is a SUCCESS the pilot should
+    // not be told to retry.
+    if ((confirmed.error as { code?: string }).code === "23505") {
+      revalidatePath("/expenses");
+      revalidatePath("/expenses/transactions");
+      return { error: null };
+    }
+    return { error: friendlyDbError(confirmed.error, "bank_transaction_confirm") };
   }
 
   revalidatePath("/expenses");

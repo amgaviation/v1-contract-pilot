@@ -144,7 +144,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
     setParseResult(result);
   };
 
-  const runCsv = () => {
+  const runCsv = (signFlipOverride?: boolean) => {
     if (!selectedAccount) {
       setFileError("Pick which account this statement is from first.");
       return;
@@ -154,8 +154,23 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
       dataRecords,
       mapping,
       accountKind: selectedAccount.kind,
+      signFlipOverride,
     });
     setParseResult(result);
+  };
+
+  /**
+   * Re-reads the statement with the amount column's direction reversed.
+   *
+   * Card issuers disagree about whether a purchase is written positive or
+   * negative, and a short statement can easily hold more payments than
+   * purchases — so the parser's reading is a SUGGESTION. On a file whose
+   * own contents don't settle it (signInterpretation.decisive === false)
+   * the pilot is asked outright, rather than having every amount silently
+   * rewritten in whichever direction the row count happened to point.
+   */
+  const invertSignReading = () => {
+    runCsv(!(parseResult?.signInterpretation?.flipped ?? false));
   };
 
   const setColumn = (idx: number, key: CsvColumnKey) => {
@@ -335,7 +350,11 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
               </Table.Body>
             </Table.Root>
             <Box>
-              <Button type="button" onClick={runCsv}>
+              {/* Wrapped, not passed by reference: runCsv's first argument
+                  is now the sign override, and React would hand it the
+                  MouseEvent — which is truthy, so every parse would come
+                  out inverted. tsc caught it; the wrapper is the fix. */}
+              <Button type="button" onClick={() => runCsv()}>
                 Parse {dataRecords.length} row{dataRecords.length === 1 ? "" : "s"}
               </Button>
             </Box>
@@ -358,6 +377,40 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                 {includedRows.length} will be imported
               </Text>
             </Flex>
+
+            {/* WHICH WAY THE MONEY RUNS. Card issuers disagree about
+                whether a purchase is written positive or negative, and
+                getting it backwards inverts an entire statement: real
+                purchases become "deposits" that can't be filed, and the
+                month's one refund becomes the only expense. The parser
+                reads the file's own convention and says what it concluded
+                — plainly, with the counts it concluded it from — and the
+                pilot can reverse it in one click. Amber when the file
+                didn't settle the question, because then this is a
+                question and not a note. */}
+            {parseResult.signInterpretation ? (
+              <Callout.Root
+                color={parseResult.signInterpretation.decisive ? "gray" : "amber"}
+                size="1"
+              >
+                <Callout.Text>
+                  We read {parseResult.signInterpretation.moneyOutRows} row
+                  {parseResult.signInterpretation.moneyOutRows === 1 ? "" : "s"} as money
+                  out and {parseResult.signInterpretation.moneyInRows} as money in
+                  {parseResult.signInterpretation.selfDeclaredRows > 0
+                    ? `, plus ${parseResult.signInterpretation.selfDeclaredRows} that said which way in the file itself`
+                    : ""}
+                  .{" "}
+                  {parseResult.signInterpretation.decisive
+                    ? "That matches this statement's own pattern."
+                    : "This statement is too evenly split to be sure — check it against your card before importing."}{" "}
+                  <RadixLink href="#" onClick={(e) => { e.preventDefault(); invertSignReading(); }}>
+                    That&rsquo;s backwards — swap them
+                  </RadixLink>
+                  {parseResult.signInterpretation.overridden ? " (swapped)" : ""}
+                </Callout.Text>
+              </Callout.Root>
+            ) : null}
 
             {parseResult.valid.length > 0 ? (
               <Box style={{ overflowX: "auto" }}>

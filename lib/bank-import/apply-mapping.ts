@@ -13,18 +13,26 @@ import type {
 } from "./types";
 
 /**
- * True when the cell's own text states which direction the money went —
- * parentheses (the accounting negative), or a trailing CR/DR marker.
+ * True when the cell's own text names the DIRECTION the money went, as
+ * opposed to merely carrying the file's own negative notation.
  *
- * This is the signal that overrides every column convention and every
- * account-kind inference downstream: a cell reading "214.88 DR" has said
- * "money out" in words, and no amount of "but credit-card exports usually
- * write purchases positive" should be allowed to argue with it.
+ * Only a trailing CR/DR qualifies. "CR" and "DR" are credit and debit —
+ * words about direction, meaningful without knowing anything else about
+ * the file. A cell reading "214.88 DR" has said "money out" outright, and
+ * no amount of "but card exports usually write purchases positive" should
+ * be allowed to argue with it.
+ *
+ * PARENTHESES DELIBERATELY DO NOT QUALIFY, and an earlier version of this
+ * function had that wrong. `(89.99)` is the accounting convention for a
+ * negative number — it is the same statement as `-89.99`, written
+ * differently. On a card export whose charges are positive, a parenthesised
+ * value is how that file writes a REFUND, so exempting it from the flip
+ * imported the refund as -8999 and offered it to the pilot as an expense,
+ * while the identical refund written `-89.99` was flipped correctly to
+ * +8999. Same fact, two answers, decided by punctuation. Caught in review.
  */
 function declaresOwnSign(raw: string): boolean {
-  const v = raw.trim();
-  if (v.startsWith("(") && v.endsWith(")")) return true;
-  return /\s*(CR|DR)$/i.test(v);
+  return /\s*(CR|DR)$/i.test(raw.trim());
 }
 
 /**
@@ -75,8 +83,15 @@ export function applyCsvMapping(params: {
   dataRecords: CsvRecord[];
   mapping: ColumnMapping;
   accountKind: BankAccountKind;
+  /**
+   * The pilot's answer to "is this file's amount column written the way we
+   * read it?" — set from the import preview's invert control. Undefined
+   * means "use the parser's suggestion", which is the first-render case.
+   * Only consulted for the credit-card signed-amount shape.
+   */
+  signFlipOverride?: boolean;
 }): BankParseResult {
-  const { headerRow, dataRecords, mapping, accountKind } = params;
+  const { headerRow, dataRecords, mapping, accountKind, signFlipOverride } = params;
   const valid: ParsedBankRow[] = [];
   const rejected: RejectedBankRow[] = [];
 
@@ -278,21 +293,36 @@ export function applyCsvMapping(params: {
   // amounts run IS that file's "money out" — a majority-negative column is
   // already canonical and must not be touched.
   //
-  // Rows whose own text declared direction (parens, CR, DR) are excluded
+  // Rows whose own text declared direction (a trailing CR/DR) are excluded
   // from the vote AND exempt from the flip: "214.88 DR" already said money
-  // out, and no amount of column convention overrides the cell saying so.
+  // out, and no column convention overrides the cell saying so.
+  //
+  // ROW COUNTS ARE A SUGGESTION, NOT AN ANSWER (revised after review). A
+  // short statement can easily hold one charge and two payments, and then
+  // the majority points the wrong way and the whole file inverts. So the
+  // count produces a SUGGESTION, the suggestion is marked `decisive` only
+  // when one direction genuinely dominates, and the caller may override it
+  // outright — the import preview shows "we read N rows as money out and M
+  // as money in" with a one-click invert, which is the only thing that
+  // actually resolves a file whose convention cannot be read off its
+  // contents. Money direction is not a good place to be quietly clever.
   let signInterpretation: SignInterpretation | undefined;
   let flip = false;
   if (accountKind === "credit_card" && hasAmount) {
     const votable = staged.filter((r) => !r.signSelfDeclared && r.amountCents !== 0);
     const negatives = votable.filter((r) => r.amountCents < 0).length;
     const positives = votable.length - negatives;
-    // Majority-positive (the classic issuer convention) is the only case
-    // that gets flipped. A tie, or an empty vote, leaves the file alone —
-    // when in doubt, do not silently rewrite the pilot's money.
-    flip = positives > negatives;
+    const suggestFlip = positives > negatives;
+    // "Dominant" rather than "more than half": with 3+ rows to look at and
+    // at least three quarters running one way, the file has told us its
+    // convention. Anything less is a coin toss the pilot should settle.
+    const majority = Math.max(positives, negatives);
+    const decisive = votable.length >= 3 && majority / votable.length >= 0.75;
+    flip = signFlipOverride ?? suggestFlip;
     signInterpretation = {
       flipped: flip,
+      overridden: signFlipOverride !== undefined && signFlipOverride !== suggestFlip,
+      decisive,
       moneyOutRows: flip ? positives : negatives,
       moneyInRows: flip ? negatives : positives,
       selfDeclaredRows: staged.length - votable.length,
