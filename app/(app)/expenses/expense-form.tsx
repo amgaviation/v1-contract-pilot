@@ -2,8 +2,10 @@
 
 import { useActionState, useState } from "react";
 import NextLink from "next/link";
-import { Box, Button, Card, Flex, Grid, Text, TextField, Select, TextArea } from "@/components/ui";
+import { Box, Button, Callout, Card, Flex, Grid, Text, TextField, Select, TextArea } from "@/components/ui";
 import { centsToInput } from "@/lib/format";
+import { matchTrip } from "@/lib/receipt-ocr/match-trip";
+import ReceiptScan, { type ScanOutcome } from "./receipt-scan";
 import type { ExpenseFormState } from "./actions";
 
 export type ExpenseFormValues = {
@@ -23,6 +25,10 @@ export type TripOption = {
   label: string;
   clientName: string | null;
   defaultTreatment: string | null;
+  /** For matching a scanned receipt's tail number to the trip it belongs to. */
+  aircraftIdent: string | null;
+  startsOn: string;
+  endsOn: string;
 };
 
 /** Ported verbatim from the schema's vocabulary; labels are the pilot's. */
@@ -50,6 +56,9 @@ const TREATMENTS = [
 const NO_TRIP = "none";
 
 const initialState: ExpenseFormState = { error: null };
+
+/** A field the scan read but did not overwrite, because the pilot had typed one. */
+type ScanConflict = { field: "incurred_on" | "vendor" | "amount"; label: string; scanned: string };
 
 export default function ExpenseForm({
   action,
@@ -92,6 +101,24 @@ export default function ExpenseForm({
   const [category, setCategory] = useState(() => initial("category", values.category, "other"));
   const tripsById = new Map(trips.map((trip) => [trip.id, trip]));
 
+  // The three free-text fields are controlled for the same reason the
+  // selects are steered by hand, plus one more: receipt scanning writes
+  // into them. A `defaultValue` input cannot be filled from outside after
+  // mount without reaching into the DOM, and React 19's post-action reset
+  // would then discard whatever was written on a rejected submit. Held in
+  // state, the scanned value survives an error round trip and is what
+  // actually posts.
+  const [incurredOn, setIncurredOn] = useState(() => initial("incurred_on", values.incurred_on));
+  const [vendor, setVendor] = useState(() => initial("vendor", values.vendor));
+  const [amount, setAmount] = useState(() =>
+    initial(
+      "amount",
+      values.amount_cents === null || values.amount_cents === undefined
+        ? null
+        : centsToInput(values.amount_cents)
+    )
+  );
+
   // H7: the client already answers "rebill or deduct?" on its own record
   // (default_expense_treatment) — a brand-new expense that arrives with a
   // trip already picked (preselected via ?trip=, or the pilot's own first
@@ -120,6 +147,8 @@ export default function ExpenseForm({
     const stored = submitted?.trip_id ?? values.trip_id ?? "";
     return stored === "" ? NO_TRIP : stored;
   });
+  const [conflicts, setConflicts] = useState<ScanConflict[]>([]);
+  const [tripHint, setTripHint] = useState<string | null>(null);
   const rebilling = treatment === "rebill";
   const selectedTrip = tripId === NO_TRIP ? null : tripsById.get(tripId) ?? null;
 
@@ -128,11 +157,80 @@ export default function ExpenseForm({
     setTreatmentTouched(true);
   };
 
-  const handleTripChange = (next: string) => {
-    setTripId(next);
+  const applyTripDefault = (next: string) => {
     if (!isNew || treatmentTouched) return;
     const trip = next === NO_TRIP ? null : tripsById.get(next) ?? null;
     if (trip?.defaultTreatment) setTreatment(trip.defaultTreatment);
+  };
+
+  const handleTripChange = (next: string) => {
+    setTripId(next);
+    setTripHint(null);
+    applyTripDefault(next);
+  };
+
+  /**
+   * What a finished scan does to the form.
+   *
+   * The governing rule is that a scan never overwrites something the pilot
+   * typed. An empty field is a field they haven't answered, so filling it
+   * saves them work; a filled field is an answer, and replacing it with a
+   * machine's reading of a photograph is how a pilot loses trust in the
+   * feature permanently. Conflicts are surfaced with the scanned value and
+   * a one-tap "use it" instead, so nothing the scan read is thrown away —
+   * the pilot just stays the one who decides.
+   */
+  const handleScan = ({ extraction }: ScanOutcome) => {
+    const found: ScanConflict[] = [];
+
+    if (extraction.date) {
+      if (incurredOn === "") setIncurredOn(extraction.date);
+      else if (incurredOn !== extraction.date)
+        found.push({ field: "incurred_on", label: "Date", scanned: extraction.date });
+    }
+    if (extraction.vendor) {
+      if (vendor.trim() === "") setVendor(extraction.vendor);
+      else if (vendor.trim() !== extraction.vendor)
+        found.push({ field: "vendor", label: "Vendor", scanned: extraction.vendor });
+    }
+    if (extraction.amountCents !== null) {
+      const scanned = centsToInput(extraction.amountCents);
+      if (amount.trim() === "") setAmount(scanned);
+      else if (amount.trim() !== scanned)
+        found.push({ field: "amount", label: "Amount", scanned });
+    }
+    // Category always has a value ("other" by default), so "untouched"
+    // rather than "empty" is the test: overwriting a real choice would be
+    // wrong, but leaving a receipt that plainly says Signature Flight
+    // Support filed as Other would be worse.
+    if (extraction.category && category === "other") setCategory(extraction.category);
+
+    setConflicts(found);
+
+    // The tail number is the strongest signal a receipt carries about
+    // WHICH trip it belongs to, and that association is what decides
+    // whether the charge gets rebilled. Only offered when the pilot hasn't
+    // already picked a trip.
+    if (tripId === NO_TRIP) {
+      const match = matchTrip(trips, {
+        aircraftIdent: extraction.aircraftIdent,
+        date: extraction.date,
+      });
+      if (match.kind === "one") {
+        setTripId(match.trip.id);
+        applyTripDefault(match.trip.id);
+        setTripHint(match.because);
+      } else if (match.kind === "several") {
+        setTripHint(match.because);
+      }
+    }
+  };
+
+  const takeConflict = (conflict: ScanConflict) => {
+    if (conflict.field === "incurred_on") setIncurredOn(conflict.scanned);
+    if (conflict.field === "vendor") setVendor(conflict.scanned);
+    if (conflict.field === "amount") setAmount(conflict.scanned);
+    setConflicts((current) => current.filter((c) => c.field !== conflict.field));
   };
 
   // True only while the currently-shown treatment IS the untouched
@@ -156,10 +254,42 @@ export default function ExpenseForm({
       >
         {values.id ? <input type="hidden" name="id" value={values.id} /> : null}
 
-        <Text as="div" size="4" weight="bold" mb="3">
+        <Text as="div" size="4" weight="bold" mb="1">
           The receipt
         </Text>
-        <Grid columns={{ initial: "1", md: "4" }} gap="3">
+        <Text as="div" size="2" color="gray" mb="3">
+          Attach the photo first and the fields below fill themselves in.
+        </Text>
+
+        <ReceiptScan hasExistingReceipt={Boolean(values.receipt_path)} onExtracted={handleScan} />
+
+        {conflicts.length > 0 ? (
+          <Box mt="3">
+            <Callout.Root color="amber" size="1">
+              <Callout.Text>
+                The scan read these differently from what you have. Yours is kept unless you say
+                otherwise.
+              </Callout.Text>
+              <Flex mt="2" direction="column" gap="2">
+                {conflicts.map((conflict) => (
+                  <Flex key={conflict.field} gap="3" align="center" wrap="wrap">
+                    <Text size="1">{`${conflict.label}: ${conflict.scanned}`}</Text>
+                    <Button
+                      type="button"
+                      size="1"
+                      variant="soft"
+                      onClick={() => takeConflict(conflict)}
+                    >
+                      Use this
+                    </Button>
+                  </Flex>
+                ))}
+              </Flex>
+            </Callout.Root>
+          </Box>
+        ) : null}
+
+        <Grid columns={{ initial: "1", md: "4" }} gap="3" mt="4">
           <Flex direction="column" gap="1">
             <Text as="label" size="2" weight="medium" htmlFor="incurred_on">
               Date
@@ -169,7 +299,8 @@ export default function ExpenseForm({
               type="date"
               name="incurred_on"
               required
-              defaultValue={initial("incurred_on", values.incurred_on)}
+              value={incurredOn}
+              onChange={(event) => setIncurredOn(event.currentTarget.value)}
             />
           </Flex>
           <Flex direction="column" gap="1">
@@ -191,7 +322,12 @@ export default function ExpenseForm({
             <Text as="label" size="2" weight="medium" htmlFor="vendor">
               Vendor
             </Text>
-            <TextField.Root id="vendor" name="vendor" defaultValue={initial("vendor", values.vendor)} />
+            <TextField.Root
+              id="vendor"
+              name="vendor"
+              value={vendor}
+              onChange={(event) => setVendor(event.currentTarget.value)}
+            />
             <Text size="1" color="gray">
               Who you paid
             </Text>
@@ -205,12 +341,8 @@ export default function ExpenseForm({
               name="amount"
               required
               inputMode="decimal"
-              defaultValue={initial(
-                "amount",
-                values.amount_cents === null || values.amount_cents === undefined
-                  ? null
-                  : centsToInput(values.amount_cents)
-              )}
+              value={amount}
+              onChange={(event) => setAmount(event.currentTarget.value)}
             />
           </Flex>
         </Grid>
@@ -259,13 +391,18 @@ export default function ExpenseForm({
                 ))}
               </Select.Content>
             </Select.Root>
+            {tripHint ? (
+              <Text size="1" color="gray">
+                {tripHint}
+              </Text>
+            ) : null}
             <Text size="1" color={rebilling ? "amber" : "gray"}>
               {rebilling
                 ? "Required — a rebilled expense has to land on an invoice"
                 : "Optional. Leave blank and it waits in the unassigned queue."}
             </Text>
           </Flex>
-          <Box style={{ gridColumn: "1 / -1" }}>
+          <Box gridColumn="1 / -1">
             <Flex direction="column" gap="1">
               <Text as="label" size="2" weight="medium" htmlFor="notes">
                 Notes
@@ -274,27 +411,6 @@ export default function ExpenseForm({
             </Flex>
           </Box>
         </Grid>
-
-        <Box mt="6" mb="3">
-          <Text as="div" size="4" weight="bold">
-            Receipt image
-          </Text>
-        </Box>
-        <Box>
-          {/* A plain file input: the receipt is stored privately and read
-              back through a short-lived signed URL, never a public URL. */}
-          <input
-            type="file"
-            name="receipt"
-            accept="image/jpeg,image/png,image/heic,image/webp,application/pdf"
-            aria-label="Receipt image or PDF"
-          />
-          <Text as="div" size="1" color="gray" mt="2">
-            {values.receipt_path
-              ? "A receipt is already attached. Choosing a file replaces it."
-              : "JPEG, PNG, HEIC, WebP or PDF, up to 10 MB. Optional."}
-          </Text>
-        </Box>
 
         <Flex mt="4" role="alert" aria-live="polite">
           {state.error ? (

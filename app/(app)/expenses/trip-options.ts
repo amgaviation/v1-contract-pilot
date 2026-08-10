@@ -64,6 +64,13 @@ export async function loadTripOptions(): Promise<{
       }`,
       clientName: client?.name ?? null,
       defaultTreatment: client?.default_expense_treatment ?? null,
+      // Carried as fields rather than parsed back out of `label`: the
+      // receipt scanner matches a tail number read off an FBO invoice
+      // against these to work out which trip the charge belongs to, and
+      // that is not a decision to make by scraping a display string.
+      aircraftIdent: trip.aircraft_ident,
+      startsOn: trip.starts_on,
+      endsOn: trip.ends_on,
     };
   });
   return { trips, error: null };
