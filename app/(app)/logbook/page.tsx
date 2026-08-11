@@ -361,10 +361,28 @@ export default async function LogbookPage({
           ) : null}
 
           <Card>
-            {entries.length === 0 ? (
+            {entries.length === 0 && totalCount > 0 ? (
+              // Empty because of WHERE YOU ARE, not because there is
+              // nothing on file: ?page= is past the last page. Telling a
+              // pilot with 8,000 entries "No logbook entries yet" here is
+              // the same class of claim as saying it after a failed read.
+              <Flex direction="column" align="center" gap="3" py="6">
+                <Heading as="h2" size="4">Nothing on this page</Heading>
+                <Text size="2" color="gray" align="center">
+                  {`You have ${totalCount} entr${
+                    totalCount === 1 ? "y" : "ies"
+                  } on file — page ${page} is past the last one, which is page ${pageCount}.`}
+                </Text>
+                <Button asChild mt="2">
+                  <NextLink href="/logbook">Back to the first page</NextLink>
+                </Button>
+              </Flex>
+            ) : entries.length === 0 ? (
               <Flex direction="column" align="center" gap="3" py="6">
                 <Heading as="h2" size="4">No logbook entries yet</Heading>
                 <Text size="2" color="gray" align="center">
+                  This is your own copy of the 61.51 record — flight time, PIC and SIC,
+                  night, instrument and landings, per entry and totalled for a career.
                   Log a flight by hand, or confirm the entries a completed trip proposes.
                 </Text>
                 <Flex gap="3" mt="2">

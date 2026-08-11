@@ -1,6 +1,7 @@
 import NextLink from "next/link";
 import { Box, Button, Container, Flex, Text } from "@/components/ui";
 import { BRAND } from "@/lib/brand";
+import { NAVY_SURFACE } from "./marketing-style";
 
 /**
  * The public site's header. Deliberately not the (app) rail's Logo
@@ -46,7 +47,7 @@ export default function SiteHeader() {
             <Button
               asChild
               size="2"
-              style={{ background: "var(--v1-marketing-navy)", color: "var(--v1-marketing-navy-ink)" }}
+              style={NAVY_SURFACE}
             >
               <NextLink href="/signup">Start free trial</NextLink>
             </Button>

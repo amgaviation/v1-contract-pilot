@@ -7,6 +7,7 @@ import { requireAccount } from "@/lib/supabase/account";
 import { isLiveMode } from "@/lib/stripe/server";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+import { emailIsConfigured } from "@/lib/email/send";
 import PageShell from "../../page-shell";
 import HeaderForm, { type ClientOption } from "./header-form";
 import LinesEditor, { type LineRow, type RebillableExpense } from "./lines-editor";
@@ -89,7 +90,15 @@ export default async function InvoicePage({
     supabase.from("invoices_overdue").select("invoice_id").eq("invoice_id", id),
     // Not filtered to active-only: an issued invoice may bill a client
     // that has since been archived, and the picker still needs to show it.
-    supabase.from("clients").select("id, name").order("name", { ascending: true }),
+    // contact_email rides along for StatusActions: whether "email it to the
+    // client" can be offered depends on the client having an address on file,
+    // which is one of the two halves a send needs. (The other is the mail
+    // service being configured, which is an environment question only the
+    // server can answer — see emailIsConfigured() below.)
+    supabase
+      .from("clients")
+      .select("id, name, contact_email")
+      .order("name", { ascending: true }),
     // A share row is best-effort read: its own error is not folded into
     // moneyError below, because a failed read here degrades to "no share
     // link shown yet" (the pilot can just try Share again), never to a
@@ -117,8 +126,14 @@ export default async function InvoicePage({
   const payments = (paymentData ?? []) as PaymentRow[];
   const totals = totalsData as TotalsRow | null;
   const overdue = ((overdueData ?? []) as { invoice_id: string }[]).length > 0;
-  const clients = (clientData ?? []) as ClientOption[];
+  const clients = (clientData ?? []) as (ClientOption & {
+    contact_email: string | null;
+  })[];
   const share = (shareData ?? null) as ShareRow;
+
+  // The client this invoice actually bills, for the send controls. Read off
+  // the list already fetched rather than issuing a sixth query.
+  const billedClient = clients.find((c) => c.id === invoice.client_id) ?? null;
 
   // A failed totals/payments/overdue/clients query is not "no data" — a
   // sent, unpaid invoice must not render as a healthy $0.00 balance in
@@ -257,7 +272,13 @@ export default async function InvoicePage({
         </Flex>
 
         <Flex direction="column" gap="4" gridColumn={{ lg: "span 5" }}>
-          <StatusActions invoice={invoice} hasLines={lines.length > 0} />
+          <StatusActions
+            invoice={invoice}
+            hasLines={lines.length > 0}
+            canEmail={emailIsConfigured()}
+            clientEmail={billedClient?.contact_email ?? null}
+            clientName={billedClient?.name ?? "this client"}
+          />
           {/* Matches pilot.invoice_share_create's own status gate
               (sent/partial/paid only) — never offered on a draft, so the
               button is never shown where the database would refuse it. */}

@@ -160,3 +160,186 @@
   --v1-marketing-navy: #0b1f33;
   --v1-marketing-navy-ink: #ffffff;
 }
+
+/* ---------------------------------------------------------------------------
+   MARKETING SURFACE ONLY — app/(marketing)/*.
+   Everything below is scoped to classes prefixed .v1-m-, used by nothing in
+   the authenticated product. It exists because the public site is the one
+   place this product deliberately steps outside Radix's ordinary light
+   theme: a full-bleed navy hero, a gradient CTA band, and the frame around
+   the hand-built product mock. The same reasoning as the
+   --v1-marketing-navy pair already documented above applies — these are
+   brand grounds, not Radix scale steps, so they are declared here (the one
+   file scripts/verify-tokens.mjs exempts) and reached by var() everywhere
+   else. Radius stays 0 throughout, matching the Theme's radius="none".
+   --------------------------------------------------------------------------- */
+:root {
+  /* Two further steps of the same navy the mark is cut from, used only to
+     give the hero and CTA band a direction of travel. */
+  --v1-marketing-navy-2: #123152;
+  --v1-marketing-navy-3: #1b4c7d;
+  /* Muted ink for secondary copy on a navy ground — the full-strength
+     --v1-marketing-navy-ink is reserved for headings and buttons so the
+     hierarchy survives on the dark panel. */
+  --v1-marketing-navy-ink-muted: #b9cbdd;
+  /* Hairlines and fills on the navy ground. Radix's --gray-a* alphas are
+     tuned for a light ground and disappear here. */
+  --v1-marketing-navy-line: rgba(255, 255, 255, 0.14);
+  --v1-marketing-navy-fill: rgba(255, 255, 255, 0.06);
+  /* The logo bug's Signal Blue, reused as the hero's accent glow. Same
+     literal as --v1-logo-bug above and deliberately a separate custom
+     property: the mark's colour must not become a UI token by proxy. */
+  --v1-marketing-glow: rgba(3, 107, 252, 0.35);
+}
+
+.v1-m-dark {
+  background-color: var(--v1-marketing-navy);
+  background-image: linear-gradient(
+      160deg,
+      var(--v1-marketing-navy) 0%,
+      var(--v1-marketing-navy-2) 55%,
+      var(--v1-marketing-navy-3) 100%
+    );
+  color: var(--v1-marketing-navy-ink);
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* The hero's one piece of pure decoration: a soft off-axis glow in the
+   mark's blue. aria-hidden by construction (a pseudo-element), and it
+   cannot affect layout because it is absolutely positioned. */
+.v1-m-dark::before {
+  content: "";
+  position: absolute;
+  inset-block-start: -30%;
+  inset-inline-end: -20%;
+  width: 60%;
+  aspect-ratio: 1;
+  background-image: radial-gradient(
+    circle,
+    var(--v1-marketing-glow) 0%,
+    transparent 70%
+  );
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Hairline rules on the navy ground, where --gray-a5 is invisible. */
+.v1-m-dark-line {
+  border-block-start: 1px solid var(--v1-marketing-navy-line);
+}
+
+.v1-m-eyebrow {
+  display: inline-block;
+  border: 1px solid var(--v1-marketing-navy-line);
+  background-color: var(--v1-marketing-navy-fill);
+  padding: 0.25rem 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* THE PRODUCT MOCK FRAME. The mock is a real Radix component tree at real
+   density, so below roughly 720px it would either reflow into something the
+   product never looks like or push the page sideways. Neither is acceptable
+   — rule 9 of this rebuild is that nothing scrolls the page horizontally on
+   a phone — so the mock keeps its true width and scrolls INSIDE its own
+   frame instead. overscroll-behavior-inline keeps that scroll from chaining
+   out to the document. */
+.v1-m-mock-scroll {
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.v1-m-mock-inner {
+  min-width: 42rem;
+}
+
+.v1-m-mock-frame {
+  background-color: var(--color-background);
+  border: 1px solid var(--gray-a6);
+  box-shadow: var(--shadow-5);
+}
+
+/* Chrome bar across the top of the mock, so it reads as a screen and not as
+   a card that happens to contain a table. */
+.v1-m-mock-chrome {
+  background-color: var(--gray-a3);
+  border-block-end: 1px solid var(--gray-a6);
+}
+
+.v1-m-mock-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  background-color: var(--gray-a7);
+}
+
+/* The one-trip-in / three-outputs diagram. The connector is a plain
+   background line behind the three output columns; it is decorative and
+   drops out below the md breakpoint where the columns stack. */
+.v1-m-flow-rail {
+  position: relative;
+}
+
+@media (min-width: 62em) {
+  .v1-m-flow-rail::before {
+    content: "";
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline: 12%;
+    height: 1px;
+    background-color: var(--gray-a6);
+  }
+}
+
+/* FAQ. Native <details>/<summary> so it works with no JavaScript and stays
+   keyboard- and screen-reader-correct for free. Only the marker and the
+   cursor are restyled; type and colour still come from Radix components
+   inside. */
+.v1-m-faq {
+  border-block-end: 1px solid var(--gray-a5);
+}
+
+.v1-m-faq > summary {
+  cursor: pointer;
+  list-style: none;
+  padding-block: var(--space-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.v1-m-faq > summary::-webkit-details-marker {
+  display: none;
+}
+
+.v1-m-faq > summary::after {
+  content: "+";
+  color: var(--gray-a11);
+  flex: none;
+}
+
+.v1-m-faq[open] > summary::after {
+  content: "–";
+}
+
+/* Alternating feature blocks. The text column is always FIRST in the DOM —
+   that is the reading order a screen reader and a phone should both get —
+   and only the wide layout swaps the visual order, which is exactly the
+   case CSS `order` is safe for. */
+@media (min-width: 62em) {
+  .v1-m-flip > :first-child {
+    order: 2;
+  }
+}
+
+/* Belt and braces for the mock frame: a flex/grid child will not shrink
+   below its content without min-width:0, and without that the 42rem inner
+   would push the PAGE sideways on a phone instead of scrolling inside its
+   own frame. */
+.v1-m-mock-scroll {
+  min-width: 0;
+  max-width: 100%;
+}

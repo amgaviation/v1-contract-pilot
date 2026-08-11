@@ -1,4 +1,5 @@
-import { Callout, Card, Flex, Heading, Text } from "@/components/ui";
+import NextLink from "next/link";
+import { Button, Callout, Card, Flex, Heading, Text } from "@/components/ui";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";
@@ -278,8 +279,23 @@ export default async function LogbookDraftsPage() {
             <Text size="2" color="gray" align="center">
               {draftCheckIncomplete
                 ? "This screen only checked your most recent completed trips and legs (see the note above) — an older unconfirmed leg could still be out there."
-                : "Complete a trip with legs and its proposed entries will show up here for you to confirm — nothing reaches your logbook automatically."}
+                : notYetFlownCount
+                  ? "Marking a trip flown proposes a logbook entry for each of its legs, and they wait here for you to confirm — nothing reaches your logbook automatically."
+                  : "Complete a trip with legs and its proposed entries will show up here for you to confirm — nothing reaches your logbook automatically."}
             </Text>
+            {/* A primary action rather than a dead end, and which one is
+                useful depends on why the queue is empty: mark a trip
+                flown if any are still Scheduled, otherwise log one. */}
+            <Flex gap="3" mt="2" wrap="wrap">
+              <Button asChild>
+                <NextLink href={notYetFlownCount ? "/trips" : "/trips/new"}>
+                  {notYetFlownCount ? "Mark a trip flown" : "Log a trip"}
+                </NextLink>
+              </Button>
+              <Button asChild variant="outline">
+                <NextLink href="/logbook">Open your logbook</NextLink>
+              </Button>
+            </Flex>
           </Flex>
         </Card>
       ) : (

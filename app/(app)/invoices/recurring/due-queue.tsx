@@ -36,7 +36,16 @@ function CreateOneButton({ row, onDone }: { row: DueRow; onDone: () => void }) {
   );
 }
 
-export default function DueQueue({ rows }: { rows: DueRow[] }) {
+export default function DueQueue({
+  rows,
+  hasActiveSchedules,
+}: {
+  rows: DueRow[];
+  // "Every active schedule's periods are already created" is only true
+  // when there IS an active schedule. With none, this queue is empty for
+  // a completely different reason and that sentence is simply wrong.
+  hasActiveSchedules: boolean;
+}) {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [pendingAll, startAll] = useTransition();
   const [allError, setAllError] = useState<string | null>(null);
@@ -85,10 +94,12 @@ export default function DueQueue({ rows }: { rows: DueRow[] }) {
       <Card size="3">
         <Flex direction="column" align="center" gap="2" py="6">
           <Text size="4" weight="bold">
-            Nothing due right now
+            {hasActiveSchedules ? "Nothing due right now" : "No schedules to fall due"}
           </Text>
           <Text size="2" color="gray" align="center">
-            Every active schedule&rsquo;s periods up to today have already been created.
+            {hasActiveSchedules
+              ? "Every active schedule’s periods up to today have already been created."
+              : "This queue lists the periods an active recurring schedule owes you an invoice for. Set one up below and its first period shows up here."}
           </Text>
         </Flex>
       </Card>
