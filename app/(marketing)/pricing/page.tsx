@@ -84,7 +84,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "Can I get my data out?",
-    a: "Yes. A full export is built in, and it is yours whether or not you keep subscribing.",
+    a: "Your logbook exports to CSV in full, and profit & loss, the estimated-tax-period summaries and the year-end packet all download — whether or not you keep subscribing. An account-wide export covering trips, invoices, expenses and clients is not built yet.",
   },
   {
     q: "Is there a cheaper tier with fewer features?",
@@ -138,7 +138,7 @@ export default function PricingPage() {
                   <Text size="2" color="gray">
                     Card required to start the trial. It is charged{" "}
                     {PRICE_LABEL}/month once the {TRIAL_DAYS} days are up, and
-                    your data is exportable in full from the day you put it in.
+                    your logbook and reports export from the day you put them in.
                   </Text>
 
                   <Button asChild size="4">

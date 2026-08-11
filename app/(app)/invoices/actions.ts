@@ -1512,13 +1512,33 @@ export async function updateInvoiceNotes(
  * been sent. A failure that looks like nothing happened is bad; one that looks
  * like success is worse, and this was the second kind.
  *
- * ORDER OF OPERATIONS, and why this way round. The send happens FIRST and the
- * status is written only after it succeeds. The alternative — mark, then send,
- * then roll back on failure — has a window where the invoice claims Sent while
- * the mail is still in flight, and a rollback that itself fails leaves the lie
- * permanent. Sending first inverts the risk to something honest: if the mail
- * goes out and the status write then fails, the pilot is told exactly that, in
- * those words, so they do not send it twice.
+ * ORDER OF OPERATIONS, and why it is THIS way round after being the other way.
+ *
+ * The first version of this sent the mail FIRST and wrote the status after, on
+ * the reasoning that an invoice must never claim Sent for mail still in
+ * flight. That reasoning was sound and the conclusion was still wrong, because
+ * of a fact about this schema it did not account for:
+ * `invoices_assign_number_on_issue` (20260805090000) assigns invoice_number —
+ * and the issue/due dates — ON the draft->sent transition, and only there. A
+ * draft has no number by deliberate design, so rendering the PDF before the
+ * transition emailed the client a document numbered "—", filed as
+ * `invoice-<uuid>.pdf`, while the invoice the pilot then sees carries a real
+ * permanent number. The client's copy and the pilot's record disagree, on the
+ * one field an accounts-payable department keys on, and neither party is
+ * positioned to notice. A reviewer caught it; it is the sharper failure.
+ *
+ * So: the transition runs FIRST, which mints the number, and only then is the
+ * document rendered and sent. That reinstates the window the original ordering
+ * was avoiding, and the window is handled by SAYING SO rather than by
+ * pretending — a failed send after a successful transition returns an error
+ * naming exactly what is true: the invoice is issued and numbered, the mail
+ * did not go, download it and send it yourself. The pilot is never left
+ * guessing, and the document is correct in every copy that exists.
+ *
+ * Rolling the status back instead was considered and rejected:
+ * invoices_protect_issued permits no sent->draft edge, so the "rollback" would
+ * have to be a void, which burns the number and is far more destructive than
+ * an accurate sentence.
  *
  * manual_download is unchanged and sends nothing, by design — it means "I will
  * send this myself", and it is also the fallback the error copy points at
@@ -1533,13 +1553,8 @@ export async function sendInvoice(
   // surfaces as a raw 22P02 error instead of an honest "not found".
   if (!UUID_RE.test(id)) return { error: "That invoice no longer exists." };
 
-  const { account } = await requireAccount(`/invoices/${id}`);
+  const { user, account } = await requireAccount(`/invoices/${id}`);
   const supabase = await createClient();
-
-  if (deliveryMethod === "platform_email") {
-    const sent = await emailInvoice(supabase, account.id, id, "invoice");
-    if (!sent.ok) return { error: sent.error };
-  }
 
   const payload: InvoiceUpdate = {
     status: "sent",
@@ -1552,32 +1567,25 @@ export async function sendInvoice(
     .eq("id", id)
     .eq("account_id", account.id);
 
-  // The mail is already gone at this point when the method was email. Saying
-  // so is the whole reason this branch is worded separately: a pilot who reads
-  // a bare "couldn't save" will reasonably try again and send their client a
-  // second copy of the same bill.
-  if (error) {
-    const base = friendlyDbError(error, "invoices.update");
-    return {
-      error:
-        deliveryMethod === "platform_email"
-          ? `The email was sent to your client, but the invoice couldn't be marked as sent (${base}) — don't send it again; set its status by hand.`
-          : base,
-    };
-  }
-  if (!count) {
-    return {
-      error:
-        deliveryMethod === "platform_email"
-          ? "The email was sent to your client, but that invoice no longer exists to mark as sent — don't send it again."
-          : "That invoice no longer exists.",
-    };
-  }
+  if (error) return { error: friendlyDbError(error, "invoices.update") };
+  if (!count) return { error: "That invoice no longer exists." };
 
   revalidatePath(`/invoices/${id}`);
   revalidatePath("/invoices");
   revalidatePath("/trips");
   revalidatePath(DASHBOARD_PATH);
+
+  if (deliveryMethod === "platform_email") {
+    // Numbered and dated by the transition above, so the attachment now
+    // matches the record exactly.
+    const sent = await emailInvoice(supabase, account.id, id, "invoice", user.email);
+    if (!sent.ok) {
+      return {
+        error: `The invoice is now issued and numbered, but the email didn't go out — ${sent.error} Download the PDF and send it yourself; don't try to issue it again.`,
+      };
+    }
+  }
+
   return { error: null };
 }
 
@@ -1596,10 +1604,42 @@ export async function sendInvoiceReminder(
 ): Promise<{ error: string | null }> {
   if (!UUID_RE.test(id)) return { error: "That invoice no longer exists." };
 
-  const { account } = await requireAccount(`/invoices/${id}`);
+  const { user, account } = await requireAccount(`/invoices/${id}`);
   const supabase = await createClient();
 
-  const sent = await emailInvoice(supabase, account.id, id, "reminder");
+  // STATUS IS RE-READ HERE, not trusted from the screen that offered the
+  // button. A server action is a public endpoint, not a private helper of the
+  // component that rendered it, and the gap between render and click is
+  // exactly where an invoice gets paid — by a Stripe webhook, in another tab,
+  // or by the pilot recording a cheque on their phone. Without this check a
+  // settled invoice can be chased for a balance of $0.00, and a voided one
+  // chased for money nobody owes. Both land in the client's inbox and neither
+  // is retractable.
+  const { data: statusRow, error: statusError } = await supabase
+    .from("invoices")
+    .select("status")
+    .eq("id", id)
+    .eq("account_id", account.id)
+    .maybeSingle();
+
+  if (statusError) {
+    return {
+      error: `${friendlyDbError(statusError, "invoices.select")} Nothing was sent.`,
+    };
+  }
+  const current = (statusRow as { status: string } | null)?.status;
+  if (!current) return { error: "That invoice no longer exists." };
+  if (current !== "sent" && current !== "partial") {
+    const why =
+      current === "paid"
+        ? "It's already been paid in full."
+        : current === "void"
+          ? "It's been voided."
+          : "It hasn't been issued yet.";
+    return { error: `No reminder sent. ${why} Reload the page to see where it stands.` };
+  }
+
+  const sent = await emailInvoice(supabase, account.id, id, "reminder", user.email);
   if (!sent.ok) return { error: sent.error };
 
   revalidatePath(`/invoices/${id}`);
@@ -1617,7 +1657,24 @@ async function emailInvoice(
   supabase: any,
   accountId: string,
   invoiceId: string,
-  kind: "invoice" | "reminder"
+  kind: "invoice" | "reminder",
+  /**
+   * WHERE A REPLY GOES, and it must not be the platform.
+   *
+   * INVOICE_FROM_EMAIL is one deployment-wide sender shared by every tenant,
+   * so without an explicit reply-to a client hitting Reply writes to a mailbox
+   * belonging to the software vendor rather than to their pilot. That is wrong
+   * in every case and actively harmful on a reminder, whose own words invite a
+   * reply: "if anything on it needs correcting, let me know and I will send a
+   * revised copy." The one person who can revise the bill would never see it,
+   * and — worse for a product whose trust story is that AMG cannot see a
+   * pilot's client relationships — the vendor would.
+   *
+   * The pilot's own signed-in address is the right target: it is verified by
+   * Supabase Auth, it is theirs, and it needs no new column. If an account-level
+   * billing address is ever wanted, this is the one place to change.
+   */
+  replyTo: string | undefined
 ): Promise<{ ok: true; note: string } | { ok: false; error: string }> {
   if (!emailIsConfigured()) {
     return {
@@ -1721,6 +1778,9 @@ async function emailInvoice(
     to: client.contact_email as string,
     subject: message.subject,
     text: message.text,
+    // Only set when it is a usable address — a malformed reply-to is worse
+    // than none, because some clients silently drop the whole message.
+    replyTo: looksLikeEmail(replyTo) ? replyTo : undefined,
     attachments: [{ filename: doc.filename, content: doc.buffer }],
   });
 

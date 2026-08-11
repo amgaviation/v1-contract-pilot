@@ -61,7 +61,7 @@ const OUTPUTS = [
   {
     step: "03",
     title: "Receipts, already filed",
-    body: "Every receipt you scan or import attaches to the trip, so it lands against the right client, the right invoice, and the right tax year without you filing it twice.",
+    body: "Scan or import a receipt and assign it to the trip. Tag it rebill and it goes onto that trip's invoice; tag it deduct and it lands in the year's deductible total. You file it once, where you already are.",
   },
 ];
 
@@ -171,7 +171,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "Do I own my data?",
-    a: "Yes. Your trips, logbook, invoices, expenses and clients are yours, and there is a full export — nothing here is designed to be hard to leave with.",
+    a: "Yes, and nothing here is designed to be hard to leave with. Your whole logbook exports to CSV, and profit & loss, the estimated-tax-period summaries and the year-end packet all download. An account-wide export of trips, invoices, expenses and clients is not built yet — it is the honest gap in this answer.",
   },
   {
     q: "Is this accounting software?",
@@ -482,7 +482,7 @@ export default async function LandingPage() {
                 </Heading>
                 <Text size="3" style={NAVY_INK_MUTED}>
                   {TRIAL_LABEL}, {PRICE_LABEL} after. Card required to start,
-                  and your data is exportable from the day you put it in.
+                  and your logbook and reports export from the day you put them in.
                 </Text>
               </Flex>
               <Flex gap="3" wrap="wrap" flexShrink="0">

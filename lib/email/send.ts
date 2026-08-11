@@ -141,16 +141,32 @@ export async function sendEmail(message: Message): Promise<SendResult> {
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (cause) {
-    // A timeout and a DNS failure are different facts to the person
-    // debugging, and neither is the pilot's fault — say which, and say
-    // plainly that nothing was sent so they don't assume a duplicate risk.
-    const reason =
-      cause instanceof Error && cause.name === "TimeoutError"
-        ? "the mail service didn't respond in time"
-        : "the mail service couldn't be reached";
+    // A TIMEOUT AND A CONNECTION FAILURE ARE NOT THE SAME FACT, and the
+    // difference decides what the pilot should do next.
+    //
+    // If the connection never opened, nothing was sent and retrying is free.
+    // If the request was accepted and the RESPONSE timed out, the mail may
+    // already be queued — this code cannot tell. An earlier version of this
+    // branch said "Nothing was sent" for both and invited another attempt,
+    // which is how a client ends up with two copies of the same invoice. It
+    // asserted a fact it did not have.
+    //
+    // Resend has no idempotency key on this endpoint, so the honest move is
+    // to report the outcome as UNKNOWN and hand the judgement to the person
+    // who can check — the pilot, who can look at their sent folder or simply
+    // ask their client. Never claim a send did not happen when the truth is
+    // that we stopped listening.
+    if (cause instanceof Error && cause.name === "TimeoutError") {
+      return {
+        ok: false,
+        error:
+          "The mail service didn't respond in time, so this may or may not have been sent — check with your client before sending it again, and mark the invoice's status by hand if it did arrive.",
+      };
+    }
     return {
       ok: false,
-      error: `Nothing was sent — ${reason}. Try again, or download the PDF and send it yourself.`,
+      error:
+        "Nothing was sent — the mail service couldn't be reached. Try again, or download the PDF and send it yourself.",
     };
   }
 
