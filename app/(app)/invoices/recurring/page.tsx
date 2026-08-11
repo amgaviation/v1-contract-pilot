@@ -96,7 +96,7 @@ export default async function RecurringInvoicesPage() {
         </Card>
       ) : (
         <Flex direction="column" gap="4">
-          <DueQueue rows={dueRows} />
+          <DueQueue rows={dueRows} hasActiveSchedules={schedules.some((s) => s.active)} />
           <ScheduleManager schedules={schedules} clients={clients} />
         </Flex>
       )}

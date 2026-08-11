@@ -1,9 +1,14 @@
 import NextLink from "next/link";
 import { Badge, Button, Callout, Card, Flex, Grid, Table, Text } from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import {
+  CheckCircledIcon,
+  CircleIcon,
+  ExclamationTriangleIcon,
+} from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
+import { countOf } from "@/lib/supabase/rows";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import { formatCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
@@ -134,7 +139,7 @@ export default async function OverviewPage() {
   // — left over from when Overview served at the root — which is the only
   // one of the repo's ~70 requireAccount call sites that did not pass its
   // own route.
-  await requireAccount(DASHBOARD_PATH);
+  const { account } = await requireAccount(DASHBOARD_PATH);
 
   const supabase = await createClient();
 
@@ -157,6 +162,9 @@ export default async function OverviewPage() {
     operatorQualExpirationsRes,
     voidInvoicesRes,
     unmarkedTripsRes,
+    anyClientCountRes,
+    anyTripCountRes,
+    anyInvoiceCountRes,
   ] = await Promise.all([
     supabase
       .from("trips")
@@ -243,6 +251,18 @@ export default async function OverviewPage() {
       .from("trips")
       .select("id", { count: "exact", head: true })
       .in("status", ["scheduled", "in_progress"]),
+    // GETTING STARTED — three unfiltered existence counts, one per step
+    // whose done-state is a database fact. They are deliberately NOT the
+    // filtered reads above: "you have a trip" is not "you have a
+    // completed, unbilled trip", and a pilot who logged a trip and
+    // invoiced it must not be told to log their first one. Every one is
+    // unwrapped through countOf (lib/supabase/rows.ts) below, because a
+    // failed count that fell to 0 would render as "step not done" — an
+    // unticked box is this panel's version of the reassuring zero that
+    // file exists to prevent.
+    supabase.from("clients").select("id", { count: "exact", head: true }),
+    supabase.from("trips").select("id", { count: "exact", head: true }),
+    supabase.from("invoices").select("id", { count: "exact", head: true }),
   ]);
 
   const trips = (tripsRes.data ?? []) as UnbilledTripRow[];
@@ -352,6 +372,22 @@ export default async function OverviewPage() {
     // pilot with a month of unbilled flying being told there is nothing to
     // invoice.
     { context: "trips still marked scheduled", error: unmarkedTripsRes.error },
+  ].filter((e) => e.error);
+
+  // ---------------------------------------------------------------------
+  // Getting started — real state, read fresh from the database on every
+  // render. Nothing here is remembered client-side: a pilot who added a
+  // client on their laptop must see that step ticked when they open this
+  // screen on the flight deck iPad, and a step "completed" in localStorage
+  // on a device they no longer use is worse than no checklist at all.
+  // ---------------------------------------------------------------------
+  const anyClientCount = countOf(anyClientCountRes);
+  const anyTripCount = countOf(anyTripCountRes);
+  const anyInvoiceCount = countOf(anyInvoiceCountRes);
+  const onboardingErrors = [
+    { context: "your clients", error: anyClientCount.ok ? null : anyClientCount.error },
+    { context: "your trips", error: anyTripCount.ok ? null : anyTripCount.error },
+    { context: "your invoices", error: anyInvoiceCount.ok ? null : anyInvoiceCount.error },
   ].filter((e) => e.error);
 
   // -----------------------------------------------------------------------
@@ -663,7 +699,9 @@ export default async function OverviewPage() {
   // nothing logged anywhere it renders four $0.00 KPI cards and says
   // nothing about what the product is for. True zero-data across every
   // panel this page reads — not just "no unbilled trips", which a
-  // pilot with a month of paid-off history also sees.
+  // pilot with a month of paid-off history also sees. Used here only as
+  // the "this screen looks blank" signal for the notice below; the
+  // getting-started panel itself is gated on its own counts.
   const isDayOne =
     readyCount === 0 &&
     unmarkedTripCount === 0 &&
@@ -671,6 +709,57 @@ export default async function OverviewPage() {
     expenses.length === 0 &&
     liveInvoices.length === 0 &&
     yearPayments.length === 0;
+
+  // The panel is for a pilot who has not yet billed anything: it goes the
+  // moment there is a trip or an invoice on file, whether or not the last
+  // two steps were ever ticked. Gated on all three counts having actually
+  // been read — an unticked box drawn from a failed count would be the
+  // "you have none of these" lie in checkbox form.
+  const onboardingCountsOk = anyClientCount.ok && anyTripCount.ok && anyInvoiceCount.ok;
+  const showGettingStarted =
+    onboardingCountsOk && anyTripCount.count === 0 && anyInvoiceCount.count === 0;
+
+  // Each step's done-state is a fact about the account, not a stored
+  // "progress" flag: a client row exists, a trip row exists, an invoice
+  // row exists, the account carries a Stripe Connect id. Steps 2 and 3
+  // are structurally false while this panel is on screen — that is the
+  // same fact that keeps it on screen — but they are read rather than
+  // hardcoded so the panel cannot drift from the condition that shows it.
+  const GETTING_STARTED_STEPS = [
+    {
+      id: "client",
+      label: "Add your first client",
+      detail: "The owner, operator, or management company you fly for. Trips and invoices both hang off a client.",
+      href: "/clients/new",
+      cta: "Add a client",
+      done: anyClientCount.ok && anyClientCount.count > 0,
+    },
+    {
+      id: "trip",
+      label: "Log your first trip",
+      detail: "Dates, tail number, day rate. Its legs feed your logbook and its days feed the invoice.",
+      href: "/trips/new",
+      cta: "Log a trip",
+      done: anyTripCount.ok && anyTripCount.count > 0,
+    },
+    {
+      id: "invoice",
+      label: "Turn it into an invoice",
+      detail: "Flight days, travel days, and rebilled expenses come across from the trip — you review before anything is sent.",
+      href: "/invoices/new",
+      cta: "Draft an invoice",
+      done: anyInvoiceCount.ok && anyInvoiceCount.count > 0,
+    },
+    {
+      id: "stripe",
+      label: "Connect Stripe to get paid",
+      detail: "Optional, and it only affects how a client can pay you — invoices work without it.",
+      href: "/settings",
+      cta: "Open settings",
+      done: Boolean(account.connect_account_id),
+    },
+  ];
+  const stepsDone = GETTING_STARTED_STEPS.filter((s) => s.done).length;
 
   return (
     <PageShell
@@ -726,27 +815,70 @@ export default async function OverviewPage() {
 
       {/* Day-one orientation — the KPI cards below are correctly $0.00
           with nothing logged, but a zero-state dashboard alone doesn't
-          say what to do next. Same thesis /trips states in its own
-          empty state, said once here since this is the screen every
-          other one is reached from. */}
-      {!errors.length && isDayOne ? (
+          say what to do next. Said once here, since this is the screen
+          every other one is reached from. */}
+      {showGettingStarted ? (
         <Card>
-          <Flex direction="column" gap="2" py="2">
-            <Text size="4" weight="medium">
-              Nothing logged yet
-            </Text>
-            <Text size="2" color="gray">
-              Log the trip once. Its legs feed your logbook, its days feed
-              the invoice, and its expenses file themselves against it —
-              the figures below fill in from there.
-            </Text>
-            <Flex mt="1">
-              <Button asChild>
-                <NextLink href="/trips/new">Log your first trip</NextLink>
-              </Button>
+          <Flex direction="column" gap="3" py="2">
+            <Flex direction="column" gap="1">
+              <Text size="4" weight="medium">
+                Getting started
+              </Text>
+              <Text size="2" color="gray">
+                {`${stepsDone} of ${GETTING_STARTED_STEPS.length} done. Log the trip once — its legs feed your logbook, its days feed the invoice, and its expenses file themselves against it. The figures below fill in from there.`}
+              </Text>
+            </Flex>
+            <Flex direction="column" gap="3" asChild>
+              <ol>
+                {GETTING_STARTED_STEPS.map((step, index) => (
+                  <Flex key={step.id} asChild gap="3" align="start" justify="between" wrap="wrap">
+                    <li>
+                      <Flex gap="3" align="start">
+                        <Text color={step.done ? "green" : "gray"} aria-hidden>
+                          {step.done ? <CheckCircledIcon /> : <CircleIcon />}
+                        </Text>
+                        <Flex direction="column" gap="1">
+                          <Text size="2" weight="medium">
+                            {`${index + 1}. ${step.label}`}
+                            <Text as="span" size="1" color={step.done ? "green" : "gray"}>
+                              {step.done ? " · Done" : " · Not done yet"}
+                            </Text>
+                          </Text>
+                          <Text size="1" color="gray">
+                            {step.detail}
+                          </Text>
+                        </Flex>
+                      </Flex>
+                      <Button
+                        asChild
+                        size="1"
+                        variant={step.done ? "outline" : "solid"}
+                        aria-label={`${step.cta} — step ${index + 1}, ${step.label}`}
+                      >
+                        <NextLink href={step.href}>{step.done ? "Review" : step.cta}</NextLink>
+                      </Button>
+                    </li>
+                  </Flex>
+                ))}
+              </ol>
             </Flex>
           </Flex>
         </Card>
+      ) : !onboardingCountsOk && isDayOne && !errors.length ? (
+        // A failed count is not "you haven't started". With nothing else
+        // on this screen to look at either, say which of the two it is
+        // rather than leaving a pilot with four $0.00 cards and no
+        // explanation at all.
+        <Callout.Root color="amber">
+          <Callout.Icon>
+            <ExclamationTriangleIcon />
+          </Callout.Icon>
+          <Callout.Text>
+            {`We couldn't check how far along your setup is (${onboardingErrors
+              .map((e) => e.context)
+              .join(", ")}), so the getting-started steps aren't shown. This is not a statement that you haven't started.`}
+          </Callout.Text>
+        </Callout.Root>
       ) : null}
 
       {/* Row 1 — KPI statistics cards. */}

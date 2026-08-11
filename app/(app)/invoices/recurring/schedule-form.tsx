@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
+import NextLink from "next/link";
 import {
   AlertDialog,
   Badge,
@@ -417,9 +418,18 @@ export default function ScheduleManager({
 
       {clients.length === 0 ? (
         <Card size="3">
-          <Text size="2" color="gray">
-            Add a client first — a recurring schedule bills one client.
-          </Text>
+          <Flex direction="column" align="center" gap="3" py="5">
+            <Text size="4" weight="bold">
+              Add a client first
+            </Text>
+            <Text size="2" color="gray" align="center">
+              A recurring schedule bills exactly one client — the owner, operator, or
+              management company on a retainer or a committed-rate contract.
+            </Text>
+            <Button asChild>
+              <NextLink href="/clients/new">Add a client</NextLink>
+            </Button>
+          </Flex>
         </Card>
       ) : (
         <AddScheduleCard clients={clients} />
@@ -432,9 +442,22 @@ export default function ScheduleManager({
               No recurring schedules yet
             </Text>
             <Text size="2" color="gray" align="center">
-              Add one above for a monthly retainer or committed-rate contract you re-bill by hand
-              today.
+              A schedule is for the billing that repeats on a cadence — a monthly retainer or a
+              committed-rate contract you re-bill by hand today. It records the cadence only:
+              every invoice it creates is a draft you review before sending.
+              {clients.length === 0
+                ? " Add a client above and this list fills in from there."
+                : " Add one above and the periods it owes you show up in the queue at the top of this screen."}
             </Text>
+            {clients.length === 0 ? (
+              <Button asChild>
+                <NextLink href="/clients/new">Add a client</NextLink>
+              </Button>
+            ) : (
+              <Button asChild variant="outline">
+                <NextLink href="/invoices">Back to invoices</NextLink>
+              </Button>
+            )}
           </Flex>
         ) : (
           <Table.Root variant="ghost">
