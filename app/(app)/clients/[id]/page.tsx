@@ -2,6 +2,7 @@ import NextLink from "next/link";
 import { notFound } from "next/navigation";
 import {
   Box,
+  Button,
   Callout,
   Card,
   Flex,
@@ -215,7 +216,21 @@ export default async function EditClientPage({
     <PageShell
       title={client.name}
       subtitle={client.archived_at ? "Archived" : "Client"}
-      action={<ArchiveButton id={client.id} archived={Boolean(client.archived_at)} />}
+      action={
+        <>
+          {/* The statement: what this client was invoiced over a period,
+              what they've paid, and what's outstanding — the document a
+              pilot sends an owner or flight department whose AP pays in
+              batches. Lives at its own route so it gets a period picker
+              and a print view without crowding this screen. */}
+          <Button asChild variant="soft">
+            <NextLink href={`/clients/${client.id}/statement`}>
+              Statement
+            </NextLink>
+          </Button>
+          <ArchiveButton id={client.id} archived={Boolean(client.archived_at)} />
+        </>
+      }
     >
       {client.archived_at ? (
         <Card mb="4">
