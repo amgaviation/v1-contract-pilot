@@ -120,22 +120,24 @@ how much it matters to this persona, is in §8.
 Every GAP row from above, with the cost/benefit signal the matrix supports. None is excluded
 by a lock; all are owner-eligible work.
 
-1. **Estimates/quotes UI** (1.5, includes deposit requests) — *backend is fully shipped and
-   reviewed; only routes/forms are missing.* The highest-leverage remaining item: quotes are
-   where day-rate negotiations start, and the migration's own header calls it "the clearest
-   remaining gap against the products this one is measured against."
-2. **Invoice viewed/paid notifications** (1.7, 2.4) — share-link view tracking is a column
+*(Re-ordered after this session's builds: the audit-time #1 — the estimates UI — and #4 —
+the sales tax report — both shipped on this branch and moved to MATCHED in the matrix above.
+One sub-item of the old #1 survives here as a smaller entry: deposit requests, which need
+schema that does not exist. What follows is the CURRENT gap list.)*
+
+1. **Invoice viewed/paid notifications** (1.7, 2.4) — share-link view tracking is a column
    and a stamp; paid-notification is harder under Connect Standard (the platform doesn't own
    the pilot's payment events) and the manual-record mechanism was chosen deliberately.
-3. **Multi-user / bookkeeper seat UI** (4.5) — schema and RLS ready since the first
+2. **Multi-user / bookkeeper seat UI** (4.5) — schema and RLS ready since the first
    migration; blocked on the owner's deferred per-seat plan (G10), so this is an owner
    decision before it is engineering.
-4. **Sales tax report** (4.8/6.4) — small; sums data that already exists per line.
-5. **Attach receipts to invoices** (1.9) — small; strong fit with rebilled-expense norms.
-6. **Reusable message templates** (1.8) — small.
-7. **Saved-card recurring auto-charge** (2.5) — meaningful build; would live entirely in the
+3. **Attach receipts to invoices** (1.9) — small; strong fit with rebilled-expense norms.
+4. **Deposit requests on estimates** (the surviving sliver of audit-time 1.5) — needs new
+   schema, so it is an owner-gated migration before it is UI.
+5. **Reusable message templates** (1.8) — small.
+6. **Saved-card recurring auto-charge** (2.5) — meaningful build; would live entirely in the
    pilot's Stripe account to preserve decision #8 (no funds custody, no fee).
-8. **Native mobile apps / PWA** (7.5) — a PWA manifest + install prompt is cheap and gets
+7. **Native mobile apps / PWA** (7.5) — a PWA manifest + install prompt is cheap and gets
    most of the receipt-capture value; native apps are a product-line decision, not a parity
    patch.
 9. **Multi-currency** (4.6) — low for the persona (US pilots bill US operators in USD,
@@ -190,12 +192,14 @@ Parity cuts both ways. Wave's site claims none of the following; each is shipped
 
 ## 10. Verdict against the standing instruction
 
-Counting the scored rows: **19 of 37 are MATCHED or MATCHED-DIFFERENTLY, 2 more land this
-session, 6 are the owner's own exclusions, and 10 are gaps — of which one (estimates UI) is
-the only gap a Wave-switching pilot would call core invoicing functionality, and its backend
-is already shipped.** Everything else in the gap column is either automation polish (viewed
-tracking, templates, auto-charge), owner-deferred (seats), or a deliberate trade documented
-where it was made (live feeds, native apps). For the job a contract pilot hires Wave to do —
-invoice, get paid, track expenses and receipts, be ready for taxes — v1 covers most of it
-today, adds a trip/logbook/compliance layer Wave has nothing against, and the honest
-remainder is the ten-item list in §8.
+Counting the scored rows after this session's builds: **23 of 37 are MATCHED or
+MATCHED-DIFFERENTLY, 6 are the owner's own exclusions, and 8 are gaps — and no remaining gap
+is one a Wave-switching pilot would call core invoicing functionality.** The audit-time
+version of this verdict named the estimates UI as the single core gap; it shipped on this
+branch, as did the sales tax report, the account-wide export, and per-client statements.
+Everything left in the gap column is automation polish (viewed tracking, templates,
+auto-charge), owner-gated (seats, estimate deposits), or a deliberate trade documented where
+it was made (live feeds, native apps). For the job a contract pilot hires Wave to do —
+invoice, get paid, track expenses and receipts, be ready for taxes — v1 covers it today,
+adds a trip/logbook/compliance layer Wave has nothing against, and the honest remainder is
+the seven-item list in §8.
