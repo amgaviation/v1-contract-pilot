@@ -171,7 +171,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "Do I own my data?",
-    a: "Yes, and nothing here is designed to be hard to leave with. Your whole logbook exports to CSV, and profit & loss, the estimated-tax-period summaries and the year-end packet all download. An account-wide export of trips, invoices, expenses and clients is not built yet — it is the honest gap in this answer.",
+    a: "Yes, and nothing here is designed to be hard to leave with. Your whole logbook exports to CSV, and profit & loss, the estimated-tax-period summaries and the year-end packet all download. The account-wide export lives in Settings: one CSV each for clients, trips, trip days, trip legs, invoices, invoice lines, payments, expenses, mileage and document details. Uploaded receipt and document files aren't in those CSVs — they download one at a time from their own pages.",
   },
   {
     q: "Is this accounting software?",

@@ -332,9 +332,14 @@ note("\nThe status machine");
     "P0001"
   );
 
+  // Since the 20260812 require-lines-on-send migration, a lineless draft
+  // cannot leave draft at all (proven in its own section below) — so every
+  // fixture here that sends must carry lines, or it would be testing that
+  // trigger instead of the thing it names.
   const sent = asTenant(
     A.user,
     `${NEW_ESTIMATE(A)}
+     ${LINES("(select id, account_id from pilot.estimates order by created_at desc limit 1) e")}
      update pilot.estimates set status = 'sent'
       where id = (select id from pilot.estimates order by created_at desc limit 1);
      select estimate_number is not null, issued_on = current_date, sent_at is not null
@@ -346,6 +351,7 @@ note("\nThe status machine");
     "and the number cannot be changed afterwards",
     A.user,
     `${NEW_ESTIMATE(A)}
+     ${LINES("(select id, account_id from pilot.estimates order by created_at desc limit 1) e")}
      update pilot.estimates set status = 'sent'
       where id = (select id from pilot.estimates order by created_at desc limit 1);
      update pilot.estimates set estimate_number = 'ALFA-2026-9999'
@@ -358,6 +364,7 @@ note("\nThe status machine");
   const revise = asTenant(
     A.user,
     `${NEW_ESTIMATE(A)}
+     ${LINES("(select id, account_id from pilot.estimates order by created_at desc limit 1) e")}
      update pilot.estimates set status = 'sent'
       where id = (select id from pilot.estimates order by created_at desc limit 1);
      update pilot.estimates set status = 'draft'
@@ -365,6 +372,51 @@ note("\nThe status machine");
      select status from pilot.estimates order by created_at desc limit 1;`
   );
   equals("a sent quote can go back to draft to be revised", revise.out, "draft");
+}
+
+note("\nNo empty document can be sent");
+{
+  // The 20260812 migration, mirroring invoices_protect_issued's empty-
+  // document check: the UI's disabled send button is a courtesy, and a
+  // two-tab race (delete the last line here, send there) used to mint a
+  // numbered, sent estimate totalling $0.00.
+  refuses(
+    "a draft with no lines cannot be sent",
+    A.user,
+    `${NEW_ESTIMATE(A)}
+     update pilot.estimates set status = 'sent'
+      where id = (select id from pilot.estimates order by created_at desc limit 1);`,
+    "P0001"
+  );
+
+  refuses(
+    "nor one whose lines were all deleted before sending",
+    A.user,
+    `${NEW_ESTIMATE(A)}
+     ${LINES("(select id, account_id from pilot.estimates order by created_at desc limit 1) e")}
+     delete from pilot.estimate_lines
+      where estimate_id = (select id from pilot.estimates order by created_at desc limit 1);
+     update pilot.estimates set status = 'sent'
+      where id = (select id from pilot.estimates order by created_at desc limit 1);`,
+    "P0001"
+  );
+
+  // The guard must refuse EMPTY, not refuse SENDING: one line is enough,
+  // and the send still stamps everything it always stamped. Asserted right
+  // next to the refusal so this section cannot pass by refusing all sends.
+  const oneLine = asTenant(
+    A.user,
+    `${NEW_ESTIMATE(A)}
+     insert into pilot.estimate_lines
+       (account_id, estimate_id, line_type, description, quantity, unit_amount_cents)
+     select account_id, id, 'flight_day', 'Single flight day', 1, 120000
+       from pilot.estimates order by created_at desc limit 1;
+     update pilot.estimates set status = 'sent'
+      where id = (select id from pilot.estimates order by created_at desc limit 1);
+     select status, estimate_number is not null
+       from pilot.estimates order by created_at desc limit 1;`
+  );
+  equals("a one-line draft still sends, and is numbered", oneLine.out, "sent|t");
 }
 
 note("\nExpiry is derived, not stored");
@@ -403,9 +455,14 @@ note("\nExpiry is derived, not stored");
   // about a date on a quote the client already accepted is noise.
   equals("but an accepted one is not chased for being past its date", answered.out, "0");
 
+  // WITH lines, deliberately: a BEFORE trigger fires before the row's own
+  // CHECK constraints are evaluated, so a lineless fixture would raise the
+  // require-lines P0001 first and this assertion would never reach the
+  // date CHECK it exists to prove.
   const cannotBackdate = asTenant(
     A.user,
     `${NEW_ESTIMATE(A)}
+     ${LINES("(select id, account_id from pilot.estimates order by created_at desc limit 1) e")}
      update pilot.estimates set valid_until = current_date - 1
       where id = (select id from pilot.estimates order by created_at desc limit 1);
      update pilot.estimates set status = 'sent'
@@ -455,14 +512,19 @@ update pilot.estimates set status = 'accepted'
     "P0001"
   );
 
+  // The lines are deleted AFTER acceptance: since the 20260812 migration a
+  // lineless draft cannot even be sent, so the old lineless fixture would
+  // have had its P0001 raised by the send — and this probe would "pass"
+  // without the conversion guard ever firing, which is exactly failure
+  // mode 2 in this file's header. Deleting the lines from an accepted (not
+  // yet converted) quote is legal, and is the one tenant-reachable route
+  // to an empty conversion.
   refuses(
     "an accepted quote with no lines cannot be converted",
     A.user,
-    `${NEW_ESTIMATE(A)}
-     update pilot.estimates set status = 'sent'
-      where id = (select id from pilot.estimates order by created_at desc limit 1);
-     update pilot.estimates set status = 'accepted'
-      where id = (select id from pilot.estimates order by created_at desc limit 1);
+    `${ACCEPTED}
+     delete from pilot.estimate_lines
+      where estimate_id = (select id from pilot.estimates order by created_at desc limit 1);
      select pilot.estimate_convert_to_invoice(
        (select id from pilot.estimates order by created_at desc limit 1));`,
     "P0001"
@@ -524,6 +586,7 @@ note("\nDeleting");
   const sentKept = asTenant(
     A.user,
     `${NEW_ESTIMATE(A)}
+     ${LINES("(select id, account_id from pilot.estimates order by created_at desc limit 1) e")}
      update pilot.estimates set status = 'sent'
       where id = (select id from pilot.estimates order by created_at desc limit 1);
      with target as (select id from pilot.estimates order by created_at desc limit 1)

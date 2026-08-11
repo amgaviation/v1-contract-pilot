@@ -5,7 +5,7 @@
  * own icon-name strings, collapse groups and demo entries. This is a plain
  * list because that is all the nav has ever needed.
  *
- * Settings sits apart from the eight feature sections deliberately — it is
+ * Settings sits apart from the nine feature sections deliberately — it is
  * where a pilot changes how the rest behaves, not another place to file
  * work, and the rail renders it below a separator for that reason.
  */
@@ -54,6 +54,7 @@ export const NAV_SECTIONS: readonly NavItem[] = [
   { href: DASHBOARD_PATH, label: "Overview" },
   { href: "/trips", label: "Trips" },
   { href: "/invoices", label: "Invoices" },
+  { href: "/estimates", label: "Estimates" },
   { href: "/expenses", label: "Expenses" },
   { href: "/logbook", label: "Logbook" },
   { href: "/clients", label: "Clients" },
@@ -70,7 +71,7 @@ export const NAV_SETTINGS: NavItem = { href: "/settings", label: "Settings" };
  * over the root path (see app/(marketing)/page.tsx), which retired the
  * exact-match special case this function used to need: every href here is
  * now a genuine path segment, and none of them is a prefix of another, so
- * plain prefix matching is correct for all eight sections including
+ * plain prefix matching is correct for all nine sections including
  * Overview.
  */
 export function isCurrentSection(href: string, pathname: string): boolean {

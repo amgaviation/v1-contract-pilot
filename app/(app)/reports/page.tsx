@@ -49,6 +49,17 @@ export default async function ReportsIndexPage() {
             against the prior period.
           </Text>
         </Card>
+        <Card size="3">
+          <Heading as="h2" size="4" mb="1">
+            <RadixLink asChild>
+              <NextLink href="/reports/sales-tax">Sales tax</NextLink>
+            </RadixLink>
+          </Heading>
+          <Text as="div" size="2" color="gray">
+            Tax charged on your invoices and collected in a period, for
+            whoever prepares your filings.
+          </Text>
+        </Card>
       </Flex>
     </PageShell>
   );
