@@ -6,8 +6,9 @@
  * modules.
  *
  * Everything in this file mirrors a rule that already lives in
- * supabase/migrations/20260810060000_phase10_estimates.sql. The database
- * is the enforcement; these copies exist so the UI never offers a control
+ * supabase/migrations/20260810060000_phase10_estimates.sql (plus the
+ * 20260812 require-lines-on-send follow-up). The database is the
+ * enforcement; these copies exist so the UI never offers a control
  * the triggers would refuse, and so the refusals that do reach the UI can
  * be turned into sentences. If the migration's rules change, change these
  * to match — never the other way around.
@@ -185,6 +186,12 @@ export function estimateRefusalMessage(
   }
   if (message.includes("no lines to invoice")) {
     return "This estimate has no line items, so there's nothing to put on an invoice. Add at least one line first.";
+  }
+  // pilot.estimates_require_lines_on_send (the 20260812 migration): the
+  // database refuses draft -> sent on an estimate with zero lines, closing
+  // the race where a second tab deletes the last line while this one sends.
+  if (message.includes("cannot be sent with no line items")) {
+    return "This estimate has no line items, so it can't be sent. Add at least one line first.";
   }
   if (message.includes("not found")) {
     return "That estimate no longer exists.";

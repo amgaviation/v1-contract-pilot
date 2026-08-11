@@ -75,7 +75,12 @@ export default async function EstimatePage({
       .from("estimate_lines")
       .select("*")
       .eq("estimate_id", id)
-      .order("sort_order", { ascending: true }),
+      // (sort_order, id): sort_order alone is not a total order — lines
+      // appended before addEstimateLine assigned max+1 all tie at the
+      // column's default 0, and Postgres may return a tie in a different
+      // order on different reads. The id tiebreak pins those legacy ties.
+      .order("sort_order", { ascending: true })
+      .order("id", { ascending: true }),
     supabase.from("estimate_totals").select("*").eq("estimate_id", id).maybeSingle(),
     // Derived expiry — the view is the one source for it, same as
     // invoices_overdue on the invoice screen.

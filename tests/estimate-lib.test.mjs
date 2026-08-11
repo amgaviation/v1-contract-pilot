@@ -176,6 +176,12 @@ test("trigger refusals become sentences, and only known ones", async (t) => {
         "Only an accepted estimate",
       ],
       ["estimate EST-2026-0001 has no lines to invoice", "no line items"],
+      // pilot.estimates_require_lines_on_send (the 20260812 migration) —
+      // raised with the raw uuid, exactly like the invoice guard it mirrors.
+      [
+        "estimate 7c9e6679-7425-40de-944b-e07fc1f90ae7 cannot be sent with no line items",
+        "can't be sent",
+      ],
       ["estimate 5a0e... not found", "no longer exists"],
       ["estimate cannot move from draft to accepted", "status has changed"],
       ["estimate EST-2026-0001 has been sent; its number cannot change", "number is permanent"],
@@ -195,6 +201,12 @@ test("trigger refusals become sentences, and only known ones", async (t) => {
       message: "estimate 7c9e6679-7425-40de-944b-e07fc1f90ae7 has already been converted",
     });
     assert.ok(result && !result.includes("7c9e6679"));
+
+    const emptySend = estimateRefusalMessage({
+      code: "P0001",
+      message: "estimate 7c9e6679-7425-40de-944b-e07fc1f90ae7 cannot be sent with no line items",
+    });
+    assert.ok(emptySend && !emptySend.includes("7c9e6679"));
   });
 
   await t.test("unknown codes and messages fall through to the generic scrubber", () => {

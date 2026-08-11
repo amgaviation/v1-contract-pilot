@@ -102,6 +102,81 @@ function estimateDbError(
   return friendlyDbError(error, context);
 }
 
+/**
+ * REVIEW FINDING (P1, stale-draft mutations): the database deliberately
+ * permits header and line edits on a SENT estimate (the phase 10 grant
+ * hands `authenticated` UPDATE on client_id/valid_until/tax_rate_bps/…
+ * with no status condition, and estimates_protect only freezes a quote
+ * once CONVERTED) — softer than invoices on purpose, because "revise and
+ * re-send" is the estimate lifecycle. The UI's draft-only discipline is
+ * therefore enforced HERE: a draft screen left open in one tab while
+ * another tab sends or accepts must not keep writing to a quote the
+ * client has already seen. Every draft-only mutation carries
+ * `.eq("status", "draft")` in its own statement, counts its matches, and
+ * turns zero matches into this sentence rather than "Saved."
+ */
+const ESTIMATE_NOT_DRAFT_ERROR =
+  "This estimate is no longer a draft — reload the page to see where it stands.";
+
+type Supa = Awaited<ReturnType<typeof createClient>>;
+
+/**
+ * A draft-only write matched zero rows: either the estimate left draft
+ * since the page loaded, or it's gone entirely. One follow-up read tells
+ * the two apart so the pilot gets the right instruction. If that read
+ * itself fails, say "reload" — it's the correct move in every case and
+ * never claims a quote was deleted when we simply couldn't find out.
+ */
+async function staleEstimateError(
+  supabase: Supa,
+  id: string,
+  accountId: string
+): Promise<string> {
+  const { data, error } = await supabase
+    .from("estimates")
+    .select("status")
+    .eq("id", id)
+    .eq("account_id", accountId)
+    .maybeSingle();
+  if (error) return ESTIMATE_NOT_DRAFT_ERROR;
+  return data ? ESTIMATE_NOT_DRAFT_ERROR : "That estimate no longer exists.";
+}
+
+/**
+ * The draft gate for LINE writes. PostgREST gives an UPDATE/DELETE on
+ * pilot.estimate_lines no way to reference the parent row in the same
+ * statement (embedded-resource filters exist for reads only), so the
+ * parent estimate row ITSELF is the guard: a conditional same-value
+ * UPDATE (`set status = 'draft' where … and status = 'draft'`, zero data
+ * change, passes estimates_protect because the status is not changing).
+ *
+ * Why an UPDATE and not a SELECT re-check: the UPDATE takes the parent's
+ * row lock, so if another tab's send is in flight this statement BLOCKS
+ * until that transaction commits and then re-evaluates its WHERE against
+ * the new row — count 0, refused. A SELECT would read the pre-send
+ * snapshot and wave the write through. What this cannot close is a send
+ * that starts and commits entirely between this statement and the line
+ * write (PostgREST offers no cross-statement transaction); that residual
+ * window is why the count checks on the line writes themselves stay
+ * load-bearing, and the schema's own converted-freeze remains the hard
+ * backstop.
+ */
+async function requireDraftEstimate(
+  supabase: Supa,
+  estimateId: string,
+  accountId: string
+): Promise<string | null> {
+  const { error, count } = await supabase
+    .from("estimates")
+    .update({ status: "draft" } as never, { count: "exact" })
+    .eq("id", estimateId)
+    .eq("account_id", accountId) // defence in depth alongside RLS
+    .eq("status", "draft");
+  if (error) return estimateDbError(error, "estimates.draft_guard");
+  if (!count) return staleEstimateError(supabase, estimateId, accountId);
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Draft an estimate: a client, the quote's own terms, and typed-in lines.
 //
@@ -300,11 +375,18 @@ export async function updateEstimateHeader(
   // { count: "exact" } because PostgREST returns 200 with no error on a
   // write that matched zero rows — a wrong id or another tenant's row must
   // not render as "Saved." (same discipline as invoices/actions.ts).
+  // `.eq("status", "draft")` makes the draft-only rule part of the SAME
+  // statement: if another tab sent or accepted this quote while the form
+  // sat open, the WHERE matches nothing and nothing is written — the DB
+  // itself would happily update a sent estimate's header (see
+  // ESTIMATE_NOT_DRAFT_ERROR's note), so the condition must ride the
+  // write, not a separate check before it.
   const { error, count } = await supabase
     .from("estimates")
     .update(payload as never, { count: "exact" })
     .eq("id", id)
-    .eq("account_id", account.id); // defence in depth alongside RLS
+    .eq("account_id", account.id) // defence in depth alongside RLS
+    .eq("status", "draft");
 
   if (error) {
     // The one 23514 a validated form can still hit: a revised estimate
@@ -320,7 +402,10 @@ export async function updateEstimateHeader(
     return { error: estimateDbError(error, "estimates.update"), values: echo(formData) };
   }
   if (!count) {
-    return { error: "That estimate no longer exists.", values: echo(formData) };
+    return {
+      error: await staleEstimateError(supabase, id, account.id),
+      values: echo(formData),
+    };
   }
 
   revalidatePath(`/estimates/${id}`);
@@ -328,7 +413,9 @@ export async function updateEstimateHeader(
   return { error: null, saved: true };
 }
 
-/** Notes-only edit, valid in any status (notes stays writable throughout). */
+/** Notes-only edit, valid in any status (notes stays writable throughout),
+ *  so — deliberately — NO `.eq("status", "draft")` here: the locked header
+ *  form posts this for sent/accepted/declined quotes too. */
 export async function updateEstimateNotes(
   _prev: EstimateFormState,
   formData: FormData
@@ -441,7 +528,11 @@ export async function deleteEstimateDraft(id: string): Promise<{ error: string |
     .from("estimates")
     .delete({ count: "exact" })
     .eq("id", id)
-    .eq("account_id", account.id);
+    .eq("account_id", account.id)
+    // The RLS policy already refuses anything but an unnumbered draft;
+    // stated here too so this statement reads as the draft-only mutation
+    // it is, same as every other one in this file.
+    .eq("status", "draft");
 
   if (error) return { error: friendlyDbError(error, "estimates.delete") };
   if (count === 0) {
@@ -498,12 +589,14 @@ export async function convertEstimateToInvoice(
 }
 
 // ---------------------------------------------------------------------------
-// Lines. Editable until the quote becomes an invoice —
-// estimate_lines_protect_converted enforces that in the database regardless
-// of what these actions send. The UI only offers editing on a draft, which
-// is a narrower, deliberate choice: a sent quote is revised by taking it
-// back to draft first, so what the client saw and what the pilot edited
-// never silently diverge.
+// Lines. The DATABASE keeps these editable until the quote becomes an
+// invoice (estimate_lines_protect_converted); the draft-only rule is this
+// app's own, narrower, deliberate choice: a sent quote is revised by
+// taking it back to draft first, so what the client saw and what the
+// pilot edited never silently diverge. That rule is enforced by
+// requireDraftEstimate in each action below — not just by which screens
+// render an edit control — because a draft screen left open in a stale
+// tab still posts here after another tab has sent or accepted the quote.
 // ---------------------------------------------------------------------------
 export async function addEstimateLine(
   _prev: EstimateLineFormState,
@@ -536,6 +629,30 @@ export async function addEstimateLine(
   const taxable = formData.get("taxable") === "on";
 
   const supabase = await createClient();
+
+  const guardError = await requireDraftEstimate(supabase, estimateId, account.id);
+  if (guardError) return { error: guardError, values };
+
+  // REVIEW FINDING (appended lines tie at sort_order 0): the column
+  // defaults to 0, so every appended line used to land in a tie whose
+  // resolution could change between reads. Append AFTER the current last
+  // line instead. Two simultaneous adds can still mint the same value —
+  // the (sort_order, id) read order below and on the detail page keeps
+  // even that tie stable.
+  const { data: lastLine, error: lastLineError } = await supabase
+    .from("estimate_lines")
+    .select("sort_order")
+    .eq("estimate_id", estimateId)
+    .eq("account_id", account.id)
+    .order("sort_order", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (lastLineError) {
+    return { error: estimateDbError(lastLineError, "estimate_lines.sort_order"), values };
+  }
+  const sortOrder = ((lastLine as { sort_order: number } | null)?.sort_order ?? -1) + 1;
+
   const payload: EstimateLineInsert = {
     account_id: account.id,
     estimate_id: estimateId,
@@ -544,6 +661,7 @@ export async function addEstimateLine(
     quantity,
     unit_amount_cents: unitAmountCents,
     taxable,
+    sort_order: sortOrder,
   };
 
   const { error } = await supabase.from("estimate_lines").insert(payload as never);
@@ -582,6 +700,10 @@ export async function updateEstimateLine(
   const taxable = formData.get("taxable") === "on";
 
   const supabase = await createClient();
+
+  const guardError = await requireDraftEstimate(supabase, estimateId, account.id);
+  if (guardError) return { error: guardError, values };
+
   const payload: EstimateLineUpdate = {
     description,
     quantity,
@@ -593,7 +715,8 @@ export async function updateEstimateLine(
     .from("estimate_lines")
     .update(payload as never, { count: "exact" })
     .eq("id", id)
-    .eq("account_id", account.id); // defence in depth alongside RLS
+    .eq("account_id", account.id) // defence in depth alongside RLS
+    .eq("estimate_id", estimateId); // the guard above vouched for THIS parent, no other
 
   if (error) return { error: estimateDbError(error, "estimate_lines.update"), values };
   if (!count) return { error: "That line no longer exists.", values };
@@ -613,11 +736,15 @@ export async function deleteEstimateLine(
   const { account } = await requireAccount(`/estimates/${estimateId}`);
   const supabase = await createClient();
 
+  const guardError = await requireDraftEstimate(supabase, estimateId, account.id);
+  if (guardError) return { error: guardError };
+
   const { error, count } = await supabase
     .from("estimate_lines")
     .delete({ count: "exact" })
     .eq("id", id)
-    .eq("account_id", account.id);
+    .eq("account_id", account.id)
+    .eq("estimate_id", estimateId); // the guard above vouched for THIS parent, no other
 
   if (error) return { error: estimateDbError(error, "estimate_lines.delete") };
   // PostgREST returns 200 with no error for a delete that matched nothing —

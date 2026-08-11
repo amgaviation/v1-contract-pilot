@@ -69,8 +69,9 @@ export default async function EstimatesPage({
   // estimate_totals is the ONE source for an estimate's money and
   // estimates_expired the one source for past-valid-until-ness — read the
   // views rather than recomputing either here (their own comments in the
-  // Phase 10 migration say exactly this).
-  const [estimatesRes, totalsRes, expiredRes, clientsRes] = await Promise.all([
+  // Phase 10 migration say exactly this). Totals are fetched AFTER these,
+  // keyed to the rows actually shown — see the chunked read below.
+  const [estimatesRes, expiredRes, clientsRes] = await Promise.all([
     supabase
       .from("estimates")
       .select(
@@ -78,7 +79,6 @@ export default async function EstimatesPage({
       )
       .order("created_at", { ascending: false })
       .limit(LIST_LIMIT),
-    supabase.from("estimate_totals").select("estimate_id, total_cents").limit(LIST_LIMIT),
     supabase
       .from("estimates_expired")
       .select("estimate_id, days_expired")
@@ -88,9 +88,6 @@ export default async function EstimatesPage({
 
   const estimatesResult = rowsOf<EstimateListRow>(
     estimatesRes as { data: EstimateListRow[] | null; error: DbErrorLike | null }
-  );
-  const totalsResult = rowsOf<TotalsRow>(
-    totalsRes as { data: TotalsRow[] | null; error: DbErrorLike | null }
   );
   const expiredResult = rowsOf<{ estimate_id: string; days_expired: number }>(
     expiredRes as {
@@ -102,32 +99,14 @@ export default async function EstimatesPage({
     clientsRes as { data: { id: string; name: string }[] | null; error: DbErrorLike | null }
   );
 
-  // A failed totals/expired/clients read is not "no data" — rendering a
-  // sent quote as a healthy gray $0.00 because a view read failed is the
-  // exact defect class lib/supabase/rows.ts exists to close.
-  const firstError = !estimatesResult.ok
-    ? estimatesResult.error
-    : !totalsResult.ok
-      ? totalsResult.error
-      : !expiredResult.ok
-        ? expiredResult.error
-        : !clientsResult.ok
-          ? clientsResult.error
-          : null;
-
   const estimates = estimatesResult.ok ? estimatesResult.rows : [];
-  const totalsByEstimate = new Map(
-    (totalsResult.ok ? totalsResult.rows : []).map((t) => [t.estimate_id, t.total_cents])
-  );
   const expiredRows = expiredResult.ok ? expiredResult.rows : [];
   const expiredIds = new Set(expiredRows.map((e) => e.estimate_id));
   const clientNames = new Map(
     (clientsResult.ok ? clientsResult.rows : []).map((c) => [c.id, c.name])
   );
 
-  const truncated =
-    estimates.length === LIST_LIMIT ||
-    (totalsResult.ok && totalsResult.rows.length === LIST_LIMIT);
+  const truncated = estimates.length === LIST_LIMIT;
 
   const awaitingCount = estimates.filter((e) => e.status === "sent").length;
 
@@ -146,11 +125,69 @@ export default async function EstimatesPage({
     }
   });
 
+  // REVIEW FINDING (list totals join breaks past 1000): this used to be an
+  // INDEPENDENT `estimate_totals` read capped at the same 1000 rows — but
+  // unordered, so past 1000 estimates the two result sets diverged and
+  // every unmatched row rendered a healthy gray $0.00. Totals are now
+  // keyed to the ids actually shown with `.in(...)`, so a totals row can
+  // only be missing if something is genuinely broken — and then it gets
+  // the refusal treatment below, never $0.00 (the client statement's rule:
+  // a missing invoice_totals row is "we could not find out").
+  //
+  // Chunked for the same URL-length reason as the import screens'
+  // FINGERPRINT_LOOKUP_CHUNK: supabase-js emits `.in()` as a GET query
+  // string, and 1000 uuids is ~37 KB of URL — past a conservative 8 KB
+  // header budget. 100 uuids is ~3.7 KB, comfortably inside it.
+  const TOTALS_IN_CHUNK = 100;
+  const visibleIds = visible.map((estimate) => estimate.id);
+  const totalsByEstimate = new Map<string, number>();
+  let totalsError: DbErrorLike | null = null;
+  for (let i = 0; i < visibleIds.length; i += TOTALS_IN_CHUNK) {
+    const chunkResult = rowsOf<TotalsRow>(
+      (await supabase
+        .from("estimate_totals")
+        .select("estimate_id, total_cents")
+        .in("estimate_id", visibleIds.slice(i, i + TOTALS_IN_CHUNK))) as {
+        data: TotalsRow[] | null;
+        error: DbErrorLike | null;
+      }
+    );
+    if (!chunkResult.ok) {
+      totalsError = chunkResult.error;
+      break;
+    }
+    for (const row of chunkResult.rows) {
+      totalsByEstimate.set(row.estimate_id, row.total_cents);
+    }
+  }
+  const missingTotalsCount = totalsError
+    ? 0
+    : visibleIds.filter((estimateId) => !totalsByEstimate.has(estimateId)).length;
+
+  // A failed totals/expired/clients read is not "no data" — rendering a
+  // sent quote as a healthy gray $0.00 because a view read failed is the
+  // exact defect class lib/supabase/rows.ts exists to close. A totals row
+  // MISSING from a read that succeeded gets the same treatment: the view
+  // left-joins from pilot.estimates, so every estimate has exactly one
+  // row, and a hole means the answer is "we could not find out".
+  const firstError = !estimatesResult.ok
+    ? estimatesResult.error
+    : !expiredResult.ok
+      ? expiredResult.error
+      : !clientsResult.ok
+        ? clientsResult.error
+        : totalsError;
+  const errorText = firstError
+    ? friendlyDbError(firstError, "estimates.select")
+    : missingTotalsCount > 0
+      ? `The totals for ${missingTotalsCount} of these estimates couldn't be loaded, so the list isn't shown — a figure that couldn't be found must not appear as $0.00. Reload to try again.`
+      : null;
+
   return (
     <PageShell
       title="Estimates"
       subtitle={
-        firstError
+        errorText
           ? "Some figures below couldn't load — see the notice."
           : `${estimates.length} estimate${estimates.length === 1 ? "" : "s"}${
               awaitingCount ? ` · ${awaitingCount} awaiting an answer` : ""
@@ -190,12 +227,12 @@ export default async function EstimatesPage({
       </Flex>
 
       <Card size="3">
-        {firstError ? (
+        {errorText ? (
           <Callout.Root color="red">
             <Callout.Icon>
               <ExclamationTriangleIcon />
             </Callout.Icon>
-            <Callout.Text>{friendlyDbError(firstError, "estimates.select")}</Callout.Text>
+            <Callout.Text>{errorText}</Callout.Text>
           </Callout.Root>
         ) : visible.length === 0 ? (
           // "No estimates yet" is only true when there are none at all —
@@ -287,9 +324,21 @@ export default async function EstimatesPage({
                       </Flex>
                     </Table.Cell>
                     <Table.Cell justify="end">
-                      <Text weight="medium" className="tnum">
-                        {formatCents(totalsByEstimate.get(estimate.id) ?? 0)}
-                      </Text>
+                      {/* The table only renders when errorText is null, at
+                          which point every visible id verifiably has a
+                          totals row — but a missing one still refuses
+                          rather than defaulting, so no future regression
+                          in the gating above can quietly print $0.00 for
+                          "we could not find out". */}
+                      {totalsByEstimate.has(estimate.id) ? (
+                        <Text weight="medium" className="tnum">
+                          {formatCents(totalsByEstimate.get(estimate.id) as number)}
+                        </Text>
+                      ) : (
+                        <Text size="1" color="red">
+                          Couldn&rsquo;t load
+                        </Text>
+                      )}
                     </Table.Cell>
                   </Table.Row>
                 );
