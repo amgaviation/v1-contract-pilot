@@ -334,3 +334,12 @@
     order: 2;
   }
 }
+
+/* Belt and braces for the mock frame: a flex/grid child will not shrink
+   below its content without min-width:0, and without that the 42rem inner
+   would push the PAGE sideways on a phone instead of scrolling inside its
+   own frame. */
+.v1-m-mock-scroll {
+  min-width: 0;
+  max-width: 100%;
+}

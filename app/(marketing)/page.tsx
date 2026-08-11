@@ -34,7 +34,8 @@ import {
 // today, never the proposal. THE NUMBER BELOW IS UNCHANGED by the visual
 // rebuild of this page; it moves only when that gate moves.
 const PRICE_LABEL = "$29/month";
-const TRIAL_LABEL = "7-day free trial";
+const TRIAL_DAYS = 7;
+const TRIAL_LABEL = `${TRIAL_DAYS}-day free trial`;
 
 /**
  * THE ONE IDEA, as three outputs of a single trip record.
@@ -166,7 +167,7 @@ const COMPARISON: { step: string; today: string; here: string }[] = [
 const FAQ: { q: string; a: string }[] = [
   {
     q: "What happens after the free trial?",
-    a: `The trial runs ${TRIAL_LABEL.replace("free trial", "").trim()} and a card is required to start it. When it ends, that card is charged ${PRICE_LABEL}. There is one plan and everything the product does is in it.`,
+    a: `The trial runs ${TRIAL_DAYS} days and a card is required to start it. When it ends, that card is charged ${PRICE_LABEL}. There is one plan, and everything the product does is in it.`,
   },
   {
     q: "Do I own my data?",
