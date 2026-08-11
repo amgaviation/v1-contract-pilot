@@ -8,6 +8,8 @@ import {
   emptyLookups,
   slugify,
   type EntitySpec,
+  type EstimateRef,
+  type EstimateTotalsRef,
   type ExportTable,
   type InvoiceRef,
   type InvoiceTotalsRef,
@@ -20,7 +22,7 @@ import {
 export const dynamic = "force-dynamic";
 
 /**
- * One route, ten CSVs: /settings/export/clients, /settings/export/trips,
+ * One route, twelve CSVs: /settings/export/clients, /settings/export/trips,
  * … — the registry in ../entities.ts says which. The streaming shape is
  * app/(app)/logbook/export/route.ts's, copied deliberately:
  *
@@ -47,7 +49,7 @@ type PilotClient = Awaited<ReturnType<typeof createClient>>;
  */
 function exportFrom(
   supabase: PilotClient,
-  table: ExportTable | "day_types" | "invoice_totals"
+  table: ExportTable | "day_types" | "invoice_totals" | "estimate_totals"
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): any {
   return (supabase as unknown as { from: (t: string) => unknown }).from(table);
@@ -64,7 +66,7 @@ type Fetched<T> = { ok: true; rows: T[] } | { ok: false; error: DbErrorLike };
 async function fetchAll<T>(
   supabase: PilotClient,
   accountId: string,
-  table: ExportTable | "day_types" | "invoice_totals",
+  table: ExportTable | "day_types" | "invoice_totals" | "estimate_totals",
   select: string,
   orderColumn: string
 ): Promise<Fetched<T>> {
@@ -140,6 +142,38 @@ async function buildLookups(
     );
     if (!dayTypes.ok) return { ok: false, what: "day types", error: dayTypes.error };
     for (const d of dayTypes.rows) lookups.dayTypeLabelById.set(d.id, d.label);
+  }
+
+  if (spec.needs.estimates) {
+    const estimates = await fetchAll<EstimateRef & { id: string }>(
+      supabase, accountId, "estimates", "id, estimate_number, status, client_id", "id"
+    );
+    if (!estimates.ok) return { ok: false, what: "estimates", error: estimates.error };
+    for (const e of estimates.rows) {
+      lookups.estimateById.set(e.id, {
+        estimate_number: e.estimate_number,
+        status: e.status,
+        client_id: e.client_id,
+      });
+    }
+  }
+
+  if (spec.needs.estimateTotals) {
+    const totals = await fetchAll<EstimateTotalsRef & { estimate_id: string }>(
+      supabase,
+      accountId,
+      "estimate_totals",
+      "estimate_id, subtotal_cents, tax_cents, total_cents",
+      "estimate_id"
+    );
+    if (!totals.ok) return { ok: false, what: "estimate totals", error: totals.error };
+    for (const t of totals.rows) {
+      lookups.estimateTotalsByEstimateId.set(t.estimate_id, {
+        subtotal_cents: t.subtotal_cents,
+        tax_cents: t.tax_cents,
+        total_cents: t.total_cents,
+      });
+    }
   }
 
   if (spec.needs.invoiceTotals) {

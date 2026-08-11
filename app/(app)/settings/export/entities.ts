@@ -203,6 +203,32 @@ const DELIVERY_LABEL: Record<string, string> = {
   manual_download: "Downloaded to send yourself",
 };
 
+/**
+ * Same strings as app/(app)/estimates/estimate-lib.ts's
+ * ESTIMATE_STATUS_BADGE. Restated rather than imported: that directory is
+ * another agent's surface this session (the same reason estimate-lib.ts
+ * itself restates parsePercentToBps instead of importing it from
+ * invoices/actions.ts).
+ */
+const ESTIMATE_STATUS_LABEL: Record<string, string> = {
+  draft: "Draft",
+  sent: "Sent",
+  accepted: "Accepted",
+  declined: "Declined",
+};
+
+/** Same strings as estimate-lib.ts's ESTIMATE_LINE_TYPE_LABEL — note
+ *  "Reimbursable expense", not the invoice screens' "Rebilled expense";
+ *  the estimate export must read as the estimate screens do. */
+const ESTIMATE_LINE_TYPE_LABEL: Record<string, string> = {
+  flight_day: "Flight day",
+  travel_day: "Travel day",
+  per_diem: "Per diem",
+  reimbursable_expense: "Reimbursable expense",
+  cancellation_fee: "Cancellation fee",
+  other: "Other",
+};
+
 // ---------------------------------------------------------------------------
 // Cross-reference lookups
 // ---------------------------------------------------------------------------
@@ -229,6 +255,19 @@ export type InvoiceTotalsRef = Pick<
   | "balance_due_cents"
 >;
 
+export type EstimateRef = {
+  estimate_number: string | null;
+  status: string;
+  client_id: string;
+};
+
+/** pilot.estimate_totals is the single money source for an estimate —
+ *  same posture as InvoiceTotalsRef above. */
+export type EstimateTotalsRef = Pick<
+  Views["estimate_totals"]["Row"],
+  "subtotal_cents" | "tax_cents" | "total_cents"
+>;
+
 /**
  * The in-memory joins. No PostgREST embeds anywhere — they resolve to
  * `never` against this app's hand-authored types (see
@@ -243,6 +282,8 @@ export type Lookups = {
   invoiceById: Map<string, InvoiceRef>;
   dayTypeLabelById: Map<string, string>;
   totalsByInvoiceId: Map<string, InvoiceTotalsRef>;
+  estimateById: Map<string, EstimateRef>;
+  estimateTotalsByEstimateId: Map<string, EstimateTotalsRef>;
 };
 
 export function emptyLookups(): Lookups {
@@ -252,6 +293,8 @@ export function emptyLookups(): Lookups {
     invoiceById: new Map(),
     dayTypeLabelById: new Map(),
     totalsByInvoiceId: new Map(),
+    estimateById: new Map(),
+    estimateTotalsByEstimateId: new Map(),
   };
 }
 
@@ -676,7 +719,17 @@ export function invoiceLineValues(
 export type InvoicePaymentExportRow = Pick<
   Tables["invoice_payments"]["Row"],
   "id" | "invoice_id" | "paid_on" | "amount_cents" | "method" | "notes"
->;
+> & {
+  /**
+   * 20260810120000_payment_reversals.sql: set on a CORRECTION row, naming
+   * the payment it cancels (the row carries exactly the negative of that
+   * payment's amount). Declared locally because database.types.ts's
+   * invoice_payments Row predates that migration — the same local
+   * declaration app/(app)/invoices/[id]/payment-panel.tsx carries.
+   */
+  reverses_payment_id: string | null;
+  reversal_reason: string | null;
+};
 
 export const INVOICE_PAYMENT_HEADER = [
   "Date paid",
@@ -685,8 +738,11 @@ export const INVOICE_PAYMENT_HEADER = [
   "Invoice status",
   "Method",
   "Amount",
+  "Correction reason",
   "Notes",
   "Invoice ID",
+  "Payment ID",
+  "Reverses payment ID",
 ] as const;
 
 export function invoicePaymentValues(
@@ -704,8 +760,16 @@ export function invoicePaymentValues(
     invoice ? INVOICE_STATUS_LABEL[invoice.status] ?? "" : "",
     row.method ? PAYMENT_METHOD_LABEL[row.method] ?? "" : "",
     centsToDollarsString(row.amount_cents),
+    row.reversal_reason,
     row.notes,
     row.invoice_id,
+    // The correction linkage. Without the payment's own id and the
+    // reverses column, a corrected ledger shows an unexplained negative
+    // amount with no way to tell which payment it cancels — the ledger is
+    // append-only (the wrong row and its correction BOTH export), so the
+    // pair of IDs is what makes the two rows read as one story.
+    row.id,
+    row.reverses_payment_id,
   ];
 }
 
@@ -845,6 +909,137 @@ export function documentValues(row: DocumentExportRow, lookups: Lookups): CsvVal
   ];
 }
 
+export type EstimateExportRow = Pick<
+  Tables["estimates"]["Row"],
+  | "id"
+  | "client_id"
+  | "trip_id"
+  | "estimate_number"
+  | "status"
+  | "issued_on"
+  | "valid_until"
+  | "sent_at"
+  | "tax_rate_bps"
+  | "terms"
+  | "notes"
+  | "converted_invoice_id"
+  | "converted_at"
+  | "created_at"
+>;
+
+// The date columns are the ones the schema actually has: issued_on,
+// valid_until, sent_at, converted_at, created_at. There is no accepted-on
+// or declined-on timestamp in pilot.estimates — the status column is the
+// whole record of the client's answer — so none is invented here.
+export const ESTIMATE_HEADER = [
+  "Estimate number",
+  "Client",
+  "Status",
+  "Issued on",
+  "Valid until",
+  "Sent on",
+  "Tax rate (%)",
+  "Subtotal",
+  "Tax",
+  "Total",
+  "Terms",
+  "Notes",
+  "Converted to invoice",
+  "Converted on",
+  "Created on",
+  "Estimate ID",
+  "Client ID",
+  "Trip ID",
+  "Converted invoice ID",
+] as const;
+
+export function estimateValues(row: EstimateExportRow, lookups: Lookups): CsvValue[] {
+  // pilot.estimate_totals is the ONE source for estimate money (its own
+  // schema comment) — same posture, same blank-not-zero rule, as the
+  // invoices export above.
+  const totals = row.id ? lookups.estimateTotalsByEstimateId.get(row.id) : undefined;
+  const converted = row.converted_invoice_id
+    ? lookups.invoiceById.get(row.converted_invoice_id)
+    : undefined;
+  return [
+    // Blank for a draft — estimate numbers are assigned on send, exactly
+    // like invoice numbers.
+    row.estimate_number,
+    clientName(lookups, row.client_id),
+    ESTIMATE_STATUS_LABEL[row.status] ?? "",
+    row.issued_on,
+    row.valid_until,
+    isoDate(row.sent_at),
+    bpsToPercentString(row.tax_rate_bps),
+    centsToDollarsString(totals?.subtotal_cents),
+    centsToDollarsString(totals?.tax_cents),
+    centsToDollarsString(totals?.total_cents),
+    row.terms,
+    row.notes,
+    // Conversion produces a DRAFT invoice, which has no number until the
+    // pilot sends it — this column may be blank while the Converted
+    // invoice ID column still carries the linkage.
+    converted?.invoice_number,
+    isoDate(row.converted_at),
+    isoDate(row.created_at),
+    row.id,
+    row.client_id,
+    row.trip_id,
+    row.converted_invoice_id,
+  ];
+}
+
+export type EstimateLineExportRow = Pick<
+  Tables["estimate_lines"]["Row"],
+  | "id"
+  | "estimate_id"
+  | "line_type"
+  | "description"
+  | "quantity"
+  | "unit_amount_cents"
+  | "amount_cents"
+  | "taxable"
+  | "sort_order"
+>;
+
+export const ESTIMATE_LINE_HEADER = [
+  "Estimate number",
+  "Client",
+  "Line type",
+  "Description",
+  "Quantity",
+  "Unit amount",
+  "Amount",
+  "Taxable",
+  "Sort order",
+  "Estimate ID",
+] as const;
+
+export function estimateLineValues(
+  row: EstimateLineExportRow,
+  lookups: Lookups
+): CsvValue[] {
+  const estimate = row.estimate_id
+    ? lookups.estimateById.get(row.estimate_id)
+    : undefined;
+  return [
+    // Blank for a draft estimate — numbers are assigned on send. The
+    // Estimate ID column still says exactly which estimate the line is on.
+    estimate?.estimate_number,
+    clientName(lookups, estimate?.client_id),
+    ESTIMATE_LINE_TYPE_LABEL[row.line_type] ?? "",
+    row.description,
+    row.quantity,
+    centsToDollarsString(row.unit_amount_cents),
+    // amount_cents is GENERATED (quantity x unit amount) — exported as
+    // stored, never recomputed here.
+    centsToDollarsString(row.amount_cents),
+    yesNo(row.taxable),
+    row.sort_order,
+    row.estimate_id,
+  ];
+}
+
 // ---------------------------------------------------------------------------
 // The registry the route and the page both read
 // ---------------------------------------------------------------------------
@@ -857,6 +1052,8 @@ export type ExportTable =
   | "invoices"
   | "invoice_lines"
   | "invoice_payments"
+  | "estimates"
+  | "estimate_lines"
   | "expenses"
   | "mileage_entries"
   | "documents";
@@ -868,6 +1065,8 @@ export type LookupNeeds = {
   invoices?: true;
   dayTypes?: true;
   invoiceTotals?: true;
+  estimates?: true;
+  estimateTotals?: true;
 };
 
 export type EntitySpec = {
@@ -971,7 +1170,8 @@ export const EXPORT_ENTITIES: Record<string, EntitySpec> = {
   "invoice-payments": {
     key: "invoice-payments",
     table: "invoice_payments",
-    select: "id, invoice_id, paid_on, amount_cents, method, notes",
+    select:
+      "id, invoice_id, paid_on, amount_cents, method, notes, reverses_payment_id, reversal_reason",
     orderBy: [
       { column: "paid_on", ascending: true },
       { column: "id", ascending: true },
@@ -980,6 +1180,36 @@ export const EXPORT_ENTITIES: Record<string, EntitySpec> = {
     needs: { clients: true, invoices: true },
     mapRow: (row, lookups) =>
       invoicePaymentValues(row as unknown as InvoicePaymentExportRow, lookups),
+  },
+  estimates: {
+    key: "estimates",
+    table: "estimates",
+    select:
+      "id, client_id, trip_id, estimate_number, status, issued_on, valid_until, sent_at, tax_rate_bps, terms, notes, converted_invoice_id, converted_at, created_at",
+    orderBy: [
+      { column: "created_at", ascending: true },
+      { column: "id", ascending: true },
+    ],
+    header: ESTIMATE_HEADER,
+    // invoices: to print the number of the invoice a quote converted to.
+    needs: { clients: true, invoices: true, estimateTotals: true },
+    mapRow: (row, lookups) =>
+      estimateValues(row as unknown as EstimateExportRow, lookups),
+  },
+  "estimate-lines": {
+    key: "estimate-lines",
+    table: "estimate_lines",
+    select:
+      "id, estimate_id, line_type, description, quantity, unit_amount_cents, amount_cents, taxable, sort_order",
+    orderBy: [
+      { column: "estimate_id", ascending: true },
+      { column: "sort_order", ascending: true },
+      { column: "id", ascending: true },
+    ],
+    header: ESTIMATE_LINE_HEADER,
+    needs: { clients: true, estimates: true },
+    mapRow: (row, lookups) =>
+      estimateLineValues(row as unknown as EstimateLineExportRow, lookups),
   },
   expenses: {
     key: "expenses",
@@ -1024,7 +1254,7 @@ export const EXPORT_ENTITIES: Record<string, EntitySpec> = {
 
 /**
  * Header/mapper agreement, checked at module load with a row of nothing —
- * the logbook export's own guard, applied to all ten files at once. A
+ * the logbook export's own guard, applied to all twelve files at once. A
  * mismatch is a startup error; it can only fire if this file is already
  * wrong.
  */

@@ -3,7 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { csvRow } from "@/lib/csv";
 import { loadSalesTaxReport } from "../queries";
-import { formatBps, isValidIsoDate, resolveSalesTaxPeriod, todayIso } from "../report-lib";
+import {
+  correctionNote,
+  formatBps,
+  isValidIsoDate,
+  resolveSalesTaxPeriod,
+  todayIso,
+} from "../report-lib";
 
 // Same discipline as app/(app)/reports/profit-loss/export/route.ts: the
 // whole dataset is fetched and any error resolved BEFORE the first byte of
@@ -81,7 +87,7 @@ export async function GET(request: NextRequest) {
   rows.push(
     csvRow([
       "Basis",
-      "Cash: an invoice's tax counts on the day it was paid in full, matching this product's other reports. Figures for whoever prepares your filings — this file does not calculate what to remit.",
+      "Cash: an invoice's tax counts on the day it was paid in full, matching this product's other reports. If a payment is corrected later, the period it was originally counted in stands unchanged and the correction appears as a negative row in the period the correction was made. Figures for whoever prepares your filings — this file does not calculate what to remit.",
     ])
   );
   rows.push(csvRow([]));
@@ -91,10 +97,14 @@ export async function GET(request: NextRequest) {
       "Invoice",
       "Client",
       "Issued",
-      "Paid in full",
+      // Same header as the page: the day the invoice was paid in full
+      // (collected rows) or the day a correction un-settled it
+      // (correction rows, negative amounts, explained in Note).
+      "Counted on",
       "Taxable subtotal",
       "Tax rate",
       "Tax",
+      "Note",
     ])
   );
   for (const r of report.rows) {
@@ -103,10 +113,13 @@ export async function GET(request: NextRequest) {
         r.invoiceNumber,
         r.clientName,
         r.issuedOn ?? "",
-        r.paidOn,
+        r.countedOn,
         centsToDollarsString(r.taxableSubtotalCents),
         formatBps(r.taxRateBps),
         centsToDollarsString(r.taxCents),
+        r.kind === "correction" && r.previouslyCountedOn
+          ? correctionNote(r.previouslyCountedOn)
+          : "",
       ])
     );
   }
@@ -119,6 +132,7 @@ export async function GET(request: NextRequest) {
       centsToDollarsString(report.taxableTotalCents),
       "",
       centsToDollarsString(report.taxTotalCents),
+      "",
     ])
   );
   rows.push(csvRow([]));

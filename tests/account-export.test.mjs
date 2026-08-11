@@ -15,8 +15,13 @@ const {
   tripDayValues,
   invoiceValues,
   invoicePaymentValues,
+  estimateValues,
+  estimateLineValues,
   CLIENT_HEADER,
   INVOICE_HEADER,
+  INVOICE_PAYMENT_HEADER,
+  ESTIMATE_HEADER,
+  ESTIMATE_LINE_HEADER,
 } = await import("../app/(app)/settings/export/entities.ts");
 const { csvRow, csvField } = await import("../lib/csv.ts");
 
@@ -276,10 +281,166 @@ test("payments: a payment on a voided invoice exports with the Void status visib
       amount_cents: 100000,
       method: "ach",
       notes: null,
+      reverses_payment_id: null,
+      reversal_reason: null,
     },
     lookups
   );
   assert.ok(values.includes("Void"));
   assert.ok(values.includes("ACH"));
   assert.ok(values.includes("1000.00"));
+});
+
+test("payments: a correction row exports its own id, the payment it cancels, and the reason", () => {
+  // 20260810120000_payment_reversals.sql: the ledger is append-only, so a
+  // corrected payment exports as TWO rows — the original and its negation
+  // — and without the id linkage the negative amount is unexplained. The
+  // export must carry the payment's own id, reverses_payment_id and
+  // reversal_reason so the pair reads as one story in a spreadsheet.
+  const lookups = emptyLookups();
+  lookups.clientNameById.set("c-1", "Skyline Aviation LLC");
+  lookups.invoiceById.set("i-1", {
+    invoice_number: "INV-0042",
+    status: "sent",
+    client_id: "c-1",
+  });
+  const byHeader = (row) =>
+    Object.fromEntries(
+      INVOICE_PAYMENT_HEADER.map((h, i) => [h, invoicePaymentValues(row, lookups)[i]])
+    );
+
+  const original = byHeader({
+    id: "p-1",
+    invoice_id: "i-1",
+    paid_on: "2026-02-01",
+    amount_cents: 450000,
+    method: "wire",
+    notes: null,
+    reverses_payment_id: null,
+    reversal_reason: null,
+  });
+  assert.equal(original["Amount"], "4500.00");
+  assert.equal(original["Payment ID"], "p-1");
+  // An ordinary payment's correction columns are blank, not "null".
+  assert.equal(original["Reverses payment ID"], null);
+  assert.equal(original["Correction reason"], null);
+
+  const correction = byHeader({
+    id: "p-2",
+    invoice_id: "i-1",
+    paid_on: "2026-02-10",
+    amount_cents: -450000,
+    method: null,
+    notes: null,
+    reverses_payment_id: "p-1",
+    reversal_reason: "typo, meant $450",
+  });
+  assert.equal(correction["Amount"], "-4500.00");
+  assert.equal(correction["Payment ID"], "p-2");
+  assert.equal(correction["Reverses payment ID"], "p-1");
+  assert.equal(correction["Correction reason"], "typo, meant $450");
+  // The negative amount must survive the CSV formula guard as a plain
+  // number (see the csvField test above).
+  assert.equal(csvField(correction["Amount"]), "-4500.00");
+});
+
+test("estimates: totals come from the estimate_totals lookup; the conversion linkage rides along", () => {
+  const lookups = emptyLookups();
+  lookups.clientNameById.set("c-1", "Skyline Aviation LLC");
+  lookups.estimateTotalsByEstimateId.set("e-1", {
+    subtotal_cents: 1050000,
+    tax_cents: 86625,
+    total_cents: 1136625,
+  });
+  // Conversion produces a DRAFT invoice — no number yet — so the linkage
+  // is the ID column while the number column stays blank.
+  lookups.invoiceById.set("i-7", {
+    invoice_number: null,
+    status: "draft",
+    client_id: "c-1",
+  });
+  const row = {
+    id: "e-1",
+    client_id: "c-1",
+    trip_id: "t-1",
+    estimate_number: "EST-2026-0003",
+    status: "accepted",
+    issued_on: "2026-03-05",
+    valid_until: "2026-03-19",
+    sent_at: "2026-03-05T12:00:00Z",
+    tax_rate_bps: 825,
+    terms: "50% deposit to hold the dates",
+    notes: null,
+    converted_invoice_id: "i-7",
+    converted_at: "2026-03-20T09:00:00Z",
+    created_at: "2026-03-01T08:00:00Z",
+  };
+  const values = estimateValues(row, lookups);
+  const byHeader = Object.fromEntries(ESTIMATE_HEADER.map((h, i) => [h, values[i]]));
+  assert.equal(byHeader["Estimate number"], "EST-2026-0003");
+  assert.equal(byHeader["Client"], "Skyline Aviation LLC");
+  assert.equal(byHeader["Status"], "Accepted");
+  assert.equal(byHeader["Valid until"], "2026-03-19");
+  assert.equal(byHeader["Sent on"], "2026-03-05");
+  assert.equal(byHeader["Tax rate (%)"], "8.25");
+  assert.equal(byHeader["Subtotal"], "10500.00");
+  assert.equal(byHeader["Tax"], "866.25");
+  assert.equal(byHeader["Total"], "11366.25");
+  assert.equal(byHeader["Terms"], "50% deposit to hold the dates");
+  assert.equal(byHeader["Converted to invoice"], null); // draft invoice, unnumbered
+  assert.equal(byHeader["Converted on"], "2026-03-20");
+  assert.equal(byHeader["Converted invoice ID"], "i-7");
+  assert.equal(byHeader["Estimate ID"], "e-1");
+
+  // No totals row: blank money, never "0.00" — blank is "not computed",
+  // zero is a claim (same rule as the invoices export).
+  const bare = estimateValues({ ...row, id: "e-untotalled" }, lookups);
+  const bareByHeader = Object.fromEntries(ESTIMATE_HEADER.map((h, i) => [h, bare[i]]));
+  assert.equal(bareByHeader["Subtotal"], "");
+  assert.equal(bareByHeader["Total"], "");
+  assert.notEqual(bareByHeader["Total"], "0.00");
+});
+
+test("estimate lines: the estimate resolves by number and client; a draft estimate's number stays blank", () => {
+  const lookups = emptyLookups();
+  lookups.clientNameById.set("c-1", "Skyline Aviation LLC");
+  lookups.estimateById.set("e-1", {
+    estimate_number: "EST-2026-0003",
+    status: "sent",
+    client_id: "c-1",
+  });
+  lookups.estimateById.set("e-draft", {
+    estimate_number: null,
+    status: "draft",
+    client_id: "c-1",
+  });
+  const base = {
+    id: "el-1",
+    estimate_id: "e-1",
+    line_type: "reimbursable_expense",
+    description: "Expected catering rebill",
+    quantity: 1,
+    unit_amount_cents: 48250,
+    amount_cents: 48250,
+    taxable: false,
+    sort_order: 2,
+  };
+  const values = estimateLineValues(base, lookups);
+  const byHeader = Object.fromEntries(ESTIMATE_LINE_HEADER.map((h, i) => [h, values[i]]));
+  assert.equal(byHeader["Estimate number"], "EST-2026-0003");
+  assert.equal(byHeader["Client"], "Skyline Aviation LLC");
+  // The estimates screens' own vocabulary — "Reimbursable expense", not
+  // the invoice screens' "Rebilled expense".
+  assert.equal(byHeader["Line type"], "Reimbursable expense");
+  assert.equal(byHeader["Unit amount"], "482.50");
+  assert.equal(byHeader["Amount"], "482.50");
+  assert.equal(byHeader["Taxable"], "No");
+  assert.equal(byHeader["Estimate ID"], "e-1");
+
+  const draft = estimateLineValues({ ...base, id: "el-2", estimate_id: "e-draft" }, lookups);
+  const draftByHeader = Object.fromEntries(
+    ESTIMATE_LINE_HEADER.map((h, i) => [h, draft[i]])
+  );
+  assert.equal(draftByHeader["Estimate number"], null);
+  assert.equal(draftByHeader["Estimate ID"], "e-draft");
 });

@@ -66,7 +66,19 @@ const EXPORTS: ExportCard[] = [
     href: "/settings/export/invoice-payments",
     title: "Invoice payments",
     description:
-      "The full payment ledger: date paid, client, invoice, method and amount — including payments on invoices that were later voided, flagged by the status column.",
+      "The full payment ledger: date paid, client, invoice, method and amount — including corrections (negative rows naming the payment they cancel, with the reason) and payments on invoices that were later voided, flagged by the status column.",
+  },
+  {
+    href: "/settings/export/estimates",
+    title: "Estimates",
+    description:
+      "Every estimate: number, client, status, issued and valid-until dates, terms, the computed subtotal, tax and total, and — where a quote became an invoice — which invoice and when.",
+  },
+  {
+    href: "/settings/export/estimate-lines",
+    title: "Estimate lines",
+    description:
+      "Every line on every estimate: line type, description, quantity, unit amount and amount, with the estimate number and ID linking each line to its quote.",
   },
   {
     href: "/settings/export/expenses",

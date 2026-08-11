@@ -22,7 +22,12 @@ import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import PageShell from "../../page-shell";
 import { loadSalesTaxReport, SALES_TAX_LIMIT } from "./queries";
-import { formatBps, resolveSalesTaxPeriod, todayIso } from "./report-lib";
+import {
+  correctionNote,
+  formatBps,
+  resolveSalesTaxPeriod,
+  todayIso,
+} from "./report-lib";
 
 export const metadata = { title: "Sales tax" };
 
@@ -38,9 +43,12 @@ export const metadata = { title: "Sales tax" };
  * pilot-services invoices carry no federal excise tax (see the Phase 5
  * migration's header), so this page has nothing to say about it.
  *
- * Basis: CASH — an invoice's tax counts on the day it was paid in full,
- * matching the payments-received basis of year-end/quarterly/profit-loss.
- * See report-lib.ts's header for the full decision record.
+ * Basis: CASH — an invoice's tax counts on the day it was paid in full
+ * (the first-crossing date of its payment ledger), matching the
+ * payments-received basis of year-end/quarterly/profit-loss. A later
+ * payment correction never erases an already-reported period: it shows as
+ * a negative row in the period the correction was made. See
+ * report-lib.ts's header for the full decision record.
  */
 export default async function SalesTaxReportPage({
   searchParams,
@@ -130,7 +138,10 @@ export default async function SalesTaxReportPage({
           <Text as="div" size="2">
             Cash-basis, matching this product&rsquo;s other reports: an
             invoice&rsquo;s tax counts on the day it was paid in full, not
-            the day it was issued. Tax charged on invoices still awaiting
+            the day it was issued. If a payment is corrected later, the
+            period it was originally counted in stands unchanged, and the
+            correction appears as a negative row in the period the
+            correction was made. Tax charged on invoices still awaiting
             payment is shown separately below and is not in the totals.
             This page doesn&rsquo;t know your filing requirements and
             doesn&rsquo;t calculate what to remit.
@@ -180,7 +191,8 @@ export default async function SalesTaxReportPage({
                 </Heading>
                 <Text as="div" size="2" color="gray">
                   Invoices paid in full {formatDate(period.from)} through{" "}
-                  {formatDate(period.to)} that charged tax.
+                  {formatDate(period.to)} that charged tax, and corrections
+                  made this period to previously counted payments.
                 </Text>
               </Box>
               <Text weight="bold" size="6" className="tnum">
@@ -199,7 +211,11 @@ export default async function SalesTaxReportPage({
                     <Table.ColumnHeaderCell>Invoice</Table.ColumnHeaderCell>
                     <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
                     <Table.ColumnHeaderCell>Issued</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell>Paid in full</Table.ColumnHeaderCell>
+                    {/* "Counted on", not "Paid in full": for a collected
+                        row it IS the day the invoice was paid in full; for
+                        a correction row it's the day the correction was
+                        made — the header must be true of both. */}
+                    <Table.ColumnHeaderCell>Counted on</Table.ColumnHeaderCell>
                     <Table.ColumnHeaderCell justify="end">
                       Taxable subtotal
                     </Table.ColumnHeaderCell>
@@ -209,11 +225,22 @@ export default async function SalesTaxReportPage({
                 </Table.Header>
                 <Table.Body>
                   {report.rows.map((row) => (
-                    <Table.Row key={row.invoiceId}>
-                      <Table.RowHeaderCell>{row.invoiceNumber}</Table.RowHeaderCell>
+                    // One invoice can legitimately appear more than once —
+                    // settled, corrected, settled again — so the key is
+                    // the (invoice, event kind, date) triple, which the
+                    // assembly guarantees unique.
+                    <Table.Row key={`${row.invoiceId}-${row.kind}-${row.countedOn}`}>
+                      <Table.RowHeaderCell>
+                        {row.invoiceNumber}
+                        {row.kind === "correction" && row.previouslyCountedOn ? (
+                          <Text as="div" size="1" color="gray">
+                            {correctionNote(formatDate(row.previouslyCountedOn))}
+                          </Text>
+                        ) : null}
+                      </Table.RowHeaderCell>
                       <Table.Cell>{row.clientName}</Table.Cell>
                       <Table.Cell>{formatDate(row.issuedOn)}</Table.Cell>
-                      <Table.Cell>{formatDate(row.paidOn)}</Table.Cell>
+                      <Table.Cell>{formatDate(row.countedOn)}</Table.Cell>
                       <Table.Cell justify="end">
                         <Text className="tnum">
                           {formatCents(row.taxableSubtotalCents)}
