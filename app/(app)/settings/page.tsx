@@ -1,4 +1,5 @@
-import { Card, Flex, Grid, Text } from "@/components/ui";
+import NextLink from "next/link";
+import { Card, Flex, Grid, Link as RadixLink, Text } from "@/components/ui";
 
 import { requireAccount } from "@/lib/supabase/account";
 import { createClient } from "@/lib/supabase/server";
@@ -131,6 +132,23 @@ export default async function SettingsPage({
                 warning={warning}
                 justConnected={connected === "1"}
               />
+              <Card>
+                <Flex direction="column" gap="2" p="1">
+                  <Text weight="bold" size="4">
+                    Your data
+                  </Text>
+                  <Text size="2" color="gray">
+                    Download everything this product holds for you — clients,
+                    trips, invoices, expenses, mileage and document details —
+                    as CSV files.
+                  </Text>
+                  <Text size="2">
+                    <RadixLink asChild>
+                      <NextLink href="/settings/export">Export your data</NextLink>
+                    </RadixLink>
+                  </Text>
+                </Flex>
+              </Card>
             </Flex>
           </Grid>
         }

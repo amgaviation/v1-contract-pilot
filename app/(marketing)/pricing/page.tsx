@@ -84,7 +84,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "Can I get my data out?",
-    a: "Your logbook exports to CSV in full, and profit & loss, the estimated-tax-period summaries and the year-end packet all download — whether or not you keep subscribing. An account-wide export covering trips, invoices, expenses and clients is not built yet.",
+    a: "Your logbook exports to CSV in full, and profit & loss, the estimated-tax-period summaries and the year-end packet all download — whether or not you keep subscribing. The account-wide export lives in Settings: one CSV each for clients, trips, trip days, trip legs, invoices, invoice lines, payments, expenses, mileage and document details. Uploaded receipt and document files aren't in those CSVs — they download one at a time from their own pages.",
   },
   {
     q: "Is there a cheaper tier with fewer features?",
