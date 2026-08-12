@@ -142,6 +142,18 @@ export function assembleBalanceSheet(rows: LedgerBalanceRow[]): BalanceSheet {
 // Cash flow.
 // ---------------------------------------------------------------------------
 
+/** "YYYY-MM-DD" shifted by whole days in the UTC date domain — the same
+ *  no-timezone-round-trip rule as lib/format.ts's parseCalendarDate. */
+export function shiftIsoDate(iso: string, deltaDays: number): string {
+  const parts = iso.split("-");
+  const dt = new Date(
+    Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]) + deltaDays)
+  );
+  const m = dt.getUTCMonth() + 1;
+  const d = dt.getUTCDate();
+  return `${dt.getUTCFullYear()}-${m < 10 ? `0${m}` : m}-${d < 10 ? `0${d}` : d}`;
+}
+
 export type CashFlowRow = {
   chart_account_id: string;
   name: string;

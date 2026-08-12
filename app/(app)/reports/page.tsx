@@ -60,6 +60,28 @@ export default async function ReportsIndexPage() {
             whoever prepares your filings.
           </Text>
         </Card>
+        <Card size="3">
+          <Heading as="h2" size="4" mb="1">
+            <RadixLink asChild>
+              <NextLink href="/reports/balance-sheet">Balance sheet</NextLink>
+            </RadixLink>
+          </Heading>
+          <Text as="div" size="2" color="gray">
+            What you own and owe as of a date — cash, receivables, tax
+            collected, and owner equity, from your ledger.
+          </Text>
+        </Card>
+        <Card size="3">
+          <Heading as="h2" size="4" mb="1">
+            <RadixLink asChild>
+              <NextLink href="/reports/cash-flow">Cash flow</NextLink>
+            </RadixLink>
+          </Heading>
+          <Text as="div" size="2" color="gray">
+            Where cash actually came from and went in a period, derived from
+            your ledger&rsquo;s Cash &amp; bank account.
+          </Text>
+        </Card>
       </Flex>
     </PageShell>
   );
