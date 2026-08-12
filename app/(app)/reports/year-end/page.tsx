@@ -23,6 +23,7 @@ import { friendlyDbError } from "@/lib/db-errors";
 import PageShell from "../../page-shell";
 import { CATEGORY_LABEL, currentTaxYear } from "./db";
 import { loadYearEndReport } from "./queries";
+import { loadTravelLog } from "./travel-log-queries";
 import TaxFormEditor from "./tax-form-editor";
 
 export const metadata = { title: "Year-end report" };
@@ -57,7 +58,10 @@ export default async function YearEndReportPage({
       : current;
 
   const supabase = await createClient();
-  const report = await loadYearEndReport(supabase, account.id, year);
+  const [report, travelLog] = await Promise.all([
+    loadYearEndReport(supabase, account.id, year),
+    loadTravelLog(supabase, account.id, year),
+  ]);
 
   return (
     <PageShell
@@ -568,6 +572,135 @@ export default async function YearEndReportPage({
                       {" and this recomputes."}
                     </Callout.Text>
                   </Callout.Root>
+                ) : null}
+              </>
+            )}
+          </Card>
+
+          {/* ---------------- E2. Travel log & per-diem days ----------------
+              Substantiation, not a dollar figure: the M&IE rate is the
+              pilot's CPA's to apply (the pilot.mileage_rates precedent —
+              never a hardcoded IRS/GSA number — and here no rate field
+              exists at all), so this section counts days and says so.
+              See travel-log.ts's header for the full reasoning. */}
+          <Card size="3">
+            <Flex justify="between" align="start" mb="3" wrap="wrap" gap="2">
+              <Box>
+                <Heading as="h2" size="4">
+                  Travel log &amp; per-diem days
+                </Heading>
+                <Text as="div" size="2" color="gray">
+                  One row per trip day you recorded in {year} — date,
+                  client, day type, away-from-home, and the route flown
+                  that day. For whoever prepares your return: this log
+                  counts days and never applies an M&amp;IE rate or
+                  computes a deduction. Your CPA or tax preparer applies
+                  the current rate to the away-day counts below.
+                </Text>
+              </Box>
+              <Button asChild variant="outline" size="2">
+                <a href={csvHref(year, "travel-log")} download>
+                  Download CSV
+                </a>
+              </Button>
+            </Flex>
+
+            {travelLog.error ? (
+              <Callout.Root color="red">
+                <Callout.Icon>
+                  <ExclamationTriangleIcon />
+                </Callout.Icon>
+                <Callout.Text>
+                  {friendlyDbError(
+                    { message: travelLog.error },
+                    "year-end.travel-log"
+                  )}
+                </Callout.Text>
+              </Callout.Root>
+            ) : (
+              <>
+                {travelLog.truncated ? (
+                  <Callout.Root color="amber" mb="3">
+                    <Callout.Icon>
+                      <ExclamationTriangleIcon />
+                    </Callout.Icon>
+                    <Callout.Text>
+                      There are more trip days in {year} than this page can
+                      list — the counts below may be short and the CSV will
+                      refuse to download. Contact support if your log looks
+                      incomplete.
+                    </Callout.Text>
+                  </Callout.Root>
+                ) : null}
+
+                {travelLog.rows.length === 0 ? (
+                  <Text size="2" color="gray">
+                    No trip days recorded in {year}.
+                  </Text>
+                ) : (
+                  <>
+                    <Table.Root variant="ghost">
+                      <Table.Header>
+                        <Table.Row>
+                          <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
+                          <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
+                          <Table.ColumnHeaderCell>Day type</Table.ColumnHeaderCell>
+                          <Table.ColumnHeaderCell>
+                            Route flown
+                          </Table.ColumnHeaderCell>
+                          <Table.ColumnHeaderCell>Away</Table.ColumnHeaderCell>
+                          <Table.ColumnHeaderCell>Per diem</Table.ColumnHeaderCell>
+                        </Table.Row>
+                      </Table.Header>
+                      <Table.Body>
+                        {travelLog.rows.map((d) => (
+                          <Table.Row key={d.id}>
+                            <Table.RowHeaderCell>
+                              <RadixLink asChild>
+                                <NextLink href={`/trips/${d.tripId}`}>
+                                  {formatDate(d.dayOn)}
+                                </NextLink>
+                              </RadixLink>
+                            </Table.RowHeaderCell>
+                            <Table.Cell>
+                              <Text color="gray">{d.clientName}</Text>
+                            </Table.Cell>
+                            <Table.Cell>
+                              <Text color="gray">{d.dayTypeLabel}</Text>
+                            </Table.Cell>
+                            <Table.Cell>
+                              <Text color="gray">{d.route ?? "—"}</Text>
+                            </Table.Cell>
+                            <Table.Cell>
+                              <Text color="gray">{d.away ? "Away" : "Home"}</Text>
+                            </Table.Cell>
+                            <Table.Cell>
+                              <Text color="gray">{d.perDiemDay ? "Yes" : "—"}</Text>
+                            </Table.Cell>
+                          </Table.Row>
+                        ))}
+                      </Table.Body>
+                    </Table.Root>
+                    <Flex justify="end" mt="3" gap="4" wrap="wrap">
+                      <Text size="2" color="gray" className="tnum">
+                        Trip days: {travelLog.rows.length}
+                      </Text>
+                      <Text size="2" color="gray" className="tnum">
+                        Away from home: {travelLog.awayDayCount}
+                      </Text>
+                      <Text weight="bold" className="tnum">
+                        Per-diem days: {travelLog.perDiemDayCount}
+                      </Text>
+                    </Flex>
+                  </>
+                )}
+                {travelLog.canceledDayCount > 0 ? (
+                  <Text as="p" size="1" color="gray" mt="2">
+                    {travelLog.canceledDayCount} day
+                    {travelLog.canceledDayCount === 1 ? "" : "s"} on canceled
+                    trips {travelLog.canceledDayCount === 1 ? "is" : "are"}{" "}
+                    excluded from this log.
+                  </Text>
                 ) : null}
               </>
             )}

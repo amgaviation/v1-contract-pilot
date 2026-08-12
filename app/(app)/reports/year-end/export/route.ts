@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { CATEGORY_LABEL } from "../db";
 import { loadYearEndReport } from "../queries";
+import { loadTravelLog } from "../travel-log-queries";
 import { csvRow } from "@/lib/csv";
 
 // A year-end figure is either right or it should error loudly — never a
@@ -22,6 +23,7 @@ const SECTIONS = [
   "unassigned",
   "mileage",
   "tax-forms",
+  "travel-log",
 ] as const;
 type Section = (typeof SECTIONS)[number];
 
@@ -60,6 +62,76 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = await createClient();
+
+  // The travel log has its own loader (no other section reads
+  // trips/trip_days/trip_legs), so it branches before the money report is
+  // loaded at all — same right-or-loudly-wrong rules, applied to its own
+  // error and truncation flags.
+  if (sectionParam === "travel-log") {
+    const log = await loadTravelLog(supabase, account.id, year);
+    if (log.error) {
+      console.error("[year-end export] travel log load failed", log.error);
+      return NextResponse.json(
+        { error: "Couldn't load your travel log for export." },
+        { status: 500 }
+      );
+    }
+    if (log.truncated) {
+      return NextResponse.json(
+        {
+          error:
+            "This year holds more trip days than the export can safely list in one file. Contact support — exporting a silently partial travel log would misstate your away-day counts.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const logRows: string[] = [
+      csvRow([
+        "Date",
+        "Client",
+        "Day type",
+        "Away from home",
+        "Per-diem day",
+        "Route flown",
+        "Aircraft",
+      ]),
+    ];
+    for (const d of log.rows) {
+      logRows.push(
+        csvRow([
+          d.dayOn,
+          d.clientName,
+          d.dayTypeLabel,
+          d.away ? "Away" : "Home",
+          d.perDiemDay ? "Yes" : "",
+          d.route ?? "",
+          d.aircraftIdent ?? "",
+        ])
+      );
+    }
+    logRows.push(
+      csvRow(["Totals", "", "", log.awayDayCount, log.perDiemDayCount, "", ""])
+    );
+    // Day counts only, stated inside the file itself — the CSV travels
+    // without the page around it, and the person opening it is the
+    // pilot's tax preparer, not the pilot.
+    logRows.push(
+      csvRow([
+        "Per-diem day count only. No M&IE rate is applied and no deduction is computed here — the preparer applies the current rate to the counts above.",
+      ])
+    );
+
+    const logFilename = `travel-log-${year}-${slugify(account.legal_name ?? account.id)}.csv`;
+    return new NextResponse(logRows.join(""), {
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${logFilename}"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
   const report = await loadYearEndReport(supabase, account.id, year);
 
   if (report.error) {
