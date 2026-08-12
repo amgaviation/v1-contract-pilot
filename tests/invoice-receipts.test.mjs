@@ -122,23 +122,36 @@ test("the receipts line in the invoice email", async (t) => {
     assert.doesNotMatch(without.text, /receipt/i);
   });
 
-  await t.test("one receipt reads singular", () => {
+  await t.test("one embedded receipt reads singular", () => {
     const { text } = buildInvoiceMessage({ ...BASE, receiptCount: 1 });
-    assert.match(text, /The receipt for the rebilled expense is included in the attached PDF\./);
+    assert.match(text, /One receipt for a rebilled expense is included in the attached PDF\./);
   });
 
-  await t.test("several receipts read plural", () => {
+  await t.test("several embedded receipts read plural and name the exact count", () => {
     const { text } = buildInvoiceMessage({ ...BASE, receiptCount: 3 });
     assert.match(
       text,
-      /Receipts for the rebilled expenses are included in the attached PDF\./
+      /3 receipts for rebilled expenses are included in the attached PDF\./
     );
   });
 
-  await t.test("the claim is about the ATTACHMENT, so it must only ever come from receiptCount", () => {
-    // receiptCount is documented as "pages actually appended". This pins
-    // that a message with receiptCount 0 makes no receipt claim even when
-    // everything else suggests rebilling (notes mentioning expenses etc.).
+  await t.test("the count stated is exactly receiptCount — never rounded to 'the receipts'", () => {
+    // receiptCount is the count of GENUINELY-EMBEDDED images, so on an invoice
+    // whose rebill lines mostly carried PDF/HEIC/corrupt receipts (fallback
+    // pages), the body must name only the few that are truly in hand — and it
+    // must never use a phrasing ("the rebilled expenses") that implies all of
+    // them are attached.
+    const { text } = buildInvoiceMessage({ ...BASE, receiptCount: 2 });
+    assert.match(text, /2 receipts for rebilled expenses are included in the attached PDF\./);
+    assert.doesNotMatch(text, /the rebilled expenses are included/);
+  });
+
+  await t.test("the claim is about EMBEDDED images, so it must only ever come from receiptCount", () => {
+    // receiptCount is documented as the count of genuinely-embedded receipt
+    // images. This pins that a message with receiptCount 0 makes no receipt
+    // claim even when everything else suggests rebilling (notes mentioning
+    // expenses etc.) — e.g. every receipt on the invoice was a PDF/HEIC that
+    // rode along as a fallback page, so nothing is truly attached to claim.
     const { text } = buildInvoiceMessage({
       ...BASE,
       notes: "Includes rebilled fuel and catering.",

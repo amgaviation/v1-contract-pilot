@@ -1,4 +1,5 @@
 import "server-only";
+import sharp from "sharp";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { InvoicePdf, type InvoicePdfLine } from "@/lib/invoice-pdf";
 import {
@@ -40,11 +41,15 @@ export type InvoiceDocument = {
   totalCents: number;
   balanceDueCents: number;
   /**
-   * How many receipt pages were actually appended (including honest
-   * "couldn't be rendered" caption pages — each is still a page about a
-   * receipt). 0 when receipts were toggled off, when no rebill line has
-   * one, and always for the email/download body copy to reflect what the
-   * attachment truly contains rather than what was hoped for it.
+   * How many receipts were GENUINELY EMBEDDED as image pages — a real,
+   * decoded JPEG/PNG the client can actually see. This deliberately EXCLUDES
+   * the honest caption/fallback pages (a PDF-format receipt, an unsupported
+   * format, a fetch failure, a corrupt image that wouldn't decode): those are
+   * pages ABOUT a receipt, not the receipt itself, and the email must not
+   * claim an image the attachment doesn't carry. 0 when receipts were toggled
+   * off, when no rebill line has one, and when every receipt degraded to a
+   * fallback page. The one number the email body copy is allowed to speak to
+   * (lib/email/invoice-message.ts) — see that field's own note.
    */
   receiptCount: number;
 };
@@ -78,6 +83,55 @@ type TotalsRow = {
   amount_paid_cents: number;
   balance_due_cents: number;
 };
+
+/**
+ * Decode a receipt's bytes to a buffer react-pdf is guaranteed to embed, or
+ * null if they don't decode to a real image.
+ *
+ * classifyReceiptBytes (lib/invoice-receipts.ts) only reads the LEADING magic
+ * number, so a truncated or corrupt file that still begins with a valid
+ * JPEG/PNG signature passes classification and reaches here looking
+ * embeddable. It is not. Two things then go wrong if the raw bytes are handed
+ * straight to react-pdf:
+ *
+ *  - @react-pdf/renderer 4.5.x does NOT throw on such a file — its layout pass
+ *    wraps image resolution in a try/catch and merely console.warns, dropping
+ *    the image (see @react-pdf/layout fetchImage). The receipt page then
+ *    renders BLANK beneath its caption, with none of the honest "available on
+ *    request" fallback copy, and — worse — the empty page is still counted as
+ *    an embedded receipt, so the email claims an image that isn't there.
+ *  - A future react-pdf, or an exotic-but-decodable encoding its bespoke
+ *    decoders choke on (progressive JPEG, interlaced/16-bit PNG), could fail
+ *    harder. Because the whole document is composed in ONE renderToBuffer,
+ *    one bad image failing there would fail the entire invoice.
+ *
+ * So the bytes are put through a real decode FIRST. sharp reads every pixel
+ * and re-encodes to a baseline JPEG / standard PNG — normalising the exotic
+ * encodings to the plain forms react-pdf embeds most reliably, and returning
+ * null for anything it cannot decode (`failOn: "error"` rejects genuinely
+ * corrupt input while tolerating mere warnings). The caller embeds only what
+ * decodes and degrades the rest to the same captioned fallback page every
+ * other non-embeddable receipt already uses. This is the invariant proven
+ * with the real renderer: any subset of corrupt receipts becomes fallback
+ * pages and the invoice still renders a valid PDF.
+ */
+async function decodeEmbeddableReceipt(
+  bytes: Buffer,
+  mime: "image/jpeg" | "image/png"
+): Promise<Buffer | null> {
+  try {
+    const pipe = sharp(bytes, { failOn: "error" });
+    return mime === "image/png"
+      ? await pipe.png().toBuffer()
+      : await pipe.jpeg({ quality: 90 }).toBuffer();
+  } catch (cause) {
+    console.error(
+      "[invoice-document] receipt image would not decode, using caption page",
+      cause
+    );
+    return null;
+  }
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export async function buildInvoiceDocument(
@@ -279,11 +333,24 @@ export async function buildInvoiceDocument(
           const bytes = Buffer.from(await blob.arrayBuffer());
           const classified = classifyReceiptBytes(bytes);
           if (classified.kind === "image") {
-            receipts.push({
-              ...base,
-              imageDataUri: `data:${classified.mime};base64,${bytes.toString("base64")}`,
-              note: null,
-            });
+            // The magic number said JPEG/PNG; a real decode says whether the
+            // rest of the file agrees. A truncated or corrupt image that only
+            // LOOKS embeddable is sent to the same fallback page as a PDF or
+            // HEIC receipt — never embedded blank, never counted as included.
+            const decoded = await decodeEmbeddableReceipt(bytes, classified.mime);
+            if (decoded) {
+              receipts.push({
+                ...base,
+                imageDataUri: `data:${classified.mime};base64,${decoded.toString("base64")}`,
+                note: null,
+              });
+            } else {
+              receipts.push({
+                ...base,
+                imageDataUri: null,
+                note: receiptFallbackNote("unavailable"),
+              });
+            }
           } else {
             receipts.push({
               ...base,
@@ -325,7 +392,10 @@ export async function buildInvoiceDocument(
       accountName: accountInfo.legal_name,
       totalCents: totals.total_cents,
       balanceDueCents: totals.balance_due_cents,
-      receiptCount: receipts.length,
+      // Only the receipts that carry a real, decoded image — the caption/
+      // fallback pages (imageDataUri === null) are excluded so the email
+      // never claims an image the attachment doesn't contain.
+      receiptCount: receipts.filter((r) => r.imageDataUri !== null).length,
     },
   };
 }
