@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import PageShell from "../../page-shell";
 import { createEstimateDraft } from "../actions";
 import NewEstimateForm, { type ClientOption } from "./new-form";
@@ -7,7 +7,7 @@ import NewEstimateForm, { type ClientOption } from "./new-form";
 export const metadata = { title: "New estimate" };
 
 export default async function NewEstimatePage() {
-  await requireAccount("/estimates/new");
+  await requireEntitlement("estimates", "/estimates/new");
 
   const supabase = await createClient();
 

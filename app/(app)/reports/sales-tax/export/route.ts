@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { csvRow } from "@/lib/csv";
 import { loadSalesTaxReport } from "../queries";
 import {
@@ -39,7 +39,7 @@ function slugify(value: string): string {
  * didn't ask for is worse than an error).
  */
 export async function GET(request: NextRequest) {
-  const { account } = await requireAccount("/reports/sales-tax");
+  const { account } = await requireEntitlement("sales_tax_report", "/reports/sales-tax");
 
   const url = new URL(request.url);
   const from = url.searchParams.get("from");

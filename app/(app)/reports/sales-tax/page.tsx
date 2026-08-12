@@ -17,7 +17,7 @@ import {
 } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import PageShell from "../../page-shell";
@@ -55,7 +55,7 @@ export default async function SalesTaxReportPage({
 }: {
   searchParams: Promise<{ from?: string; to?: string }>;
 }) {
-  const { account } = await requireAccount("/reports/sales-tax");
+  const { account } = await requireEntitlement("sales_tax_report", "/reports/sales-tax");
   const sp = await searchParams;
 
   const today = todayIso();

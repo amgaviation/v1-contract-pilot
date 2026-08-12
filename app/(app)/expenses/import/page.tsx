@@ -1,6 +1,6 @@
 import { Callout, Card } from "@/components/ui";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import PageShell from "../../page-shell";
 import ImportWorkspace from "./import-workspace";
 import { listBankAccounts } from "./actions";
@@ -16,7 +16,7 @@ export const metadata = { title: "Import statement" };
  * /expenses/transactions, the review queue, never here.
  */
 export default async function BankImportPage() {
-  await requireAccount("/expenses/import");
+  await requireEntitlement("bank_import", "/expenses/import");
   const { accounts, error } = await listBankAccounts();
 
   return (

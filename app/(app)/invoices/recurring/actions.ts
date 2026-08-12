@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { parseDollarsToCents } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import type { Database } from "@/lib/supabase/database.types";
@@ -166,7 +166,7 @@ export async function createRecurringSchedule(
   _prev: ScheduleFormState,
   formData: FormData
 ): Promise<ScheduleFormState> {
-  const { account } = await requireAccount("/invoices/recurring");
+  const { account } = await requireEntitlement("recurring_invoices", "/invoices/recurring");
   const values = echoSchedule(formData);
 
   const clientId = String(formData.get("client_id") ?? "").trim();
@@ -254,7 +254,7 @@ export async function updateRecurringSchedule(
   _prev: ScheduleEditState,
   formData: FormData
 ): Promise<ScheduleEditState> {
-  const { account } = await requireAccount("/invoices/recurring");
+  const { account } = await requireEntitlement("recurring_invoices", "/invoices/recurring");
 
   const id = String(formData.get("id") ?? "").trim();
   const values: ScheduleEditValues = {
@@ -327,7 +327,7 @@ export async function setRecurringScheduleActive(
   id: string,
   active: boolean
 ): Promise<{ error: string | null }> {
-  const { account } = await requireAccount("/invoices/recurring");
+  const { account } = await requireEntitlement("recurring_invoices", "/invoices/recurring");
   if (!UUID_RE.test(id)) return { error: "That schedule couldn't be found." };
 
   const supabase = await createClient();
@@ -356,7 +356,7 @@ export async function setRecurringScheduleActive(
  * again.
  */
 export async function deleteRecurringSchedule(id: string): Promise<{ error: string | null }> {
-  const { account } = await requireAccount("/invoices/recurring");
+  const { account } = await requireEntitlement("recurring_invoices", "/invoices/recurring");
   if (!UUID_RE.test(id)) return { error: "That schedule couldn't be found." };
 
   const supabase = await createClient();
@@ -414,7 +414,7 @@ export async function generateRecurringInvoice(
   scheduleId: string,
   periodStart: string
 ): Promise<GenerateResult> {
-  const { account } = await requireAccount("/invoices/recurring");
+  const { account } = await requireEntitlement("recurring_invoices", "/invoices/recurring");
   if (!UUID_RE.test(scheduleId) || !isDate(periodStart)) {
     return { error: "That period couldn't be found." };
   }
@@ -526,7 +526,7 @@ const CREATE_ALL_CONFIRM_THRESHOLD = 12;
 export async function generateAllDueRecurringInvoices(
   confirmed = false
 ): Promise<GenerateAllResult> {
-  const { account } = await requireAccount("/invoices/recurring");
+  const { account } = await requireEntitlement("recurring_invoices", "/invoices/recurring");
   const supabase = await createClient();
 
   const { data: schedulesData, error: schedulesError } = await supabase

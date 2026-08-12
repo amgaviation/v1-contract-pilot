@@ -12,7 +12,7 @@ import {
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import { rowsOf, type DbErrorLike } from "@/lib/supabase/rows";
@@ -57,7 +57,7 @@ export default async function EstimatesPage({
 }: {
   searchParams: Promise<{ show?: string }>;
 }) {
-  await requireAccount("/estimates");
+  await requireEntitlement("estimates", "/estimates");
   const { show } = await searchParams;
   // "Open" (drafts still being written plus sent quotes awaiting an
   // answer) is the default view: a pilot opens this screen to find out

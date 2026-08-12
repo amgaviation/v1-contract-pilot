@@ -13,7 +13,7 @@ import {
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import PageShell from "../../page-shell";
@@ -59,7 +59,7 @@ export default async function EstimatePage({
 }) {
   const { id } = await params;
   const { warning } = await searchParams;
-  await requireAccount(`/estimates/${id}`);
+  await requireEntitlement("estimates", `/estimates/${id}`);
 
   const supabase = await createClient();
 

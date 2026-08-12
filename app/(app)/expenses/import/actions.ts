@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { friendlyDbError } from "@/lib/db-errors";
 import { transactionFingerprint } from "@/lib/bank-import/fingerprint";
 import type { BankFileFormat } from "@/lib/bank-import/types";
@@ -34,7 +34,7 @@ export type BankAccountOption = {
 };
 
 export async function listBankAccounts(): Promise<{ accounts: BankAccountOption[]; error: string | null }> {
-  await requireAccount("/expenses/import");
+  await requireEntitlement("bank_import", "/expenses/import");
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("bank_accounts")
@@ -48,7 +48,7 @@ export async function listBankAccounts(): Promise<{ accounts: BankAccountOption[
 export type CreateBankAccountResult = { error: string | null; account?: BankAccountOption };
 
 export async function createBankAccount(formData: FormData): Promise<CreateBankAccountResult> {
-  const { account } = await requireAccount("/expenses/import");
+  const { account } = await requireEntitlement("bank_import", "/expenses/import");
   const label = String(formData.get("label") ?? "").trim().slice(0, 200);
   if (!label) return { error: "Give this account a name — e.g. \"Chase checking\"." };
   const kindRaw = String(formData.get("kind") ?? "");
@@ -139,7 +139,7 @@ function validateRow(row: ConfirmBankImportRow): string | null {
 }
 
 export async function confirmBankImport(payload: ConfirmBankImportPayload): Promise<ConfirmBankImportResult> {
-  const { account } = await requireAccount("/expenses/import");
+  const { account } = await requireEntitlement("bank_import", "/expenses/import");
 
   if (!(FORMATS as readonly string[]).includes(payload.format)) {
     return { error: "That import format isn't recognized." };

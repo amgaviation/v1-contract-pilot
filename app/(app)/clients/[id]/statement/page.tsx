@@ -16,7 +16,7 @@ import {
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import PageShell from "../../../page-shell";
@@ -62,7 +62,7 @@ export default async function ClientStatementPage({
   searchParams: Promise<{ from?: string; to?: string }>;
 }) {
   const { id } = await params;
-  const { account } = await requireAccount(`/clients/${id}/statement`);
+  const { account } = await requireEntitlement("client_statements", `/clients/${id}/statement`);
   const sp = await searchParams;
 
   const today = todayIso();

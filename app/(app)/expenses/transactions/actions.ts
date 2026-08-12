@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { friendlyDbError } from "@/lib/db-errors";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -69,7 +69,7 @@ export async function confirmTransaction(formData: FormData): Promise<ConfirmTra
   // pilot.current_account_ids(), so an account id passed from here is a
   // value the database would have to distrust anyway. This call remains
   // the auth gate.
-  await requireAccount("/expenses/transactions");
+  await requireEntitlement("bank_import", "/expenses/transactions");
 
   const id = String(formData.get("id") ?? "");
   if (!UUID_RE.test(id)) return { error: "That transaction isn't recognized." };
@@ -168,7 +168,7 @@ export type IgnoreTransactionResult = { error: string | null };
 
 /** Marks a row as not-an-expense (a transfer, a duplicate the fingerprint index missed because it's genuinely two real transactions, etc). Creates nothing in pilot.expenses. */
 export async function ignoreTransaction(formData: FormData): Promise<IgnoreTransactionResult> {
-  const { account } = await requireAccount("/expenses/transactions");
+  const { account } = await requireEntitlement("bank_import", "/expenses/transactions");
   const id = String(formData.get("id") ?? "");
   if (!UUID_RE.test(id)) return { error: "That transaction isn't recognized." };
 

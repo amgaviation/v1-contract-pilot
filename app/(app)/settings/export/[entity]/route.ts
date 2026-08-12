@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { rowsOf, type DbErrorLike } from "@/lib/supabase/rows";
 import { csvRow } from "@/lib/csv";
 import {
@@ -232,7 +232,7 @@ export async function GET(
     );
   }
 
-  const { account } = await requireAccount("/settings/export");
+  const { account } = await requireEntitlement("account_export", "/settings/export");
   const supabase = await createClient();
 
   // Everything that can fail cleanly fails BEFORE the first byte: the
