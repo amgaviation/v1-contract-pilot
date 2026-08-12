@@ -1779,8 +1779,11 @@ async function emailInvoice(
     balanceDueCents: doc.balanceDueCents,
     paymentUrl,
     notes: invoice.notes,
-    // What the attachment actually carries (pages appended), never the
-    // toggle's intent — see InvoiceMessageInput.receiptCount.
+    // Genuinely-embedded receipt IMAGES only — not fallback/caption pages,
+    // and never the toggle's intent. buildInvoiceDocument counts only images
+    // that decoded and embedded, so the email cannot claim a receipt that
+    // rode along as an on-request caption page. See
+    // InvoiceMessageInput.receiptCount.
     receiptCount: doc.receiptCount,
   };
 
