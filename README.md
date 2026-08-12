@@ -19,26 +19,27 @@ AMG appears in exactly one place: the footer, as "powered by AMG Aviation".
 
 ## Status
 
-Live Supabase project, live Stripe (test mode), deployed to Vercel. Phases
-0–6 and 8 are built; Phase 9 Layer 1 (tenant-defined day types and rate
-cards) is merged and has since been extended — half-day units, away-vs-home
-per diem, a monthly billing guarantee alongside the per-trip minimum, Part
-135 operator qualifications, trip cancellation tracking, a streaming logbook
-CSV export, and a year-end packet with 1099 reconciliation. Phase 7
-(currency) is deliberately unbuilt — it ships behind a flag, dark, and only
-after counsel re-confirms the disclaimer wording. See `docs/PLAN.md` for what
-Phase 7 is still missing and why it is blocked, not merely unstarted.
+Live Supabase project, live Stripe (test mode), deployed to Vercel. The product now spans:
+clients, trips with legs and typed day records, estimates with convert-to-invoice, invoices
+(sequential numbering, PDF with attached rebill receipts, email delivery with manual reminders,
+share links with viewed tracking, recurring schedules, Stripe Connect payment links), expenses
+(receipt OCR, bank/card statement import with a review queue, mileage), a full logbook
+(manual, trip-derived drafts, CSV import and export), per-client statements, documents with
+expiry tracking, per-operator 135 qualification records, three plan tiers with entitlement
+gating, and an accounting layer — aviation-shaped chart of accounts, double-entry journal with
+derived postings, bank reconciliation, balance sheet and cash flow. Reports: P&L, quarterly
+estimated-tax, sales tax, year-end packet with 1099 reconciliation, CPA travel log, and
+cross-operator 135.267 flight-time totals. The FAA currency engine and its /currency board are
+built and ship dark behind CURRENCY_ENGINE_ENABLED.
 
-The logbook CSV **import** (ForeFlight, LogTen Pro, generic mapper) is also
-still unbuilt: `logbook_import_batches` and `logbook_source_files` exist in
-the schema, with RLS, and no code path writes to them.
+`docs/WAVE-PARITY.md` scores all of it against Wave, row by row, with citations.
 
 **One thing blocks real users:** signup returns `Error sending confirmation
 email`. SMTP is configured against Resend, credentials are accepted, and the
 send is rejected with `550 — the sending domain is not verified`. Until
 `amgaviationgroup.com` is verified at resend.com/domains (DKIM + SPF records),
 or the sender is temporarily pointed at `onboarding@resend.dev`, no new pilot
-can complete signup.
+can complete signup. The same verification gates invoice email delivery.
 
 ## Stack
 
