@@ -2,21 +2,26 @@ import { redirect } from "next/navigation";
 import { Button, Card, Flex, Text } from "@/components/ui";
 import { getSessionContext } from "@/lib/supabase/account";
 import { DASHBOARD_PATH } from "@/lib/nav";
+import { PLAN_TIERS, TIER_DISPLAY } from "@/lib/entitlements";
+import { tierPriceLabels } from "@/lib/stripe/prices";
+import { TRIAL_PERIOD_DAYS } from "@/lib/stripe/server";
 import { signOut } from "./actions";
-import { StartTrialButton } from "./welcome-actions";
+import { PlanPicker, type PlanOption } from "./welcome-actions";
 
 export const metadata = { title: "Welcome" };
-
-// Presentational only — the authoritative amount is the Stripe Price
-// (STRIPE_PRICE_ID_SOLO), which is what actually gets charged. Kept in sync
-// by hand; the price object is the source of truth, not this string.
-const PRICE_LABEL = "$29/month";
 
 /**
  * The resting state for a signed-in user with no tenant. Per docs/PLAN.md
  * decisions #6/#7 the Stripe checkout webhook is the ONLY thing that
  * creates a tenant, so this page starts that checkout rather than
  * provisioning anything itself.
+ *
+ * Plan selection happens HERE, at checkout: the three tiers come from
+ * lib/entitlements.ts (the one tier source) and every displayed amount
+ * is read from the live Stripe Price object (lib/stripe/prices.ts) —
+ * the string a pilot reads and the amount Stripe charges are the same
+ * fact. A tier whose price env vars aren't configured renders as
+ * unavailable instead of breaking the page.
  */
 export default async function WelcomePage({
   searchParams,
@@ -55,8 +60,19 @@ export default async function WelcomePage({
     );
   }
 
+  const prices = await tierPriceLabels();
+  const options: PlanOption[] = PLAN_TIERS.map((tier) => ({
+    tier,
+    name: TIER_DISPLAY[tier].name,
+    blurb: TIER_DISPLAY[tier].blurb,
+    price: {
+      monthly: prices[tier].monthly?.label ?? null,
+      annual: prices[tier].annual?.label ?? null,
+    },
+  }));
+
   return (
-    <Card size="4" style={{ width: "100%", maxWidth: "28rem" }}>
+    <Card size="4" style={{ width: "100%", maxWidth: "32rem" }}>
       <Flex direction="column" align="center" gap="3" style={{ textAlign: "center" }}>
         <Text size="6" weight="bold">
           You&rsquo;re signed in
@@ -70,8 +86,8 @@ export default async function WelcomePage({
         */}
         <Text size="2" color="gray">
           Log the trip once — your logbook draft and your invoice lines both
-          come from it, and your expenses attach to it. Start your trial to set
-          up your workspace.
+          come from it, and your expenses attach to it. Pick a plan to start
+          your trial; you can change plans any time from Settings.
         </Text>
 
         {checkout === "cancelled" ? (
@@ -80,7 +96,7 @@ export default async function WelcomePage({
           </Text>
         ) : null}
 
-        <StartTrialButton priceLabel={PRICE_LABEL} />
+        <PlanPicker options={options} trialDays={TRIAL_PERIOD_DAYS} />
 
         <form action={signOut}>
           <Button type="submit" variant="ghost" color="gray" size="1">

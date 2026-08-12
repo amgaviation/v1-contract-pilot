@@ -76,6 +76,12 @@ export type Database = {
           country: string | null;
           logo_url: string | null;
           plan: "solo" | "business" | null;
+          // Added by 20260812300000_account_plan_tier.sql — the
+          // entitlement tier (lib/entitlements.ts is the vocabulary
+          // source). Webhook/service-role-writable only: withheld from
+          // the tenant UPDATE grant and protected by the
+          // accounts_protect_billing_columns trigger.
+          plan_tier: "solo" | "pro" | "business";
           seat_count: number;
           stripe_customer_id: string | null;
           stripe_subscription_id: string | null;
@@ -106,6 +112,7 @@ export type Database = {
           country?: string | null;
           logo_url?: string | null;
           plan?: "solo" | "business" | null;
+          plan_tier?: "solo" | "pro" | "business";
           seat_count?: number;
           stripe_customer_id?: string | null;
           stripe_subscription_id?: string | null;
@@ -144,6 +151,7 @@ export type Database = {
           country?: string | null;
           logo_url?: string | null;
           plan?: "solo" | "business" | null;
+          plan_tier?: "solo" | "pro" | "business";
           seat_count?: number;
           stripe_customer_id?: string | null;
           stripe_subscription_id?: string | null;

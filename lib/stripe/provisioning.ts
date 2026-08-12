@@ -1,6 +1,7 @@
 import "server-only";
 import type Stripe from "stripe";
 import { createServiceClient } from "@/lib/supabase/service-role";
+import { tierForPriceId, type PlanTier } from "@/lib/entitlements";
 
 /**
  * Tenant provisioning and billing-state sync — the ONLY place in the app
@@ -39,6 +40,39 @@ function mapStatus(stripeStatus: Stripe.Subscription.Status): string {
 
 function trialEndsAt(sub: Stripe.Subscription): string | null {
   return sub.trial_end ? new Date(sub.trial_end * 1000).toISOString() : null;
+}
+
+/**
+ * The subscription's price → plan tier, via the env-name mapping in
+ * lib/entitlements.ts. The PRICE is the authority: an upgrade or
+ * downgrade becomes real when Stripe says the subscription's price
+ * changed (customer.subscription.updated), never when our UI claims it —
+ * so a checkout the pilot abandoned, or a plan-change action that failed
+ * at Stripe, can never move the tier.
+ *
+ * Returns null — meaning "leave plan_tier alone" — in two distinct
+ * cases, both deliberate:
+ *   - No price on the event (billing:verify's synthetic events, or a
+ *     malformed payload). Nothing to map, nothing to change.
+ *   - A price that maps to NO configured env var. That is OUR
+ *     misconfiguration (a price rotated in Stripe without the env var
+ *     following, or a stale test object), and the wrong response would
+ *     be either a throw — a 500 loop that also blocks the STATUS sync
+ *     riding the same event — or a silent default that could quietly
+ *     downgrade a paying Business customer to solo. Keeping the current
+ *     tier and logging loudly is the only option that strands nobody.
+ */
+function tierFromSubscription(sub: Stripe.Subscription): PlanTier | null {
+  const priceId = sub.items?.data?.[0]?.price?.id ?? null;
+  if (!priceId) return null;
+  const match = tierForPriceId(priceId);
+  if (!match) {
+    console.error(
+      `Subscription ${sub.id} carries price ${priceId}, which maps to no STRIPE_PRICE_ID_* env var — plan_tier left unchanged. Check the six price env vars against the Stripe dashboard.`
+    );
+    return null;
+  }
+  return match.tier;
 }
 
 /**
@@ -89,7 +123,19 @@ export async function provisionAccountFromCheckout(
     .from("accounts")
     .insert({
       kind: "solo",
+      // `plan` is decision #10's BILLING-SHAPE vocabulary (flat rate vs
+      // the deferred per-seat plan), not the tier — all three tiers are
+      // flat-rate today, so it stays "solo". The tier lives in
+      // plan_tier. See 20260812300000_account_plan_tier.sql.
       plan: "solo",
+      // Provisioning is the one place a null mapping falls back to
+      // "solo" instead of "leave unchanged": a new row has no current
+      // value to leave alone, NOT NULL requires an answer, and the
+      // floor tier is the only safe wrong answer — a support
+      // conversation upgrades it; the reverse (defaulting high) would
+      // hand out unpaid entitlements. tierFromSubscription has already
+      // logged loudly if this fires on a real checkout.
+      plan_tier: tierFromSubscription(subscription) ?? "solo",
       seat_count: 1,
       legal_name: legalName,
       stripe_customer_id: customerId,
@@ -160,13 +206,26 @@ export async function syncSubscriptionState(
 
   if (!accountId) return false;
 
+  // plan_tier moves ONLY when the event's price maps to a tier. A null
+  // mapping (no price on the payload, or an unmapped price — see
+  // tierFromSubscription) leaves the existing tier standing, so a
+  // malformed or misconfigured event can degrade the STATUS sync's
+  // company but never silently re-tier a paying account. Out-of-order
+  // safety needs nothing extra here: the webhook's isSuperseded check
+  // runs before this function for every subscription event, so a stale
+  // downgrade arriving after a newer upgrade is dropped whole, tier and
+  // status together.
+  const tier = tierFromSubscription(subscription);
+  const update: Record<string, unknown> = {
+    stripe_subscription_id: subscription.id,
+    status: mapStatus(subscription.status),
+    trial_ends_at: trialEndsAt(subscription),
+  };
+  if (tier) update.plan_tier = tier;
+
   const { error } = await supabase
     .from("accounts")
-    .update({
-      stripe_subscription_id: subscription.id,
-      status: mapStatus(subscription.status),
-      trial_ends_at: trialEndsAt(subscription),
-    } as never)
+    .update(update as never)
     .eq("id", accountId);
 
   if (error) {

@@ -5,7 +5,9 @@ import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionContext } from "@/lib/supabase/account";
 import { DASHBOARD_PATH } from "@/lib/nav";
-import { getStripe, getSoloPriceId, TRIAL_PERIOD_DAYS } from "@/lib/stripe/server";
+import { getStripe, TRIAL_PERIOD_DAYS } from "@/lib/stripe/server";
+import { priceIdFor } from "@/lib/stripe/prices";
+import { isBillingInterval, isPlanTier } from "@/lib/entitlements";
 
 export async function signOut() {
   const supabase = await createClient();
@@ -16,19 +18,43 @@ export async function signOut() {
 export type CheckoutState = { error: string | null };
 
 /**
- * Starts the card-required trial (decision #6). This creates the Checkout
- * session only — it does NOT create a tenant. Provisioning happens solely
- * in the webhook when Stripe confirms the checkout completed (decision
- * #7), so a user who abandons the payment page, or fakes a return to the
- * success URL, never gets an account.
+ * Starts the card-required trial (decision #6) for the CHOSEN tier. This
+ * creates the Checkout session only — it does NOT create a tenant.
+ * Provisioning happens solely in the webhook when Stripe confirms the
+ * checkout completed (decision #7), so a user who abandons the payment
+ * page, or fakes a return to the success URL, never gets an account.
+ *
+ * The tier ends up on the account via the PRICE, not via this form: the
+ * webhook maps the subscription's price ID back through
+ * lib/entitlements.ts (tierForPriceId). A tampered form field can
+ * therefore only ever pick a different price to PAY for — it can never
+ * claim an entitlement the resulting subscription doesn't carry.
  */
 export async function startCheckout(
   _prev: CheckoutState,
-  _formData: FormData
+  formData: FormData
 ): Promise<CheckoutState> {
   const ctx = await getSessionContext();
   if (!ctx) redirect("/login");
   if (ctx.account) redirect(DASHBOARD_PATH);
+
+  const tier = formData.get("tier");
+  const interval = formData.get("interval");
+  if (!isPlanTier(tier) || !isBillingInterval(interval)) {
+    return { error: "Pick a plan to continue." };
+  }
+
+  const priceId = priceIdFor(tier, interval);
+  if (!priceId) {
+    // Configured-tiers-only is enforced in the UI too (the picker
+    // disables unpriced options), so reaching this means either a
+    // hand-built POST or a deployment missing an env var — both get the
+    // honest answer, neither gets a checkout for a price that doesn't
+    // exist.
+    return {
+      error: "That plan isn't available yet. Pick another, or try again later.",
+    };
+  }
 
   const origin = (await headers()).get("origin");
   if (!origin) {
@@ -40,7 +66,7 @@ export async function startCheckout(
     const stripe = getStripe();
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
-      line_items: [{ price: getSoloPriceId(), quantity: 1 }],
+      line_items: [{ price: priceId, quantity: 1 }],
       // Ties the Stripe session back to the Supabase identity. The webhook
       // reads this to know WHICH auth user to provision an account for —
       // without it there is no link between the payment and the person.
@@ -53,7 +79,10 @@ export async function startCheckout(
       // Card required up front even though the trial is free, per decision
       // #6 — this is what makes the trial convert without a second ask.
       payment_method_collection: "always",
-      metadata: { supabase_user_id: ctx.user.id },
+      // plan_tier here is diagnostic breadcrumb only (support can see
+      // what the picker showed) — the webhook maps the tier from the
+      // PRICE, never from this metadata.
+      metadata: { supabase_user_id: ctx.user.id, plan_tier: tier },
       // Land back on /welcome: the tenant may not exist for a moment
       // (the webhook is racing the browser redirect), and that page polls
       // rather than showing a broken app shell.
