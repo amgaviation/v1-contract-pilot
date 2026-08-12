@@ -1,6 +1,12 @@
 import "server-only";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { InvoicePdf, type InvoicePdfLine } from "@/lib/invoice-pdf";
+import {
+  classifyReceiptBytes,
+  receiptFallbackNote,
+  RECEIPTS_UNAVAILABLE_NOTE,
+  type ReceiptAttachment,
+} from "@/lib/invoice-receipts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -33,6 +39,14 @@ export type InvoiceDocument = {
   accountName: string;
   totalCents: number;
   balanceDueCents: number;
+  /**
+   * How many receipt pages were actually appended (including honest
+   * "couldn't be rendered" caption pages — each is still a page about a
+   * receipt). 0 when receipts were toggled off, when no rebill line has
+   * one, and always for the email/download body copy to reflect what the
+   * attachment truly contains rather than what was hoped for it.
+   */
+  receiptCount: number;
 };
 
 export type InvoiceDocumentResult =
@@ -69,8 +83,19 @@ type TotalsRow = {
 export async function buildInvoiceDocument(
   supabase: SupabaseClient<any, any, any>,
   accountId: string,
-  invoiceId: string
+  invoiceId: string,
+  options?: {
+    /**
+     * Append each rebilled-expense line's receipt as an extra PDF page.
+     * Defaults ON — an invoice that rebills expenses normally travels with
+     * its receipts (that is the substantiation norm the rebill exists
+     * for) — and both surfaces (the pdf route's `?receipts=0`, the send
+     * dialog's checkbox) let the pilot turn it off per document.
+     */
+    includeReceipts?: boolean;
+  }
 ): Promise<InvoiceDocumentResult> {
+  const includeReceipts = options?.includeReceipts ?? true;
   const [
     { data: invoiceData, error: invoiceError },
     { data: lineData, error: lineError },
@@ -84,7 +109,10 @@ export async function buildInvoiceDocument(
       .maybeSingle(),
     supabase
       .from("invoice_lines")
-      .select("description, quantity, unit_amount_cents, amount_cents")
+      // expense_id rides along solely to find rebill lines' receipts below;
+      // it is never rendered (the PDF shows the client the same fields it
+      // always has).
+      .select("description, quantity, unit_amount_cents, amount_cents, expense_id")
       .eq("invoice_id", invoiceId)
       .eq("account_id", accountId)
       .order("sort_order", { ascending: true }),
@@ -152,7 +180,7 @@ export async function buildInvoiceDocument(
     return { ok: false, reason: "not_found", error: "Not found." };
   }
 
-  const lines = (lineData ?? []) as InvoicePdfLine[];
+  const lines = (lineData ?? []) as (InvoicePdfLine & { expense_id: string | null })[];
   const totals = (totalsData as TotalsRow | null) ?? {
     subtotal_cents: 0,
     tax_cents: 0,
@@ -184,6 +212,96 @@ export async function buildInvoiceDocument(
     }
   }
 
+  // RECEIPT PAGES for rebilled expenses. Same never-fail-the-invoice
+  // contract as the logo above, page by page: every failure mode along this
+  // path — the metadata read, the bucket download, a format react-pdf can't
+  // embed (PDF receipts, HEIC, WebP) — degrades to an honestly-captioned
+  // page (copy in lib/invoice-receipts.ts) or, for the metadata read, one
+  // honest notice page, and NEVER to a failed document. The bytes are
+  // classified by magic number, not by extension or stored content type,
+  // because renderToBuffer is where a wrong guess would explode — see
+  // classifyReceiptBytes's own header.
+  //
+  // A rebill line whose expense simply has NO receipt on file gets no page
+  // at all: nothing exists to attach and a "missing receipt" page would
+  // invent a problem in front of the client.
+  const receipts: ReceiptAttachment[] = [];
+  const rebillLines = lines.filter(
+    (line): line is (typeof lines)[number] & { expense_id: string } =>
+      line.expense_id !== null
+  );
+  if (includeReceipts && rebillLines.length > 0) {
+    const { data: expenseData, error: expenseError } = await supabase
+      .from("expenses")
+      .select("id, receipt_path")
+      .in(
+        "id",
+        rebillLines.map((line) => line.expense_id)
+      )
+      .eq("account_id", accountId);
+
+    if (expenseError) {
+      console.error(
+        "[invoice-document] receipt metadata unavailable, rendering notice page",
+        expenseError.message
+      );
+      receipts.push({
+        description: "Receipts for rebilled expenses",
+        amountCents: null,
+        imageDataUri: null,
+        note: RECEIPTS_UNAVAILABLE_NOTE,
+      });
+    } else {
+      const receiptPathByExpense = new Map(
+        ((expenseData ?? []) as { id: string; receipt_path: string | null }[]).map((e) => [
+          e.id,
+          e.receipt_path,
+        ])
+      );
+      for (const line of rebillLines) {
+        const path = receiptPathByExpense.get(line.expense_id);
+        if (!path) continue; // no receipt on file — nothing to attach
+        const base = { description: line.description, amountCents: line.amount_cents };
+        // Same folder check as the logo: the first path segment is the
+        // tenant key (storage RLS enforces it too — this is defence in
+        // depth, not the boundary).
+        if (!path.startsWith(`${accountId}/`)) {
+          receipts.push({ ...base, imageDataUri: null, note: receiptFallbackNote("unavailable") });
+          continue;
+        }
+        try {
+          const { data: blob, error: receiptError } = await supabase.storage
+            .from("receipts")
+            .download(path);
+          if (receiptError || !blob) {
+            throw new Error(receiptError?.message ?? "empty receipt download");
+          }
+          const bytes = Buffer.from(await blob.arrayBuffer());
+          const classified = classifyReceiptBytes(bytes);
+          if (classified.kind === "image") {
+            receipts.push({
+              ...base,
+              imageDataUri: `data:${classified.mime};base64,${bytes.toString("base64")}`,
+              note: null,
+            });
+          } else {
+            receipts.push({
+              ...base,
+              imageDataUri: null,
+              note: receiptFallbackNote(classified.kind),
+            });
+          }
+        } catch (cause) {
+          console.error(
+            "[invoice-document] receipt unavailable, rendering caption page",
+            cause
+          );
+          receipts.push({ ...base, imageDataUri: null, note: receiptFallbackNote("unavailable") });
+        }
+      }
+    }
+  }
+
   const buffer = await renderToBuffer(
     <InvoicePdf
       logoDataUri={logoDataUri}
@@ -192,6 +310,7 @@ export async function buildInvoiceDocument(
       invoice={invoice}
       lines={lines}
       totals={totals}
+      receipts={receipts}
     />
   );
 
@@ -206,6 +325,7 @@ export async function buildInvoiceDocument(
       accountName: accountInfo.legal_name,
       totalCents: totals.total_cents,
       balanceDueCents: totals.balance_due_cents,
+      receiptCount: receipts.length,
     },
   };
 }

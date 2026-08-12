@@ -1546,7 +1546,14 @@ export async function updateInvoiceNotes(
  */
 export async function sendInvoice(
   id: string,
-  deliveryMethod: "platform_email" | "manual_download"
+  deliveryMethod: "platform_email" | "manual_download",
+  /**
+   * Whether the emailed PDF carries the rebilled-expense receipt pages
+   * (lib/invoice-document.tsx). Default ON to match the PDF route's own
+   * default; the send dialog's checkbox (status-actions.tsx) is what
+   * turns it off. Ignored for manual_download, which attaches nothing.
+   */
+  includeReceipts: boolean = true
 ): Promise<{ error: string | null }> {
   // Validated the same way updateInvoiceHeader validates its id — an
   // unvalidated string reaches Postgres as a malformed uuid, which
@@ -1578,7 +1585,7 @@ export async function sendInvoice(
   if (deliveryMethod === "platform_email") {
     // Numbered and dated by the transition above, so the attachment now
     // matches the record exactly.
-    const sent = await emailInvoice(supabase, account.id, id, "invoice", user.email);
+    const sent = await emailInvoice(supabase, account.id, id, "invoice", user.email, includeReceipts);
     if (!sent.ok) {
       return {
         error: `The invoice is now issued and numbered, but the email didn't go out — ${sent.error} Download the PDF and send it yourself; don't try to issue it again.`,
@@ -1674,7 +1681,13 @@ async function emailInvoice(
    * Supabase Auth, it is theirs, and it needs no new column. If an account-level
    * billing address is ever wanted, this is the one place to change.
    */
-  replyTo: string | undefined
+  replyTo: string | undefined,
+  /**
+   * Attach rebilled-expense receipt pages to the PDF. Defaults true so the
+   * reminder path keeps the same default as every other surface; only
+   * sendInvoice's dialog checkbox ever passes false.
+   */
+  includeReceipts: boolean = true
 ): Promise<{ ok: true; note: string } | { ok: false; error: string }> {
   if (!emailIsConfigured()) {
     return {
@@ -1738,7 +1751,9 @@ async function emailInvoice(
     };
   }
 
-  const built = await buildInvoiceDocument(supabase, accountId, invoiceId);
+  const built = await buildInvoiceDocument(supabase, accountId, invoiceId, {
+    includeReceipts,
+  });
   if (!built.ok) {
     return { ok: false, error: `${built.error} Nothing was sent.` };
   }
@@ -1764,6 +1779,9 @@ async function emailInvoice(
     balanceDueCents: doc.balanceDueCents,
     paymentUrl,
     notes: invoice.notes,
+    // What the attachment actually carries (pages appended), never the
+    // toggle's intent — see InvoiceMessageInput.receiptCount.
+    receiptCount: doc.receiptCount,
   };
 
   const message =

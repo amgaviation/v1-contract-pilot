@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { AlertDialog, Button, Card, Flex, Text, TextField } from "@/components/ui";
+import { formatDate } from "@/lib/format";
 import { createInvoiceShare, revokeInvoiceShare, type ShareState } from "../share-actions";
 
 /**
@@ -21,7 +22,20 @@ import { createInvoiceShare, revokeInvoiceShare, type ShareState } from "../shar
 
 const initialState: ShareState = { error: null };
 
-export type ShareRow = { token: string; revoked_at: string | null } | null;
+export type ShareRow = {
+  token: string;
+  revoked_at: string | null;
+  /**
+   * Stamped by pilot.invoice_share_mark_viewed (20260812200000) when the
+   * link is FETCHED while valid. "Viewed" is a fact about the link, not
+   * about a person — mail scanners and link previewers fetch pages too —
+   * and the copy below is worded to claim exactly that much and no more.
+   * The pilot's own signed-in preview never stamps (excluded in the
+   * function body), so their own checking doesn't fake a client view.
+   */
+  first_viewed_at: string | null;
+  last_viewed_at: string | null;
+} | null;
 
 export default function SharePanel({
   invoiceId,
@@ -37,6 +51,20 @@ export default function SharePanel({
   // request beats whatever was already on the row, so the pilot sees the
   // new link immediately after rotating without waiting on revalidation.
   const liveToken = createState.token ?? (share && !share.revoked_at ? share.token : null);
+
+  // Viewed state belongs to the token on the ROW. A rotation clears the
+  // stamps server-side (invoice_share_create nulls them with revoked_at),
+  // so when this render is showing a freshly-minted token that isn't the
+  // row's token yet, the row's stamps describe the OLD link and must not
+  // be shown against the new one.
+  const viewed =
+    liveToken && share && !share.revoked_at && share.token === liveToken
+      ? share.last_viewed_at
+      : null;
+  const firstViewed =
+    liveToken && share && !share.revoked_at && share.token === liveToken
+      ? share.first_viewed_at
+      : null;
 
   // Built client-side (window.location.origin) rather than from an env
   // var: this component only ever renders inside the authenticated app,
@@ -65,6 +93,19 @@ export default function SharePanel({
       {shareUrl ? (
         <Flex direction="column" gap="2" width="100%">
           <TextField.Root readOnly value={shareUrl} onFocus={(e) => e.currentTarget.select()} />
+          {/* States exactly what is knowable: the LINK was opened while
+              valid. Mail scanners and link previewers open links, so this
+              deliberately never says "your client read it" — Wave's viewed
+              tracking has the same property and the same honest ceiling. */}
+          <Text as="div" size="1" color="gray">
+            {viewed
+              ? `Viewed ${formatDate(viewed)}${
+                  firstViewed && formatDate(firstViewed) !== formatDate(viewed)
+                    ? ` · first opened ${formatDate(firstViewed)}`
+                    : ""
+                }. Opening counts even if it was an email scanner, not your client.`
+              : "Not viewed yet."}
+          </Text>
           <Flex gap="2">
             {/* CONFIRMED, like Revoke beside it. Rotating is not a gentler
                 action than revoking — it revokes AND replaces in one press.

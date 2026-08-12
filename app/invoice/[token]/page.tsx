@@ -242,6 +242,30 @@ export default async function PublicInvoicePage({
     notFound();
   }
 
+  // VIEWED STAMP — only after invoice_public proved the token live, so an
+  // invalid link 404s without ever attempting a write. The RPC
+  // (pilot.invoice_share_mark_viewed, 20260812200000) re-proves validity
+  // in its own body regardless — this ordering just spares the database a
+  // second call on the 404 path, the same economy as the regex above.
+  //
+  // BEST-EFFORT, BY DESIGN: the stamp is bookkeeping for the pilot; the
+  // render is the client's invoice. A failed stamp must never cost the
+  // client their document, so the error is logged (code/message only —
+  // NEVER the token, same rule as everywhere else in this route) and the
+  // page renders anyway. And a stamp means only "this link was fetched
+  // while valid" — link scanners and mail previewers GET pages too, which
+  // is why the share panel's wording is "Viewed", a fact about the link,
+  // not a claim about a human (see the migration header).
+  const { error: viewedError } = await supabase.rpc("invoice_share_mark_viewed", {
+    p_token: token,
+  } as never);
+  if (viewedError) {
+    console.error(
+      "[invoice-public] view stamp failed",
+      viewedError.code ?? viewedError.message
+    );
+  }
+
   const invoice = data as unknown as PublicInvoice;
   const status = STATUS_LABEL[invoice.invoice.status] ?? STATUS_LABEL.sent!;
 

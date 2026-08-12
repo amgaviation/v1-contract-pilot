@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { AlertDialog, Box, Button, Card, Flex, Select, Text } from "@/components/ui";
+import { AlertDialog, Box, Button, Card, Checkbox, Flex, Select, Text } from "@/components/ui";
 import { sendInvoice, sendInvoiceReminder, voidInvoice } from "../actions";
 
 type InvoiceForActions = {
@@ -27,6 +27,7 @@ export default function StatusActions({
   canEmail,
   clientEmail,
   clientName,
+  receiptCount,
 }: {
   invoice: InvoiceForActions;
   hasLines: boolean;
@@ -35,10 +36,25 @@ export default function StatusActions({
   /** The client's address on file, if any — the other half of "can we send". */
   clientEmail: string | null;
   clientName: string;
+  /**
+   * Rebill lines whose expense has a receipt on file — resolved on the
+   * server ([id]/page.tsx). 0 hides the receipts checkbox entirely; the
+   * emailed PDF then simply has no receipt pages to argue about.
+   */
+  receiptCount: number;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [sentNote, setSentNote] = useState<string | null>(null);
+  // Default ON: an invoice that rebills expenses normally travels with its
+  // receipts, and this default matches the PDF download button's own
+  // (pdf-download.tsx) so preview and send agree unless the pilot changes
+  // one. CONTROLLED (checked + onCheckedChange), per the React-19
+  // reset-event analysis in lines-editor.tsx — this one sits inside an
+  // AlertDialog rather than an action-dispatching form, but controlled is
+  // the house shape for Radix checkboxes so the analysis never has to be
+  // re-run when the surroundings change.
+  const [includeReceipts, setIncludeReceipts] = useState(true);
 
   // The email option is only OFFERED when it can actually work. Both halves
   // matter and they fail for different reasons the pilot fixes in different
@@ -97,9 +113,24 @@ export default function StatusActions({
           </Flex>
 
           {emailReady ? (
-            <Text as="div" size="1" color="gray" mt="2">
-              Goes to {clientEmail} with the PDF attached.
-            </Text>
+            <>
+              <Text as="div" size="1" color="gray" mt="2">
+                Goes to {clientEmail} with the PDF attached.
+              </Text>
+              {deliveryMethod === "platform_email" && receiptCount > 0 ? (
+                <Text as="label" size="1" color="gray" mt="2" style={{ display: "block" }}>
+                  <Flex gap="1" align="center">
+                    <Checkbox
+                      size="1"
+                      checked={includeReceipts}
+                      onCheckedChange={(value) => setIncludeReceipts(value === true)}
+                    />
+                    Attach {receiptCount === 1 ? "the receipt" : `${receiptCount} receipts`} for
+                    rebilled expenses
+                  </Flex>
+                </Text>
+              ) : null}
+            </>
           ) : !canEmail ? (
             <Text as="div" size="1" color="gray" mt="2">
               Emailing isn&rsquo;t set up on this account yet, so you&rsquo;ll need to
@@ -156,7 +187,13 @@ export default function StatusActions({
                         startTransition(async () => {
                           setError(null);
                           setSentNote(null);
-                          const result = await sendInvoice(invoice.id, deliveryMethod);
+                          const result = await sendInvoice(
+                            invoice.id,
+                            deliveryMethod,
+                            // Only meaningful on the email path; the
+                            // manual path attaches nothing.
+                            deliveryMethod === "platform_email" ? includeReceipts : true
+                          );
                           setError(result?.error ?? null);
                         });
                       }}

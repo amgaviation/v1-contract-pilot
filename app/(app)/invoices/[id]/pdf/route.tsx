@@ -21,14 +21,21 @@ export const dynamic = "force-dynamic";
  * a failure reason into a status code.
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
   const { account } = await requireAccount(`/invoices/${id}`);
 
+  // `?receipts=0` renders the invoice WITHOUT the rebilled-expense receipt
+  // pages. Anything else — absent, `1`, malformed — takes the default,
+  // which is receipts ON (see buildInvoiceDocument's options comment for
+  // why on is the default). The download button (pdf-download.tsx) is the
+  // ordinary author of this parameter.
+  const includeReceipts = request.nextUrl.searchParams.get("receipts") !== "0";
+
   const supabase = await createClient();
-  const result = await buildInvoiceDocument(supabase, account.id, id);
+  const result = await buildInvoiceDocument(supabase, account.id, id, { includeReceipts });
 
   if (!result.ok) {
     return NextResponse.json(

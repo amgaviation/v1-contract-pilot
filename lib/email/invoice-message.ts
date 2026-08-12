@@ -38,6 +38,16 @@ export type InvoiceMessageInput = {
   paymentUrl: string | null;
   /** Free-text the pilot added to the invoice; passed through untouched. */
   notes: string | null;
+  /**
+   * Receipt pages actually appended to the attached PDF (see
+   * lib/invoice-document.tsx's receiptCount — the count of what IS in the
+   * attachment, not what was hoped for it). When > 0 the body says so,
+   * because an accounts-payable reader deciding whether to chase
+   * substantiation should learn from the email that it is already in
+   * hand. Omitted/0 changes nothing — every pre-existing message renders
+   * byte-identically.
+   */
+  receiptCount?: number;
 };
 
 export type InvoiceMessage = { subject: string; text: string };
@@ -73,6 +83,18 @@ export function buildInvoiceMessage(input: InvoiceMessageInput): InvoiceMessage 
       `That is the remaining balance; the invoice total is ${formatCents(
         input.totalCents
       )} and payments already received are shown on the attached copy.`
+    );
+  }
+
+  if (input.receiptCount) {
+    // Only when pages are truly in the attachment (lib/invoice-document's
+    // count of appended pages) — the mail must never claim receipts a
+    // toggled-off or receiptless PDF doesn't carry.
+    lines.push("");
+    lines.push(
+      input.receiptCount === 1
+        ? "The receipt for the rebilled expense is included in the attached PDF."
+        : "Receipts for the rebilled expenses are included in the attached PDF."
     );
   }
 
