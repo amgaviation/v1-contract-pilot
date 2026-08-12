@@ -81,7 +81,6 @@ test("safety records and the working core are never gated", () => {
 test("pro gates exactly the business-office set, and business includes all of pro", () => {
   const proAdds = featuresAddedByTier("pro").sort();
   assert.deepEqual(proAdds, [
-    "account_export",
     "bank_import",
     "client_statements",
     "estimates",

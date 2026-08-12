@@ -253,8 +253,14 @@ export const FEATURES: Record<FeatureId, FeatureDef> = {
     routePatterns: ["/reports/sales-tax"],
   },
   account_export: {
+    // EVERY tier, deliberately, and this line has been moved once already —
+    // it shipped as minTier "pro" and a reviewer caught the contradiction:
+    // the downgrade promise everywhere in this product is "your data is
+    // never held hostage — read-only plus export", and the quality bar's
+    // full-data-exit rule says the same. An export you must pay to reach is
+    // neither. Gating export is the one upsell this product refuses.
     label: "Account-wide CSV export",
-    minTier: "pro",
+    minTier: "solo",
     routePatterns: ["/settings/export"],
   },
 

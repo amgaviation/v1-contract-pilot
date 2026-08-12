@@ -66,7 +66,12 @@ export async function startCheckout(
     const stripe = getStripe();
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
-      line_items: [{ price: priceId, quantity: 1 }],
+      // Business is priced per seat with a two-seat minimum (docs/PRICING.md
+      // §3.2), so its checkout starts at the minimum; the flat tiers are one
+      // unit of a flat price. If the owner points _BUSINESS at a flat Price
+      // instead, Stripe treats quantity 2 as two subscriptions' worth — the
+      // env var and this line must agree, which the report to the owner says.
+      line_items: [{ price: priceId, quantity: tier === "business" ? 2 : 1 }],
       // Ties the Stripe session back to the Supabase identity. The webhook
       // reads this to know WHICH auth user to provision an account for —
       // without it there is no link between the payment and the person.
