@@ -231,8 +231,15 @@ export type SalesTaxAssembly =
     };
 
 /** A candidate invoice's settled-state transitions, read from its full
- *  ledger at end-of-date granularity (see the file header). */
-function ledgerEvents(
+ *  ledger at end-of-date granularity (see the file header).
+ *
+ *  EXPORTED for exactly one other caller: the client payment-behavior
+ *  panel (app/(app)/clients/[id]/payment-insight.ts) reads an invoice's
+ *  first-crossing date from the first "settled" event this returns. Two
+ *  implementations of "which day was this invoice paid in full" would be
+ *  two answers to one question — the defect this file's header exists to
+ *  prevent — so that panel imports this one rather than re-deriving it. */
+export function ledgerEvents(
   ledger: SalesTaxPaymentRow[],
   totalCents: number
 ): { kind: "settled" | "unsettled"; on: string; crossedOn: string }[] {
