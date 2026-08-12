@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Flex } from "@/components/ui";
+import { BRAND } from "@/lib/brand";
 import SiteHeader from "./site-header";
 import SiteFooter from "./site-footer";
 
@@ -35,8 +36,28 @@ import SiteFooter from "./site-footer";
  */
 const isProductionDeployment = process.env.VERCEL_ENV === "production";
 
+/**
+ * openGraph/twitter carry NO title or description of their own, and that
+ * is deliberate: Next fills both from each page's RESOLVED metadata when
+ * the blocks omit them (resolve-metadata.js `inheritFromMetadata`, and
+ * twitter additionally falls back to openGraph). So the landing page's
+ * link preview uses the root description — the one crawlable sentence
+ * app/layout.tsx maintains — and /pricing's uses its own page-level
+ * description, with zero duplicated strings here to drift out of step.
+ * `url: "./"` resolves against metadataBase + the current pathname, so
+ * each page's og:url is its own canonical URL, not a shared one.
+ */
 export const metadata: Metadata = {
   robots: { index: isProductionDeployment, follow: true },
+  openGraph: {
+    type: "website",
+    siteName: BRAND.name,
+    url: "./",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary",
+  },
 };
 
 export default function MarketingLayout({
