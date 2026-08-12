@@ -6,10 +6,20 @@ import { Button, Card, Flex, Text } from "@/components/ui";
  * outside the (app) dashboard chrome, so it brings its own theme-only
  * shell rather than the (app) shell, which needs requireAccount() and a
  * resolved route this page doesn't have.
+ *
+ * The gray-2 ground is the app's canvas token (2026-08 rebuild): the Card
+ * below is a surface panel by default now, and it needs the canvas behind
+ * it to read as one, not as a stray outline on a bare page.
  */
 export default function NotFound() {
   return (
-    <Flex align="center" justify="center" minHeight="100vh" p="4">
+    <Flex
+      align="center"
+      justify="center"
+      minHeight="100vh"
+      p="4"
+      style={{ background: "var(--gray-2)" }}
+    >
       <Card size="4" style={{ width: "100%", maxWidth: "30rem" }}>
         <Flex direction="column" align="center" gap="3" style={{ textAlign: "center" }}>
           <Text size="6" weight="bold">

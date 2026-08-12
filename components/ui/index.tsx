@@ -11,38 +11,39 @@
  * the prop explicitly at the call site — every default here is designed
  * to be overridden, never enforced.
  *
- * Defaults applied here, and the reasoning:
+ * Defaults applied here, and the reasoning (values per the 2026-08 design
+ * rebuild — docs/design/REBUILD-BRIEF.md §5):
  *
- *   Card            variant="ghost"   flat by default; call sites that
- *                                     want a bordered/surfaced card ask
- *                                     for it explicitly.
- *   TextField.Root  variant="soft"    quieter inputs across a form-heavy
- *                   size="1"          product; "1" matches the app's
- *                   color="gray"      dense scaling; gray keeps focus on
- *                                     content, not chrome.
- *   Select.Trigger  variant="soft"    matches TextField's default look so
- *                   color="gray"      the two read as one input family.
- *   Select.Root     size="1"          TextField.Root defaults to size="1"
- *                                     (21.6px tall at this app's 90%
- *                                     scaling), but Select's size is a
- *                                     Select.Root prop, not a
- *                                     Select.Trigger prop — Trigger reads
- *                                     it from Root's context — so the
- *                                     default has to go on Root, not
- *                                     Trigger. Without it Root defaults
- *                                     to Radix's size 2 (28.8px), and
- *                                     every form mixing TextField and
- *                                     Select was visibly ragged.
- *                                     HONEST NOTE: a 21.6px-tall control
- *                                     is below the 24x24 CSS-px minimum
- *                                     in WCAG 2.5.8 Target Size (Minimum),
- *                                     and this product is used on a
- *                                     phone. This is the owner's explicit
- *                                     choice to match TextField, not an
- *                                     oversight — if that trade is
- *                                     revisited, bumping both
- *                                     TextField.Root and Select.Root
- *                                     to size="2" is a two-word edit.
+ *   Card            variant="surface" was "ghost". The rebuild's single
+ *                                     biggest lever: the app's ~144 Card
+ *                                     call sites flip from flat regions to
+ *                                     bordered white panels on the gray-2
+ *                                     canvas at once. Marketing already
+ *                                     passes variant="surface" explicitly
+ *                                     at its mock/pricing call sites, so
+ *                                     nothing doubles up. The ghost-outdent
+ *                                     rule in globals.css stays as a
+ *                                     dormant guard for any future
+ *                                     explicit ghost call site.
+ *   TextField.Root  variant="surface" was soft/size-1/gray. Bordered
+ *                   size="2"          inputs match bordered panels, and
+ *                                     size 2 (28.8px at 90% scaling)
+ *                                     retires the WCAG 2.5.8 target-size
+ *                                     debt the previous header recorded —
+ *                                     the "two-word edit" it promised.
+ *   Select.Trigger  variant="surface" matches TextField's default look so
+ *                                     the two read as one input family.
+ *   Select.Root     (no size default) Radix's own Root default is size
+ *                                     "2", which now matches
+ *                                     TextField.Root above, so the
+ *                                     explicit size="1" default this file
+ *                                     used to set is gone rather than
+ *                                     rewritten — the two input families
+ *                                     must move in lockstep or mixed
+ *                                     forms go ragged, and letting Radix's
+ *                                     default supply the "2" keeps exactly
+ *                                     one place (TextField's default
+ *                                     above) where that number is chosen.
  *   Badge           variant="solid"   status badges (paid/void/overdue)
  *                   color="red"       need to read at a glance. This
  *                                     default currently governs nothing:
@@ -62,27 +63,27 @@
  *                                     explicitly (18 red, 4 amber, 2
  *                                     green) — this is what a future
  *                                     unlabelled Callout falls back to.
- *   Tabs.List       color="blue"      matches the accent so the active tab
- *                                     indicator is never ambiguous. There
- *                                     is exactly one Tabs.List call site
- *                                     today, and the Theme's accentColor
- *                                     is already "blue" (app/layout.tsx),
- *                                     so this is currently a no-op there
- *                                     — by the same "redundant, not
- *                                     rejected" reasoning the header
- *                                     below applies to Button
- *                                     radius="none". Unlike that case,
- *                                     this default is kept rather than
- *                                     omitted: Tabs.List's color is not
- *                                     documented as inheriting the accent
- *                                     the way radius does, so leaving it
- *                                     implicit would be relying on
- *                                     unspecified Radix behaviour instead
- *                                     of stating the intent.
+ *   Tabs.List       color="indigo"    tracks the Theme accent (was "blue"
+ *                                     when the accent was) so the active
+ *                                     tab indicator is never ambiguous.
+ *                                     Tabs.List's color is not documented
+ *                                     as inheriting the accent the way
+ *                                     radius does, so leaving it implicit
+ *                                     would be relying on unspecified
+ *                                     Radix behaviour instead of stating
+ *                                     the intent.
  *   Spinner         size="3"          the app's one default loading size;
  *                                     inline spinners override down.
- *   Text            weight="light"    the app's body-copy weight is
- *                                     lighter than Radix's regular default.
+ *   Text            (no default)      the weight="light" body-copy default
+ *                                     is REMOVED, not resettled: light
+ *                                     text at size 1–2 over 90% scaling is
+ *                                     thin on glass in daylight (pilots
+ *                                     read this on phones at FBOs), so
+ *                                     body copy is back on Radix's regular
+ *                                     — the Linear/Stripe register. The
+ *                                     one explicit weight="light" call
+ *                                     site (marketing hero sub-line)
+ *                                     keeps its prop and is unaffected.
  *
  * REJECTED — decisions the owner made and is recording here so they are
  * not re-litigated by a future "shouldn't this also have a default?":
@@ -97,13 +98,14 @@
  *                               all of them to gray would mute every one
  *                               at once and collapse the visible step
  *                               between primary and secondary copy.
- *   Button radius="none"       Redundant, not rejected on the merits: the
- *                               Theme's radius is already "none"
- *                               (app/layout.tsx) and Radix Buttons inherit
- *                               it — setting it again here would do
- *                               nothing but suggest, wrongly, that Button
- *                               radius can vary independently of the
- *                               Theme.
+ *   Button radius default      Redundant, not rejected on the merits: the
+ *                               Theme's radius (now "small" — it was
+ *                               "none" when this entry was first written;
+ *                               same conclusion either way) is inherited
+ *                               by Radix Buttons — setting it again here
+ *                               would do nothing but suggest, wrongly,
+ *                               that Button radius can vary independently
+ *                               of the Theme.
  */
 
 import * as React from "react";
@@ -114,8 +116,6 @@ import {
   type BadgeProps,
   Spinner as RadixSpinner,
   type SpinnerProps,
-  Text as RadixText,
-  type TextProps,
   TextField as RadixTextField,
   Select as RadixSelect,
   Callout as RadixCallout,
@@ -126,7 +126,7 @@ export * from "@radix-ui/themes";
 
 export const Card = React.forwardRef<HTMLDivElement, CardProps>(
   function Card(props, ref) {
-    return <RadixCard ref={ref} variant="ghost" {...props} />;
+    return <RadixCard ref={ref} variant="surface" {...props} />;
   }
 );
 
@@ -142,11 +142,10 @@ export const Spinner = React.forwardRef<HTMLSpanElement, SpinnerProps>(
   }
 );
 
-export const Text = React.forwardRef<HTMLSpanElement, TextProps>(
-  function Text(props, ref) {
-    return <RadixText ref={ref} weight="light" {...props} />;
-  }
-) as typeof RadixText;
+// Text is deliberately NOT wrapped: with the weight="light" default
+// removed (see header), the star re-export above supplies Radix's Text
+// unchanged, and adding a pass-through wrapper here would only suggest a
+// default exists where none does.
 
 const TextFieldRoot = React.forwardRef<
   HTMLInputElement,
@@ -155,9 +154,8 @@ const TextFieldRoot = React.forwardRef<
   return (
     <RadixTextField.Root
       ref={ref}
-      variant="soft"
-      size="1"
-      color="gray"
+      variant="surface"
+      size="2"
       {...props}
     />
   );
@@ -172,23 +170,16 @@ const SelectTrigger = React.forwardRef<
   HTMLButtonElement,
   RadixSelect.TriggerProps
 >(function SelectTrigger(props, ref) {
-  return (
-    <RadixSelect.Trigger ref={ref} variant="soft" color="gray" {...props} />
-  );
+  return <RadixSelect.Trigger ref={ref} variant="surface" {...props} />;
 });
 
-// size is NOT a Select.Trigger prop in @radix-ui/themes — it lives on
-// Select.Root (selectRootPropDefs, defaulting to "2") and is read from
-// context by Trigger/Content/Item. So the size default has to be applied
-// here, on Root, not on Trigger above; see this file's header for why it
-// exists at all.
-function SelectRoot(props: RadixSelect.RootProps) {
-  return <RadixSelect.Root size="1" {...props} />;
-}
-
+// Select.Root carries no default any more: Radix's own Root size default
+// is "2", which is exactly what TextField.Root's size="2" above needs it
+// to be. (size is a Select.Root prop, not a Select.Trigger prop — Trigger
+// reads it from Root's context — so if the two input families ever move
+// again, the size default goes back HERE, on Root, not on Trigger.)
 export const Select = {
   ...RadixSelect,
-  Root: SelectRoot,
   Trigger: SelectTrigger,
 };
 
@@ -206,7 +197,7 @@ export const Callout = {
 
 const TabsList = React.forwardRef<HTMLDivElement, RadixTabs.ListProps>(
   function TabsList(props, ref) {
-    return <RadixTabs.List ref={ref} color="blue" {...props} />;
+    return <RadixTabs.List ref={ref} color="indigo" {...props} />;
   }
 );
 

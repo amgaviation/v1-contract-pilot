@@ -3,21 +3,35 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Box, Flex, Separator, Text } from "@/components/ui";
-import { NAV_SECTIONS, NAV_SETTINGS, isCurrentSection, type NavItem } from "@/lib/nav";
+import { NAV_SETTINGS, isCurrentSection, type NavItem } from "@/lib/nav";
 
 /**
- * The section rail.
+ * The section rail — the product's one dark surface. The dark ground
+ * itself is painted by the nested <Theme appearance="dark"> in
+ * app/(app)/layout.tsx; everything in this file resolves against the
+ * dark scale automatically (gray/default Text, --accent-a3 fills,
+ * hairlines) because tokens are the only values used.
  *
  * A client component for exactly one reason — `usePathname`, to mark the
  * current section. Everything else on the authenticated surface stays a
- * server component so pages can query Supabase directly.
+ * server component so pages can query Supabase directly. That split is
+ * also why `sections` arrives as a PROP rather than being imported here:
+ * the list is filtered by the server-only currency flag
+ * (lib/nav.ts visibleNavSections + lib/currency/gate.ts), which a client
+ * component cannot read. Both shapes below render off the SAME passed
+ * list plus NAV_SETTINGS — never a second, duplicated one.
  *
- * H9: renders two visual shapes off the SAME `NAV_SECTIONS`/`NAV_SETTINGS`
- * list (never a second, duplicated one) — a vertical rail for `sm` and up,
- * and a horizontally-scrolling strip below it. Both are always in the DOM;
+ * H9: renders two visual shapes — a vertical rail for `sm` and up, and a
+ * horizontally-scrolling strip below it. Both are always in the DOM;
  * app/(app)/layout.tsx toggles which is visible with a CSS `display`
  * breakpoint rather than mounting/unmounting one of them, so navigating
  * between pages never changes which nodes exist and never shifts layout.
+ *
+ * Rail links carry a CONSTANT 2px left border (transparent when idle,
+ * --accent-9 when current) so activation never shifts layout — the one
+ * restrained instrument gesture on the dark ground: a course-bar edge,
+ * not a glow. The strip omits the left border (it reads wrong on a
+ * horizontal strip) and uses the fill + highContrast alone.
  */
 function RailLink({ item, pathname }: { item: NavItem; pathname: string }) {
   const current = isCurrentSection(item.href, pathname);
@@ -35,6 +49,9 @@ function RailLink({ item, pathname }: { item: NavItem; pathname: string }) {
         py="2"
         style={{
           borderRadius: "var(--radius-2)",
+          borderLeft: current
+            ? "2px solid var(--accent-9)"
+            : "2px solid transparent",
           background: current ? "var(--accent-a3)" : undefined,
         }}
       >
@@ -51,7 +68,8 @@ function RailLink({ item, pathname }: { item: NavItem; pathname: string }) {
   );
 }
 
-/** The same link, laid out for the horizontal strip: no wrap, no shrink. */
+/** The same link, laid out for the horizontal strip: no wrap, no shrink,
+ *  no left border (fill + highContrast mark the current section). */
 function StripLink({ item, pathname }: { item: NavItem; pathname: string }) {
   const current = isCurrentSection(item.href, pathname);
   return (
@@ -82,15 +100,40 @@ function StripLink({ item, pathname }: { item: NavItem; pathname: string }) {
   );
 }
 
-export function NavRail({ accountName }: { accountName: string }) {
+export function NavRail({
+  accountName,
+  sections,
+}: {
+  accountName: string;
+  sections: readonly NavItem[];
+}) {
   const pathname = usePathname();
 
   return (
     <Flex asChild direction="column" gap="1" p="3" height="100%">
       <nav aria-label="Sections">
-        {NAV_SECTIONS.map((item) => (
-          <RailLink key={item.href} item={item} pathname={pathname} />
-        ))}
+        {sections.map((item, index) => {
+          // A group header renders wherever the group changes walking the
+          // list in order — lib/nav.ts writes the list in group order for
+          // exactly this check. Plain uppercase size-1 gray text, no
+          // letter-spacing (a literal would be a token violation; the cap
+          // label is enough).
+          const previous = index > 0 ? sections[index - 1] : undefined;
+          const showHeader =
+            item.group !== undefined && item.group !== previous?.group;
+          return (
+            <Box key={item.href}>
+              {showHeader ? (
+                <Box px="3" mb="1" mt={index > 0 ? "4" : undefined}>
+                  <Text size="1" color="gray" weight="medium">
+                    {item.group}
+                  </Text>
+                </Box>
+              ) : null}
+              <RailLink item={item} pathname={pathname} />
+            </Box>
+          );
+        })}
 
         <Box my="2">
           <Separator size="4" />
@@ -119,11 +162,12 @@ export function NavRail({ accountName }: { accountName: string }) {
  * the same sections plus Settings, all always reachable by scrolling or
  * by Tab (nothing here is clipped with `overflow: hidden`, only
  * `overflow-x: auto`), with the current section still announced the same
- * way (`aria-current` plus the colour change).
+ * way (`aria-current` plus the colour change). Group headers are a rail
+ * treatment only — on a horizontal strip they would read as items.
  */
-export function NavStrip() {
+export function NavStrip({ sections }: { sections: readonly NavItem[] }) {
   const pathname = usePathname();
-  const items: NavItem[] = [...NAV_SECTIONS, NAV_SETTINGS];
+  const items: NavItem[] = [...sections, NAV_SETTINGS];
 
   return (
     <Flex
