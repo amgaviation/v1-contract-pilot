@@ -102,6 +102,29 @@ export type Database = {
           // applied to this account. Webhook/service-role-writable only;
           // the concurrent-event ordering guard.
           last_billing_event_at: string;
+          // Added by 20260812400000_account_onboarding_profile.sql — the
+          // post-checkout onboarding wizard's gate and the fields it
+          // collects. onboarding_complete is owner-writable (a UX flag, not
+          // an entitlement); the rest are owner-writable identity / airman /
+          // rate-default fields. All NULLable except the flag.
+          onboarding_complete: boolean;
+          dba_name: string | null;
+          phone: string | null;
+          home_base: string | null;
+          certificate_type:
+            | "student"
+            | "sport"
+            | "recreational"
+            | "private"
+            | "commercial"
+            | "atp"
+            | null;
+          certificate_number: string | null;
+          ratings: string | null;
+          default_day_rate_cents: number | null;
+          default_travel_day_rate_cents: number | null;
+          default_per_diem_cents: number | null;
+          default_payment_terms_days: number | null;
           created_at: string;
           updated_at: string;
         };
@@ -134,6 +157,24 @@ export type Database = {
           connect_account_id?: string | null;
           invoice_prefix?: string;
           last_billing_event_at?: string;
+          onboarding_complete?: boolean;
+          dba_name?: string | null;
+          phone?: string | null;
+          home_base?: string | null;
+          certificate_type?:
+            | "student"
+            | "sport"
+            | "recreational"
+            | "private"
+            | "commercial"
+            | "atp"
+            | null;
+          certificate_number?: string | null;
+          ratings?: string | null;
+          default_day_rate_cents?: number | null;
+          default_travel_day_rate_cents?: number | null;
+          default_per_diem_cents?: number | null;
+          default_payment_terms_days?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -174,6 +215,24 @@ export type Database = {
           connect_account_id?: string | null;
           invoice_prefix?: string;
           last_billing_event_at?: string;
+          onboarding_complete?: boolean;
+          dba_name?: string | null;
+          phone?: string | null;
+          home_base?: string | null;
+          certificate_type?:
+            | "student"
+            | "sport"
+            | "recreational"
+            | "private"
+            | "commercial"
+            | "atp"
+            | null;
+          certificate_number?: string | null;
+          ratings?: string | null;
+          default_day_rate_cents?: number | null;
+          default_travel_day_rate_cents?: number | null;
+          default_per_diem_cents?: number | null;
+          default_payment_terms_days?: number | null;
           created_at?: string;
           updated_at?: string;
         };
