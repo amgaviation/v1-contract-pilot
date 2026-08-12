@@ -82,6 +82,50 @@ export function isBillingInterval(value: unknown): value is BillingInterval {
 }
 
 /**
+ * The seat quantity a NEW subscription for `tier` starts at — the ONE
+ * source both billing paths read so the checkout quantity and the
+ * plan-change quantity can never disagree about the floor.
+ *
+ * Business is licensed per seat with a two-seat minimum (docs/PRICING.md
+ * §3.2 and §7: "Business is one Price with quantity = seats, minimum 2
+ * enforced in the checkout code, not by trusting the widget"); the flat
+ * tiers are a single unit. Before this helper the checkout path spelled
+ * `tier === "business" ? 2 : 1` inline while settings/billing's
+ * changePlan omitted quantity entirely and left Business at 1 — a real
+ * $39-instead-of-$78 underbill on every Solo/Pro→Business upgrade. A
+ * plan-change that must not REDUCE an existing multi-seat account takes
+ * `Math.max(seatsForTier(tier), currentQuantity)` for Business; a fresh
+ * checkout takes this value directly.
+ */
+export function seatsForTier(tier: PlanTier): number {
+  return tier === "business" ? 2 : 1;
+}
+
+/**
+ * The `pilot.accounts.status` values under which an account may still
+ * WRITE. This is the read-only-on-lapse policy stated in code so
+ * requireAccount (lib/supabase/account.ts) and the account-status notice
+ * read the same fact — the product's promise (docs/PRICING.md §5) is that
+ * a canceled or lapsed account goes READ-ONLY with export retained, never
+ * that its records are deleted or that it keeps creating new ones.
+ *
+ * It is an ALLOW-LIST on purpose (fail closed): only a live trial or an
+ * active subscription may write. Everything else in the status CHECK
+ * (`past_due`, `canceled`, `unpaid`, `incomplete`, `incomplete_expired`,
+ * `paused` — the full Stripe enum the Phase-1 migration pins) is
+ * read-only, so a status this file has not thought about is refused a
+ * write rather than granted one by omission. `past_due` is included in
+ * the read-only set deliberately (Finding 2/3's brief): a failed renewal
+ * stops new work and nudges the owner to the billing portal, while every
+ * record stays readable and exportable.
+ */
+export const ACCOUNT_WRITABLE_STATUSES = ["trialing", "active"] as const;
+
+export function isWritableStatus(status: string): boolean {
+  return (ACCOUNT_WRITABLE_STATUSES as readonly string[]).includes(status);
+}
+
+/**
  * The env-var NAME that holds each tier's Stripe price ID. Names only —
  * values live in the Vercel project and .env.local, never in code, and
  * an EMPTY value must be treated as unset (docs/BILLING.md: "an unset

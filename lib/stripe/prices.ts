@@ -5,6 +5,7 @@ import {
   BILLING_INTERVALS,
   PLAN_TIERS,
   TIER_PRICE_ENV,
+  seatsForTier,
   type BillingInterval,
   type PlanTier,
 } from "@/lib/entitlements";
@@ -34,9 +35,40 @@ export function priceIdFor(tier: PlanTier, interval: BillingInterval): string | 
 }
 
 export type PriceDisplay = {
-  /** e.g. "$29/month", "$290/year" — whole dollars drop the ".00". */
+  /**
+   * The PER-UNIT label — e.g. "$29/month", "$290/year", "$39/month" for
+   * one Business seat. Whole dollars drop the ".00". Kept for callers
+   * that want the unit figure, but a pre-purchase surface must show
+   * `chargeLabel` (the actual first charge), never this, for a per-seat
+   * tier — see below.
+   */
   label: string;
+  /** Per-unit amount in cents (immutable on the Stripe Price). */
   amountCents: number;
+  /**
+   * Seats a new subscription for this tier starts at (seatsForTier): 1
+   * for the flat tiers, 2 for Business's two-seat minimum.
+   */
+  seats: number;
+  /** amountCents × seats — the amount Stripe actually bills up front. */
+  totalCents: number;
+  /**
+   * The label a PRE-PURCHASE screen must show, because it equals what
+   * Stripe will charge: the unit label for a flat tier ("$29/month"), the
+   * ×seats total for a per-seat tier ("$78/month" for Business at two
+   * seats). Finding 1 was welcome showing this tier's "$39/month" unit
+   * label while checkout submitted quantity 2 → a $78 subscription; the
+   * number the customer read did not equal the charge. This is that fix,
+   * in the one place every dollar figure on the welcome/billing surfaces
+   * comes from.
+   */
+  chargeLabel: string;
+  /**
+   * The per-seat + minimum note for a per-seat tier ("$39/seat · 2-seat
+   * minimum"), or null for a flat tier — so a card can spell the total
+   * AND how it is composed.
+   */
+  seatNote: string | null;
 };
 
 /**
@@ -66,10 +98,21 @@ async function displayFor(
       console.error(`[stripe] price ${id} has no unit_amount — not displayable.`);
       return null;
     }
-    const dollars = formatCents(price.unit_amount).replace(/\.00$/, "");
+    const per = interval === "monthly" ? "month" : "year";
+    const unitDollars = formatCents(price.unit_amount).replace(/\.00$/, "");
+    const seats = seatsForTier(tier);
+    const totalCents = price.unit_amount * seats;
+    const totalDollars = formatCents(totalCents).replace(/\.00$/, "");
     const display: PriceDisplay = {
-      label: `${dollars}/${interval === "monthly" ? "month" : "year"}`,
+      label: `${unitDollars}/${per}`,
       amountCents: price.unit_amount,
+      seats,
+      totalCents,
+      // Flat tiers: the total IS the unit, so chargeLabel === label and
+      // seatNote is null. Per-seat tiers (Business): chargeLabel is the
+      // ×seats total and seatNote spells the composition.
+      chargeLabel: seats > 1 ? `${totalDollars}/${per}` : `${unitDollars}/${per}`,
+      seatNote: seats > 1 ? `${unitDollars}/seat · ${seats}-seat minimum` : null,
     };
     cache.set(id, display);
     return display;

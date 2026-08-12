@@ -26,7 +26,19 @@ export type PlanOption = {
   tier: PlanTier;
   name: string;
   blurb: string;
+  /**
+   * The actual first charge per interval — for Business this is the ×2
+   * total ("$78/month"), so the number shown equals what Stripe bills
+   * (Finding 1). A null means the tier is not configured and renders as
+   * unavailable.
+   */
   price: Record<BillingInterval, string | null>;
+  /**
+   * The per-seat + minimum note for a per-seat tier ("$39/seat · 2-seat
+   * minimum"), or null for a flat tier. Prepared by the server from the
+   * live Stripe Price; this component adds no money copy of its own.
+   */
+  seatNote: Record<BillingInterval, string | null>;
 };
 
 export function PlanPicker({
@@ -45,6 +57,7 @@ export function PlanPicker({
 
   const selected = options.find((o) => o.tier === tier);
   const selectedLabel = selected?.price[interval] ?? null;
+  const selectedSeatNote = selected?.seatNote[interval] ?? null;
   const anyAnnual = options.some((o) => o.price.annual !== null);
 
   return (
@@ -83,6 +96,7 @@ export function PlanPicker({
       >
         {options.map((option) => {
           const label = option.price[interval];
+          const seatNote = option.seatNote[interval];
           const unavailable = label === null;
           return (
             <RadioCards.Item
@@ -93,9 +107,20 @@ export function PlanPicker({
               <Flex direction="column" width="100%" gap="1" style={{ textAlign: "left" }}>
                 <Flex justify="between" gap="2" align="center">
                   <Text weight="bold">{option.name}</Text>
-                  <Text size="2" color="gray">
-                    {unavailable ? "Unavailable" : label}
-                  </Text>
+                  <Flex direction="column" align="end" gap="0">
+                    <Text size="2" color="gray">
+                      {unavailable ? "Unavailable" : label}
+                    </Text>
+                    {/* The per-seat breakdown for a per-seat tier, so the
+                        "$78/month" total above is shown WITH how it is
+                        composed — never a bare "$39/month" that checkout
+                        would then double (Finding 1). */}
+                    {!unavailable && seatNote ? (
+                      <Text size="1" color="gray">
+                        {seatNote}
+                      </Text>
+                    ) : null}
+                  </Flex>
                 </Flex>
                 <Text size="1" color="gray">
                   {option.blurb}
@@ -130,7 +155,9 @@ export function PlanPicker({
       */}
       <Text as="div" size="1" color="gray" mt="1">
         {selectedLabel
-          ? `${selectedLabel} after the trial. Card required now.`
+          ? `${selectedLabel}${
+              selectedSeatNote ? ` (${selectedSeatNote})` : ""
+            } after the trial. Card required now.`
           : "Card required now."}
       </Text>
       {state.error ? (

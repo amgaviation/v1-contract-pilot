@@ -1,5 +1,5 @@
 import { Badge, Callout, Card, Flex, Grid, Text } from "@/components/ui";
-import { requireAccount } from "@/lib/supabase/account";
+import { accountIsReadOnly, requireAccount } from "@/lib/supabase/account";
 import {
   DOWNGRADE_NOTE,
   FEATURES,
@@ -61,11 +61,16 @@ async function currentSubscriptionFacts(
 export default async function BillingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ changed?: string }>;
+  searchParams: Promise<{ changed?: string; state?: string }>;
 }) {
-  const { changed } = await searchParams;
-  const { account, role } = await requireAccount("/settings/billing");
+  const { changed, state } = await searchParams;
+  // A read (GET), so it is reachable by a read-only account by design —
+  // this is where a refused write is sent (?state=read-only) to resubscribe.
+  const { account, role } = await requireAccount("/settings/billing", {
+    allowReadOnly: true,
+  });
   const canEdit = role === "owner";
+  const readOnly = accountIsReadOnly(account);
 
   const tier = account.plan_tier;
   const isComped = account.stripe_customer_id === null;
@@ -90,6 +95,20 @@ export default async function BillingPage({
       title="Billing"
       subtitle="Your plan, what it includes, and your payment details."
     >
+      {readOnly ? (
+        <Callout.Root color="amber">
+          <Callout.Text>
+            Your subscription has ended, so this account is read-only. Every
+            record stays viewable and exportable — nothing is deleted.
+            Resubscribe below (or in the Stripe billing portal) to start
+            making changes again.
+            {state === "read-only"
+              ? " The change you just tried needs an active subscription."
+              : ""}
+          </Callout.Text>
+        </Callout.Root>
+      ) : null}
+
       {changed === "1" || pendingTier ? (
         <Callout.Root color={pendingTier ? "blue" : "green"}>
           <Callout.Text>
@@ -172,10 +191,19 @@ export default async function BillingPage({
                       </Text>
                       {isCurrent ? <Badge color="blue">Current plan</Badge> : null}
                     </Flex>
+                    {/* chargeLabel, not label: for Business this is the
+                        ×2 total ("$78/month"), which is what an upgrade to
+                        Business actually bills now that changePlan sets
+                        quantity to the two-seat minimum (Finding 1 + 2). */}
                     <Text size="2" color="gray">
-                      {monthly ? monthly.label : "—"}
-                      {annual ? ` · ${annual.label}` : ""}
+                      {monthly ? monthly.chargeLabel : "—"}
+                      {annual ? ` · ${annual.chargeLabel}` : ""}
                     </Text>
+                    {monthly?.seatNote ? (
+                      <Text size="1" color="gray">
+                        {monthly.seatNote}
+                      </Text>
+                    ) : null}
                     <Text size="2" color="gray">
                       {TIER_DISPLAY[planTier].blurb}
                     </Text>
@@ -202,7 +230,7 @@ export default async function BillingPage({
                           <SwitchIntervalButton
                             tier={planTier}
                             targetInterval={otherInterval}
-                            label={`Switch to ${otherInterval} billing — ${otherIntervalPrice.label}`}
+                            label={`Switch to ${otherInterval} billing — ${otherIntervalPrice.chargeLabel}`}
                             disabled={!canEdit}
                           />
                         ) : null
@@ -210,8 +238,11 @@ export default async function BillingPage({
                         <ChangePlanButtons
                           tier={planTier}
                           direction={direction}
-                          monthlyLabel={monthly?.label ?? null}
-                          annualLabel={annual?.label ?? null}
+                          // chargeLabel: the button must name what the change
+                          // actually bills — "$78/month" for a Business
+                          // upgrade, not the "$39" per-seat unit (Finding 1).
+                          monthlyLabel={monthly?.chargeLabel ?? null}
+                          annualLabel={annual?.chargeLabel ?? null}
                           disabled={!canEdit}
                         />
                       )}

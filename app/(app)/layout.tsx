@@ -1,10 +1,19 @@
 import Link from "next/link";
-import { Box, Button, Container, Flex, Separator, Text, Theme } from "@/components/ui";
+import {
+  Box,
+  Button,
+  Callout,
+  Container,
+  Flex,
+  Separator,
+  Text,
+  Theme,
+} from "@/components/ui";
 import { Logo } from "@/components/ui/logo";
 import { BRAND } from "@/lib/brand";
 import { DASHBOARD_PATH, visibleNavSections } from "@/lib/nav";
 import { isCurrencyEngineEnabled } from "@/lib/currency/gate";
-import { requireAccount } from "@/lib/supabase/account";
+import { accountIsReadOnly, requireAccount } from "@/lib/supabase/account";
 import { NavRail, NavStrip } from "./nav-rail";
 import SkipLink from "./skip-link";
 import { signOut } from "./actions";
@@ -47,7 +56,12 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
+  // The layout is a READ (a GET render), so requireAccount never refuses
+  // it — a read-only account still gets its full shell. The banner below is
+  // the account-status notice (Finding 3): rendered on every page so a
+  // lapsed pilot always sees why their writes are being bounced to Billing.
   const { user, account } = await requireAccount();
+  const readOnly = accountIsReadOnly(account);
   const sections = visibleNavSections(isCurrencyEngineEnabled());
 
   return (
@@ -152,7 +166,22 @@ export default async function AppLayout({
               programmatic focus target without adding it to the normal
               Tab order. */}
           <main id="main-content" tabIndex={-1}>
-            <Container size="4">{children}</Container>
+            <Container size="4">
+              {readOnly ? (
+                <Box mb="4">
+                  <Callout.Root color="amber">
+                    <Callout.Text>
+                      Your subscription has ended, so this account is
+                      read-only — everything stays viewable and exportable,
+                      and nothing is deleted. Reading and export still work;
+                      resubscribe to make changes again.{" "}
+                      <Link href="/settings/billing">Go to Billing</Link>.
+                    </Callout.Text>
+                  </Callout.Root>
+                </Box>
+              ) : null}
+              {children}
+            </Container>
           </main>
         </Box>
 

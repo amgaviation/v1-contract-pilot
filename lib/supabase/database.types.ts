@@ -97,6 +97,11 @@ export type Database = {
             | "paused";
           connect_account_id: string | null;
           invoice_prefix: string;
+          // Added by 20260812310000_account_billing_event_watermark.sql —
+          // the Stripe `created` time of the most recent billing event
+          // applied to this account. Webhook/service-role-writable only;
+          // the concurrent-event ordering guard.
+          last_billing_event_at: string;
           created_at: string;
           updated_at: string;
         };
@@ -128,6 +133,7 @@ export type Database = {
             | "paused";
           connect_account_id?: string | null;
           invoice_prefix?: string;
+          last_billing_event_at?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -167,6 +173,7 @@ export type Database = {
             | "paused";
           connect_account_id?: string | null;
           invoice_prefix?: string;
+          last_billing_event_at?: string;
           created_at?: string;
           updated_at?: string;
         };

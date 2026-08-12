@@ -65,9 +65,17 @@ export default async function WelcomePage({
     tier,
     name: TIER_DISPLAY[tier].name,
     blurb: TIER_DISPLAY[tier].blurb,
+    // chargeLabel, not label: for Business this is the ×2 total ("$78/month"),
+    // which is what checkout submits and what Stripe bills — see Finding 1 and
+    // PriceDisplay in lib/stripe/prices.ts. seatNote spells "$39/seat · 2-seat
+    // minimum" beneath it; null for the flat tiers.
     price: {
-      monthly: prices[tier].monthly?.label ?? null,
-      annual: prices[tier].annual?.label ?? null,
+      monthly: prices[tier].monthly?.chargeLabel ?? null,
+      annual: prices[tier].annual?.chargeLabel ?? null,
+    },
+    seatNote: {
+      monthly: prices[tier].monthly?.seatNote ?? null,
+      annual: prices[tier].annual?.seatNote ?? null,
     },
   }));
 

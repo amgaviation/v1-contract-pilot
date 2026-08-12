@@ -83,7 +83,8 @@ function tierFromSubscription(sub: Stripe.Subscription): PlanTier | null {
  */
 export async function provisionAccountFromCheckout(
   session: Stripe.Checkout.Session,
-  subscription: Stripe.Subscription
+  subscription: Stripe.Subscription,
+  eventCreatedAt: number
 ): Promise<{ accountId: string; created: boolean }> {
   const supabase = createServiceClient();
 
@@ -142,6 +143,14 @@ export async function provisionAccountFromCheckout(
       stripe_subscription_id: subscription.id,
       status: mapStatus(subscription.status),
       trial_ends_at: trialEndsAt(subscription),
+      // The provisioning event's own timestamp is the account's first
+      // billing-event watermark (20260812310000). A subscription event
+      // OLDER than this checkout — e.g. a customer.subscription.created
+      // that fired before checkout completed and is redelivered late —
+      // then loses the conditional UPDATE in syncSubscriptionState instead
+      // of regressing the status we just wrote from the freshly-retrieved
+      // subscription.
+      last_billing_event_at: new Date(eventCreatedAt * 1000).toISOString(),
     } as never)
     .select("id")
     .single();
@@ -177,7 +186,8 @@ export async function provisionAccountFromCheckout(
  * redeliver.
  */
 export async function syncSubscriptionState(
-  subscription: Stripe.Subscription
+  subscription: Stripe.Subscription,
+  eventCreatedAt: number
 ): Promise<boolean> {
   const supabase = createServiceClient();
 
@@ -210,28 +220,44 @@ export async function syncSubscriptionState(
   // mapping (no price on the payload, or an unmapped price — see
   // tierFromSubscription) leaves the existing tier standing, so a
   // malformed or misconfigured event can degrade the STATUS sync's
-  // company but never silently re-tier a paying account. Out-of-order
-  // safety needs nothing extra here: the webhook's isSuperseded check
-  // runs before this function for every subscription event, so a stale
-  // downgrade arriving after a newer upgrade is dropped whole, tier and
-  // status together.
+  // company but never silently re-tier a paying account.
   const tier = tierFromSubscription(subscription);
+  const incoming = new Date(eventCreatedAt * 1000).toISOString();
   const update: Record<string, unknown> = {
     stripe_subscription_id: subscription.id,
     status: mapStatus(subscription.status),
     trial_ends_at: trialEndsAt(subscription),
+    // Advance the watermark to this event's created time in the SAME write
+    // that applies its state, so the two can never separate.
+    last_billing_event_at: incoming,
   };
   if (tier) update.plan_tier = tier;
 
+  // ORDERING SAFETY IS THE WHERE CLAUSE (Finding 4). The webhook's
+  // isSuperseded guard only sees events whose processed_at is already set,
+  // so two events for the same subscription running CONCURRENTLY can both
+  // pass it and the last database writer wins regardless of event.created.
+  // This makes the write itself conditional on the stored watermark:
+  // `last_billing_event_at < incoming`. Two concurrent updates serialise on
+  // the row lock, and Postgres re-checks this predicate against the
+  // freshly-committed row (READ COMMITTED / EvalPlanQual), so the older
+  // event's UPDATE re-evaluates against the newer watermark and matches
+  // zero rows — the newer event wins whichever order they commit in, not
+  // whichever writes last. The column is NOT NULL DEFAULT '-infinity'
+  // (migration 20260812310000), so a strict `.lt` needs no null branch and
+  // a brand-new row's first real event always applies.
   const { error } = await supabase
     .from("accounts")
     .update(update as never)
-    .eq("id", accountId);
+    .eq("id", accountId)
+    .lt("last_billing_event_at", incoming);
 
   if (error) {
     throw new Error(
       `Failed to sync subscription ${subscription.id}: ${error.message}`
     );
   }
+  // Zero rows updated is NOT an error here: it means a newer (or equal)
+  // event already set the watermark and this one was correctly dropped.
   return true;
 }

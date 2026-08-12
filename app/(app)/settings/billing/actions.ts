@@ -6,7 +6,12 @@ import { revalidatePath } from "next/cache";
 import { requireAccount } from "@/lib/supabase/account";
 import { getStripe } from "@/lib/stripe/server";
 import { priceIdFor } from "@/lib/stripe/prices";
-import { isBillingInterval, isPlanTier, TIER_DISPLAY } from "@/lib/entitlements";
+import {
+  isBillingInterval,
+  isPlanTier,
+  seatsForTier,
+  TIER_DISPLAY,
+} from "@/lib/entitlements";
 
 /**
  * Plan changes for an EXISTING subscriber, per the platform-billing
@@ -34,7 +39,15 @@ export async function changePlan(
   _prev: BillingActionState,
   formData: FormData
 ): Promise<BillingActionState> {
-  const { account, role } = await requireAccount("/settings/billing");
+  // allowReadOnly: this action is part of the RESUBSCRIBE path — a lapsed
+  // (canceled/past_due) owner must be able to change plan to get back to a
+  // writable account, so it opts out of the read-only write-gate that
+  // every other mutation entry point inherits from requireAccount
+  // (Finding 3). The Stripe call still governs what is actually possible;
+  // a truly canceled subscription just returns the friendly error below.
+  const { account, role } = await requireAccount("/settings/billing", {
+    allowReadOnly: true,
+  });
 
   // Same boundary the rest of settings draws: members and bookkeepers
   // read, owners change. The database's protect trigger is the real
@@ -73,16 +86,34 @@ export async function changePlan(
     if (!item) {
       throw new Error(`Subscription ${subscriptionId} has no items.`);
     }
-    if (item.price.id === priceId) {
-      // Already on this exact price — idempotent no-op rather than a
-      // pointless Stripe write.
+
+    // The seat quantity the target tier must carry. Business is per-seat
+    // with a two-seat minimum (seatsForTier — the SAME source the checkout
+    // path reads), so a Solo/Pro→Business upgrade must move quantity to at
+    // least 2, or the pilot would pay for one $39 seat while the public
+    // page and checkout both say $78 (Finding 2). max(2, current) so an
+    // account that already holds more than two seats is never REDUCED by a
+    // re-selection; a non-Business target is a single flat unit.
+    const currentQty = item.quantity ?? 1;
+    const quantity =
+      tier === "business"
+        ? Math.max(seatsForTier(tier), currentQty)
+        : seatsForTier(tier);
+
+    if (item.price.id === priceId && currentQty === quantity) {
+      // Already on this exact price AND seat count — idempotent no-op
+      // rather than a pointless Stripe write. (The seat check matters: an
+      // account left on Business-price-quantity-1 by the old bug re-selects
+      // Business here and is corrected UP to 2 rather than no-op'd.)
       return { error: null };
     }
     await stripe.subscriptions.update(subscriptionId, {
-      items: [{ id: item.id, price: priceId }],
+      items: [{ id: item.id, price: priceId, quantity }],
       // Fair in both directions: an upgrade bills the difference for the
       // remainder of the cycle, a downgrade credits it, on the next
-      // invoice. Stripe's default cycle anchoring is kept.
+      // invoice. Stripe's default cycle anchoring is kept. Proration
+      // covers the seat delta too — moving 1→2 Business seats bills the
+      // second seat pro-rata for the rest of the cycle.
       proration_behavior: "create_prorations",
     });
   } catch (err) {
@@ -114,7 +145,13 @@ export async function openBillingPortal(
   _prev: BillingActionState,
   _formData: FormData
 ): Promise<BillingActionState> {
-  const { account, role } = await requireAccount("/settings/billing");
+  // allowReadOnly: the billing portal is THE resubscribe/reactivate path
+  // (docs/PRICING.md §5) and MUST remain reachable for a canceled account,
+  // so it opts out of the read-only write-gate (Finding 3). Without this a
+  // lapsed pilot could never get back to a writable account.
+  const { account, role } = await requireAccount("/settings/billing", {
+    allowReadOnly: true,
+  });
   if (role !== "owner") {
     return { error: "Only the account owner can manage billing." };
   }

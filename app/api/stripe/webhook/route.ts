@@ -16,9 +16,16 @@ import {
  *   - event-ID idempotency      -> pilot.stripe_events, PK = Stripe event id
  *   - retry safety              -> a row with NULL processed_at is retryable;
  *                                  only processed_at set means "skip"
- *   - out-of-order safety       -> subscription writes are skipped when a
- *                                  NEWER event for the same object was
- *                                  already applied
+ *   - out-of-order safety       -> isSuperseded skips a stale event whose
+ *                                  newer sibling ALREADY finished (a cheap
+ *                                  early-out), and the account write itself
+ *                                  is conditional on a per-account event
+ *                                  watermark (syncSubscriptionState's
+ *                                  `last_billing_event_at < incoming`), so
+ *                                  two CONCURRENT events — which can both
+ *                                  clear isSuperseded before either sets
+ *                                  processed_at — still resolve to the
+ *                                  newer one, not the last writer.
  *   - test/live separation      -> event.livemode must match our key mode
  *
  * Runs on Node (not Edge): the Stripe SDK's signature verification and the
@@ -188,7 +195,7 @@ async function handleEvent(event: Stripe.Event, objectId: string | null) {
       // Re-fetch rather than trusting the embedded copy: the session's
       // nested subscription can be stale relative to the live object.
       const subscription = await stripe.subscriptions.retrieve(subId);
-      await provisionAccountFromCheckout(session, subscription);
+      await provisionAccountFromCheckout(session, subscription, event.created);
       return;
     }
 
@@ -197,10 +204,12 @@ async function handleEvent(event: Stripe.Event, objectId: string | null) {
     case "customer.subscription.deleted": {
       const subscription = event.data.object as Stripe.Subscription;
       if (await isSuperseded(event.id, objectId, event.created)) {
-        // A newer state for this subscription is already applied.
+        // A newer state for this subscription already FINISHED. Cheap
+        // early-out; the watermark in syncSubscriptionState is what makes
+        // the concurrent case (neither finished yet) safe.
         return;
       }
-      await syncSubscriptionState(subscription);
+      await syncSubscriptionState(subscription, event.created);
       return;
     }
 
@@ -217,7 +226,7 @@ async function handleEvent(event: Stripe.Event, objectId: string | null) {
       // ourselves — Stripe's dunning settings decide what a failed payment
       // actually means for the subscription.
       const subscription = await stripe.subscriptions.retrieve(subId);
-      await syncSubscriptionState(subscription);
+      await syncSubscriptionState(subscription, event.created);
       return;
     }
   }

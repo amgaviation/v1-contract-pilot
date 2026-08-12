@@ -1,11 +1,61 @@
 import "server-only";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { isWritableStatus } from "@/lib/entitlements";
 import type { User } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 
 type AccountRow = Database["pilot"]["Tables"]["accounts"]["Row"];
 type Role = Database["pilot"]["Tables"]["account_members"]["Row"]["role"];
+
+/** Where a refused write sends the pilot — Billing, to resubscribe. */
+const READ_ONLY_REDIRECT = "/settings/billing?state=read-only";
+
+/**
+ * True when this render is actually a MUTATING Server Action invocation
+ * rather than a page/data read. This is the whole hinge of the read-only
+ * gate: a canceled account must still be able to LOAD every page and hit
+ * every export (both GET), while its WRITES (Server Actions, always POST)
+ * are refused.
+ *
+ * HOW IT TELLS THEM APART, verified against the installed Next 16.2.12
+ * source (node_modules/next/dist/server/lib/server-action-request-meta.js
+ * and .../client/components/app-router-headers.js): Next dispatches a
+ * Server Action as a POST carrying either the `next-action` header (the
+ * fetch/JS path, ACTION_HEADER = 'next-action') or a form content-type
+ * (multipart/form-data or application/x-www-form-urlencoded — the no-JS
+ * progressive-enhancement path, where the action id rides the body).
+ * A GET page render, an RSC navigation, and a prefetch carry NONE of
+ * these, so a READ can never trip this predicate — the property the whole
+ * design leans on. It can only ever FAIL CLOSED toward reads (worst case
+ * a stray form POST that is not an action is treated as a write and
+ * redirected), never open a write it should have refused.
+ *
+ * KNOWN EDGE, documented not hidden: a hand-crafted POST to a page URL
+ * with no action metadata is not a Server Action and Next would not run
+ * one; it is caught by the content-type arm only if it looks like a form
+ * post, which is the safe direction anyway.
+ */
+async function isMutatingRequest(): Promise<boolean> {
+  const h = await headers();
+  if (h.has("next-action")) return true;
+  const contentType = h.get("content-type") ?? "";
+  return (
+    contentType.startsWith("multipart/form-data") ||
+    contentType.startsWith("application/x-www-form-urlencoded")
+  );
+}
+
+/**
+ * READ-ONLY-ON-LAPSE, stated once (docs/PRICING.md §5): a canceled or
+ * lapsed account keeps every record readable and exportable — deleted
+ * never — but stops creating new work. `account.status` outside
+ * ACCOUNT_WRITABLE_STATUSES (lib/entitlements.ts) means read-only.
+ */
+export function accountIsReadOnly(account: Pick<AccountRow, "status">): boolean {
+  return !isWritableStatus(account.status);
+}
 
 /**
  * The signed-in identity plus the tenant it resolves to. This is the one
@@ -101,9 +151,36 @@ export async function getSessionContext(): Promise<SessionContext | null> {
  * context or redirects. No session → /login (carrying the requested path
  * so login can bounce back). Session but no tenant → /welcome. Every
  * feature page can call this and then trust `account` is non-null.
+ *
+ * READ-ONLY ENFORCEMENT (Finding 3, docs/PRICING.md §5). This is the ONE
+ * seam every mutation entry point already passes through — every server
+ * action calls requireAccount (directly, or via requireEntitlement, which
+ * delegates here), and so does the (app) layout on every request. So the
+ * gate lives HERE, once, rather than being swept across ~two dozen action
+ * files (several of them owned by other workstreams): when the account is
+ * NOT writable (canceled / past_due / any status outside
+ * ACCOUNT_WRITABLE_STATUSES) AND the current request is a MUTATING Server
+ * Action, the write is refused and the pilot is sent to Billing to
+ * resubscribe. A page RENDER (GET) is never a mutating request, so a
+ * read-only account still loads every page and reaches every export — the
+ * product's promise that a lapse never destroys or hides records.
+ *
+ * `allowReadOnly` is the deliberate opt-out for the RESUBSCRIBE path
+ * itself (settings/billing's changePlan and openBillingPortal): those
+ * must run for a lapsed account, or it could never get back to writable.
+ * They are the only callers that pass it.
+ *
+ * WHAT THIS IS AND IS NOT. It is the data-integrity floor: every write
+ * refuses for a lapsed account, and the account-status notice renders
+ * (the (app) layout banner + the Billing page). It is NOT a full
+ * read-only UX polish — inputs are not individually disabled and buttons
+ * are not greyed per-screen; a write is attempted and cleanly bounced
+ * rather than pre-empted in the UI. See the report/PR notes for exactly
+ * what a fuller polish would add.
  */
 export async function requireAccount(
-  redirectTo?: string
+  redirectTo?: string,
+  options?: { allowReadOnly?: boolean }
 ): Promise<SessionContext & { account: AccountRow; role: Role }> {
   const ctx = await getSessionContext();
   if (!ctx) {
@@ -113,5 +190,26 @@ export async function requireAccount(
   if (!ctx.account || !ctx.role) {
     redirect("/welcome");
   }
+  if (
+    !options?.allowReadOnly &&
+    accountIsReadOnly(ctx.account) &&
+    (await isMutatingRequest())
+  ) {
+    redirect(READ_ONLY_REDIRECT);
+  }
   return ctx as SessionContext & { account: AccountRow; role: Role };
+}
+
+/**
+ * Explicit write gate for a mutation entry point that wants to state its
+ * intent in one word rather than rely on the ambient detection in
+ * requireAccount. Behaviourally identical for a mutating request (both
+ * refuse a read-only account); the difference is documentary. A new
+ * server action can call this instead of requireAccount to make "this is
+ * a write" legible at the call site.
+ */
+export async function requireWritableAccount(
+  redirectTo?: string
+): Promise<SessionContext & { account: AccountRow; role: Role }> {
+  return requireAccount(redirectTo);
 }

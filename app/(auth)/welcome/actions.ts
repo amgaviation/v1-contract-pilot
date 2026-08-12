@@ -7,7 +7,7 @@ import { getSessionContext } from "@/lib/supabase/account";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import { getStripe, TRIAL_PERIOD_DAYS } from "@/lib/stripe/server";
 import { priceIdFor } from "@/lib/stripe/prices";
-import { isBillingInterval, isPlanTier } from "@/lib/entitlements";
+import { isBillingInterval, isPlanTier, seatsForTier } from "@/lib/entitlements";
 
 export async function signOut() {
   const supabase = await createClient();
@@ -68,10 +68,15 @@ export async function startCheckout(
       mode: "subscription",
       // Business is priced per seat with a two-seat minimum (docs/PRICING.md
       // §3.2), so its checkout starts at the minimum; the flat tiers are one
-      // unit of a flat price. If the owner points _BUSINESS at a flat Price
-      // instead, Stripe treats quantity 2 as two subscriptions' worth — the
-      // env var and this line must agree, which the report to the owner says.
-      line_items: [{ price: priceId, quantity: tier === "business" ? 2 : 1 }],
+      // unit of a flat price. The seat floor comes from seatsForTier — the
+      // SAME helper settings/billing's changePlan reads, so the checkout
+      // quantity and the upgrade quantity can never disagree (Finding 2).
+      // The welcome screen shows this exact total via PriceDisplay.chargeLabel
+      // (Finding 1), so the figure the pilot reads equals what Stripe bills.
+      // If the owner points _BUSINESS at a flat Price instead, Stripe treats
+      // quantity 2 as two subscriptions' worth — the env var and this line
+      // must agree, which the report to the owner says.
+      line_items: [{ price: priceId, quantity: seatsForTier(tier) }],
       // Ties the Stripe session back to the Supabase identity. The webhook
       // reads this to know WHICH auth user to provision an account for —
       // without it there is no link between the payment and the person.

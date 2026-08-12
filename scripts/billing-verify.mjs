@@ -503,6 +503,97 @@ console.log("\nPlan-tier mapping (price -> tier)");
   }
 }
 
+// ---------------------------------------------------------------------------
+// 8. Concurrent delivery (the watermark). The out-of-order section above
+//    fires a stale event AFTER a newer one has fully finished, which the
+//    processed_at-based isSuperseded guard already catches. This section is
+//    the case that guard CANNOT catch on its own: two events for the same
+//    subscription in flight AT ONCE, neither processed_at set when the
+//    other checks. Correctness must come from the account write being
+//    conditional on last_billing_event_at (migration 20260812310000), so
+//    the newer event wins whichever order the two commit in — not the last
+//    writer. Fired in both interleavings to exercise the race from both
+//    sides; a pass means the account settled on the NEWER state every time.
+// ---------------------------------------------------------------------------
+console.log("\nConcurrent delivery (event watermark)");
+if (!db) {
+  skip("concurrent delivery", "needs NEXT_SUPABASE_URL + NEXT_SUPABASE_SECRET_KEY");
+} else {
+  const ROUNDS = 6;
+  let newerWon = 0;
+  let roundErr = null;
+
+  for (let i = 0; i < ROUNDS && !roundErr; i++) {
+    const subId = `sub_verify_conc_${randomUUID().slice(0, 8)}`;
+    const customerId = `cus_verify_conc_${randomUUID().slice(0, 8)}`;
+    const now = Math.floor(Date.now() / 1000);
+
+    const { data: acct, error: acctErr } = await db
+      .from("accounts")
+      .insert({
+        kind: "solo",
+        plan: "solo",
+        legal_name: "billing:verify concurrent fixture",
+        stripe_customer_id: customerId,
+        stripe_subscription_id: subId,
+        status: "trialing",
+      })
+      .select("id")
+      .single();
+
+    if (acctErr) {
+      roundErr = acctErr.message;
+      break;
+    }
+
+    // The NEWER event says active; the STALE one says past_due. Fire them
+    // together, alternating which is handed to the runtime first so both
+    // commit orders are exercised across the rounds.
+    const newerEvt = subscriptionEvent("customer.subscription.updated", {
+      id: `evt_test_${randomUUID()}`,
+      subId,
+      customerId,
+      status: "active",
+      created: now,
+    });
+    const staleEvt = subscriptionEvent("customer.subscription.updated", {
+      id: `evt_test_${randomUUID()}`,
+      subId,
+      customerId,
+      status: "past_due",
+      created: now - 600,
+    });
+
+    const ordered = i % 2 === 0 ? [newerEvt, staleEvt] : [staleEvt, newerEvt];
+    await Promise.all(ordered.map((evt) => postEvent(evt)));
+
+    const { data: after } = await db
+      .from("accounts")
+      .select("status")
+      .eq("id", acct.id)
+      .single();
+
+    if (after?.status === "active") newerWon++;
+
+    await db.from("stripe_events").delete().eq("object_id", subId);
+    await db.from("accounts").delete().eq("id", acct.id);
+  }
+
+  if (roundErr) {
+    fail("concurrent delivery resolves to the newer event", roundErr);
+  } else {
+    newerWon === ROUNDS
+      ? pass(
+          "concurrent events resolve to the newer state, not the last writer",
+          `${newerWon}/${ROUNDS} rounds stayed active`
+        )
+      : fail(
+          "concurrent events resolve to the newer state, not the last writer",
+          `only ${newerWon}/${ROUNDS} rounds stayed active — a stale event overwrote a newer one`
+        );
+  }
+}
+
 console.log(
   `\n${passed} passed, ${failed} failed` +
     (skipped ? `, ${skipped} SKIPPED (this run did NOT verify everything)` : "") +
