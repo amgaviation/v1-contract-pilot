@@ -325,6 +325,16 @@ export type ReconciliationTotals = {
   differenceCents: number;
   unmatchedStatementCount: number;
   unmatchedLedgerCount: number;
+  /**
+   * The period is reconciled ONLY when the books fully explain the
+   * statements AND nothing dangles on either side. A zero net difference
+   * with unmatched lines that merely cancel (+100/−50 on the statement vs
+   * +70/−20 in the ledger — both net +50) is NOT reconciled: it is four
+   * unexplained lines that happen to sum the same, not a cleared period.
+   * A true completed state therefore requires zero difference and zero
+   * unmatched on both sides.
+   */
+  reconciled: boolean;
 };
 
 export function reconciliationTotals(
@@ -335,11 +345,18 @@ export function reconciliationTotals(
 ): ReconciliationTotals {
   const statementTotalCents = statementCents.reduce((s, v) => s + v, 0);
   const ledgerTotalCents = ledgerCents.reduce((s, v) => s + v, 0);
+  const differenceCents = statementTotalCents - ledgerTotalCents;
+  const unmatchedStatementCount = statementCents.length - matchedStatementCount;
+  const unmatchedLedgerCount = ledgerCents.length - matchedLedgerCount;
   return {
     statementTotalCents,
     ledgerTotalCents,
-    differenceCents: statementTotalCents - ledgerTotalCents,
-    unmatchedStatementCount: statementCents.length - matchedStatementCount,
-    unmatchedLedgerCount: ledgerCents.length - matchedLedgerCount,
+    differenceCents,
+    unmatchedStatementCount,
+    unmatchedLedgerCount,
+    reconciled:
+      differenceCents === 0 &&
+      unmatchedStatementCount === 0 &&
+      unmatchedLedgerCount === 0,
   };
 }

@@ -18,6 +18,9 @@ export type StatementLineView = {
   postedOn: string;
   description: string;
   amountCents: number;
+  /** Which imported statement this line came from — shown because the board
+   *  aggregates every source against the one Cash & bank ledger account. */
+  source: string;
   matchId: string | null;
 };
 
@@ -140,6 +143,9 @@ export default function ReconcileBoard({
                             {formatDate(l.postedOn)}
                           </Text>
                           <Text size="1">{l.description}</Text>
+                          <Text size="1" color="gray">
+                            · {l.source}
+                          </Text>
                         </Flex>
                       </label>
                     </Table.Cell>
@@ -214,6 +220,10 @@ export default function ReconcileBoard({
                   <Table.Cell>
                     <Text size="1">
                       {formatDate(statement.postedOn)} — {statement.description}
+                    </Text>
+                    <Text size="1" color="gray">
+                      {" "}
+                      · {statement.source}
                     </Text>
                   </Table.Cell>
                   <Table.Cell>

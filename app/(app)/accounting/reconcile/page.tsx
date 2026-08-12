@@ -6,7 +6,6 @@ import {
   Flex,
   Grid,
   Link as RadixLink,
-  Select,
   Text,
   TextField,
 } from "@/components/ui";
@@ -14,6 +13,7 @@ import { ExclamationTriangleIcon, InfoCircledIcon } from "@radix-ui/react-icons"
 import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { rowsOf } from "@/lib/supabase/rows";
+import { BRAND } from "@/lib/brand";
 import { formatCents } from "@/lib/format";
 import PageShell from "../../page-shell";
 import { reconciliationTotals } from "../ledger-lib";
@@ -26,9 +26,19 @@ import { todayIso } from "../../reports/sales-tax/report-lib";
 export const metadata = { title: "Reconcile" };
 
 const LINES_LIMIT = 1000;
+// Matches are fetched scoped to the exact lines on screen, in chunks so the
+// IN() list never grows unbounded. Each side is uniquely indexed 1:1, so a
+// chunk of N ids returns at most N rows — there is no truncation to detect.
+const MATCH_ID_CHUNK = 200;
 
 type BankAccountRow = { id: string; label: string; last4: string | null; kind: string };
-type TxnRow = { id: string; posted_on: string; description: string; amount_cents: number };
+type TxnRow = {
+  id: string;
+  posted_on: string;
+  description: string;
+  amount_cents: number;
+  bank_account_id: string;
+};
 type MatchRow = { id: string; bank_transaction_id: string; journal_line_id: string };
 type BankLineRow = {
   journal_line_id: string;
@@ -51,17 +61,25 @@ function monthBoundsOf(month: string): { start: string; end: string } {
 }
 
 /**
- * Bank reconciliation: pick a statement source and a month; match the
- * statement's lines against the ledger's Cash & bank lines until the
- * difference reads zero. The difference figure is statement total minus
- * ledger total for the period — matching pairs (equal amounts by
- * construction) never moves it; RECORDING the missing side does, which is
- * exactly what "reconciled" means.
+ * Bank reconciliation, WHOLE-CASH-ACCOUNT. V1's ledger keeps exactly one
+ * Cash & bank account (seed_accounts_chart documents why: invoice_payments
+ * never record which real-world account money landed in, so per-bank asset
+ * accounts could not be funded truthfully). So this trues the AGGREGATE of
+ * every imported statement source for the month against that one ledger
+ * account — like against like. There is deliberately no per-source picker:
+ * comparing one statement against ALL of the book's cash movement would be
+ * a false difference, and no configuration is allowed to produce one.
+ *
+ * The difference figure is (combined statement total) − (ledger Cash & bank
+ * total) for the period. Matching pairs (equal amounts by construction)
+ * never moves it; RECORDING the missing side does. And a zero difference is
+ * only "reconciled" once every line on BOTH sides is matched — a difference
+ * that nets to zero over dangling lines is not an explained period.
  */
 export default async function ReconcilePage({
   searchParams,
 }: {
-  searchParams: Promise<{ bank?: string; month?: string }>;
+  searchParams: Promise<{ month?: string }>;
 }) {
   const { account } = await requireEntitlement("accounting", "/accounting/reconcile");
   const sp = await searchParams;
@@ -100,12 +118,8 @@ export default async function ReconcilePage({
   const bankAccounts = bankAccountsResult.rows;
   const month =
     sp.month && /^\d{4}-\d{2}$/.test(sp.month) ? sp.month : todayIso().slice(0, 7);
-  const bankId =
-    sp.bank && bankAccounts.some((b) => b.id === sp.bank)
-      ? sp.bank
-      : bankAccounts[0]?.id ?? null;
 
-  if (!bankId) {
+  if (bankAccounts.length === 0) {
     return (
       <PageShell
         title="Reconcile"
@@ -131,12 +145,13 @@ export default async function ReconcilePage({
 
   const { start, end } = monthBoundsOf(month);
 
-  const [txnRes, ledgerRes, matchRes] = await Promise.all([
+  // Statements: EVERY source for the period, not one picked account — the
+  // aggregate is what reconciles against the single Cash & bank ledger.
+  const [txnRes, ledgerRes] = await Promise.all([
     supabase
       .from("bank_transactions")
-      .select("id, posted_on, description, amount_cents")
+      .select("id, posted_on, description, amount_cents, bank_account_id")
       .eq("account_id", account.id)
-      .eq("bank_account_id", bankId)
       .gte("posted_on", start)
       .lte("posted_on", end)
       .order("posted_on", { ascending: true })
@@ -148,16 +163,46 @@ export default async function ReconcilePage({
         period_end: end,
       } as never)
       .limit(LINES_LIMIT),
-    supabase
-      .from("bank_statement_matches")
-      .select("id, bank_transaction_id, journal_line_id")
-      .eq("account_id", account.id)
-      .limit(LINES_LIMIT),
   ]);
 
   const txnResult = rowsOf<TxnRow>(txnRes as never);
   const ledgerResult = rowsOf<BankLineRow>(ledgerRes as never);
-  const matchResult = rowsOf<MatchRow>(matchRes as never);
+
+  // Matches scoped to the exact lines on screen. The old query capped 1000
+  // matches across ALL months/sources, so a busy account's currently-shown
+  // cleared line could fall outside that page and render as unmatched (then
+  // re-matching hit the unique constraint). Fetching by the loaded ids —
+  // chunked so the IN() list stays bounded — guarantees a cleared line
+  // always shows cleared. 1:1 unique indexes mean a chunk of N ids returns
+  // at most N rows, so there is no truncation here to detect.
+  let matchResult: ReturnType<typeof rowsOf<MatchRow>> = { ok: true, rows: [] };
+  if (txnResult.ok && ledgerResult.ok) {
+    const byId = new Map<string, MatchRow>();
+    const probes: Array<{ column: "bank_transaction_id" | "journal_line_id"; ids: string[] }> = [];
+    const txnIds = txnResult.rows.map((t) => t.id);
+    const lineIds = ledgerResult.rows.map((l) => l.journal_line_id);
+    for (let i = 0; i < txnIds.length; i += MATCH_ID_CHUNK)
+      probes.push({ column: "bank_transaction_id", ids: txnIds.slice(i, i + MATCH_ID_CHUNK) });
+    for (let i = 0; i < lineIds.length; i += MATCH_ID_CHUNK)
+      probes.push({ column: "journal_line_id", ids: lineIds.slice(i, i + MATCH_ID_CHUNK) });
+    for (const probe of probes) {
+      if (probe.ids.length === 0) continue;
+      const chunk = rowsOf<MatchRow>(
+        (await supabase
+          .from("bank_statement_matches")
+          .select("id, bank_transaction_id, journal_line_id")
+          .eq("account_id", account.id)
+          .in(probe.column, probe.ids)
+          .limit(probe.ids.length + 1)) as never
+      );
+      if (!chunk.ok) {
+        matchResult = chunk;
+        break;
+      }
+      for (const m of chunk.rows) byId.set(m.id, m);
+    }
+    if (matchResult.ok) matchResult = { ok: true, rows: [...byId.values()] };
+  }
 
   if (!txnResult.ok || !ledgerResult.ok || !matchResult.ok) {
     return (
@@ -175,19 +220,24 @@ export default async function ReconcilePage({
     );
   }
 
+  // Matches cannot truncate (bounded 1:1 by the loaded ids); only the
+  // statement and ledger reads carry the 1000-row cap.
   const truncated =
-    txnResult.rows.length === LINES_LIMIT ||
-    ledgerResult.rows.length === LINES_LIMIT ||
-    matchResult.rows.length === LINES_LIMIT;
+    txnResult.rows.length === LINES_LIMIT || ledgerResult.rows.length === LINES_LIMIT;
 
   const matchByTxn = new Map(matchResult.rows.map((m) => [m.bank_transaction_id, m.id]));
   const matchByLine = new Map(matchResult.rows.map((m) => [m.journal_line_id, m.id]));
+
+  const sourceLabel = new Map(
+    bankAccounts.map((b) => [b.id, `${b.label}${b.last4 ? ` ••${b.last4}` : ""}`])
+  );
 
   const statementLines: StatementLineView[] = txnResult.rows.map((t) => ({
     id: t.id,
     postedOn: t.posted_on,
     description: t.description,
     amountCents: t.amount_cents,
+    source: sourceLabel.get(t.bank_account_id) ?? "Statement",
     matchId: matchByTxn.get(t.id) ?? null,
   }));
   const ledgerLines: LedgerLineView[] = ledgerResult.rows.map((l) => ({
@@ -206,12 +256,15 @@ export default async function ReconcilePage({
     ledgerLines.filter((l) => l.matchId !== null).length
   );
 
-  const selectedBank = bankAccounts.find((b) => b.id === bankId);
+  const multipleSources = bankAccounts.length > 1;
+  const subtitle = multipleSources
+    ? `${bankAccounts.length} statement sources · ${month}`
+    : `${sourceLabel.get(bankAccounts[0]!.id) ?? "Bank"} · ${month}`;
 
   return (
     <PageShell
       title="Reconcile"
-      subtitle={`${selectedBank?.label ?? "Bank"}${selectedBank?.last4 ? ` ••${selectedBank.last4}` : ""} · ${month}`}
+      subtitle={subtitle}
       action={
         <Button asChild variant="soft" size="2">
           <NextLink href="/accounting">Chart of accounts</NextLink>
@@ -221,22 +274,6 @@ export default async function ReconcilePage({
       <Card size="2">
         <form method="get" action="/accounting/reconcile">
           <Flex gap="3" align="end" wrap="wrap">
-            <Flex direction="column" gap="1">
-              <Text as="label" size="2" weight="medium" id="rec-bank-label">
-                Statement source
-              </Text>
-              <Select.Root name="bank" defaultValue={bankId}>
-                <Select.Trigger aria-labelledby="rec-bank-label" />
-                <Select.Content>
-                  {bankAccounts.map((b) => (
-                    <Select.Item key={b.id} value={b.id}>
-                      {b.label}
-                      {b.last4 ? ` ••${b.last4}` : ""}
-                    </Select.Item>
-                  ))}
-                </Select.Content>
-              </Select.Root>
-            </Flex>
             <Flex direction="column" gap="1">
               <Text as="label" size="2" weight="medium" htmlFor="rec-month">
                 Month
@@ -249,6 +286,31 @@ export default async function ReconcilePage({
           </Flex>
         </form>
       </Card>
+
+      <Callout.Root color="blue">
+        <Callout.Icon>
+          <InfoCircledIcon />
+        </Callout.Icon>
+        <Callout.Text>
+          {multipleSources ? (
+            <>
+              {BRAND.name} keeps one Cash &amp; bank ledger account, so
+              reconciliation trues your combined statements — all{" "}
+              {bankAccounts.length} imported sources together — against it for the
+              month. Per-account reconciliation needs a bank dimension on the
+              ledger, which isn&rsquo;t built; the difference below compares every
+              statement line against your book cash, like with like.
+            </>
+          ) : (
+            <>
+              {BRAND.name} keeps one Cash &amp; bank ledger account, so
+              reconciliation trues this statement against it for the month.
+              Per-account reconciliation needs a bank dimension on the ledger,
+              which isn&rsquo;t built.
+            </>
+          )}
+        </Callout.Text>
+      </Callout.Root>
 
       <Grid columns={{ initial: "1", sm: "3" }} gap="3">
         <Card size="2">
@@ -276,13 +338,26 @@ export default async function ReconcilePage({
             size="4"
             weight="bold"
             className="tnum"
-            color={totals.differenceCents === 0 ? "green" : "red"}
+            color={
+              totals.reconciled ? "green" : totals.differenceCents === 0 ? "amber" : "red"
+            }
           >
             {formatCents(totals.differenceCents)}
           </Text>
-          {totals.differenceCents === 0 ? (
+          {totals.reconciled ? (
             <Text as="div" size="1" color="green">
-              Reconciled — the books fully explain this period.
+              Reconciled — every line is matched and the books fully explain this
+              period.
+            </Text>
+          ) : totals.differenceCents === 0 ? (
+            <Text as="div" size="1" color="amber">
+              The totals net to zero, but {totals.unmatchedStatementCount} statement
+              and {totals.unmatchedLedgerCount} ledger line
+              {totals.unmatchedStatementCount + totals.unmatchedLedgerCount === 1
+                ? ""
+                : "s"}{" "}
+              are still unmatched — they only cancel out. Match every line before
+              this period reads as reconciled.
             </Text>
           ) : (
             <Text as="div" size="1" color="gray">

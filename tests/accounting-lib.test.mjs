@@ -180,4 +180,29 @@ test("reconciliationTotals: difference is statement minus ledger, unmoved by mat
   assert.equal(none.differenceCents, some.differenceCents); // matching never moves it
   assert.equal(some.unmatchedStatementCount, 1);
   assert.equal(some.unmatchedLedgerCount, 1);
+  assert.equal(some.reconciled, false); // a non-zero difference is never reconciled
+});
+
+test("reconciliationTotals: a zero net difference with dangling lines is NOT reconciled", () => {
+  // +100 and -50 on the statement, +70 and -20 in the ledger: both sides
+  // net to +50, so the DIFFERENCE is zero — yet nothing is matched and four
+  // lines are unexplained. Declaring that "reconciled" is the exact lie this
+  // guard exists to stop.
+  const netZero = reconciliationTotals([10000, -5000], [7000, -2000], 0, 0);
+  assert.equal(netZero.differenceCents, 0);
+  assert.equal(netZero.unmatchedStatementCount, 2);
+  assert.equal(netZero.unmatchedLedgerCount, 2);
+  assert.equal(netZero.reconciled, false);
+
+  // Reconciled ONLY when the difference is zero AND every line is matched.
+  const cleared = reconciliationTotals([10000, -5000], [10000, -5000], 2, 2);
+  assert.equal(cleared.differenceCents, 0);
+  assert.equal(cleared.unmatchedStatementCount, 0);
+  assert.equal(cleared.unmatchedLedgerCount, 0);
+  assert.equal(cleared.reconciled, true);
+
+  // Difference zero but one side still dangling is likewise not reconciled.
+  const halfCleared = reconciliationTotals([10000, -5000], [10000, -5000], 2, 1);
+  assert.equal(halfCleared.differenceCents, 0);
+  assert.equal(halfCleared.reconciled, false);
 });

@@ -13,10 +13,17 @@ export const metadata = { title: "Journal" };
 
 // Same Data API discipline as every report: explicit limits, truncation
 // detected by exact equality, and a truncated list SAYS so on screen.
-// 200 entries per page of history; their lines at the API's own 1000 cap.
+// 200 entries per page of history. Their lines are fetched SCOPED to those
+// entries and PAGED to completeness (see fetchLinesForEntries): a single
+// 1000-row cap over 200 entries could slice an entry's debits from its
+// credits and render it falsely unbalanced, which for a ledger is a lie
+// about money. An entry is shown with all its lines or the read fails.
 const ENTRIES_LIMIT = 200;
-const LINES_LIMIT = 1000;
 const CHART_LIMIT = 1000;
+// The IN() list is chunked so it never grows unbounded; each chunk is paged
+// at the API's own 1000-row ceiling until a short page proves completeness.
+const ENTRY_ID_CHUNK = 100;
+const LINE_PAGE = 1000;
 
 type EntryRow = {
   id: string;
@@ -38,6 +45,43 @@ type ChartRow = {
   kind: ChartKind;
   archived_at: string | null;
 };
+
+type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
+
+/**
+ * Every journal line for the given entries, chunked and paged to
+ * completeness so no shown entry is ever missing lines. A failed page fails
+ * the whole read (rows.ts discipline) — better to refuse than to render a
+ * partial, seemingly-unbalanced entry.
+ */
+async function fetchLinesForEntries(
+  supabase: SupabaseClient,
+  accountId: string,
+  entryIds: string[]
+): Promise<ReturnType<typeof rowsOf<LineRow>>> {
+  const all: LineRow[] = [];
+  for (let i = 0; i < entryIds.length; i += ENTRY_ID_CHUNK) {
+    const chunk = entryIds.slice(i, i + ENTRY_ID_CHUNK);
+    let from = 0;
+    for (;;) {
+      const page = rowsOf<LineRow>(
+        (await supabase
+          .from("journal_lines")
+          .select("id, entry_id, chart_account_id, side, amount_cents, line_no")
+          .eq("account_id", accountId)
+          .in("entry_id", chunk)
+          .order("entry_id", { ascending: true })
+          .order("line_no", { ascending: true })
+          .range(from, from + LINE_PAGE - 1)) as never
+      );
+      if (!page.ok) return page;
+      all.push(...page.rows);
+      if (page.rows.length < LINE_PAGE) break;
+      from += LINE_PAGE;
+    }
+  }
+  return { ok: true, rows: all };
+}
 
 export default async function JournalPage() {
   const { account } = await requireEntitlement("accounting", "/accounting/journal");
@@ -69,15 +113,10 @@ export default async function JournalPage() {
 
   let linesResult: ReturnType<typeof rowsOf<LineRow>> = { ok: true, rows: [] };
   if (entriesResult.ok && entriesResult.rows.length > 0) {
-    const ids = entriesResult.rows.map((e) => e.id);
-    linesResult = rowsOf<LineRow>(
-      (await supabase
-        .from("journal_lines")
-        .select("id, entry_id, chart_account_id, side, amount_cents, line_no")
-        .eq("account_id", account.id)
-        .in("entry_id", ids)
-        .order("line_no", { ascending: true })
-        .limit(LINES_LIMIT)) as never
+    linesResult = await fetchLinesForEntries(
+      supabase,
+      account.id,
+      entriesResult.rows.map((e) => e.id)
     );
   }
 
@@ -114,9 +153,10 @@ export default async function JournalPage() {
     })
   );
 
-  const truncated =
-    (entriesResult.ok && entriesResult.rows.length === ENTRIES_LIMIT) ||
-    (linesResult.ok && linesResult.rows.length === LINES_LIMIT);
+  // Only the entry list can truncate now — its lines are fetched complete,
+  // so a shown entry is never partial. The banner is honest about older
+  // history not being listed, nothing more.
+  const truncated = entriesResult.ok && entriesResult.rows.length === ENTRIES_LIMIT;
 
   return (
     <PageShell
