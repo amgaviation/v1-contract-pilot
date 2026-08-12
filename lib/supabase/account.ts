@@ -13,6 +13,16 @@ type Role = Database["pilot"]["Tables"]["account_members"]["Row"]["role"];
 const READ_ONLY_REDIRECT = "/settings/billing?state=read-only";
 
 /**
+ * The post-checkout onboarding wizard (app/(onboarding)/onboarding). A
+ * provisioned account whose owner has not finished it yet is bounced here on
+ * every request until they do — see requireAccount's `allowUnonboarded`. It
+ * lives in its OWN route group, not under (app), precisely so this redirect
+ * cannot loop: the (app) gate sends an un-onboarded pilot out of the app
+ * shell and into a group whose own gate passes `allowUnonboarded`.
+ */
+const ONBOARDING_PATH = "/onboarding";
+
+/**
  * True when this render is actually a MUTATING Server Action invocation
  * rather than a page/data read. This is the whole hinge of the read-only
  * gate: a canceled account must still be able to LOAD every page and hit
@@ -180,7 +190,7 @@ export async function getSessionContext(): Promise<SessionContext | null> {
  */
 export async function requireAccount(
   redirectTo?: string,
-  options?: { allowReadOnly?: boolean }
+  options?: { allowReadOnly?: boolean; allowUnonboarded?: boolean }
 ): Promise<SessionContext & { account: AccountRow; role: Role }> {
   const ctx = await getSessionContext();
   if (!ctx) {
@@ -189,6 +199,17 @@ export async function requireAccount(
   }
   if (!ctx.account || !ctx.role) {
     redirect("/welcome");
+  }
+  // ONBOARDING GATE. A provisioned account that has not finished the wizard
+  // is sent into it on EVERY request — read or write, no isMutatingRequest
+  // check — until onboarding_complete flips true. Unconditional because a
+  // half-set-up account should not be able to browse the app around the
+  // wizard. The wizard's own route group passes allowUnonboarded so it, and
+  // only it, renders for such an account. Ordered before the read-only gate:
+  // a freshly-provisioned account is trialing (writable), so the two never
+  // contend in practice, and "finish setup" is the more specific state.
+  if (!options?.allowUnonboarded && !ctx.account.onboarding_complete) {
+    redirect(ONBOARDING_PATH);
   }
   if (
     !options?.allowReadOnly &&

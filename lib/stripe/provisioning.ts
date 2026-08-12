@@ -112,18 +112,44 @@ export async function provisionAccountFromCheckout(
     return { accountId: (existing as { id: string }).id, created: false };
   }
 
-  // Name the account from what the pilot actually gave Stripe, falling
-  // back to their email local-part. legal_name is NOT NULL and is what
-  // renders on their invoices, so it must never be blank — the pilot can
-  // correct it in settings later.
+  // Onboarding prefill lives in the signing-up user's auth metadata
+  // (app/(auth)/signup/actions.ts). Read it once, here, to seed the account
+  // — this is the "webhook applies the stashed identity" half of the hybrid
+  // onboarding. It is best-effort: a checkout that did NOT originate from
+  // our signup form (a Stripe-dashboard-created subscription, say) has no
+  // such metadata, so every field falls back exactly as it did before this
+  // existed. metadata is prefill, not authorization.
+  let metaKind: "solo" | "business" = "solo";
+  let metaFullName: string | null = null;
+  let metaHomeBase: string | null = null;
+  const { data: userLookup } = await supabase.auth.admin.getUserById(userId);
+  const meta = userLookup?.user?.user_metadata ?? {};
+  if (meta.account_kind === "business") metaKind = "business";
+  if (typeof meta.full_name === "string" && meta.full_name.trim()) {
+    metaFullName = meta.full_name.trim();
+  }
+  if (typeof meta.home_base === "string" && meta.home_base.trim()) {
+    metaHomeBase = meta.home_base.trim();
+  }
+
+  // Name the account from what the pilot gave US at signup, then what they
+  // gave Stripe, then their email local-part. legal_name is NOT NULL and is
+  // what renders on their invoices, so it must never be blank — the wizard
+  // and settings let them correct it later.
   const details = session.customer_details;
   const fallback = (session.customer_email ?? "").split("@")[0];
-  const legalName = details?.name?.trim() || fallback || "My aviation business";
+  const legalName =
+    metaFullName || details?.name?.trim() || fallback || "My aviation business";
 
   const { data: inserted, error: insertError } = await supabase
     .from("accounts")
     .insert({
-      kind: "solo",
+      kind: metaKind,
+      home_base: metaHomeBase,
+      // Left false (the column default) on purpose: a new account has NOT
+      // been through the post-checkout wizard, so the (app) layout bounces
+      // the pilot into it on first sign-in. The wizard sets it true.
+      onboarding_complete: false,
       // `plan` is decision #10's BILLING-SHAPE vocabulary (flat rate vs
       // the deferred per-seat plan), not the tier — all three tiers are
       // flat-rate today, so it stays "solo". The tier lives in
