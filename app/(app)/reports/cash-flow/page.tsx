@@ -1,7 +1,7 @@
 import { Button, Callout, Card, Flex, Grid, Table, Text, TextField } from "@/components/ui";
 import { ExclamationTriangleIcon, InfoCircledIcon } from "@radix-ui/react-icons";
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { formatCents, formatDateRange } from "@/lib/format";
 import PageShell from "../../page-shell";
 import {
@@ -84,7 +84,7 @@ export default async function CashFlowPage({
 }: {
   searchParams: Promise<{ from?: string; to?: string }>;
 }) {
-  const { account } = await requireAccount("/reports/cash-flow");
+  const { account } = await requireEntitlement("accounting", "/reports/cash-flow");
   const sp = await searchParams;
   const period = resolveSalesTaxPeriod(sp, todayIso());
 

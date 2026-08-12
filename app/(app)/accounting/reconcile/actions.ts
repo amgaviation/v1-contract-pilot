@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { friendlyDbError } from "@/lib/db-errors";
 
 const UUID_RE =
@@ -22,7 +22,7 @@ export async function matchStatementLine(
   if (!UUID_RE.test(bankTransactionId) || !UUID_RE.test(journalLineId)) {
     return { error: "Pick one statement line and one ledger line to match." };
   }
-  const { account } = await requireAccount("/accounting/reconcile");
+  const { account } = await requireEntitlement("accounting", "/accounting/reconcile");
 
   const supabase = await createClient();
   const { error } = await supabase.from("bank_statement_matches").insert({
@@ -40,7 +40,7 @@ export async function unmatchStatementLine(
   matchId: string
 ): Promise<{ error: string | null }> {
   if (!UUID_RE.test(matchId)) return { error: "Missing match id." };
-  const { account } = await requireAccount("/accounting/reconcile");
+  const { account } = await requireEntitlement("accounting", "/accounting/reconcile");
 
   const supabase = await createClient();
   const { error, count } = await supabase

@@ -12,7 +12,7 @@ import {
 } from "@/components/ui";
 import { ExclamationTriangleIcon, InfoCircledIcon } from "@radix-ui/react-icons";
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { rowsOf } from "@/lib/supabase/rows";
 import { formatCents } from "@/lib/format";
 import PageShell from "../../page-shell";
@@ -63,7 +63,7 @@ export default async function ReconcilePage({
 }: {
   searchParams: Promise<{ bank?: string; month?: string }>;
 }) {
-  const { account } = await requireAccount("/accounting/reconcile");
+  const { account } = await requireEntitlement("accounting", "/accounting/reconcile");
   const sp = await searchParams;
   const supabase = await createClient();
 

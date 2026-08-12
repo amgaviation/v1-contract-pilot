@@ -82,6 +82,17 @@ export default async function ReportsIndexPage() {
             your ledger&rsquo;s Cash &amp; bank account.
           </Text>
         </Card>
+        <Card size="3">
+          <Heading as="h2" size="4" mb="1">
+            <RadixLink asChild>
+              <NextLink href="/reports/flight-time">Flight time</NextLink>
+            </RadixLink>
+          </Heading>
+          <Text as="div" size="2" color="gray">
+            Cross-operator flight-time totals in 14 CFR 135.267&rsquo;s
+            windows — the picture no single operator can see.
+          </Text>
+        </Card>
       </Flex>
     </PageShell>
   );

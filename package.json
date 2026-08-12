@@ -25,7 +25,8 @@
     "aircraft:verify": "node scripts/aircraft-verify.mjs",
     "payment-reversal:verify": "node scripts/payment-reversal-verify.mjs",
     "logbook:verify": "node scripts/logbook-verify.mjs",
-    "currency:verify": "node scripts/currency-verify.mjs"
+    "currency:verify": "node scripts/currency-verify.mjs",
+    "accounting:verify": "node scripts/accounting-verify.mjs"
   },
   "dependencies": {
     "@radix-ui/colors": "^3.0.0",

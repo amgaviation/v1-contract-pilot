@@ -1,7 +1,7 @@
 import { Button, Callout, Card, Flex, Table, Text, TextField } from "@/components/ui";
 import { ExclamationTriangleIcon, InfoCircledIcon } from "@radix-ui/react-icons";
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { formatCents, formatDate } from "@/lib/format";
 import PageShell from "../../page-shell";
 import {
@@ -66,7 +66,7 @@ export default async function BalanceSheetPage({
 }: {
   searchParams: Promise<{ date?: string }>;
 }) {
-  const { account } = await requireAccount("/reports/balance-sheet");
+  const { account } = await requireEntitlement("accounting", "/reports/balance-sheet");
   const sp = await searchParams;
   const asOf = sp.date && isValidIsoDate(sp.date) ? sp.date : todayIso();
 

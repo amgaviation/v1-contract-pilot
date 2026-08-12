@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { friendlyDbError } from "@/lib/db-errors";
 import { parseJournalLines } from "../ledger-lib";
 
@@ -45,7 +45,7 @@ export async function createJournalEntry(
   _prev: JournalFormState,
   formData: FormData
 ): Promise<JournalFormState> {
-  const { account } = await requireAccount("/accounting/journal");
+  const { account } = await requireEntitlement("accounting", "/accounting/journal");
 
   const entryDate = String(formData.get("entry_date") ?? "").trim();
   const memo = String(formData.get("memo") ?? "").trim();
@@ -92,7 +92,7 @@ export async function createJournalEntry(
  */
 export async function deleteJournalEntry(id: string): Promise<{ error: string | null }> {
   if (!UUID_RE.test(id)) return { error: "Missing journal entry id." };
-  await requireAccount("/accounting/journal");
+  await requireEntitlement("accounting", "/accounting/journal");
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("journal_entry_delete", {

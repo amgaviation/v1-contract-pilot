@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { friendlyDbError } from "@/lib/db-errors";
 
 export type ChartFormState = {
@@ -27,7 +27,7 @@ export async function createChartAccount(
   _prev: ChartFormState,
   formData: FormData
 ): Promise<ChartFormState> {
-  const { account } = await requireAccount("/accounting");
+  const { account } = await requireEntitlement("accounting", "/accounting");
 
   const name = String(formData.get("name") ?? "").trim();
   const kind = String(formData.get("kind") ?? "").trim();
@@ -60,7 +60,7 @@ export async function renameChartAccount(
   const id = String(formData.get("id") ?? "");
   if (!UUID_RE.test(id)) return { error: "Missing account id." };
 
-  const { account } = await requireAccount("/accounting");
+  const { account } = await requireEntitlement("accounting", "/accounting");
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return { error: "Give the account a name.", values: { name } };
   if (name.length > 120) {
@@ -93,7 +93,7 @@ export async function setChartAccountArchived(
   archived: boolean
 ): Promise<{ error: string | null }> {
   if (!UUID_RE.test(id)) return { error: "Missing account id." };
-  const { account } = await requireAccount("/accounting");
+  const { account } = await requireEntitlement("accounting", "/accounting");
 
   const supabase = await createClient();
   const { error, count } = await supabase

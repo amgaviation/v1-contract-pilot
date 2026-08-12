@@ -2,7 +2,7 @@ import NextLink from "next/link";
 import { Button, Callout, Flex } from "@/components/ui";
 import { ExclamationTriangleIcon, InfoCircledIcon } from "@radix-ui/react-icons";
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { rowsOf } from "@/lib/supabase/rows";
 import PageShell from "../../page-shell";
 import { KIND_LABEL, type ChartKind } from "../ledger-lib";
@@ -40,7 +40,7 @@ type ChartRow = {
 };
 
 export default async function JournalPage() {
-  const { account } = await requireAccount("/accounting/journal");
+  const { account } = await requireEntitlement("accounting", "/accounting/journal");
   const supabase = await createClient();
 
   // The on-demand derivation pass — idempotent by unique index, so safe on

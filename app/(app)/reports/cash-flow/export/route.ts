@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { csvRow } from "@/lib/csv";
 import {
   assembleCashFlow,
@@ -30,7 +30,7 @@ function slugify(value: string): string {
 }
 
 export async function GET(request: NextRequest) {
-  const { account } = await requireAccount("/reports/cash-flow");
+  const { account } = await requireEntitlement("accounting", "/reports/cash-flow");
 
   const url = new URL(request.url);
   const from = url.searchParams.get("from");

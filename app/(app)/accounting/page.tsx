@@ -8,7 +8,7 @@ import {
 } from "@/components/ui";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import PageShell from "../page-shell";
 import ChartManager from "./chart-manager";
 import type { LedgerBalanceRow } from "./ledger-lib";
@@ -25,7 +25,7 @@ export const metadata = { title: "Accounting" };
  * on this screen current with the facts recorded elsewhere in the app.
  */
 export default async function AccountingPage() {
-  const { account } = await requireAccount("/accounting");
+  const { account } = await requireEntitlement("accounting", "/accounting");
   const supabase = await createClient();
 
   // `as never` on rpc args: the same hand-authored-types boundary cast the
