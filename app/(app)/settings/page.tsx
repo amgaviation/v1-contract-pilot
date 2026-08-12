@@ -4,8 +4,12 @@ import { Card, Flex, Grid, Link as RadixLink, Text } from "@/components/ui";
 import { requireAccount } from "@/lib/supabase/account";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/database.types";
+import { centsToInput } from "@/lib/format";
 import PageShell from "../page-shell";
 import SettingsForm, { type SettingsValues } from "./settings-form";
+import ProfileDefaultsForm, {
+  type ProfileDefaultsValues,
+} from "./profile-defaults-form";
 import LogoPanel from "./logo-panel";
 import SettingsTabs from "./settings-tabs";
 import DayTypesPanel from "./day-types-panel";
@@ -14,6 +18,29 @@ import MileageRatesPanel from "./mileage-rates-panel";
 
 type DayTypeRow = Database["pilot"]["Tables"]["day_types"]["Row"];
 type MileageRateRow = Database["pilot"]["Tables"]["mileage_rates"]["Row"];
+type AccountRow = Database["pilot"]["Tables"]["accounts"]["Row"];
+
+/**
+ * The onboarding-profile slice of the settings read (20260812400000
+ * columns). Cast at the query boundary below, same reasoning as
+ * lib/supabase/account.ts: recent supabase-js resolves this select
+ * against the hand-authored types file to `never`, so the row type is
+ * reasserted from the generated Row type — a mistyped column name here
+ * is still a compile error against AccountRow.
+ */
+type ProfileDefaultsRow = Pick<
+  AccountRow,
+  | "dba_name"
+  | "phone"
+  | "home_base"
+  | "certificate_type"
+  | "certificate_number"
+  | "ratings"
+  | "default_day_rate_cents"
+  | "default_travel_day_rate_cents"
+  | "default_per_diem_cents"
+  | "default_payment_terms_days"
+>;
 
 export const metadata = { title: "Settings" };
 
@@ -43,7 +70,12 @@ export default async function SettingsPage({
   const { data: settingsValuesData, error: settingsValuesError } = await supabase
     .from("accounts")
     .select(
-      "legal_name, address_line1, address_line2, city, state, postal_code, country, invoice_prefix"
+      // The onboarding-profile columns (20260812400000) ride the same
+      // dedicated select rather than a second query: one read, one error
+      // path, and the RSC-payload reasoning above holds for them too. One
+      // literal string, not a concatenation — supabase-js derives the row
+      // type from the literal, and `"a" + "b"` widens to plain `string`.
+      "legal_name, address_line1, address_line2, city, state, postal_code, country, invoice_prefix, dba_name, phone, home_base, certificate_type, certificate_number, ratings, default_day_rate_cents, default_travel_day_rate_cents, default_per_diem_cents, default_payment_terms_days"
     )
     .eq("id", account.id)
     .maybeSingle();
@@ -56,6 +88,31 @@ export default async function SettingsPage({
   // below already render a red "Couldn't load" card for exactly this; the
   // one holding the invoice address did not.
   const settingsValues: SettingsValues = settingsValuesData ?? {};
+  const profileRow = settingsValuesData as ProfileDefaultsRow | null;
+
+  // Same shape discipline as onboarding/page.tsx building OnboardingValues:
+  // money through centsToInput (a raw cents integer would render a $1,200
+  // day rate as "120000"), terms String()ed, everything else "" for null.
+  // Built from the SAME guarded read as settingsValues, so the failed-read
+  // card below covers this form too — blanks here would overwrite a stored
+  // certificate and rate defaults on save.
+  const profileValues: ProfileDefaultsValues = {
+    dba_name: profileRow?.dba_name ?? "",
+    phone: profileRow?.phone ?? "",
+    home_base: profileRow?.home_base ?? "",
+    certificate_type: profileRow?.certificate_type ?? "",
+    certificate_number: profileRow?.certificate_number ?? "",
+    ratings: profileRow?.ratings ?? "",
+    default_day_rate: centsToInput(profileRow?.default_day_rate_cents),
+    default_travel_day_rate: centsToInput(
+      profileRow?.default_travel_day_rate_cents
+    ),
+    default_per_diem: centsToInput(profileRow?.default_per_diem_cents),
+    default_payment_terms_days:
+      profileRow?.default_payment_terms_days == null
+        ? ""
+        : String(profileRow.default_payment_terms_days),
+  };
 
   // RLS scopes this to the caller's tenant; no account_id filter is
   // needed or wanted on a plain listing select (see the note in
@@ -101,7 +158,10 @@ export default async function SettingsPage({
                   </Flex>
                 </Card>
               ) : (
-                <SettingsForm values={settingsValues} canEdit={canEdit} />
+                <>
+                  <SettingsForm values={settingsValues} canEdit={canEdit} />
+                  <ProfileDefaultsForm values={profileValues} canEdit={canEdit} />
+                </>
               )}
             </Flex>
             <Flex direction="column" gap="4">

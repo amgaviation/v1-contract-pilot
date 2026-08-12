@@ -8,7 +8,7 @@ import { createTrip } from "../actions";
 export const metadata = { title: "New trip" };
 
 export default async function NewTripPage() {
-  await requireAccount("/trips/new");
+  const { account } = await requireAccount("/trips/new");
 
   const supabase = await createClient();
   // Archived clients are excluded from the picker but keep their existing
@@ -44,6 +44,18 @@ export default async function NewTripPage() {
         clients={(data ?? []) as ClientOption[]}
         submitLabel="Create trip"
         fleet={fleet}
+        // The onboarding wizard's account-level rate defaults
+        // (20260812400000), finally consumed: they seed a brand-new
+        // trip's blank rate fields and back up a picked client that has
+        // no agreed rate of its own. A narrow two-field object, NOT the
+        // account row — requireAccount's row carries Stripe ids and must
+        // never reach a client component (see settings/page.tsx). The
+        // edit screen (trips/[id]) deliberately omits this prop: an
+        // existing trip's stored rates are never re-priced.
+        accountDefaults={{
+          day_rate_cents: account.default_day_rate_cents,
+          travel_day_rate_cents: account.default_travel_day_rate_cents,
+        }}
       />
     </PageShell>
   );
