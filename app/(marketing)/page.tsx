@@ -142,6 +142,16 @@ const FEATURES: {
       "An account-wide export: one CSV for every record type, from clients to mileage",
     ],
   },
+  {
+    eyebrow: "Accounting",
+    title: "A real ledger underneath, for the pilot who wants the books to balance.",
+    body: "The Business plan adds a double-entry accounting layer built from what you already recorded — not a second set of books to maintain beside the first.",
+    points: [
+      "A chart of accounts shaped for a flying business, with balances derived from your invoices and expenses",
+      "Journal entries for what money does outside a trip — and owner pay tracked as draws, the way a one-person business actually pays itself",
+      "Bank reconciliation against the statements you import",
+    ],
+  },
 ];
 
 /**
