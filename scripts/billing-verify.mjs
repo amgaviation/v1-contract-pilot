@@ -103,7 +103,7 @@ async function postEvent(event, { secret = WEBHOOK_SECRET, signature } = {}) {
   return { status: res.status, body };
 }
 
-function subscriptionEvent(type, { id, subId, customerId, status, created, livemode = false, trialEnd = null }) {
+function subscriptionEvent(type, { id, subId, customerId, status, created, livemode = false, trialEnd = null, priceId = null }) {
   return {
     id,
     object: "event",
@@ -118,7 +118,13 @@ function subscriptionEvent(type, { id, subId, customerId, status, created, livem
         customer: customerId,
         status,
         trial_end: trialEnd,
-        items: { object: "list", data: [] },
+        // priceId=null keeps the pre-plan-tier shape (no items), which
+        // is itself part of the contract: an event carrying no price
+        // must sync STATUS while leaving plan_tier alone — see section 7.
+        items: {
+          object: "list",
+          data: priceId ? [{ id: `si_${subId}`, object: "subscription_item", price: { id: priceId, object: "price" } }] : [],
+        },
       },
     },
   };
@@ -343,6 +349,251 @@ console.log("\nProvisioning is webhook-only");
     : fail("checkout success URL alone provisions nothing", `got ${res.status}`);
 }
 
+// ---------------------------------------------------------------------------
+// 7. Plan-tier mapping (three-tier plans). The subscription's PRICE is the
+//    authority for pilot.accounts.plan_tier: the webhook maps it through
+//    lib/entitlements.ts (tierForPriceId, env-name table). The contract:
+//      - a recognised price moves plan_tier (upgrade AND downgrade),
+//      - a stale event never overwrites a newer one (same isSuperseded
+//        guard the status sync rides),
+//      - an event with NO price, or an UNRECOGNISED price, syncs status
+//        but leaves plan_tier standing — a malformed or misconfigured
+//        event must never silently re-tier a paying account.
+//    Requires the same STRIPE_PRICE_ID_SOLO / STRIPE_PRICE_ID_PRO values
+//    the server under test reads (both normally come from .env.local).
+// ---------------------------------------------------------------------------
+console.log("\nPlan-tier mapping (price -> tier)");
+{
+  const SOLO_PRICE = process.env.STRIPE_PRICE_ID_SOLO;
+  const PRO_PRICE = process.env.STRIPE_PRICE_ID_PRO;
+  if (!db) {
+    skip("plan-tier mapping", "needs NEXT_SUPABASE_URL + NEXT_SUPABASE_SECRET_KEY");
+  } else if (!SOLO_PRICE || !PRO_PRICE) {
+    skip(
+      "plan-tier mapping",
+      "needs STRIPE_PRICE_ID_SOLO + STRIPE_PRICE_ID_PRO (the values the server maps against)"
+    );
+  } else {
+    const subId = `sub_verify_tier_${randomUUID().slice(0, 8)}`;
+    const customerId = `cus_verify_tier_${randomUUID().slice(0, 8)}`;
+    const now = Math.floor(Date.now() / 1000);
+
+    const { data: acct, error: acctErr } = await db
+      .from("accounts")
+      .insert({
+        kind: "solo",
+        plan: "solo",
+        legal_name: "billing:verify plan-tier fixture",
+        stripe_customer_id: customerId,
+        stripe_subscription_id: subId,
+        status: "active",
+      })
+      .select("id, plan_tier")
+      .single();
+
+    if (acctErr) {
+      fail("plan-tier fixture created", acctErr.message);
+    } else {
+      acct.plan_tier === "solo"
+        ? pass("plan_tier defaults to solo", "migration default")
+        : fail("plan_tier defaults to solo", `got ${acct.plan_tier}`);
+
+      const tierOf = async () => {
+        const { data } = await db
+          .from("accounts")
+          .select("plan_tier, status")
+          .eq("id", acct.id)
+          .single();
+        return data;
+      };
+
+      // Upgrade: a subscription.updated carrying the PRO price.
+      await postEvent(
+        subscriptionEvent("customer.subscription.updated", {
+          id: `evt_test_${randomUUID()}`,
+          subId,
+          customerId,
+          status: "active",
+          created: now - 300,
+          priceId: PRO_PRICE,
+        })
+      );
+      let row = await tierOf();
+      row?.plan_tier === "pro"
+        ? pass("recognised price upgrades plan_tier", "solo -> pro")
+        : fail("recognised price upgrades plan_tier", `plan_tier is ${row?.plan_tier}`);
+
+      // Out-of-order: a STALE event carrying the SOLO price arrives late.
+      // It must not un-upgrade the account.
+      await postEvent(
+        subscriptionEvent("customer.subscription.updated", {
+          id: `evt_test_${randomUUID()}`,
+          subId,
+          customerId,
+          status: "active",
+          created: now - 900,
+          priceId: SOLO_PRICE,
+        })
+      );
+      row = await tierOf();
+      row?.plan_tier === "pro"
+        ? pass("stale downgrade event does not overwrite newer tier", "stayed pro")
+        : fail(
+            "stale downgrade event does not overwrite newer tier",
+            `plan_tier is ${row?.plan_tier}`
+          );
+
+      // Unrecognised price: status must still sync, tier must stand.
+      await postEvent(
+        subscriptionEvent("customer.subscription.updated", {
+          id: `evt_test_${randomUUID()}`,
+          subId,
+          customerId,
+          status: "past_due",
+          created: now - 120,
+          priceId: "price_not_in_any_env_var",
+        })
+      );
+      row = await tierOf();
+      row?.plan_tier === "pro" && row?.status === "past_due"
+        ? pass("unmapped price syncs status but never re-tiers", "pro + past_due")
+        : fail(
+            "unmapped price syncs status but never re-tiers",
+            `plan_tier=${row?.plan_tier} status=${row?.status}`
+          );
+
+      // No price at all (the pre-tier event shape): same posture.
+      await postEvent(
+        subscriptionEvent("customer.subscription.updated", {
+          id: `evt_test_${randomUUID()}`,
+          subId,
+          customerId,
+          status: "active",
+          created: now - 60,
+        })
+      );
+      row = await tierOf();
+      row?.plan_tier === "pro" && row?.status === "active"
+        ? pass("price-less event syncs status but never re-tiers", "pro + active")
+        : fail(
+            "price-less event syncs status but never re-tiers",
+            `plan_tier=${row?.plan_tier} status=${row?.status}`
+          );
+
+      // Downgrade on Stripe's say-so: a NEWER event carrying SOLO.
+      await postEvent(
+        subscriptionEvent("customer.subscription.updated", {
+          id: `evt_test_${randomUUID()}`,
+          subId,
+          customerId,
+          status: "active",
+          created: now,
+          priceId: SOLO_PRICE,
+        })
+      );
+      row = await tierOf();
+      row?.plan_tier === "solo"
+        ? pass("newer event downgrades plan_tier", "pro -> solo")
+        : fail("newer event downgrades plan_tier", `plan_tier is ${row?.plan_tier}`);
+
+      // Clean up the fixture — this script must not leave rows behind.
+      await db.from("stripe_events").delete().eq("object_id", subId);
+      await db.from("accounts").delete().eq("id", acct.id);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 8. Concurrent delivery (the watermark). The out-of-order section above
+//    fires a stale event AFTER a newer one has fully finished, which the
+//    processed_at-based isSuperseded guard already catches. This section is
+//    the case that guard CANNOT catch on its own: two events for the same
+//    subscription in flight AT ONCE, neither processed_at set when the
+//    other checks. Correctness must come from the account write being
+//    conditional on last_billing_event_at (migration 20260812310000), so
+//    the newer event wins whichever order the two commit in — not the last
+//    writer. Fired in both interleavings to exercise the race from both
+//    sides; a pass means the account settled on the NEWER state every time.
+// ---------------------------------------------------------------------------
+console.log("\nConcurrent delivery (event watermark)");
+if (!db) {
+  skip("concurrent delivery", "needs NEXT_SUPABASE_URL + NEXT_SUPABASE_SECRET_KEY");
+} else {
+  const ROUNDS = 6;
+  let newerWon = 0;
+  let roundErr = null;
+
+  for (let i = 0; i < ROUNDS && !roundErr; i++) {
+    const subId = `sub_verify_conc_${randomUUID().slice(0, 8)}`;
+    const customerId = `cus_verify_conc_${randomUUID().slice(0, 8)}`;
+    const now = Math.floor(Date.now() / 1000);
+
+    const { data: acct, error: acctErr } = await db
+      .from("accounts")
+      .insert({
+        kind: "solo",
+        plan: "solo",
+        legal_name: "billing:verify concurrent fixture",
+        stripe_customer_id: customerId,
+        stripe_subscription_id: subId,
+        status: "trialing",
+      })
+      .select("id")
+      .single();
+
+    if (acctErr) {
+      roundErr = acctErr.message;
+      break;
+    }
+
+    // The NEWER event says active; the STALE one says past_due. Fire them
+    // together, alternating which is handed to the runtime first so both
+    // commit orders are exercised across the rounds.
+    const newerEvt = subscriptionEvent("customer.subscription.updated", {
+      id: `evt_test_${randomUUID()}`,
+      subId,
+      customerId,
+      status: "active",
+      created: now,
+    });
+    const staleEvt = subscriptionEvent("customer.subscription.updated", {
+      id: `evt_test_${randomUUID()}`,
+      subId,
+      customerId,
+      status: "past_due",
+      created: now - 600,
+    });
+
+    const ordered = i % 2 === 0 ? [newerEvt, staleEvt] : [staleEvt, newerEvt];
+    await Promise.all(ordered.map((evt) => postEvent(evt)));
+
+    const { data: after } = await db
+      .from("accounts")
+      .select("status")
+      .eq("id", acct.id)
+      .single();
+
+    if (after?.status === "active") newerWon++;
+
+    await db.from("stripe_events").delete().eq("object_id", subId);
+    await db.from("accounts").delete().eq("id", acct.id);
+  }
+
+  if (roundErr) {
+    fail("concurrent delivery resolves to the newer event", roundErr);
+  } else {
+    newerWon === ROUNDS
+      ? pass(
+          "concurrent events resolve to the newer state, not the last writer",
+          `${newerWon}/${ROUNDS} rounds stayed active`
+        )
+      : fail(
+          "concurrent events resolve to the newer state, not the last writer",
+          `only ${newerWon}/${ROUNDS} rounds stayed active — a stale event overwrote a newer one`
+        );
+  }
+}
+
 console.log(
   `\n${passed} passed, ${failed} failed` +
     (skipped ? `, ${skipped} SKIPPED (this run did NOT verify everything)` : "") +
@@ -352,7 +603,8 @@ if (skipped && !failed) {
   console.log(
     "billing:verify did not run to completion — set NEXT_SUPABASE_URL and\n" +
       "NEXT_SUPABASE_SECRET_KEY to exercise the out-of-order and retry-safety\n" +
-      "sections. Do not read this run as a green suite.\n"
+      "sections, and STRIPE_PRICE_ID_SOLO + STRIPE_PRICE_ID_PRO for the\n" +
+      "plan-tier mapping section. Do not read this run as a green suite.\n"
   );
 }
 process.exit(failed > 0 ? 1 : 0);

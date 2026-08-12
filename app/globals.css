@@ -51,11 +51,18 @@
    padding back out so its content lines up flush with the container's
    edge instead of being padded twice.
 
-   This product's ghost Cards do not live in that shape. EVERY Card here is
-   a ghost — not one call site sets `variant`, so the default in
-   components/ui reaches all of them — and they sit as siblings inside
-   gapped Flex/Grid stacks (Overview's KPI row, every settings panel, the
-   auth/404/error shells), not as lone children of a padded wrapper.
+   This product's ghost Cards do not live in that shape. When this rule
+   was written EVERY Card here was a ghost — variant="ghost" was the
+   default in components/ui and not one call site set `variant` — and they
+   sat as siblings inside gapped Flex/Grid stacks (Overview's KPI row,
+   every settings panel, the auth/404/error shells), not as lone children
+   of a padded wrapper.
+
+   THE DEFAULT HAS SINCE MOVED: the 2026-08 rebuild flipped Card's default
+   to variant="surface" (components/ui/index.tsx), so this rule now
+   matches nothing and is a DORMANT GUARD — any future explicit
+   variant="ghost" call site would land in the same gapped-sibling shape
+   described above, so the correction stays.
 
    (This paragraph used to name a count. It was wrong — off by ten — and it
    would have been wrong again the moment anyone added a Card. What holds
@@ -117,16 +124,16 @@
                              future implementation goes back to stamping
                              <html> the old way
 
-   DORMANT: the <Theme> in app/layout.tsx is pinned appearance="light",
-   so none of these three selectors matches anything on the tree today.
-   The rule stays anyway — the wordmark is still literal black, so
-   deleting this would silently reintroduce the exact bug described above
-   the moment any of the three mechanisms is switched on, and no
-   tokens:verify-style check would catch a rule that simply isn't there.
-   Verified: temporarily setting appearance="dark" in app/layout.tsx
-   causes Radix to render class="radix-themes dark" on the Theme element,
-   which matches .radix-themes.dark below and computes --v1-logo-mark to
-   #ffffff. */
+   LIVE since the 2026-08 rebuild: the ROOT <Theme> in app/layout.tsx is
+   still pinned appearance="light", but the app's nav rail and phone top
+   bar are now a nested <Theme appearance="dark"> (app/(app)/layout.tsx),
+   which Radix stamps class="radix-themes dark" — the first selector
+   matches that subtree and the wordmark renders white on the dark rail,
+   exactly the mechanism the earlier "DORMANT" note in this comment had
+   verified in advance (temporarily setting appearance="dark" renders
+   class="radix-themes dark" and computes --v1-logo-mark to #ffffff).
+   The other two selectors remain dormant, kept for the day dark mode
+   arrives by a .dark-theme override or an html-level class. */
 :root.dark,
 .radix-themes.dark,
 .dark-theme {
@@ -171,7 +178,9 @@
    --v1-marketing-navy pair already documented above applies — these are
    brand grounds, not Radix scale steps, so they are declared here (the one
    file scripts/verify-tokens.mjs exempts) and reached by var() everywhere
-   else. Radius stays 0 throughout, matching the Theme's radius="none".
+   else. The three custom frames below carry Radix --radius-* vars so they
+   round with the Theme (radius="small" since the 2026-08 rebuild) instead
+   of staying square next to rounded Radix components.
    --------------------------------------------------------------------------- */
 :root {
   /* Two further steps of the same navy the mark is cut from, used only to
@@ -234,6 +243,7 @@
   display: inline-block;
   border: 1px solid var(--v1-marketing-navy-line);
   background-color: var(--v1-marketing-navy-fill);
+  border-radius: var(--radius-2);
   padding: 0.25rem 0.6rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -259,6 +269,9 @@
 .v1-m-mock-frame {
   background-color: var(--color-background);
   border: 1px solid var(--gray-a6);
+  border-radius: var(--radius-3);
+  /* overflow so the square-cornered chrome bar clips to the rounded frame */
+  overflow: hidden;
   box-shadow: var(--shadow-5);
 }
 
@@ -273,6 +286,9 @@
   width: 0.5rem;
   height: 0.5rem;
   background-color: var(--gray-a7);
+  /* --radius-full is a real Radix token (9999px under radius="small"),
+     so the chrome dots are the circles they were drawn as. */
+  border-radius: var(--radius-full);
 }
 
 /* The one-trip-in / three-outputs diagram. The connector is a plain

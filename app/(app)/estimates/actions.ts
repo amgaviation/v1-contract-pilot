@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { parseDollarsToCents } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import type { Database } from "@/lib/supabase/database.types";
@@ -190,7 +190,7 @@ export async function createEstimateDraft(
   _prev: EstimateFormState,
   formData: FormData
 ): Promise<EstimateFormState> {
-  const { account } = await requireAccount("/estimates/new");
+  const { account } = await requireEntitlement("estimates", "/estimates/new");
 
   const clientId = String(formData.get("client_id") ?? "").trim();
   if (!UUID_RE.test(clientId)) {
@@ -346,7 +346,7 @@ export async function updateEstimateHeader(
   const id = String(formData.get("id") ?? "");
   if (!UUID_RE.test(id)) return { error: "Missing estimate id.", values: echo(formData) };
 
-  const { account } = await requireAccount(`/estimates/${id}`);
+  const { account } = await requireEntitlement("estimates", `/estimates/${id}`);
 
   const clientId = String(formData.get("client_id") ?? "").trim();
   if (!UUID_RE.test(clientId)) {
@@ -423,7 +423,7 @@ export async function updateEstimateNotes(
   const id = String(formData.get("id") ?? "");
   if (!UUID_RE.test(id)) return { error: "Missing estimate id." };
 
-  const { account } = await requireAccount(`/estimates/${id}`);
+  const { account } = await requireEntitlement("estimates", `/estimates/${id}`);
   const supabase = await createClient();
 
   const payload: EstimateUpdate = { notes: optional(formData, "notes") };
@@ -453,7 +453,7 @@ async function setEstimateStatus(
 ): Promise<{ error: string | null }> {
   if (!UUID_RE.test(id)) return { error: "That estimate no longer exists." };
 
-  const { account } = await requireAccount(`/estimates/${id}`);
+  const { account } = await requireEntitlement("estimates", `/estimates/${id}`);
   const supabase = await createClient();
 
   const payload: EstimateUpdate = { status: to };
@@ -521,7 +521,7 @@ export async function markEstimateDeclined(id: string): Promise<{ error: string 
 export async function deleteEstimateDraft(id: string): Promise<{ error: string | null }> {
   if (!UUID_RE.test(id)) return { error: "That estimate no longer exists." };
 
-  const { account } = await requireAccount(`/estimates/${id}`);
+  const { account } = await requireEntitlement("estimates", `/estimates/${id}`);
   const supabase = await createClient();
 
   const { error, count } = await supabase
@@ -562,7 +562,7 @@ export async function convertEstimateToInvoice(
 ): Promise<{ error: string | null }> {
   if (!UUID_RE.test(id)) return { error: "That estimate no longer exists." };
 
-  await requireAccount(`/estimates/${id}`);
+  await requireEntitlement("estimates", `/estimates/${id}`);
   const supabase = await createClient();
 
   const { data, error } = await supabase.rpc("estimate_convert_to_invoice", {
@@ -606,7 +606,7 @@ export async function addEstimateLine(
   if (!UUID_RE.test(estimateId)) return { error: "Missing estimate id." };
 
   const values = lineFormValues(formData);
-  const { account } = await requireAccount(`/estimates/${estimateId}`);
+  const { account } = await requireEntitlement("estimates", `/estimates/${estimateId}`);
 
   const lineType = String(formData.get("line_type") ?? "");
   if (!(ESTIMATE_LINE_TYPES as readonly string[]).includes(lineType)) {
@@ -682,7 +682,7 @@ export async function updateEstimateLine(
   }
 
   const values = lineFormValues(formData);
-  const { account } = await requireAccount(`/estimates/${estimateId}`);
+  const { account } = await requireEntitlement("estimates", `/estimates/${estimateId}`);
 
   const description = String(formData.get("description") ?? "").trim();
   if (!description) return { error: "Give the line a description.", values };
@@ -733,7 +733,7 @@ export async function deleteEstimateLine(
     return { error: "That line is no longer on this estimate." };
   }
 
-  const { account } = await requireAccount(`/estimates/${estimateId}`);
+  const { account } = await requireEntitlement("estimates", `/estimates/${estimateId}`);
   const supabase = await createClient();
 
   const guardError = await requireDraftEstimate(supabase, estimateId, account.id);

@@ -27,7 +27,11 @@ export default function PageShell({
   children: ReactNode;
 }) {
   return (
-    <Flex direction="column" gap="4">
+    // gap "5", not "4": panels on the gray-2 canvas need one more step of
+    // air under the title block than flat regions did (2026-08 rebuild,
+    // docs/design/REBUILD-BRIEF.md §4.5). No border under the title —
+    // the canvas/panel contrast does that job now.
+    <Flex direction="column" gap="5">
       <Flex
         direction={{ initial: "column", sm: "row" }}
         justify="between"

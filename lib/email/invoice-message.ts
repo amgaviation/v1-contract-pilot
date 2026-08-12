@@ -38,6 +38,20 @@ export type InvoiceMessageInput = {
   paymentUrl: string | null;
   /** Free-text the pilot added to the invoice; passed through untouched. */
   notes: string | null;
+  /**
+   * How many receipts are GENUINELY EMBEDDED as real image pages in the
+   * attached PDF (lib/invoice-document.tsx's receiptCount — which counts
+   * decoded images only, never the caption/fallback pages for a PDF-format,
+   * unsupported, corrupt, or unreachable receipt). This is the ONLY receipt
+   * fact the body is allowed to state, and it states exactly this number: an
+   * accounts-payable reader deciding whether to chase substantiation learns
+   * how many receipt images are already in hand, and nothing is claimed about
+   * receipts that are only "available on request". If every receipt degraded
+   * to a fallback page this is 0 and the body says nothing about receipts at
+   * all. Omitted/0 changes nothing — every pre-existing message renders
+   * byte-identically.
+   */
+  receiptCount?: number;
 };
 
 export type InvoiceMessage = { subject: string; text: string };
@@ -73,6 +87,22 @@ export function buildInvoiceMessage(input: InvoiceMessageInput): InvoiceMessage 
       `That is the remaining balance; the invoice total is ${formatCents(
         input.totalCents
       )} and payments already received are shown on the attached copy.`
+    );
+  }
+
+  if (input.receiptCount) {
+    // Speaks ONLY to genuinely-embedded images (lib/invoice-document's
+    // receiptCount excludes caption/fallback pages), and states the exact
+    // count rather than "the rebilled expenses" — which would imply every
+    // rebilled line's receipt is in hand even when some are PDF-only or
+    // corrupt and rode along as an "available on request" page. So the mail
+    // never claims an image a toggled-off, receiptless, or fallback-only PDF
+    // doesn't carry.
+    lines.push("");
+    lines.push(
+      input.receiptCount === 1
+        ? "One receipt for a rebilled expense is included in the attached PDF."
+        : `${input.receiptCount} receipts for rebilled expenses are included in the attached PDF.`
     );
   }
 

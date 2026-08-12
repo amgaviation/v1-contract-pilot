@@ -76,6 +76,12 @@ export type Database = {
           country: string | null;
           logo_url: string | null;
           plan: "solo" | "business" | null;
+          // Added by 20260812300000_account_plan_tier.sql — the
+          // entitlement tier (lib/entitlements.ts is the vocabulary
+          // source). Webhook/service-role-writable only: withheld from
+          // the tenant UPDATE grant and protected by the
+          // accounts_protect_billing_columns trigger.
+          plan_tier: "solo" | "pro" | "business";
           seat_count: number;
           stripe_customer_id: string | null;
           stripe_subscription_id: string | null;
@@ -91,6 +97,11 @@ export type Database = {
             | "paused";
           connect_account_id: string | null;
           invoice_prefix: string;
+          // Added by 20260812310000_account_billing_event_watermark.sql —
+          // the Stripe `created` time of the most recent billing event
+          // applied to this account. Webhook/service-role-writable only;
+          // the concurrent-event ordering guard.
+          last_billing_event_at: string;
           created_at: string;
           updated_at: string;
         };
@@ -106,6 +117,7 @@ export type Database = {
           country?: string | null;
           logo_url?: string | null;
           plan?: "solo" | "business" | null;
+          plan_tier?: "solo" | "pro" | "business";
           seat_count?: number;
           stripe_customer_id?: string | null;
           stripe_subscription_id?: string | null;
@@ -121,6 +133,7 @@ export type Database = {
             | "paused";
           connect_account_id?: string | null;
           invoice_prefix?: string;
+          last_billing_event_at?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -144,6 +157,7 @@ export type Database = {
           country?: string | null;
           logo_url?: string | null;
           plan?: "solo" | "business" | null;
+          plan_tier?: "solo" | "pro" | "business";
           seat_count?: number;
           stripe_customer_id?: string | null;
           stripe_subscription_id?: string | null;
@@ -159,6 +173,7 @@ export type Database = {
             | "paused";
           connect_account_id?: string | null;
           invoice_prefix?: string;
+          last_billing_event_at?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -1956,6 +1971,125 @@ export type Database = {
           },
         ];
       };
+      // -----------------------------------------------------------------
+      // 20260812100000_accounting_ledger.sql — the accounting core.
+      // accounts_chart is the CHART OF ACCOUNTS (pilot.accounts is the
+      // tenant table — do not confuse them). journal_entries/journal_lines
+      // have NO Insert/Update types on purpose: authenticated holds no
+      // write grants at the database — every journal write goes through
+      // the ledger_sync / journal_entry_create / journal_entry_delete
+      // functions below.
+      // -----------------------------------------------------------------
+      accounts_chart: {
+        Row: {
+          id: string;
+          account_id: string;
+          name: string;
+          kind: "asset" | "liability" | "equity" | "income" | "expense";
+          system_key: string | null;
+          archived_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          // Only these three columns are in the INSERT grant; system_key
+          // is seeded-only, archive is an UPDATE.
+          account_id: string;
+          name: string;
+          kind: "asset" | "liability" | "equity" | "income" | "expense";
+        };
+        Update: {
+          name?: string;
+          archived_at?: string | null;
+        };
+        Relationships: [];
+      };
+      journal_entries: {
+        Row: {
+          id: string;
+          account_id: string;
+          entry_date: string;
+          memo: string;
+          source_type:
+            | "manual"
+            | "invoice_issued"
+            | "invoice_voided"
+            | "payment"
+            | "payment_void_reclass"
+            | "expense"
+            | "mileage";
+          source_id: string | null;
+          created_at: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+      journal_lines: {
+        Row: {
+          id: string;
+          account_id: string;
+          entry_id: string;
+          chart_account_id: string;
+          side: "debit" | "credit";
+          amount_cents: number;
+          line_no: number;
+          created_at: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [
+          {
+            foreignKeyName: "journal_lines_account_id_entry_id_fkey";
+            columns: ["account_id", "entry_id"];
+            isOneToOne: false;
+            referencedRelation: "journal_entries";
+            referencedColumns: ["account_id", "id"];
+          },
+          {
+            foreignKeyName: "journal_lines_account_id_chart_account_id_fkey";
+            columns: ["account_id", "chart_account_id"];
+            isOneToOne: false;
+            referencedRelation: "accounts_chart";
+            referencedColumns: ["account_id", "id"];
+          },
+        ];
+      };
+      // 20260812100001_bank_reconciliation.sql. A row = a statement line
+      // cleared against a ledger Cash & bank line. Amounts must be
+      // identical (validation trigger); 1:1 both ways (unique indexes).
+      // Unmatch = delete; there is deliberately no Update.
+      bank_statement_matches: {
+        Row: {
+          id: string;
+          account_id: string;
+          bank_transaction_id: string;
+          journal_line_id: string;
+          created_at: string;
+        };
+        Insert: {
+          account_id: string;
+          bank_transaction_id: string;
+          journal_line_id: string;
+        };
+        Update: never;
+        Relationships: [
+          {
+            foreignKeyName: "bank_statement_matches_account_id_bank_transaction_id_fkey";
+            columns: ["account_id", "bank_transaction_id"];
+            isOneToOne: false;
+            referencedRelation: "bank_transactions";
+            referencedColumns: ["account_id", "id"];
+          },
+          {
+            foreignKeyName: "bank_statement_matches_account_id_journal_line_id_fkey";
+            columns: ["account_id", "journal_line_id"];
+            isOneToOne: false;
+            referencedRelation: "journal_lines";
+            referencedColumns: ["account_id", "id"];
+          },
+        ];
+      };
     };
     Functions: {
       current_account_ids: {
@@ -2114,6 +2248,77 @@ export type Database = {
       invoice_public: {
         Args: { p_token: string };
         Returns: Json;
+      };
+      // -----------------------------------------------------------------
+      // 20260812100000_accounting_ledger.sql. ledger_sync /
+      // journal_entry_create / journal_entry_delete are SECURITY DEFINER
+      // with in-body current_account_ids() checks (the journal tables
+      // have no client write grants at all); the ledger_* reads are
+      // SECURITY INVOKER and aggregate in the database so a balance can
+      // never be silently truncated at the Data API's 1000-row cap.
+      // -----------------------------------------------------------------
+      ledger_sync: {
+        Args: { target_account_id: string };
+        Returns: { created: number; removed: number };
+      };
+      journal_entry_create: {
+        Args: {
+          target_account_id: string;
+          p_entry_date: string;
+          p_memo: string;
+          p_lines: {
+            chart_account_id: string;
+            side: "debit" | "credit";
+            amount_cents: number;
+          }[];
+        };
+        Returns: string;
+      };
+      journal_entry_delete: {
+        Args: { p_entry_id: string };
+        Returns: undefined;
+      };
+      ledger_balances: {
+        Args: { target_account_id: string; through_date: string };
+        Returns: {
+          chart_account_id: string;
+          name: string;
+          kind: "asset" | "liability" | "equity" | "income" | "expense";
+          system_key: string | null;
+          archived: boolean;
+          balance_cents: number;
+          line_count: number;
+        }[];
+      };
+      ledger_cash_flow: {
+        Args: {
+          target_account_id: string;
+          period_start: string;
+          period_end: string;
+        };
+        Returns: {
+          chart_account_id: string;
+          name: string;
+          kind: "asset" | "liability" | "equity" | "income" | "expense";
+          system_key: string | null;
+          cash_cents: number;
+          entry_count: number;
+        }[];
+      };
+      ledger_bank_lines: {
+        Args: {
+          target_account_id: string;
+          period_start: string;
+          period_end: string;
+        };
+        Returns: {
+          journal_line_id: string;
+          entry_id: string;
+          entry_date: string;
+          memo: string;
+          source_type: string;
+          signed_cents: number;
+        }[];
       };
     };
     Enums: Record<string, never>;

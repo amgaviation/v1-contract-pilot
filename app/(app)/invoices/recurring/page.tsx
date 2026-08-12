@@ -2,7 +2,7 @@ import { Callout, Card, Flex } from "@/components/ui";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { friendlyDbError } from "@/lib/db-errors";
 import PageShell from "../../page-shell";
 import type { Database } from "@/lib/supabase/database.types";
@@ -19,7 +19,7 @@ type GenerationRow = Pick<
 >;
 
 export default async function RecurringInvoicesPage() {
-  await requireAccount("/invoices/recurring");
+  await requireEntitlement("recurring_invoices", "/invoices/recurring");
   const supabase = await createClient();
 
   const [

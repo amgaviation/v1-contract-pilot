@@ -1,6 +1,7 @@
 import "server-only";
 import type Stripe from "stripe";
 import { createServiceClient } from "@/lib/supabase/service-role";
+import { tierForPriceId, type PlanTier } from "@/lib/entitlements";
 
 /**
  * Tenant provisioning and billing-state sync — the ONLY place in the app
@@ -42,6 +43,39 @@ function trialEndsAt(sub: Stripe.Subscription): string | null {
 }
 
 /**
+ * The subscription's price → plan tier, via the env-name mapping in
+ * lib/entitlements.ts. The PRICE is the authority: an upgrade or
+ * downgrade becomes real when Stripe says the subscription's price
+ * changed (customer.subscription.updated), never when our UI claims it —
+ * so a checkout the pilot abandoned, or a plan-change action that failed
+ * at Stripe, can never move the tier.
+ *
+ * Returns null — meaning "leave plan_tier alone" — in two distinct
+ * cases, both deliberate:
+ *   - No price on the event (billing:verify's synthetic events, or a
+ *     malformed payload). Nothing to map, nothing to change.
+ *   - A price that maps to NO configured env var. That is OUR
+ *     misconfiguration (a price rotated in Stripe without the env var
+ *     following, or a stale test object), and the wrong response would
+ *     be either a throw — a 500 loop that also blocks the STATUS sync
+ *     riding the same event — or a silent default that could quietly
+ *     downgrade a paying Business customer to solo. Keeping the current
+ *     tier and logging loudly is the only option that strands nobody.
+ */
+function tierFromSubscription(sub: Stripe.Subscription): PlanTier | null {
+  const priceId = sub.items?.data?.[0]?.price?.id ?? null;
+  if (!priceId) return null;
+  const match = tierForPriceId(priceId);
+  if (!match) {
+    console.error(
+      `Subscription ${sub.id} carries price ${priceId}, which maps to no STRIPE_PRICE_ID_* env var — plan_tier left unchanged. Check the six price env vars against the Stripe dashboard.`
+    );
+    return null;
+  }
+  return match.tier;
+}
+
+/**
  * Provisions a tenant from a completed checkout, or returns the existing
  * one. Safe to call twice for the same checkout: the lookup by
  * stripe_customer_id short-circuits, and the unique indexes added in the
@@ -49,7 +83,8 @@ function trialEndsAt(sub: Stripe.Subscription): string | null {
  */
 export async function provisionAccountFromCheckout(
   session: Stripe.Checkout.Session,
-  subscription: Stripe.Subscription
+  subscription: Stripe.Subscription,
+  eventCreatedAt: number
 ): Promise<{ accountId: string; created: boolean }> {
   const supabase = createServiceClient();
 
@@ -89,13 +124,33 @@ export async function provisionAccountFromCheckout(
     .from("accounts")
     .insert({
       kind: "solo",
+      // `plan` is decision #10's BILLING-SHAPE vocabulary (flat rate vs
+      // the deferred per-seat plan), not the tier — all three tiers are
+      // flat-rate today, so it stays "solo". The tier lives in
+      // plan_tier. See 20260812300000_account_plan_tier.sql.
       plan: "solo",
+      // Provisioning is the one place a null mapping falls back to
+      // "solo" instead of "leave unchanged": a new row has no current
+      // value to leave alone, NOT NULL requires an answer, and the
+      // floor tier is the only safe wrong answer — a support
+      // conversation upgrades it; the reverse (defaulting high) would
+      // hand out unpaid entitlements. tierFromSubscription has already
+      // logged loudly if this fires on a real checkout.
+      plan_tier: tierFromSubscription(subscription) ?? "solo",
       seat_count: 1,
       legal_name: legalName,
       stripe_customer_id: customerId,
       stripe_subscription_id: subscription.id,
       status: mapStatus(subscription.status),
       trial_ends_at: trialEndsAt(subscription),
+      // The provisioning event's own timestamp is the account's first
+      // billing-event watermark (20260812310000). A subscription event
+      // OLDER than this checkout — e.g. a customer.subscription.created
+      // that fired before checkout completed and is redelivered late —
+      // then loses the conditional UPDATE in syncSubscriptionState instead
+      // of regressing the status we just wrote from the freshly-retrieved
+      // subscription.
+      last_billing_event_at: new Date(eventCreatedAt * 1000).toISOString(),
     } as never)
     .select("id")
     .single();
@@ -131,7 +186,8 @@ export async function provisionAccountFromCheckout(
  * redeliver.
  */
 export async function syncSubscriptionState(
-  subscription: Stripe.Subscription
+  subscription: Stripe.Subscription,
+  eventCreatedAt: number
 ): Promise<boolean> {
   const supabase = createServiceClient();
 
@@ -160,19 +216,48 @@ export async function syncSubscriptionState(
 
   if (!accountId) return false;
 
+  // plan_tier moves ONLY when the event's price maps to a tier. A null
+  // mapping (no price on the payload, or an unmapped price — see
+  // tierFromSubscription) leaves the existing tier standing, so a
+  // malformed or misconfigured event can degrade the STATUS sync's
+  // company but never silently re-tier a paying account.
+  const tier = tierFromSubscription(subscription);
+  const incoming = new Date(eventCreatedAt * 1000).toISOString();
+  const update: Record<string, unknown> = {
+    stripe_subscription_id: subscription.id,
+    status: mapStatus(subscription.status),
+    trial_ends_at: trialEndsAt(subscription),
+    // Advance the watermark to this event's created time in the SAME write
+    // that applies its state, so the two can never separate.
+    last_billing_event_at: incoming,
+  };
+  if (tier) update.plan_tier = tier;
+
+  // ORDERING SAFETY IS THE WHERE CLAUSE (Finding 4). The webhook's
+  // isSuperseded guard only sees events whose processed_at is already set,
+  // so two events for the same subscription running CONCURRENTLY can both
+  // pass it and the last database writer wins regardless of event.created.
+  // This makes the write itself conditional on the stored watermark:
+  // `last_billing_event_at < incoming`. Two concurrent updates serialise on
+  // the row lock, and Postgres re-checks this predicate against the
+  // freshly-committed row (READ COMMITTED / EvalPlanQual), so the older
+  // event's UPDATE re-evaluates against the newer watermark and matches
+  // zero rows — the newer event wins whichever order they commit in, not
+  // whichever writes last. The column is NOT NULL DEFAULT '-infinity'
+  // (migration 20260812310000), so a strict `.lt` needs no null branch and
+  // a brand-new row's first real event always applies.
   const { error } = await supabase
     .from("accounts")
-    .update({
-      stripe_subscription_id: subscription.id,
-      status: mapStatus(subscription.status),
-      trial_ends_at: trialEndsAt(subscription),
-    } as never)
-    .eq("id", accountId);
+    .update(update as never)
+    .eq("id", accountId)
+    .lt("last_billing_event_at", incoming);
 
   if (error) {
     throw new Error(
       `Failed to sync subscription ${subscription.id}: ${error.message}`
     );
   }
+  // Zero rows updated is NOT an error here: it means a newer (or equal)
+  // event already set the watermark and this one was correctly dropped.
   return true;
 }

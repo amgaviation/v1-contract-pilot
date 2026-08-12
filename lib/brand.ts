@@ -35,9 +35,11 @@ export type Brand = typeof BRAND;
  * preference, so there is no dark browser chrome to match.
  *
  * The literal tracks Radix's slate scale step 1 (light), because
- * `grayColor="auto"` on that same <Theme> resolves to slate for a blue
- * accent (Radix's getMatchingGrayColor). Change the accent colour and this
- * value must be re-checked — it is asserted to match, not derived from it.
+ * `grayColor="auto"` on that same <Theme> resolves to slate for an indigo
+ * accent (Radix's getMatchingGrayColor — re-checked when the accent moved
+ * from blue to indigo in the 2026-08 rebuild; both resolve to slate, so
+ * this value did not move). Change the accent colour and this value must
+ * be re-checked again — it is asserted to match, not derived from it.
  *
  * (The previous value, #eef1f6, was the ground of a design system that was
  * deleted in 6ed0e46 — it referred to an app/tokens/colors.css that no

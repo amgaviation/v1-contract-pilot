@@ -114,6 +114,7 @@ jobs:
           ESTIMATES_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
           LOGBOOK_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
           CURRENCY_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
+          ACCOUNTING_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
         run: |
           set -euo pipefail
           npm run aircraft:verify
@@ -121,3 +122,4 @@ jobs:
           npm run estimates:verify
           npm run logbook:verify
           npm run currency:verify
+          npm run accounting:verify

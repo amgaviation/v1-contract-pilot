@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { friendlyDbError } from "@/lib/db-errors";
 import { buildClientStatement } from "../queries";
 import { resolveStatementPeriod, todayIso } from "../statement-lib";
@@ -35,7 +35,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { account } = await requireAccount(`/clients/${id}/statement`);
+  const { account } = await requireEntitlement("client_statements", `/clients/${id}/statement`);
 
   const sp = request.nextUrl.searchParams;
   const period = resolveStatementPeriod(

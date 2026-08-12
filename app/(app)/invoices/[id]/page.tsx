@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { Badge, Button, Callout, Card, Flex, Grid, Separator, Text } from "@/components/ui";
+import { Badge, Callout, Card, Flex, Grid, Separator, Text } from "@/components/ui";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 
 import { createClient } from "@/lib/supabase/server";
@@ -11,6 +11,7 @@ import { emailIsConfigured } from "@/lib/email/send";
 import PageShell from "../../page-shell";
 import HeaderForm, { type ClientOption } from "./header-form";
 import LinesEditor, { type LineRow, type RebillableExpense } from "./lines-editor";
+import PdfDownload from "./pdf-download";
 import StatusActions from "./status-actions";
 import PaymentPanel, { type PaymentRow } from "./payment-panel";
 import SharePanel, { type ShareRow } from "./share-panel";
@@ -105,7 +106,11 @@ export default async function InvoicePage({
     // wrong dollar figure — a materially different failure mode than the
     // totals/payments/overdue/clients reads this screen already treats as
     // hard errors.
-    supabase.from("invoice_shares").select("token, revoked_at").eq("invoice_id", id).maybeSingle(),
+    supabase
+      .from("invoice_shares")
+      .select("token, revoked_at, first_viewed_at, last_viewed_at")
+      .eq("invoice_id", id)
+      .maybeSingle(),
   ]);
 
   // A failed QUERY is not a missing invoice — see trips/[id]/page.tsx for
@@ -183,6 +188,27 @@ export default async function InvoicePage({
     }
   }
 
+  // How many of this invoice's rebill lines have a receipt ON FILE — what
+  // the PDF's receipt pages (lib/invoice-document.tsx) will actually
+  // attach, driving both toggles (download button + send dialog). Read
+  // best-effort like the share row above: a failed read degrades to
+  // count 0, which HIDES the toggles while the document itself still
+  // defaults receipts on — the surfaces disagree with each other for one
+  // transient render, never with what gets billed, and never a wrong
+  // dollar figure.
+  const rebillExpenseIds = lines
+    .map((line) => line.expense_id)
+    .filter((expenseId): expenseId is string => expenseId !== null);
+  let receiptCount = 0;
+  if (rebillExpenseIds.length > 0) {
+    const { data: receiptRows } = await supabase
+      .from("expenses")
+      .select("id")
+      .in("id", rebillExpenseIds)
+      .not("receipt_path", "is", null);
+    receiptCount = ((receiptRows ?? []) as { id: string }[]).length;
+  }
+
   const badge = STATUS_BADGE[invoice.status] ?? STATUS_FALLBACK;
 
   return (
@@ -197,13 +223,7 @@ export default async function InvoicePage({
           </Text>
         </Flex>
       }
-      action={
-        <Button asChild variant="outline">
-          <a href={`/invoices/${invoice.id}/pdf`} target="_blank" rel="noopener noreferrer">
-            {draft ? "Preview PDF" : "Download PDF"}
-          </a>
-        </Button>
-      }
+      action={<PdfDownload invoiceId={invoice.id} draft={draft} receiptCount={receiptCount} />}
     >
       {warning ? (
         <Callout.Root color="amber" mb="4">
@@ -278,6 +298,7 @@ export default async function InvoicePage({
             canEmail={emailIsConfigured()}
             clientEmail={billedClient?.contact_email ?? null}
             clientName={billedClient?.name ?? "this client"}
+            receiptCount={receiptCount}
           />
           {/* Matches pilot.invoice_share_create's own status gate
               (sent/partial/paid only) — never offered on a draft, so the

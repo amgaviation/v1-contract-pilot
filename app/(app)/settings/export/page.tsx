@@ -1,6 +1,6 @@
 import NextLink from "next/link";
 import { Button, Card, Flex, Heading, Link as RadixLink, Text } from "@/components/ui";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import PageShell from "../../page-shell";
 
 export const metadata = { title: "Export your data" };
@@ -101,7 +101,7 @@ const EXPORTS: ExportCard[] = [
 ];
 
 export default async function ExportPage() {
-  await requireAccount("/settings/export");
+  await requireEntitlement("account_export", "/settings/export");
 
   return (
     <PageShell

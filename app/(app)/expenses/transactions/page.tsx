@@ -2,7 +2,7 @@ import NextLink from "next/link";
 import { Box, Button, Callout, Card, Flex, Table, Text } from "@/components/ui";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { createClient } from "@/lib/supabase/server";
-import { requireAccount } from "@/lib/supabase/account";
+import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import PageShell from "../../page-shell";
@@ -46,7 +46,7 @@ const TXN_LIMIT = 1000;
  * is the one path, and it goes through ./actions.ts's confirmTransaction.
  */
 export default async function TransactionsPage() {
-  await requireAccount("/expenses/transactions");
+  await requireEntitlement("bank_import", "/expenses/transactions");
   const supabase = await createClient();
 
   const [

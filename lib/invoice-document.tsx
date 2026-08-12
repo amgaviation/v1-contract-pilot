@@ -1,6 +1,13 @@
 import "server-only";
+import sharp from "sharp";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { InvoicePdf, type InvoicePdfLine } from "@/lib/invoice-pdf";
+import {
+  classifyReceiptBytes,
+  receiptFallbackNote,
+  RECEIPTS_UNAVAILABLE_NOTE,
+  type ReceiptAttachment,
+} from "@/lib/invoice-receipts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -33,6 +40,18 @@ export type InvoiceDocument = {
   accountName: string;
   totalCents: number;
   balanceDueCents: number;
+  /**
+   * How many receipts were GENUINELY EMBEDDED as image pages — a real,
+   * decoded JPEG/PNG the client can actually see. This deliberately EXCLUDES
+   * the honest caption/fallback pages (a PDF-format receipt, an unsupported
+   * format, a fetch failure, a corrupt image that wouldn't decode): those are
+   * pages ABOUT a receipt, not the receipt itself, and the email must not
+   * claim an image the attachment doesn't carry. 0 when receipts were toggled
+   * off, when no rebill line has one, and when every receipt degraded to a
+   * fallback page. The one number the email body copy is allowed to speak to
+   * (lib/email/invoice-message.ts) — see that field's own note.
+   */
+  receiptCount: number;
 };
 
 export type InvoiceDocumentResult =
@@ -65,12 +84,72 @@ type TotalsRow = {
   balance_due_cents: number;
 };
 
+/**
+ * Decode a receipt's bytes to a buffer react-pdf is guaranteed to embed, or
+ * null if they don't decode to a real image.
+ *
+ * classifyReceiptBytes (lib/invoice-receipts.ts) only reads the LEADING magic
+ * number, so a truncated or corrupt file that still begins with a valid
+ * JPEG/PNG signature passes classification and reaches here looking
+ * embeddable. It is not. Two things then go wrong if the raw bytes are handed
+ * straight to react-pdf:
+ *
+ *  - @react-pdf/renderer 4.5.x does NOT throw on such a file — its layout pass
+ *    wraps image resolution in a try/catch and merely console.warns, dropping
+ *    the image (see @react-pdf/layout fetchImage). The receipt page then
+ *    renders BLANK beneath its caption, with none of the honest "available on
+ *    request" fallback copy, and — worse — the empty page is still counted as
+ *    an embedded receipt, so the email claims an image that isn't there.
+ *  - A future react-pdf, or an exotic-but-decodable encoding its bespoke
+ *    decoders choke on (progressive JPEG, interlaced/16-bit PNG), could fail
+ *    harder. Because the whole document is composed in ONE renderToBuffer,
+ *    one bad image failing there would fail the entire invoice.
+ *
+ * So the bytes are put through a real decode FIRST. sharp reads every pixel
+ * and re-encodes to a baseline JPEG / standard PNG — normalising the exotic
+ * encodings to the plain forms react-pdf embeds most reliably, and returning
+ * null for anything it cannot decode (`failOn: "error"` rejects genuinely
+ * corrupt input while tolerating mere warnings). The caller embeds only what
+ * decodes and degrades the rest to the same captioned fallback page every
+ * other non-embeddable receipt already uses. This is the invariant proven
+ * with the real renderer: any subset of corrupt receipts becomes fallback
+ * pages and the invoice still renders a valid PDF.
+ */
+async function decodeEmbeddableReceipt(
+  bytes: Buffer,
+  mime: "image/jpeg" | "image/png"
+): Promise<Buffer | null> {
+  try {
+    const pipe = sharp(bytes, { failOn: "error" });
+    return mime === "image/png"
+      ? await pipe.png().toBuffer()
+      : await pipe.jpeg({ quality: 90 }).toBuffer();
+  } catch (cause) {
+    console.error(
+      "[invoice-document] receipt image would not decode, using caption page",
+      cause
+    );
+    return null;
+  }
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export async function buildInvoiceDocument(
   supabase: SupabaseClient<any, any, any>,
   accountId: string,
-  invoiceId: string
+  invoiceId: string,
+  options?: {
+    /**
+     * Append each rebilled-expense line's receipt as an extra PDF page.
+     * Defaults ON — an invoice that rebills expenses normally travels with
+     * its receipts (that is the substantiation norm the rebill exists
+     * for) — and both surfaces (the pdf route's `?receipts=0`, the send
+     * dialog's checkbox) let the pilot turn it off per document.
+     */
+    includeReceipts?: boolean;
+  }
 ): Promise<InvoiceDocumentResult> {
+  const includeReceipts = options?.includeReceipts ?? true;
   const [
     { data: invoiceData, error: invoiceError },
     { data: lineData, error: lineError },
@@ -84,7 +163,10 @@ export async function buildInvoiceDocument(
       .maybeSingle(),
     supabase
       .from("invoice_lines")
-      .select("description, quantity, unit_amount_cents, amount_cents")
+      // expense_id rides along solely to find rebill lines' receipts below;
+      // it is never rendered (the PDF shows the client the same fields it
+      // always has).
+      .select("description, quantity, unit_amount_cents, amount_cents, expense_id")
       .eq("invoice_id", invoiceId)
       .eq("account_id", accountId)
       .order("sort_order", { ascending: true }),
@@ -152,7 +234,7 @@ export async function buildInvoiceDocument(
     return { ok: false, reason: "not_found", error: "Not found." };
   }
 
-  const lines = (lineData ?? []) as InvoicePdfLine[];
+  const lines = (lineData ?? []) as (InvoicePdfLine & { expense_id: string | null })[];
   const totals = (totalsData as TotalsRow | null) ?? {
     subtotal_cents: 0,
     tax_cents: 0,
@@ -184,6 +266,109 @@ export async function buildInvoiceDocument(
     }
   }
 
+  // RECEIPT PAGES for rebilled expenses. Same never-fail-the-invoice
+  // contract as the logo above, page by page: every failure mode along this
+  // path — the metadata read, the bucket download, a format react-pdf can't
+  // embed (PDF receipts, HEIC, WebP) — degrades to an honestly-captioned
+  // page (copy in lib/invoice-receipts.ts) or, for the metadata read, one
+  // honest notice page, and NEVER to a failed document. The bytes are
+  // classified by magic number, not by extension or stored content type,
+  // because renderToBuffer is where a wrong guess would explode — see
+  // classifyReceiptBytes's own header.
+  //
+  // A rebill line whose expense simply has NO receipt on file gets no page
+  // at all: nothing exists to attach and a "missing receipt" page would
+  // invent a problem in front of the client.
+  const receipts: ReceiptAttachment[] = [];
+  const rebillLines = lines.filter(
+    (line): line is (typeof lines)[number] & { expense_id: string } =>
+      line.expense_id !== null
+  );
+  if (includeReceipts && rebillLines.length > 0) {
+    const { data: expenseData, error: expenseError } = await supabase
+      .from("expenses")
+      .select("id, receipt_path")
+      .in(
+        "id",
+        rebillLines.map((line) => line.expense_id)
+      )
+      .eq("account_id", accountId);
+
+    if (expenseError) {
+      console.error(
+        "[invoice-document] receipt metadata unavailable, rendering notice page",
+        expenseError.message
+      );
+      receipts.push({
+        description: "Receipts for rebilled expenses",
+        amountCents: null,
+        imageDataUri: null,
+        note: RECEIPTS_UNAVAILABLE_NOTE,
+      });
+    } else {
+      const receiptPathByExpense = new Map(
+        ((expenseData ?? []) as { id: string; receipt_path: string | null }[]).map((e) => [
+          e.id,
+          e.receipt_path,
+        ])
+      );
+      for (const line of rebillLines) {
+        const path = receiptPathByExpense.get(line.expense_id);
+        if (!path) continue; // no receipt on file — nothing to attach
+        const base = { description: line.description, amountCents: line.amount_cents };
+        // Same folder check as the logo: the first path segment is the
+        // tenant key (storage RLS enforces it too — this is defence in
+        // depth, not the boundary).
+        if (!path.startsWith(`${accountId}/`)) {
+          receipts.push({ ...base, imageDataUri: null, note: receiptFallbackNote("unavailable") });
+          continue;
+        }
+        try {
+          const { data: blob, error: receiptError } = await supabase.storage
+            .from("receipts")
+            .download(path);
+          if (receiptError || !blob) {
+            throw new Error(receiptError?.message ?? "empty receipt download");
+          }
+          const bytes = Buffer.from(await blob.arrayBuffer());
+          const classified = classifyReceiptBytes(bytes);
+          if (classified.kind === "image") {
+            // The magic number said JPEG/PNG; a real decode says whether the
+            // rest of the file agrees. A truncated or corrupt image that only
+            // LOOKS embeddable is sent to the same fallback page as a PDF or
+            // HEIC receipt — never embedded blank, never counted as included.
+            const decoded = await decodeEmbeddableReceipt(bytes, classified.mime);
+            if (decoded) {
+              receipts.push({
+                ...base,
+                imageDataUri: `data:${classified.mime};base64,${decoded.toString("base64")}`,
+                note: null,
+              });
+            } else {
+              receipts.push({
+                ...base,
+                imageDataUri: null,
+                note: receiptFallbackNote("unavailable"),
+              });
+            }
+          } else {
+            receipts.push({
+              ...base,
+              imageDataUri: null,
+              note: receiptFallbackNote(classified.kind),
+            });
+          }
+        } catch (cause) {
+          console.error(
+            "[invoice-document] receipt unavailable, rendering caption page",
+            cause
+          );
+          receipts.push({ ...base, imageDataUri: null, note: receiptFallbackNote("unavailable") });
+        }
+      }
+    }
+  }
+
   const buffer = await renderToBuffer(
     <InvoicePdf
       logoDataUri={logoDataUri}
@@ -192,6 +377,7 @@ export async function buildInvoiceDocument(
       invoice={invoice}
       lines={lines}
       totals={totals}
+      receipts={receipts}
     />
   );
 
@@ -206,6 +392,10 @@ export async function buildInvoiceDocument(
       accountName: accountInfo.legal_name,
       totalCents: totals.total_cents,
       balanceDueCents: totals.balance_due_cents,
+      // Only the receipts that carry a real, decoded image — the caption/
+      // fallback pages (imageDataUri === null) are excluded so the email
+      // never claims an image the attachment doesn't contain.
+      receiptCount: receipts.filter((r) => r.imageDataUri !== null).length,
     },
   };
 }

@@ -23,6 +23,7 @@ import ArchiveButton from "./archive-button";
 import RateOverridesPanel from "./rate-overrides-panel";
 import OperatorQualificationsPanel from "./operator-qualifications-panel";
 import PacketPanel from "./packet-panel";
+import PaymentInsightPanel from "./payment-insight-panel";
 
 type ClientRow = Database["pilot"]["Tables"]["clients"]["Row"];
 type DayTypeRow = Database["pilot"]["Tables"]["day_types"]["Row"];
@@ -66,7 +67,7 @@ export default async function EditClientPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  await requireAccount(`/clients/${id}`);
+  const { account } = await requireAccount(`/clients/${id}`);
 
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -321,6 +322,15 @@ export default async function EditClientPage({
           </Card>
         </Grid>
       )}
+
+      {/* Payment behavior — this client's own receivables history (median
+          days-to-pay, aging, outstanding), from this account's ledger
+          only. A self-contained server component with its own reads; see
+          payment-insight.ts for the computation and the no-cross-tenant
+          rule. */}
+      <Box mt="4">
+        <PaymentInsightPanel accountId={account.id} clientId={client.id} />
+      </Box>
 
       {/* F5: cancellation_policy_note had nowhere it would ever actually
           be seen — the invoice draft only surfaces it when a CANCELED

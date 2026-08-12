@@ -1,6 +1,17 @@
 import { Badge, Box, Button, Card, Flex, Grid, Separator, Table, Text } from "@/components/ui";
 import { BRAND } from "@/lib/brand";
-import { NAV_SECTIONS } from "@/lib/nav";
+import { visibleNavSections } from "@/lib/nav";
+
+/**
+ * The mock's rail shows the FLAG-OFF nav — visibleNavSections(false), the
+ * same helper the real rail renders from when the currency engine is
+ * disabled. The public page must advertise exactly what a new signup's
+ * deployment shows, and the counsel-gated section may appear on no public
+ * surface until its gate clears (docs/PRICING.md §4) — so the marketing
+ * mock is pinned to the flag-off view rather than the raw NAV_SECTIONS
+ * list, which deliberately includes gated entries for robots.txt's sake.
+ */
+const MOCK_NAV_SECTIONS = visibleNavSections(false);
 
 /**
  * A HAND-BUILT MOCK OF THE OVERVIEW DASHBOARD, for the marketing page only.
@@ -64,7 +75,14 @@ export default function ProductMock() {
   return (
     <Box className="v1-m-mock-scroll">
       <Box className="v1-m-mock-inner">
-        <Box className="v1-m-mock-frame">
+        {/* color re-established explicitly: the mock sits inside the navy
+            hero (.v1-m-dark), whose white ink otherwise INHERITS into any
+            Text that doesn't set a color prop — the rail's current item
+            and the mock's page title were rendering white-on-white. The
+            frame paints the app's light ground, so it must also restore
+            the app's default ink (--gray-12, the token Radix's own root
+            sets). Caught by the rebuild QA pass, rule 12. */}
+        <Box className="v1-m-mock-frame" style={{ color: "var(--gray-12)" }}>
           {/* Window chrome, so this reads as a screen rather than a card. */}
           <Flex align="center" gap="2" px="3" py="2" className="v1-m-mock-chrome">
             <Box className="v1-m-mock-dot" />
@@ -86,7 +104,7 @@ export default function ProductMock() {
               style={{ borderRight: "1px solid var(--gray-a5)" }}
             >
               <Flex direction="column" gap="2">
-                {NAV_SECTIONS.map((item, index) => (
+                {MOCK_NAV_SECTIONS.map((item, index) => (
                   <Text
                     key={item.href}
                     size="1"

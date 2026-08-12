@@ -1,365 +1,441 @@
-# Pricing — proposal for Tony to confirm
+# Pricing — three-tier proposal for Tony to confirm
 
-**Status: PROPOSAL. Nothing here is decided.** Decision #10 in `docs/PLAN.md` locked the
-*shape* — solo flat rate, business per-seat — and left the numbers as "env/config, not code"
-under Open items. This document proposes the numbers and shows the work. The owner picks
-them; an agent does not get to price the product.
+**Status: PROPOSAL. The tier *structure* (three tiers, more features per tier) is the
+owner's order of 2026-08-11; the numbers in it are not signed.** This document supersedes
+the 2026-08-10 two-plan memo (solo flat + deferred per-seat business): the owner has since
+ordered three plan tiers, and the builders are wiring `STRIPE_PRICE_ID_SOLO` /
+`STRIPE_PRICE_ID_PRO` / `STRIPE_PRICE_ID_BUSINESS` in this session. This document proposes
+the numbers and the feature split and shows the work. The owner picks the numbers; an agent
+does not get to price the product.
 
-All competitor figures below were read from the live vendor page on the date stamped against
-them. Where a number could not be verified from a live source it is marked
-**[UNVERIFIED]** and left blank rather than estimated. A missing number in this document is
+All competitor figures below were read from the live vendor page on the date stamped
+against them. Where a number could not be verified from a live first-party source it is
+marked **[UNVERIFIED]** and its origin is named. A missing number in this document is
 deliberate.
 
 ---
 
-## 1. What is already wired, so this is a change-or-confirm and not a blank page
+## 1. What is wired today, so this is a change-or-confirm and not a blank page
 
-`docs/BILLING.md` documents **$29/month solo, card-required 7-day trial**, and that is what is
-configured today — the public landing page and pricing page print the same $29, not the $39
-proposed below, a deliberate choice to keep the copy that charges money from getting ahead of
-this gate (`docs/LAUNCH-GATES.md` G2). If the answer to this memo is "$29 is right", nothing
-changes. If it is any other number, the blast radius is these places, and none of them is a
-schema change:
-
-- the Stripe Price object behind `STRIPE_PRICE_ID_SOLO` (a **new** Price — see §7),
-- `PRICE_LABEL` in `app/(auth)/welcome/page.tsx`, `app/(marketing)/page.tsx`, and
-  `app/(marketing)/pricing/page.tsx` — three hand-synced copies of the same string,
-- the `$29/month` line in `docs/BILLING.md` and the `$29/month` comment in `.env.example`.
-
-The per-seat business plan has no Price and no env var yet, on purpose — `docs/BILLING.md`
-explains why an empty `STRIPE_PRICE_ID_BUSINESS_SEAT` would be worse than an absent one.
+`docs/BILLING.md` documents **$29/month solo, card-required 7-day trial**, wired to
+`STRIPE_PRICE_ID_SOLO` and read in `lib/stripe/server.ts`. The landing, pricing, and
+welcome pages print $29 (`PRICE_LABEL`, three hand-synced copies). Under this proposal
+**that Price object and that cohort survive untouched**: Solo stays $29, and the three-tier
+ladder is *additive* — two new Price objects (`_PRO`, `_BUSINESS`), no migration of anyone,
+no re-papering of the copy that already charges money (`docs/LAUNCH-GATES.md` G2 stays
+satisfied for Solo). That is the single biggest operational argument for the numbers below,
+and it is stated up front so it is weighed as a feature of the proposal, not discovered as
+a convenience later.
 
 ---
 
-## 2. Live competitor pricing, read 2026-08-10
+## 2. Live competitor research
 
-### Wave
+Everything in this section was re-read or newly read on **2026-08-11** except where an
+older stamp is shown and stated to be still-standing.
 
-Read from <https://www.waveapps.com/pricing> and <https://www.waveapps.com/payments> on
-2026-08-10.
+### 2.1 Wave — the horizontal free-tier anchor, and what actually gates its tiers
+
+Read from <https://www.waveapps.com/pricing> on 2026-08-11; identical to the 2026-08-10
+read.
 
 | Item | Price |
 |---|---|
-| Starter plan | **$0/month** |
-| Pro plan | **$19/month**, or **$190/year**; promotional **$9.50/month for the first 3 months** |
-| Receipts add-on | **$8/month** on Pro ($72/year), **$11/month** on Starter ($96/year) |
-| Payroll add-on | from **$25/month** (Starter), from **$40/month** (Pro) |
-| Wave Advisors (bookkeeper) | from **$149/month** USD |
+| Starter | **$0/month** |
+| Pro | **$19/month** or **$190/year** (promo $9.50/mo first 3 months) |
+| Receipts add-on | **$8/mo** on Pro ($72/yr), **$11/mo** on Starter |
+| Payroll add-on | from **$25/mo** (Starter), from **$40/mo** (Pro) |
+| Wave Advisors | from **$149/mo** |
 
-Payments, per transaction:
+What gates Starter → Pro (the split itself, read from the live comparison table):
 
-| Rail | Starter | Pro |
+- **Starter keeps the records free**: unlimited invoices, unlimited estimates, unlimited
+  bookkeeping records, manual transaction entry, link/PDF invoice sending.
+- **Pro sells automation and connection**: auto-import bank transactions, auto-merge and
+  categorization, automated late-payment reminders (3/7/14 days), branded invoices,
+  deposit collection, multiple users with role permissions, waived per-transaction fee on
+  the first 10 card payments/month, live chat support.
+
+The lesson Wave teaches is structural, not numeric: **the free/paid line is drawn at
+automation and connectivity, never at the customer's own records.** We adopt the same line
+between our tiers (§4) — we just do not adopt the $0.
+
+Payments rails (unchanged from 2026-08-10): Wave cards 2.9% + $0.60, ACH 1% ($1 min). Not
+a pricing input for us — under decision #8 the pilot is merchant of record on Stripe
+Connect Standard with **no application fee**, paying Stripe's published 2.9% + 30¢ cards /
+0.8% ACH capped at $5.00 (<https://stripe.com/pricing>, read 2026-08-10). A straight win
+on ACH for any four-figure invoice; a talking point, not revenue.
+
+### 2.2 QuickBooks — the ladder the buyer already understands
+
+Read from <https://quickbooks.intuit.com/pricing/> and
+<https://quickbooks.intuit.com/solopreneur/> on 2026-08-11. The Solopreneur page now
+labels the plan "Lite"; same $20 price. The 90%-off-for-3-months promotion is still
+running on every tier.
+
+| Plan | List | What it adds over the tier below (live page) |
 |---|---|---|
-| Credit card (Visa/MC/Discover) | 2.9% + $0.60 | 2.9% + $0 for the first 10 transactions/month, then 2.9% + $0.60 |
-| American Express | 3.4% + $0.60 | 3.4% + $0 for the first 10 transactions/month, then 3.4% + $0.60 |
-| Bank payment (ACH/EFT) | 1% (minimum $1.00) | 1% (minimum $1.00) |
+| Solopreneur ("Lite") | **$20/mo** | 1 user, no accountant access; unlimited invoices, receipts, mileage; Schedule-C posture |
+| Simple Start | **$38/mo** | Accountant access, general reports, cash-flow history, recurring payments, 1 sales channel |
+| Essentials | **$85/mo** | **3 users**, enhanced reports, bill management, employee time on invoices |
+| Plus | $140/mo | 5 users, inventory, projects, budgets (context only) |
+| Advanced | $340/mo | 25 users, workflow automation (context only) |
 
-The reason the payments row matters to us is that **we do not compete on it.** Under decision
-#8 the pilot is merchant of record on Stripe Connect Standard and we take no application fee,
-so the pilot pays Stripe's published rate directly — **2.9% + 30¢** for domestic online cards
-and **0.8% ACH direct debit capped at $5.00** (<https://stripe.com/pricing>, read 2026-08-10).
-Against Wave that is a straight win on ACH for any invoice over $100 and a wash on cards.
-It is a talking point, not a pricing input, because none of it accrues to us.
+The three numbers that bound our ladder are **$20, $38, and $85**: Solopreneur is what a
+contract pilot is told to buy, Simple Start is where they land once they want real
+invoices and an accountant in the books, and Essentials is the price of the first
+multi-user tier. Note what Intuit gates upward: **users, accountant access, and report
+depth** — not the ability to keep records.
 
-### QuickBooks
+### 2.3 LogTen — the aviation ladder that refuses to paywall safety
 
-Read from <https://quickbooks.intuit.com/solopreneur/> and
-<https://quickbooks.intuit.com/pricing/> on 2026-08-10. Both pages were showing a "Summer
-Savings" promotion stated to end 8/27.
+Read from <https://logten.com/pricing/> on 2026-08-11.
 
-| Plan | List price | Promotional price |
+| Tier | Price | Gate |
 |---|---|---|
-| Solopreneur | **$20/month** | $2/month for 3 months (90% off) |
-| Simple Start | **$38/month** | $3.80/month for 3 months (90% off) |
-| Essentials | $85/month | $8.50/month for 3 months |
-| Plus | $140/month | $14/month for 3 months |
-| Advanced | $340/month | $34/month for 3 months |
+| Basic | **$79.99/yr** | Full logging, analysis, reporting, backup |
+| Pro | **$129.99/yr** | Adds Mac app, airline schedule import, batch editing, advanced smart filters, custom reports |
 
-Essentials and above are listed for context only; a one-person contract pilot business has no
-use for them. **The two numbers that bound our decision are $20 and $38.** Solopreneur is the
-product a contract pilot is most often told to buy, and Simple Start is where they end up once
-they want real invoices.
+The load-bearing observation: **"Currency, Duty & Rest Tracking" and the full report set
+appear in *both* tiers on the live comparison table.** LogTen's ladder is workflow depth
+(platforms, import, batch tooling) — it does not make a pilot pay more to know whether
+they are current. That is the convention in this exact market, and §4 adopts it as a
+stated principle. First 50 flight hours free; volume pricing above 5 pilots.
+**[UNVERIFIED]** whether a monthly App Store purchase path exists — not shown on the page.
 
-Intuit's 90%-off-for-three-months habit is worth naming: a pilot comparison-shopping in August
-sees $2/month next to whatever we charge. That is a sales problem to answer with the trial,
-not a reason to discount to meet it.
+### 2.4 ForeFlight — what this customer already pays without flinching
 
-### LogTen (pilot logbook)
+Read from <https://foreflight.com/pricing/> on 2026-08-11; same names and figures as the
+2026-08-10 read.
 
-Read from <https://logten.com/pricing/> on 2026-08-10.
+| Plan | Price | Gate |
+|---|---|---|
+| Starter | **$130/yr** | Planning, charts, weather, **digital logbook** |
+| Essential | **$260/yr** | Geo-referenced approaches, synthetic vision, hazard advisor |
+| Premium | **$390/yr** | Performance profiles, autorouting, takeoff/landing performance, JetFuelX |
+| Business Pro | **$280/yr/pilot licence**, min 2 licences | — |
+| Business Performance | **$400/yr/pilot licence**, min 2 licences | — |
 
-| Tier | Price |
-|---|---|
-| LogTen Basic | **$79.99/year** (the page frames it as "less than $7/month") |
-| LogTen Pro | **$129.99/year** (framed as "less than $11/month") |
+Carried caveat from 2026-08-10: the page states plan names were recently updated with
+"prices and features … exactly the same"; older third-party summaries circulate different
+names at slightly different figures. Treat only the live page as verified. ForeFlight is
+**not a competitor** and we never position against it. It contributes three things: proof
+this persona pays $260–$390/yr for professional software; the **logbook sits in every
+tier including the cheapest** (record-keeping is never the upsell); and the **two-licence
+minimum on business plans** is normal in this market.
 
-**[UNVERIFIED]** No monthly subscription option was displayed on the pricing page. Whether a
-monthly in-app purchase exists through the App Store was not confirmed.
+### 2.5 Vertical SaaS for one-person trades — how solo → pro → business is actually split
 
-### ForeFlight — context for what this customer already pays
+The closest structural analogues to "software that runs a one-person licensed trade" are
+the home-services platforms. Read 2026-08-11.
 
-Read from <https://foreflight.com/pricing/> and <https://foreflight.com/pricing/business/> on
-2026-08-10.
+**Jobber** (<https://www.getjobber.com/pricing/>, annual-prepaid figures; monthly ~20–40%
+higher):
 
-| Plan | Price |
-|---|---|
-| Starter | **$130/year** |
-| Essential | **$260/year** |
-| Premium | **$390/year** |
-| Business Pro | **$280/year per pilot licence**, minimum 2 licences, excludes VAT |
-| Business Performance | **$400/year per pilot licence**, minimum 2 licences, excludes VAT |
+| Plan | 1 user | 5 users | Gate |
+|---|---|---|---|
+| Core | **$24/mo** | — | Scheduling, quoting, invoicing, payments, basic reporting |
+| Connect | **$80/mo** | $120/mo | **Automations** (client reminders, auto-payments), time/expense tracking, **QuickBooks sync** |
+| Grow | **$112/mo** | $160/mo | Job costing, workflow automations, SMS, quote upsells |
+| Plus | — | $320/mo | Marketing suite, AI receptionist, premium support |
 
-Two caveats on this one, both worth carrying:
+**Housecall Pro** (<https://www.housecallpro.com/pricing/>, annual figures; monthly in
+parens):
 
-1. The consumer pricing page states that plan **names** were recently updated while "prices and
-   features remain exactly the same as before." Older third-party summaries (post the March
-   2025 increase) circulate the names Basic Plus / Pro Plus / Performance Plus at figures
-   slightly below the ones above. **I did not open those third-party pages and cannot reconcile
-   the difference** — treat only the live page's Starter/Essential/Premium figures as verified,
-   and re-read the page before any of this goes into marketing copy.
-2. ForeFlight is **not a competitor to v1** and we should never position against it. It is the
-   evidence that this customer buys aviation software at a professional price point without
-   flinching, and the precedent for a **two-licence minimum on a business plan** — see §5.
+| Plan | Price | Gate |
+|---|---|---|
+| Basic | **$59/mo** ($79) | Booking, invoicing, payments, estimates, scheduling |
+| Essentials | **$149/mo** ($189) | **QuickBooks sync**, checklist automations, photo reports, GPS, commissions |
+| MAX | **$299/mo** ($329) | Recurring service plans, route optimization, API access, dedicated onboarding |
 
-### Direct competitor: CrewRoo
+**ServiceTitan** — no published pricing anywhere; sales-demo gated. Third-party 2026
+write-ups (projul.com, tooleduppro.com, procured.us and others, searched 2026-08-11)
+converge on three tiers (Starter / Essentials / The Works) at roughly **$245–$500 per
+technician per month** plus five-figure implementation. **[UNVERIFIED]** — no first-party
+source exists by design; carried only as the ceiling of the category, not as an input.
 
-Read from <https://www.crewroo.com/> on 2026-08-10. This is the only product I found that is
-purpose-built for contract pilot expense reporting and invoicing.
+The pattern across all three, and it is remarkably consistent: **the entry tier contains
+the complete core workflow** (schedule → quote → invoice → get paid), and the ladder sells
+(1) automation, (2) accounting-system connection, (3) job-costing / report depth, and
+(4) seats. Nobody cripples the trade's own records to force an upgrade. The multiple
+between entry and mid tier runs 2.5×–3.3× (Jobber $24→$80, Housecall $59→$149). Our
+ladder in §3 uses the same currency at a gentler multiple, because our entry tier is not a
+loss-leader.
+
+### 2.6 Direct competitor: CrewRoo
+
+Read from <https://www.crewroo.com/> on 2026-08-11; identical to the 2026-08-10 read.
 
 | Plan | Price | Scope |
 |---|---|---|
-| Essentials | **$9.99/month** | Receipt scanning, expense reports by date range, clients, report/invoice generation, email send, cloud storage |
-| Pro | **$19.99/month** | Adds trips with daily rates and work days, flight legs, RON nights, mileage, receipts attached to specific trip days, full contractor billing workflow |
+| Essentials | **$9.99/mo** | Receipt scanning (AI extraction), expense reports, clients, invoice generation, email send, cloud storage |
+| Pro | **$19.99/mo** | Adds trips with daily rates and work days, flight legs, RON nights, mileage, receipts attached to trip days |
 
-Both plans advertise a **14-day free trial with no credit card required**.
+Both plans: **14-day free trial, no credit card required.** No annual price displayed.
+Company traction **[UNVERIFIED]** — no source found. CrewRoo Pro remains the closest
+direct comparable. What it does not appear to carry — and what this session's builds
+widened — is the logbook with ForeFlight/LogTen import, the currency engine, per-operator
+135 check tracking, client statements, estimates, bank-statement import, or a full-account
+export (`docs/WAVE-PARITY.md` §9). That delta is what any price above $19.99 must be
+justified by, and as of this branch it is substantially shipped rather than promised.
 
-**[UNVERIFIED]** No annual price was displayed. Company size, funding, customer count and
-traction are all unverified — I found no source for any of them.
+### 2.7 The rest of the field, and the standing positioning rule
 
-CrewRoo Pro is the closest thing to a direct comparable that exists, and its feature list reads
-close to our Phase 3–5 (trips, day rates, work days, legs, receipts, invoices). What it does
-not appear to carry is the logbook, the FAA currency surface, or the per-operator 135 check
-tracking that `pilot.operator_qualifications` already holds. That is the differentiation the
-price has to be justified by — and it is only partly shipped today (see §6).
+Searched 2026-08-10 across contract-pilot invoicing and crew expense software; no second
+purpose-built product found beyond CrewRoo. Per `market-landscape.md`, that is **not** a
+"the only" claim — the defensible sentence remains "existing tools are either generic
+accounting or a logbook; ours starts from the pilot's business."
 
-### The rest of the field
+### 2.8 The persona's economics — what the price is actually against
 
-Searched on 2026-08-10 across contract-pilot invoicing, crew expense and pilot logbook
-software. Beyond CrewRoo I found no second product purpose-built for contract pilot invoicing.
-Per the positioning rule in the aviation research (`market-landscape.md`), **do not turn that
-into a "the only" claim** — an absence in one day's searching is not proof the space is empty,
-and small entrants in this niche are easy to miss. The defensible sentence is "existing tools
-are either generic accounting or a logbook; ours starts from the pilot's business."
+What a working contract pilot already spends on verified figures alone: ForeFlight
+Essential $260 + LogTen Pro $129.99 + QuickBooks Solopreneur $240 = **$629.99/year**,
+before v1 exists. v1 credibly replaces the QuickBooks line and the LogTen line; never the
+ForeFlight line.
 
-Logbook competitors other than LogTen exist (ForeFlight's built-in logbook, MyFlightbook,
-ZuluLog and others). I did not verify their current prices, and they do not bound our decision
-because we are not selling a logbook on its own. **[UNVERIFIED]**
-
-### What a working contract pilot already spends, from the verified figures only
-
-ForeFlight Essential $260/yr + LogTen Pro $129.99/yr + QuickBooks Solopreneur $240/yr =
-**$629.99/year**, already being paid, before v1 exists. v1 credibly replaces the third line and
-eventually the second. It never replaces the first.
+Day rates (kept from 2026-08-10, with the same suspicion): the one vendor-published table
+found (<https://www.crewblast.co/daily-rate>) shows PIC day rates ~$1,200–$1,500 (King
+Air 200) to $2,000–$2,500 (G550) to $4,000–$4,500 (G700-class). CrewBlast is a
+crew-sourcing vendor publishing its own survey with no stated methodology — treat as
+directional only. But even at the bottom of the range the conclusion is insensitive to
+the error bars: **a year of the top proposed tier is less than half of one flying day.**
+The pricing question is never "is this cheaper than Wave" — Wave's $0 tier is not the
+alternative, an unbilled trip day is. Price against the value of never losing one.
 
 ---
 
-## 3. Recommendation
+## 3. Recommendation — the three tiers
+
+### 3.1 Names, and the one place display names map
+
+Working set stays **Solo / Pro / Business**. "Solo" is the one genuinely aviation-native
+name on any competitor's page — every pilot remembers their first solo — and "Pro" /
+"Business" are what the buyer's other tools (LogTen Pro, Wave Pro, ForeFlight Business
+Pro) already call the same rungs, which makes the ladder legible in a five-second scan.
+Aviation-flavored alternates were considered ("PIC", "Captain", "Crew", "Fleet") and
+rejected: "Crew"/"Fleet" over-promise crew-scheduling features v1 does not have, and a
+pricing page is the wrong place to make a professional decode a metaphor.
+
+If the owner wants different display names, **change them in exactly one place**: the
+plan map (env var → display name), to live in `lib/plans.ts` (or equivalent) when the
+builders land it. Env names never change; copy never hardcodes a tier name.
+
+| Env var (fixed) | Display name (owner-changeable, one place) | Billing shape |
+|---|---|---|
+| `STRIPE_PRICE_ID_SOLO` | **Solo** | flat |
+| `STRIPE_PRICE_ID_PRO` | **Pro** | flat |
+| `STRIPE_PRICE_ID_BUSINESS` | **Business** | per seat, quantity on the one Price, **2-seat minimum** |
+
+### 3.2 The numbers
 
 | | Monthly | Annual | Effective monthly on annual |
 |---|---|---|---|
-| **Solo** (flat) | **$39/month** | **$390/year** | $32.50 |
-| **Business** (per seat) | **$35/seat/month**, minimum 2 seats | **$350/seat/year** | $29.17 |
+| **Solo** | **$29/mo** | **$290/yr** | $24.17 |
+| **Pro** | **$49/mo** | **$490/yr** | $40.83 |
+| **Business** | **$39/seat/mo**, min 2 seats | **$390/seat/yr** | $32.50/seat |
 
-Annual is two months free (16.7%). The business floor is therefore $70/month or $700/year.
+Annual is two months free (16.7%) on every tier. The Business floor is $78/mo or $780/yr.
 
-### Why $39 for solo
+**Why Solo stays $29.** It is already configured, already in the signup copy, already what
+the existing cohort pays — the ladder costs zero migration and no grandfathering
+conversation. It clears every generic anchor ($19 Wave Pro, $20 Solopreneur, $19.99
+CrewRoo Pro) enough to say "not the cheap option," sits under Simple Start's $38, and —
+critically — it is a *complete product* at that price (§4): full records, full logbook,
+full currency. The part-time pilot flying 40 days a year gets nothing crippled.
 
-- It clears the generic-accounting anchors ($20 Solopreneur, $19 Wave Pro) by enough that we
-  are visibly not a cheaper QuickBooks. We are not — we do one persona's whole job, and a tool
-  that prices at $19 invites the buyer to evaluate it as a QuickBooks substitute on
-  QuickBooks' terms, which is a comparison we lose (they have banks, payroll, an accountant
-  ecosystem and twenty years).
-- It sits just above CrewRoo Pro at $19.99 without doubling it. Roughly 2× a direct comparable
-  is defensible when the scope is genuinely wider; 3× is not, on day one, without a track
-  record.
-- It is below Simple Start at $38/month by a dollar, which is the number a pilot who has
-  outgrown Solopreneur is about to pay anyway. That is a comfortable place to stand.
-- Against the customer's own economics it is close to noise. The one vendor-published daily
-  rate table I could find (<https://www.crewblast.co/daily-rate>, read 2026-08-10) shows PIC
-  day rates from roughly $1,200–$1,500 on a King Air 200 to $2,000–$2,500 on a G550/G450/GV to
-  $4,000–$4,500 on a GVIII. **Treat those with suspicion**: CrewBlast is a crew-sourcing vendor
-  publishing its own survey, the page states no methodology, no sample size and no last-updated
-  date, and I found no independent corroboration. But even at the bottom of that range, a
-  year of v1 at $390 is under a third of one day's billing, and one unbilled trip day or one
-  lost receipt recovered pays for several years. That argument supports $39 comfortably. It
-  would also support $59 — see §4 for why I am not proposing that yet.
+**Why Pro is $49.** Three anchors converge on it:
 
-### Why $35 per seat for business, and why that is lower than solo
+1. **The replacement math**: QuickBooks Simple Start ($38/mo) + LogTen Pro (~$10.83/mo
+   equivalent) ≈ **$48.83/mo** — the exact stack Pro replaces for a full-time contract
+   pilot, priced at parity with what they'd otherwise assemble, with the trip-native glue
+   neither half has.
+2. **The vertical-SaaS multiple**: entry→mid runs 2.5–3.3× at Jobber and Housecall; our
+   $29→$49 is 1.7×, deliberately gentler because Solo is not a loss-leader and the
+   persona is price-rational, not price-sensitive.
+3. **~2.5× CrewRoo Pro** ($19.99), defensible now that the width is shipped: on this
+   branch the logbook import (ForeFlight/LogTen/generic), estimates, client statements,
+   bank-statement import, sales-tax report, and the ten-file account export are code, not
+   roadmap (`docs/WAVE-PARITY.md` §§1–7). The 2026-08-10 memo argued $59 was unearned
+   while those were unbuilt; most of that objection has been overtaken. $49 rather than
+   $59 because the currency board still ships dark behind the counsel gate (G1) and the
+   notification/mobile gaps are real — revisit $59 when currency is publicly enabled.
 
-Per-seat below the solo flat rate is the normal shape and it is right here: the second seat on
-an account costs us nothing and the account total still rises. The arbitrage worry — a solo
-pilot declaring himself a "business" to get $35 — is closed by the **two-seat minimum**, which
-puts the cheapest business account at $70/month, comfortably above solo. ForeFlight runs a
-two-licence minimum on both of its business plans, so this is the convention in this exact
-market rather than something we invented to protect a price.
+   Against the persona's economics, $490/yr is a fraction of one day's billing; one
+   recovered unbilled trip day or one rebilled hotel folio that would have been eaten
+   funds Pro for years.
 
-Who actually buys it: a two-pilot LLC flying an owner's aircraft, a small management shop
-running a contractor bench, or a pilot who adds a bookkeeper seat. `pilot.account_members`
-already carries the `bookkeeper` role, so the second seat has a real job on day one.
+**Why Business is $39/seat with a 2-seat minimum.** Per-seat below the Pro flat rate is
+the normal shape — the second seat costs us nothing and the account total still rises.
+The arbitrage (a solo pilot buying one $39 "Business" seat to dodge $49 Pro) is closed by
+the **two-seat minimum**, ForeFlight's exact convention on both of its business plans. The
+floor ($78) sits above Pro ($49) and just under QuickBooks Essentials ($85), which is the
+incumbent price of "my bookkeeper needs a login." Who buys it: the two-pilot LLC on an
+owner's aircraft, a small management shop's contractor bench, a pilot adding a bookkeeper
+seat — `pilot.account_members` has carried `owner/member/bookkeeper` roles since the
+first migration, so the second seat has a real job on day one.
 
-### On annual
-
-Recommended, for a reason specific to this customer rather than for the cash: **contract pilot
-income is lumpy.** A slow quarter is exactly when a monthly subscription gets cancelled, and it
-is also exactly when the pilot most needs the receipts and the invoice chase. Annual removes
-that decision from the worst month of the year. It also gives them one clean deductible line
-instead of twelve.
-
-One caution: annual plus a card-required trial makes the first charge $390 rather than $39.
-That is a real trial-abandonment risk on a product with no brand yet. **My suggestion is to
-offer annual as an in-app upgrade after the first month, not as a choice at signup** — but
-that is decision 5 in §8, not something I should settle.
-
----
-
-## 4. Alternatives, with the trade-off of each
-
-### Alternative A — the low anchor: Solo $29, Business $25/seat (2-seat minimum)
-
-**For it.** It is already configured, already documented, already in the signup copy — zero
-change cost and no Stripe work at all. It sits just above QuickBooks Solopreneur ($20) and Wave
-Pro ($19) and just above CrewRoo Pro ($19.99), so the price never becomes the objection in a
-conversation. It leans on volume: get a lot of pilots cheaply, learn from them, raise later.
-
-**Against it.** The volume leg of that argument is the part I cannot support with evidence —
-**[UNVERIFIED]**: I have no defensible figure for how many US contract pilots exist or how many
-are addressable, and I am not going to invent one. A volume strategy priced without knowing the
-volume is a guess wearing a spreadsheet. Separately, raising a price later is materially harder
-than launching high and discounting: existing subscribers stay on their old Price object unless
-migrated, so a launch at $29 means carrying a $29 cohort indefinitely or running a migration
-conversation with the first and most loyal customers. And $29 quietly tells the buyer this is a
-utility, when the pitch is "your business runs on this."
-
-### Alternative B — the high anchor: Solo $59, Business $49/seat
-
-**For it.** It leans entirely on the day-rate argument, and that argument is strong: this
-customer bills four figures a day, and the tool pays for itself the first time it catches one
-unbilled trip day or one hotel receipt that would otherwise have gone unreimbursed. $59/month
-is $708/year against a single G550 day at $2,000–$2,500. It also puts us above ForeFlight
-Essential ($260/yr), which is a statement: this is the business system of record, not an
-accessory. High prices attract the serious end of the market and fewer, better-fit customers.
-
-**Against it, and this is why I am not recommending it for launch:** the feature set that
-justifies $59 is not shipped. The logbook CSV import is unbuilt (`docs/PLAN.md` calls it "the
-biggest piece of work in the build"), Phase 7 currency ships dark behind a flag and is blocked
-on the missing airman record, and 135.267 duty and rest is not modelled at all. At $59 the
-first question is "what am I getting that CrewRoo's $19.99 doesn't give me," and today the
-honest answer is "trips, invoices, expenses, documents, per-operator qualification tracking,
-and a logbook you can't import into yet." That answer is worth $39. **Revisit $59 as the price
-after Phase 6 and Phase 7 are actually enabled** — that is a real reason to raise, and telling
-early customers "the price goes up when import and currency land, you keep yours" is a
-genuinely good story rather than a squeeze.
-
-### Alternative C — a free tier
-
-**Recommend against, on architecture rather than on strategy.** Decision #6 is card-required
-trial and decision #7 makes the Stripe webhook the only path that provisions a tenant. A free
-tier needs a second provisioning path that no webhook fires for, and it collides with the
-convention in `docs/BILLING.md` where **`stripe_customer_id IS NULL` is the mark of a comped
-internal account**. Free tenants would make that column meaningless and would make "how many
-paying customers do we have" the hard question that convention exists to keep easy. If free
-acquisition is wanted, the lever is trial length (§8, decision 4), not a free tier.
-
-### Alternative D — usage-based (per trip or per invoice)
-
-**Recommend against.** It punishes exactly the behaviour the product depends on. The thesis in
-`docs/PLAN.md` is "log the trip once"; charging per trip gives the pilot a reason to log fewer,
-and a logbook with gaps in it is worse than no logbook. Noted here only so it is visibly
-considered and closed.
+**On annual.** Recommended for a persona-specific reason: contract-pilot income is lumpy,
+and the slow quarter that cancels a monthly subscription is the quarter the pilot most
+needs the receipts and the invoice chase. Annual moves that decision out of the worst
+month and gives them one clean deductible line. Caution unchanged from 2026-08-10: annual
+at signup on a card-required trial makes the first charge $290–$490+, a real abandonment
+risk with no brand — the lean is **annual as in-app upgrade after the first month**, but
+that is the owner's decision 4 in §8.
 
 ---
 
-## 5. What the price does not have to carry
+## 4. Feature matrix
 
-Worth stating so it does not get priced in by accident. Stripe Connect Standard takes **no
-application fee** (decision #8) and we never touch the pilot's funds. There is no second
-revenue line hiding in the payments flow, and there should not be one — the moment we take a
-cut of a pilot's invoice we are a participant in their client relationship, which is the exact
-boundary `docs/PLAN.md` opens by drawing. **The subscription is the whole business model.**
+### The principle, stated so it binds the matrix
+
+**Safety and compliance record-keeping is never the upsell.** The logbook, the currency
+board, documents with expiry, and per-operator 135 qualification tracking sit in **every
+tier**, including Solo. A pricing page that reads "pay more to know if you're current"
+ransoms safety, poisons the trust the product runs on, and is beneath the industry norm —
+LogTen ships currency tracking in its cheapest tier (§2.3) and ForeFlight ships the
+logbook in Starter (§2.4). The ladder sells **business depth** instead: estimate/statement
+workflow, the accounting layer, tax and report depth, automation, and seats — exactly the
+currency Wave, Intuit, Jobber, and Housecall gate (§2.1, §2.2, §2.5). Data egress is also
+never gated: **every tier exports everything.** A tool holding a pilot's legal records
+hostage to a subscription tier would deserve the reputation it got.
+
+Features marked ● ship today on this branch; ○ = built this session and lands with it;
+◐ = implemented dark behind its gate. "All tiers" rows are the principle above in force.
+
+| Feature | Solo $29 | Pro $49 | Business $39/seat |
+|---|---|---|---|
+| **Records & safety — never gated** | | | |
+| Clients, trips, day types, rate cards, per-diem, guarantees ● | ✓ | ✓ | ✓ |
+| Expenses + receipt OCR (in-browser), rebill/deduct, unassigned queue ● | ✓ | ✓ | ✓ |
+| Mileage (IRS standard rates, pilot-entered) ● | ✓ | ✓ | ✓ |
+| Logbook: manual + trip-derived entries, FAR-correct fields ● | ✓ | ✓ | ✓ |
+| Logbook import (ForeFlight / LogTen / generic CSV) + CSV export ● | ✓ | ✓ | ✓ |
+| **Currency board** (61.57/61.56/61.23) ◐ — public only after gate G1 clears | ✓ | ✓ | ✓ |
+| Per-operator 135.293/.297/.299 qualification tracking ● | ✓ | ✓ | ✓ |
+| Documents with expiry ladder + credential packet share link ● | ✓ | ✓ | ✓ |
+| Overview dashboard + attention queue ● | ✓ | ✓ | ✓ |
+| **Full account export** (ten streaming CSVs) ○ | ✓ | ✓ | ✓ |
+| **Get paid — core in Solo** | | | |
+| Invoices: draft-from-trip, PDF, email, public share link ● | ✓ | ✓ | ✓ |
+| Stripe payment links — pilot as merchant of record, **zero platform fee** ● | ✓ | ✓ | ✓ |
+| Manual/partial payments, audit-honest corrections ● | ✓ | ✓ | ✓ |
+| One-click overdue reminder ● | ✓ | ✓ | ✓ |
+| Profit & loss report (cash-basis) + CSV ● | ✓ | ✓ | ✓ |
+| W-9 status per client ● | ✓ | ✓ | ✓ |
+| **Business depth — the ladder** | | | |
+| **Estimates**: full state machine, convert-to-invoice ○ | — | ✓ | ✓ |
+| **Client statements** (+ print view) ○ | — | ✓ | ✓ |
+| Recurring invoice schedules (draft queue, human confirms) ● | — | ✓ | ✓ |
+| Invoice extras as they ship: message templates, receipts-on-invoice, viewed/paid tracking | — | ✓ | ✓ |
+| **Accounting layer**: bank statement import (CSV/OFX), review queue, remembered categorization ○ | — | ✓ | ✓ |
+| Sales-tax report ○ | — | ✓ | ✓ |
+| Quarterly estimated-tax planner ● | — | ✓ | ✓ |
+| Year-end accountant packet + 1099-NEC reconciliation ● | — | ✓ | ✓ |
+| **Team — Business only** | | | |
+| Seats with roles (owner / member / bookkeeper), invite UI (G10 unblocks) | — | — | ✓ |
+| Priority support | — | — | ✓ |
+
+Two honesty rules carried forward unchanged: nothing on the pricing page may imply an
+unshipped feature exists, and no copy may state or imply the product determines whether a
+pilot is legal to fly (standing gate; it binds marketing as hard as the UI). The currency
+board row ships in every tier *when* G1 clears — until then it appears on no public page.
 
 ---
 
-## 6. What the buyer is actually paying for on the day we launch
+## 5. Trial policy, downgrade, and cancellation
 
-State this plainly in any pricing page, because pricing above the direct comparable obliges us
-to be accurate about scope:
+**Trial: 14 days, card required, every self-serve tier — and the trial runs at Pro
+feature level.** Reasoning:
 
-- Shipped: clients, trips with day types and rate cards, expenses with rebill/deduct and the
-  unassigned queue, invoices with PDF and Connect payment links, documents with expiry, the
-  year-end packet, and per-client 135.293/.297/.299 qualification tracking.
-- Not shipped: logbook CSV import (ForeFlight/LogTen/generic mapper), the Phase 7 currency
-  engine, any duty and rest output.
+- 7 days (configured today) is shorter than the persona's trip → invoice → payment cycle;
+  `docs/BILLING.md` already flags this. CrewRoo advertises 14 days no-card; matching the
+  length while keeping the card answers the comparison without opening a second
+  provisioning path (card-required stays — decisions #6/#7 make the Stripe webhook the
+  only path that provisions a tenant, and a no-card trial would need the second path the
+  architecture deliberately refuses).
+- Trialing at Pro level means every trialist *sees* estimates, statements, and the
+  accounting layer before the tier choice bites; conversion lands them on the tier they
+  chose. This is the standard vertical-SaaS move and costs nothing to build beyond the
+  plan gate itself.
+- Trial length is the owner's decision 3 in §8 (7 / 14 / 30); 14 is the recommendation.
 
-Nothing on the pricing page may imply the second list exists, and no copy may state or imply
-that the product determines whether a pilot is legal to fly. That framing is a standing gate in
-`docs/PLAN.md`, and it binds marketing at least as hard as it binds the UI.
+**Downgrade: data is never deleted — read-only is the norm, and the pricing page says so
+in those words.**
+
+- **Pro → Solo**: everything created on Pro-gated surfaces (estimates, statements,
+  imported bank transactions, tax reports) remains **visible and exportable forever**;
+  creating *new* ones is what stops. No record is hidden behind the higher tier after the
+  fact.
+- **Business → Pro/Solo**: additional seats deactivate (sign-in revoked for non-owner
+  members) but every record a seat created stays, attributed, in the account.
+- **Cancellation**: the account goes **read-only with export still working** — logbook,
+  currency history, documents, invoices, all of it viewable and downloadable, deleted
+  never. A pilot's logbook is a legal record; a subscription lapse cannot be the thing
+  that destroys it. (Retention schedule and any eventual purge policy are owner + counsel
+  decisions, not defaults.)
+- Because the safety surfaces live in every tier, **no downgrade between paid tiers ever
+  touches the logbook, currency, documents, or qualification records.**
+
+---
+
+## 6. What the price does not have to carry
+
+Unchanged and still load-bearing: Stripe Connect Standard takes **no application fee**
+(decision #8) and v1 never touches the pilot's funds. There is no second revenue line in
+the payments flow and there must not be one — taking a cut of a pilot's invoice makes us
+a participant in their client relationship. **The subscription is the whole business
+model**, which is exactly why the ladder above has to be priced like it.
 
 ---
 
 ## 7. Stripe wiring — test mode only
 
-**Create the Products and Prices in TEST mode only.** No live-mode object gets created until
-the standing counsel gate in `docs/PLAN.md` clears ("counsel review before the product takes
-revenue"). Pricing is not the thing that unblocks revenue; counsel is.
+**Create Products and Prices in TEST mode only.** No live-mode object until the standing
+counsel gate clears ("counsel review before the product takes revenue"). Pricing is not
+what unblocks revenue; counsel is.
 
-Rules that follow from what is already built:
-
-- **Price IDs come from env config, by name, never from a literal in code.** `STRIPE_PRICE_ID_SOLO`
-  exists and is read in `lib/stripe/server.ts`, which already fails loudly with a specific
-  message when it is unset. Annual and business tiers need their own variables on the same
-  pattern; add each one only when the code path that reads it exists, exactly as
-  `docs/BILLING.md` argues for `STRIPE_PRICE_ID_BUSINESS_SEAT` today. An empty variable that
-  reads as configured is worse than a missing one.
-- **This document names no Price ID value and no key value, and neither should any other file
-  in the repo.** Values live in the Vercel project and in `.env.local`.
-- **Keep every Stripe variable in the same mode.** The webhook rejects any event whose
-  `livemode` disagrees with the key's mode, so a test event can never mutate live data — but
-  that guard only holds if test and live values are not mixed across variables.
-- **A price change is a new Price object, never an edit.** Stripe Price amounts are immutable,
-  so changing the number means creating a Price and pointing the env var at it. Existing
-  subscribers stay on the old Price until deliberately migrated — which is the mechanical
-  reason §4's "raise it later" is harder than it sounds.
-- **Amounts are entered in cents**, consistent with the house rule that money is integer cents
-  everywhere. $39.00 is `3900`.
+- **Price IDs come from env, by name, never a literal in code.** `STRIPE_PRICE_ID_SOLO`
+  exists and fails loudly when unset (`lib/stripe/server.ts`). `_PRO` and `_BUSINESS`
+  follow the same pattern, added **only when the code path that reads them exists** — an
+  empty variable that reads as configured is worse than a missing one (`docs/BILLING.md`).
+- **Business is one Price with `quantity` = seats** (licensed per-seat), minimum 2
+  enforced in the checkout code, not by trusting the widget.
+- **Annual are separate Price objects** (`_SOLO_ANNUAL`, `_PRO_ANNUAL`,
+  `_BUSINESS_ANNUAL`), added only when the annual code path lands — which per §3.2 may be
+  post-launch as an in-app upgrade.
+- **No Price ID value or key value appears in this document or any file in the repo.**
+  Values live in Vercel and `.env.local`.
+- **Keep every Stripe variable in the same mode** — the webhook's `livemode` guard only
+  holds if test and live are never mixed across variables.
+- **A price change is a new Price object, never an edit.** Amounts are immutable;
+  subscribers stay on their old Price until deliberately migrated. (Which is why Solo
+  staying at $29 is free, and why every number above should be signed as if it will be
+  carried for years.)
+- **Amounts are integer cents.** $29 = `2900`, $49 = `4900`, $39 = `3900`.
 
 ---
 
-## 8. What I need from you
+## 8. Open items — genuinely the owner's
 
-Eight decisions. Everything above is input to them; none of them is mine to make.
+Everything above is input; none of it is an agent's to sign.
 
-1. **Solo monthly price.** Proposed **$39**. Currently configured: $29. Alternatives: $29 (A),
-   $59 (B).
-2. **Business per-seat price and the seat minimum.** Proposed **$35/seat/month with a 2-seat
-   minimum**. Confirm the minimum specifically — it is what stops a solo account buying the
-   cheaper per-seat rate.
-3. **Annual: offer it or not, and at what discount.** Proposed **yes, two months free** —
-   $390/year solo, $350/seat/year business.
-4. **Trial length.** Currently 7 days, and `docs/BILLING.md` already flags that as possibly
-   shorter than the time it takes a contract pilot to fly a trip, invoice it and get paid.
-   CrewRoo advertises 14 days with no card. Options: keep 7, go to 14, or go to 30 to cover a
-   full trip-to-payment cycle. This is a pricing decision, not an engineering one.
-5. **Is annual offered at signup, or only as an in-app upgrade after the first month?** I lean
-   upgrade-only, to keep the first charge small on a card-required trial.
-6. **Grandfathering policy.** If the price rises after Phase 6/7 land, do early customers keep
-   their price permanently, for a fixed term, or not at all? Answer this before the first
-   customer signs up, not after — it is much cheaper to promise deliberately than to be asked.
-7. **Confirm that no live-mode Stripe Product or Price is created until counsel clears revenue.**
-   I have assumed this and built the section above around it.
-8. **Confirm we are not pricing for the unshipped features.** §6 is the scope the launch price
-   is for. If you want to price for the logbook import and the currency engine, the price is a
-   different conversation and it happens when they ship.
-
-Once 1–3 are answered I can create the test-mode Products and Prices and wire the env vars —
-but say the word explicitly, because creating them is the point at which a proposal starts
-looking like a decision.
+1. **The numbers.** Solo **$29** / Pro **$49** / Business **$39/seat** monthly; $290 /
+   $490 / $390-per-seat annual. This is the sign-off that unblocks the builders' Price
+   creation (test mode).
+2. **The seat minimum.** Proposed **2** — it is the only thing stopping a solo account
+   from buying one cheap Business seat instead of Pro.
+3. **Trial length.** Proposed **14 days** (from 7), card required, trial-at-Pro-level.
+   Options: 7 / 14 / 30.
+4. **Annual at signup or as in-app upgrade after month one.** Lean: upgrade-only, to
+   keep the first charge small on a card-required trial.
+5. **Display names.** Solo / Pro / Business proposed; change only the one plan map if
+   another set is wanted.
+6. **Grandfathering statement.** Existing $29 subscribers *are* the Solo tier — no
+   migration — but say deliberately whether early Pro/Business customers keep their
+   launch price if numbers rise after the currency board goes public. Cheaper to promise
+   deliberately than to be asked.
+7. **Confirm no live-mode Stripe object until counsel clears revenue** (assumed
+   throughout §7), and that the currency board appears in no public pricing copy until
+   G1 clears (assumed throughout §4).
+8. **Confirm the matrix line for "invoice extras"** — templates, receipts-on-invoice,
+   viewed/paid tracking gate to Pro *as they ship*; nothing unshipped goes on the page.

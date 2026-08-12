@@ -20,6 +20,7 @@
 import { Document, Image, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
 import { PDF_PALETTE } from "@/lib/pdf-palette";
 import { formatCents, formatDate } from "@/lib/format";
+import type { ReceiptAttachment } from "@/lib/invoice-receipts";
 
 export type InvoicePdfLine = {
   description: string;
@@ -68,6 +69,16 @@ export type InvoicePdfProps = {
     amount_paid_cents: number;
     balance_due_cents: number;
   };
+  /**
+   * Rebilled-expense receipts, one PAGE each, appended after the invoice
+   * page(s). Empty/omitted renders the invoice exactly as before this
+   * feature existed. Each entry is either an embeddable image or an
+   * honest note about why there is no image (PDF-format receipt,
+   * unsupported format, fetch failure) — assembly and the never-fail-the-
+   * invoice contract live in lib/invoice-document.tsx; the copy on the
+   * imageless pages lives in lib/invoice-receipts.ts.
+   */
+  receipts?: ReceiptAttachment[];
 };
 
 function addressLines(a: {
@@ -116,6 +127,24 @@ const styles = StyleSheet.create({
   // Bounded box, not a fixed size: `objectFit: contain` keeps a wide
   // wordmark and a square badge both legible without distorting either.
   logo: { maxWidth: 160, maxHeight: 48, objectFit: "contain", marginBottom: 6 },
+  // Receipt pages. The image gets the full content width and most of the
+  // page height, `objectFit: contain` for the same no-distortion reason as
+  // the logo — a tall thermal-paper receipt and a landscape photo of one
+  // both have to stay legible.
+  receiptCaption: { fontFamily: "Helvetica-Bold", marginBottom: 2 },
+  receiptImage: {
+    marginTop: 12,
+    maxWidth: "100%",
+    maxHeight: 620,
+    objectFit: "contain",
+  },
+  receiptNote: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 0.5,
+    borderTopColor: PDF_PALETTE.hairline,
+    color: PDF_PALETTE.muted,
+  },
 });
 
 export function InvoicePdf({
@@ -125,6 +154,7 @@ export function InvoicePdf({
   invoice,
   lines,
   totals,
+  receipts,
 }: InvoicePdfProps) {
   return (
     <Document>
@@ -210,6 +240,31 @@ export function InvoicePdf({
           </View>
         ) : null}
       </Page>
+
+      {/* One page per rebilled-expense receipt, captioned with the LINE it
+          substantiates (description + billed amount) plus the invoice
+          number so a detached page can still be filed. A page with no
+          image carries its honest reason instead — never nothing, and
+          (enforced upstream in lib/invoice-document.tsx) never a failed
+          document. */}
+      {(receipts ?? []).map((receipt, i) => (
+        <Page size="LETTER" style={styles.page} key={`receipt-${i}`}>
+          <Text style={styles.label}>
+            Receipt{invoice.invoice_number ? ` — Invoice ${invoice.invoice_number}` : ""}
+          </Text>
+          <Text style={styles.receiptCaption}>
+            {receipt.description}
+            {receipt.amountCents !== null ? ` — ${formatCents(receipt.amountCents)}` : ""}
+          </Text>
+          {receipt.imageDataUri ? (
+            /* eslint-disable-next-line jsx-a11y/alt-text -- react-pdf's
+               Image takes no alt; same note as the logo above. */
+            <Image style={styles.receiptImage} src={receipt.imageDataUri} />
+          ) : (
+            <Text style={styles.receiptNote}>{receipt.note}</Text>
+          )}
+        </Page>
+      ))}
     </Document>
   );
 }
