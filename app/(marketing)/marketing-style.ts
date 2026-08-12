@@ -1,5 +1,5 @@
 /**
- * The four inline style objects the public site repeats.
+ * The inline style objects the public site repeats.
  *
  * The marketing surface's primary action is the brand navy, which is NOT a
  * Radix accent-scale name — so it cannot be a `color` prop and has to be
@@ -30,4 +30,20 @@ export const NAVY_INK = { color: "var(--v1-marketing-navy-ink)" } as const;
  *  light ground and go muddy here. */
 export const NAVY_INK_MUTED = {
   color: "var(--v1-marketing-navy-ink-muted)",
+} as const;
+
+/**
+ * The section-band ground — the SAME gray-2 token the app shell paints its
+ * canvas with (docs/design/REBUILD-BRIEF.md §6: marketing sections alternate
+ * the page ground with gray-2 bands so the public site and the product read
+ * as one canvas/panel system). Surface Cards sit on it as white panels,
+ * exactly as they do inside the app.
+ */
+export const GRAY_BAND = {
+  background: "var(--gray-2)",
+} as const;
+
+/** The hairline used where two same-ground sections meet. */
+export const HAIRLINE_TOP = {
+  borderTop: "1px solid var(--gray-a5)",
 } as const;
