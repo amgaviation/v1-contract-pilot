@@ -71,6 +71,7 @@ export default function StatusActions({
   clientName,
   receiptCount,
   hasInvoiceTemplate,
+  automaticChase,
   hasDueDate,
 }: {
   invoice: InvoiceForActions;
@@ -93,6 +94,23 @@ export default function StatusActions({
    * say "your saved wording" flatly.
    */
   hasInvoiceTemplate: boolean;
+  /**
+   * What the schedule does for THIS invoice, in three states rather than two.
+   *
+   * The sentence under the reminder button exists to stay TRUE: it used to
+   * read "nothing goes out automatically", a fact about the product until
+   * 20260813130000 and now a fact about a particular client. A boolean could
+   * not carry it, because the two reasons nothing goes out for this invoice
+   * are claims at different scopes — "this client has no schedule" is about
+   * the client, "you paused this one" is about the invoice, and saying the
+   * first when the second is true tells a pilot none of that client's OTHER
+   * invoices are chased when every one of them still is.
+   *
+   *   * "none"       — the client has no schedule at all.
+   *   * "paused"     — the client has one; it is paused for this invoice only.
+   *   * "live"       — it is live for this invoice.
+   */
+  automaticChase: "none" | "paused" | "live";
   /**
    * Whether this invoice has a due date. Paired with the flag above
    * because {{due_date}} is the one placeholder a perfectly valid saved
@@ -439,7 +457,11 @@ export default function StatusActions({
                 </AlertDialog.Content>
               </AlertDialog.Root>
               <Text as="div" size="1" color="gray" mt="2">
-                You choose when to chase — nothing goes out automatically.
+                {automaticChase === "live"
+                  ? "Reminders for this client also go out on their own — see the Reminders panel below for what is scheduled, and to pause it for this invoice."
+                  : automaticChase === "paused"
+                    ? `Automatic reminders are paused for this invoice, so chasing it is up to you. ${clientName}’s other open invoices are still chased on their schedule — see the Reminders panel below.`
+                    : "You choose when to chase — nothing goes out automatically for this client."}
               </Text>
             </>
           ) : (

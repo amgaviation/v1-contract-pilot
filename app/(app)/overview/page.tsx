@@ -228,6 +228,7 @@ export default async function OverviewPage() {
     anyClientCountRes,
     anyTripCountRes,
     anyInvoiceCountRes,
+    reminderFailuresRes,
   ] = await Promise.all([
     // ---------------------------------------------------------------
     // THE UNBILLED SURFACE — three reads, ONE definition.
@@ -369,6 +370,24 @@ export default async function OverviewPage() {
     supabase.from("clients").select("id", { count: "exact", head: true }),
     supabase.from("trips").select("id", { count: "exact", head: true }),
     supabase.from("invoices").select("id", { count: "exact", head: true }),
+    // SCHEDULED REMINDERS THAT DID NOT GO OUT (20260813130000).
+    //
+    // This is the queue item the whole reminder feature owes its existence
+    // to being honest about. A pilot who has switched chasing on believes it
+    // is happening; the one state that must never be quiet is "the product
+    // tried, the mail service refused, and the invoice is still sitting
+    // there". Today's most likely cause is the unverified sending domain
+    // (LAUNCH-GATES G5), which produces a 403 per attempt — visible here as
+    // a row, never as a pretend send.
+    //
+    // Newest first and bounded: this panel shows a handful, and the invoice's
+    // own reminder panel carries the full history per invoice.
+    supabase
+      .from("invoice_reminder_sends")
+      .select("invoice_id, rule_key, detail, created_at")
+      .eq("outcome", "failed")
+      .order("created_at", { ascending: false })
+      .limit(10),
   ]);
 
   const unbilledSummary =
@@ -383,6 +402,12 @@ export default async function OverviewPage() {
   const payments = (paymentsRes.data ?? []) as PaymentRow[];
   const expirations = (expirationsRes.data ?? []) as ExpirationRow[];
   const operatorQualExpirations = (operatorQualExpirationsRes.data ?? []) as ExpirationRow[];
+  const reminderFailures = (reminderFailuresRes.data ?? []) as {
+    invoice_id: string;
+    rule_key: string;
+    detail: string | null;
+    created_at: string;
+  }[];
   const unmarkedTripCount = unmarkedTripsRes.count ?? 0;
   const voidInvoiceIds = new Set(
     ((voidInvoicesRes.data ?? []) as { id: string }[]).map((i) => i.id)
@@ -486,6 +511,9 @@ export default async function OverviewPage() {
     // pilot with a month of unbilled flying being told there is nothing to
     // invoice.
     { context: "trips still marked scheduled", error: unmarkedTripsRes.error },
+    // A failed read here would hide failed reminders, which is the same
+    // silence the rows themselves exist to break.
+    { context: "reminder delivery failures", error: reminderFailuresRes.error },
   ].filter((e) => e.error);
 
   // ---------------------------------------------------------------------
@@ -868,6 +896,40 @@ export default async function OverviewPage() {
     ];
   });
 
+  // REMINDERS THAT DID NOT GO OUT — above the overdue invoices they concern.
+  //
+  // "This invoice is 20 days late" and "we tried to chase it and could not"
+  // are different facts, and the second is the one the pilot cannot discover
+  // any other way: nothing arrives, nothing bounces, and the invoice screen
+  // looks exactly as it did. Scoped to invoices that are STILL live —
+  // liveInvoices is already sent/partial only — so a failure on an invoice
+  // since paid drops off by itself rather than nagging about settled money.
+  const reminderFailureItemsAll = reminderFailures.flatMap((row) => {
+    const invoice = liveInvoices.find((i) => i.id === row.invoice_id);
+    if (!invoice) return [];
+    return [
+      {
+        id: `reminder-failed-${row.invoice_id}-${row.rule_key}`,
+        band: "Reminder" as const,
+        // Red: a chase the pilot believes is happening and is not.
+        tone: "red" as const,
+        label: `Reminder didn't send · ${invoice.invoice_number ?? "Invoice"}`,
+        detail: `${
+          invoice.client_id ? clientName.get(invoice.client_id) ?? "Unknown client" : "Unknown client"
+        } · ${formatDate(row.created_at)} · ${
+          // The mail service's own words, trimmed to fit the row. Truncated
+          // rather than replaced by a generic line: "The domain is not
+          // verified" is the difference between a five-minute DNS fix and an
+          // afternoon of guessing, and the invoice's own panel carries it in
+          // full.
+          (row.detail ?? "No reason recorded").slice(0, 90)
+        }`,
+        action: "Open invoice",
+        href: `/invoices/${row.invoice_id}`,
+      },
+    ];
+  });
+
   const unassignedCount = expenses.filter((e) => e.treatment === "unassigned").length;
   const unassignedItem = unassignedCount
     ? [
@@ -904,6 +966,7 @@ export default async function OverviewPage() {
 
   const attentionItemsAll = [
     ...operatorQualItemsAll,
+    ...reminderFailureItemsAll,
     ...overdueItemsAll,
     ...unassignedItem,
     ...w9ItemsAll,
@@ -923,16 +986,34 @@ export default async function OverviewPage() {
   const reservedSlots = unassignedItem.length;
   const remainingSlots = Math.max(0, NEEDS_ATTENTION_LIMIT - reservedSlots);
   const operatorQualDisplay = operatorQualItemsAll.slice(0, remainingSlots);
-  const overdueDisplay = overdueItemsAll.slice(
+  // Above overdue invoices, below qualifications: a reminder that failed is a
+  // late invoice PLUS a broken assumption about it being chased, so it
+  // outranks the plain late invoice — and a lapsed check still outranks both,
+  // for the reason set out above.
+  const reminderFailureDisplay = reminderFailureItemsAll.slice(
     0,
     Math.max(0, remainingSlots - operatorQualDisplay.length)
   );
+  const overdueDisplay = overdueItemsAll.slice(
+    0,
+    Math.max(
+      0,
+      remainingSlots - operatorQualDisplay.length - reminderFailureDisplay.length
+    )
+  );
   const w9Display = w9ItemsAll.slice(
     0,
-    Math.max(0, remainingSlots - operatorQualDisplay.length - overdueDisplay.length)
+    Math.max(
+      0,
+      remainingSlots -
+        operatorQualDisplay.length -
+        reminderFailureDisplay.length -
+        overdueDisplay.length
+    )
   );
   const NEEDS_ATTENTION = [
     ...operatorQualDisplay,
+    ...reminderFailureDisplay,
     ...overdueDisplay,
     ...unassignedItem,
     ...w9Display,

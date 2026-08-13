@@ -7,17 +7,10 @@ import { requireAccount } from "@/lib/supabase/account";
 import { parseDollarsToCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import { deactivatePaymentLink, LINK_STILL_LIVE_WARNING } from "@/lib/stripe/connect";
-import { isLiveMode } from "@/lib/stripe/server";
 import { DASHBOARD_PATH } from "@/lib/nav";
-import { buildInvoiceDocument } from "@/lib/invoice-document";
-import { sendEmail, emailIsConfigured, looksLikeEmail } from "@/lib/email/send";
-import {
-  buildInvoiceMessage,
-  buildReminderMessage,
-  daysOverdue,
-  MAX_CUSTOM_MESSAGE_CHARS,
-} from "@/lib/email/invoice-message";
-import { loadPreferences } from "@/lib/preferences";
+import { MAX_CUSTOM_MESSAGE_CHARS } from "@/lib/email/invoice-message";
+import { sendInvoiceEmail } from "@/lib/email/send-invoice";
+import { MANUAL_RULE_KEY } from "@/lib/reminders/policy";
 import {
   dayQuantityThousandths,
   roundThousandthsToHundredths,
@@ -1649,7 +1642,7 @@ export async function sendInvoice(
   if (deliveryMethod === "platform_email") {
     // Numbered and dated by the transition above, so the attachment now
     // matches the record exactly.
-    const sent = await emailInvoice(
+    const sent = await sendInvoiceEmail(
       supabase,
       account.id,
       id,
@@ -1728,7 +1721,7 @@ export async function sendInvoiceReminder(
     return { error: `No reminder sent. ${why} Reload the page to see where it stands.` };
   }
 
-  const sent = await emailInvoice(
+  const sent = await sendInvoiceEmail(
     supabase,
     account.id,
     id,
@@ -1759,190 +1752,53 @@ export async function sendInvoiceReminder(
   );
   if (!sent.ok) return { error: sent.error };
 
+  // RECORDED, so the scheduler knows a human already chased this one.
+  //
+  // Without this row the two halves of this feature chase the same client
+  // twice in a week and neither knows about the other: the pilot presses this
+  // button on Tuesday, a rung comes due on Thursday, and the client gets two
+  // notes about one invoice from one business. lib/reminders/policy.ts's
+  // QUIET_PERIOD_DAYS is the rule; this insert is the fact it reads.
+  //
+  // BEST-EFFORT, AND DELIBERATELY NOT FATAL. The mail has already gone. A
+  // failure here is a bookkeeping loss (the scheduler may chase sooner than
+  // it should have), and reporting it as an error would tell the pilot their
+  // reminder failed when it did not — the exact "looks like failure, was
+  // success" inversion of the bug lib/email/send.ts exists to prevent. It is
+  // logged instead, where it is diagnosable.
+  const { error: ledgerError } = await supabase
+    .from("invoice_reminder_sends")
+    .insert({
+      account_id: account.id,
+      invoice_id: id,
+      rule_key: MANUAL_RULE_KEY,
+      outcome: "sent",
+      provider_message_id: sent.messageId,
+      detail: null,
+    } as never);
+  if (ledgerError) {
+    console.error(
+      `[reminders] manual send for invoice ${id} was not recorded: ${ledgerError.message}`
+    );
+  }
+
   revalidatePath(`/invoices/${id}`);
   revalidatePath("/invoices");
   return { error: null };
 }
 
 /**
- * The shared half of both: load the client, render the document, compose the
- * words, hand it to the mail service. Returns rather than throws so every
- * caller has to deal with the failure in the UI.
+ * THE SHARED SENDER MOVED TO lib/email/send-invoice.ts.
+ *
+ * It used to live here, as `emailInvoice`, and it had to move the moment a
+ * SECOND caller appeared that has no session: the scheduled reminder run
+ * (lib/reminders/run.ts). Exporting it from this module to reach it was not
+ * an option and the reason is worth stating where the function used to be —
+ * this file carries "use server", under which every export is a public HTTP
+ * endpoint. An exported sender here would have published an unauthenticated
+ * "email this invoice to this client" action. The body moved verbatim, with
+ * its comments; see that file's header for what was added.
  */
-async function emailInvoice(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any,
-  accountId: string,
-  invoiceId: string,
-  kind: "invoice" | "reminder",
-  /**
-   * WHERE A REPLY GOES, and it must not be the platform.
-   *
-   * INVOICE_FROM_EMAIL is one deployment-wide sender shared by every tenant,
-   * so without an explicit reply-to a client hitting Reply writes to a mailbox
-   * belonging to the software vendor rather than to their pilot. That is wrong
-   * in every case and actively harmful on a reminder, whose own words invite a
-   * reply: "if anything on it needs correcting, let me know and I will send a
-   * revised copy." The one person who can revise the bill would never see it,
-   * and — worse for a product whose trust story is that AMG cannot see a
-   * pilot's client relationships — the vendor would.
-   *
-   * The pilot's own signed-in address is the right target: it is verified by
-   * Supabase Auth, it is theirs, and it needs no new column. If an account-level
-   * billing address is ever wanted, this is the one place to change.
-   */
-  replyTo: string | undefined,
-  /**
-   * Attach rebilled-expense receipt pages to the PDF. Defaults true so the
-   * reminder path keeps the same default as every other surface; only
-   * sendInvoice's dialog checkbox ever passes false.
-   */
-  includeReceipts: boolean = true,
-  /**
-   * The pilot's per-send note, already trimmed and length-checked by the
-   * caller. null on every path that does not offer the box.
-   */
-  customMessage: string | null = null
-): Promise<{ ok: true; note: string } | { ok: false; error: string }> {
-  if (!emailIsConfigured()) {
-    return {
-      ok: false,
-      error:
-        "Emailing isn't set up on this account yet, so nothing was sent. Download the PDF and send it yourself, or set the mail service up in the project's environment first.",
-    };
-  }
-
-  const { data: invoiceRow, error: invoiceError } = await supabase
-    .from("invoices")
-    .select(
-      "id, client_id, notes, stripe_payment_link_url, stripe_payment_link_livemode"
-    )
-    .eq("id", invoiceId)
-    .eq("account_id", accountId)
-    .maybeSingle();
-
-  if (invoiceError) {
-    return {
-      ok: false,
-      error: `${friendlyDbError(invoiceError, "invoices.select")} Nothing was sent.`,
-    };
-  }
-  const invoice = invoiceRow as {
-    client_id: string;
-    notes: string | null;
-    stripe_payment_link_url: string | null;
-    stripe_payment_link_livemode: boolean | null;
-    due_on?: string | null;
-  } | null;
-  if (!invoice) return { ok: false, error: "That invoice no longer exists." };
-
-  const { data: clientRow, error: clientError } = await supabase
-    .from("clients")
-    .select("name, contact_name, contact_email")
-    .eq("id", invoice.client_id)
-    .eq("account_id", accountId)
-    .maybeSingle();
-
-  if (clientError) {
-    return {
-      ok: false,
-      error: `${friendlyDbError(clientError, "clients.select")} Nothing was sent.`,
-    };
-  }
-  const client = clientRow as {
-    name: string;
-    contact_name: string | null;
-    contact_email: string | null;
-  } | null;
-  if (!client) {
-    return { ok: false, error: "That invoice's client no longer exists." };
-  }
-  // The most common reason a send cannot happen, and the one the pilot can fix
-  // in ten seconds — so it names the client and points at the screen.
-  if (!looksLikeEmail(client.contact_email)) {
-    return {
-      ok: false,
-      error: `${client.name} has no email address on file, so nothing was sent. Add one on the client's page and try again.`,
-    };
-  }
-
-  const built = await buildInvoiceDocument(supabase, accountId, invoiceId, {
-    includeReceipts,
-  });
-  if (!built.ok) {
-    return { ok: false, error: `${built.error} Nothing was sent.` };
-  }
-  const doc = built.document;
-
-  // THE MODE GUARD. A payment link minted in Stripe test mode is unpayable,
-  // and putting one in a real client's inbox wastes their time and the
-  // pilot's credibility. Same condition the invoice screen already applies
-  // before it shows the link — kept identical on purpose.
-  const paymentUrl =
-    invoice.stripe_payment_link_url &&
-    invoice.stripe_payment_link_livemode === isLiveMode()
-      ? invoice.stripe_payment_link_url
-      : null;
-
-  // THE ACCOUNT'S SAVED WORDING, read at SEND time rather than carried in
-  // from the screen that offered the button. Two reasons, and the second is
-  // the load-bearing one: the reminder path has no dialog that could carry
-  // it at all, and a template edited in another tab between render and
-  // click must not send yesterday's sentence.
-  //
-  // loadPreferences is total — a missing row (the ordinary state) and a
-  // failed read both resolve to the product's own defaults, which for this
-  // section means "no template", i.e. exactly the built-in copy. So a
-  // preferences outage costs a pilot their custom opening line and never
-  // costs them the send. That is the right way round: the invoice going out
-  // matters more than the sentence it opens with.
-  const preferences = await loadPreferences(accountId);
-  const template =
-    kind === "reminder"
-      ? preferences.templates.reminder
-      : preferences.templates.invoice;
-
-  const shared = {
-    accountName: doc.accountName,
-    clientName: client.name,
-    contactName: client.contact_name,
-    invoiceNumber: doc.invoiceNumber,
-    dueOn: doc.dueOn,
-    totalCents: doc.totalCents,
-    balanceDueCents: doc.balanceDueCents,
-    paymentUrl,
-    notes: invoice.notes,
-    // Genuinely-embedded receipt IMAGES only — not fallback/caption pages,
-    // and never the toggle's intent. buildInvoiceDocument counts only images
-    // that decoded and embedded, so the email cannot claim a receipt that
-    // rode along as an on-request caption page. See
-    // InvoiceMessageInput.receiptCount.
-    receiptCount: doc.receiptCount,
-    template,
-    customMessage,
-  };
-
-  const message =
-    kind === "reminder"
-      ? buildReminderMessage({
-          ...shared,
-          daysOverdue: daysOverdue(doc.dueOn, new Date()),
-        })
-      : buildInvoiceMessage(shared);
-
-  const result = await sendEmail({
-    to: client.contact_email as string,
-    subject: message.subject,
-    text: message.text,
-    // Only set when it is a usable address — a malformed reply-to is worse
-    // than none, because some clients silently drop the whole message.
-    replyTo: looksLikeEmail(replyTo) ? replyTo : undefined,
-    attachments: [{ filename: doc.filename, content: doc.buffer }],
-  });
-
-  if (!result.ok) return { ok: false, error: result.error };
-  return { ok: true, note: result.id };
-}
 
 /**
  * Voiding an invoice that had a Stripe payment link on it USED TO FAIL
