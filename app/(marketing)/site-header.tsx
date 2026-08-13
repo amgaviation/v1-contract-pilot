@@ -1,7 +1,7 @@
 import NextLink from "next/link";
 import { Box, Button, Container, Flex, Text } from "@/components/ui";
 import { BRAND } from "@/lib/brand";
-import { NAVY_SURFACE } from "./marketing-style";
+import { NAVY_SURFACE } from "@/lib/surface-style";
 
 /**
  * The public site's header. Deliberately not the (app) rail's Logo
@@ -15,7 +15,7 @@ import { NAVY_SURFACE } from "./marketing-style";
  * Sticky, like the app's own header after the rebuild (REBUILD-BRIEF
  * §4.4) — solid ground, hairline, no backdrop-filter. The CTA keeps the
  * brand navy rather than the theme accent: on the marketing surface navy
- * is the brand's primary-action color (see marketing-style.ts), and it
+ * is the brand's primary-action color (see lib/surface-style.ts), and it
  * now sits in the same blue family as the app's indigo accent.
  *
  * A plain <img>, not next/image: this is a small, already-optimized SVG

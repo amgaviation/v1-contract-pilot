@@ -121,9 +121,16 @@ app/(app)/reports/  the year-end packet (`reports/year-end`): cash-basis
                     receipts, and 1099 reconciliation against
                     pilot.client_tax_forms.
 app/(app)/logbook/export/  streaming CSV export of the pilot's own logbook —
-                    the record-portability path; CSV import is not built.
+                    the record-portability path out.
+app/(app)/logbook/import/  and the path back in: ForeFlight and LogTen Pro
+                    exports, plus any CSV through a generic column mapper,
+                    with duplicate detection before anything is written
+                    (parsers and the row fingerprint live in
+                    lib/logbook-import/).
 app/(auth)/         login, signup, password reset, and the post-checkout
-                    welcome screen.
+                    welcome screen. One shared shell (the navy brand panel
+                    beside the form) in app/(auth)/layout.tsx, with the
+                    pieces every screen is built from in auth-parts.tsx.
 app/api/stripe/     the webhook. The only place the service-role client is
                     used, anywhere in the product.
 lib/supabase/       browser, server and service-role clients, all pinned to

@@ -2,21 +2,37 @@
 
 import { useActionState, useState } from "react";
 import NextLink from "next/link";
+import { CheckCircledIcon } from "@radix-ui/react-icons";
 import {
   Box,
   Button,
-  Card,
   Flex,
+  Grid,
+  Heading,
+  Link,
   SegmentedControl,
   Text,
   TextField,
 } from "@/components/ui";
-import { BRAND } from "@/lib/brand";
+import {
+  AuthFooter,
+  AuthHeading,
+  Field,
+  FormError,
+  SubmitButton,
+} from "../auth-parts";
 import { signUp, type SignUpState } from "./actions";
 
 const initialState: SignUpState = { error: null };
 
-export default function SignUpForm() {
+/**
+ * `trialDays` is passed down from the server page rather than imported:
+ * TRIAL_PERIOD_DAYS lives in lib/stripe/server.ts, which is `server-only`,
+ * and this is a client component. Same pattern the welcome plan picker
+ * uses. It is the SAME constant the checkout hands Stripe, so the number
+ * on this screen is the trial the code enforces.
+ */
+export default function SignUpForm({ trialDays }: { trialDays: number }) {
   const [state, formAction, pending] = useActionState(signUp, initialState);
 
   // React 19 resets an uncontrolled form on every action dispatch,
@@ -38,53 +54,86 @@ export default function SignUpForm() {
 
   if (state.needsConfirmation) {
     return (
-      <Card size="4" style={{ width: "100%", maxWidth: "22rem" }}>
-        <Flex direction="column" align="center" gap="3" style={{ textAlign: "center" }}>
-          <Text size="5" weight="bold">
-            Check your email
+      <Flex direction="column" gap="5">
+        <Flex direction="column" gap="3" align="start">
+          <Text color="indigo" aria-hidden>
+            <CheckCircledIcon width="32" height="32" />
           </Text>
-          <Text size="2" color="gray">
+          <Heading as="h1" size="7" trim="start">
+            Check your email
+          </Heading>
+          <Text as="p" size="2" color="gray">
             Click the confirmation link we just sent, then sign in to start
             your trial.
           </Text>
-          <Button asChild mt="2">
-            <NextLink href="/login">Go to sign in</NextLink>
-          </Button>
         </Flex>
-      </Card>
+        <Button asChild size="3" style={{ width: "100%" }}>
+          <NextLink href="/login">Go to sign in</NextLink>
+        </Button>
+      </Flex>
     );
   }
 
   return (
-    <Card size="4" style={{ width: "100%", maxWidth: "22rem" }}>
+    <Flex direction="column" gap="6">
+      {/*
+        NOT "your next trip bills itself". Nothing bills itself: an invoice
+        exists only when the pilot invokes createInvoiceDraft from
+        /invoices/new, what it produces is a DRAFT they review and send,
+        platform email is conditional on config plus a client address
+        (docs/LAUNCH-GATES.md G10), and scheduled drafting is
+        `recurring_invoices`, minTier "pro". The landing page states the
+        mechanic correctly; this screen is the higher-stakes surface and
+        must state it the same way. docs/MARKETING.md §1 and §5.
+      */}
+      <AuthHeading title="Start your trial">
+        Two minutes now, and your next trip drafts its own invoice and
+        logbook entries.
+      </AuthHeading>
+
       <form action={formAction}>
-        <Flex direction="column" gap="3">
-          <Flex direction="column" align="center" gap="1" mb="1">
-            <Text size="6" weight="bold">
-              Start your trial
-            </Text>
-            <Text size="2" color="gray">
-              {BRAND.name} — {BRAND.descriptor}
-            </Text>
-          </Flex>
+        <Flex direction="column" gap="4">
+          {/* Name and base sit on one row so the form reads as four
+              questions rather than six. */}
+          <Grid columns={{ initial: "1", xs: "3fr 2fr" }} gap="4">
+            <Field id="full_name" label="Your name">
+              <TextField.Root
+                id="full_name"
+                name="full_name"
+                size="3"
+                autoComplete="name"
+                autoFocus
+                required
+                disabled={pending}
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+              />
+            </Field>
 
-          <Box>
-            <Text as="label" size="2" weight="medium" htmlFor="full_name">
-              Your name
-            </Text>
-            <TextField.Root
-              id="full_name"
-              name="full_name"
-              autoComplete="name"
-              required
-              mt="1"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-            />
-          </Box>
+            <Field id="home_base" label="Based airport" optional>
+              <TextField.Root
+                id="home_base"
+                name="home_base"
+                size="3"
+                autoCapitalize="characters"
+                placeholder="KTEB"
+                disabled={pending}
+                value={homeBase}
+                onChange={(e) => setHomeBase(e.target.value)}
+              />
+            </Field>
+          </Grid>
 
-          <Box>
-            <Text as="label" size="2" weight="medium">
+          {/* NOT a <label>: SegmentedControl.Root is Radix ToggleGroup —
+              role="group" with <button> items, not a native control — so a
+              <label> with no htmlFor and nothing wrapped is dropped from the
+              accessibility tree entirely, and this field decides whether the
+              account is a sole proprietor or a business. The group is named
+              by aria-labelledby and described by the hint instead, which is
+              the only wiring a non-native control has. Field() in
+              ../auth-parts does the native equivalent with htmlFor. */}
+          <Flex direction="column" gap="1">
+            <Text as="div" id="account-kind-label" size="2" weight="medium">
               Account type
             </Text>
             {/* A hidden input carries the value: SegmentedControl is not a
@@ -94,78 +143,78 @@ export default function SignUpForm() {
             <SegmentedControl.Root
               value={accountKind}
               onValueChange={setAccountKind}
-              mt="1"
-              size="2"
+              size="3"
+              aria-labelledby="account-kind-label"
+              aria-describedby="account-kind-hint"
             >
-              <SegmentedControl.Item value="solo">
-                Just me
-              </SegmentedControl.Item>
+              <SegmentedControl.Item value="solo">Just me</SegmentedControl.Item>
               <SegmentedControl.Item value="business">
                 A business
               </SegmentedControl.Item>
             </SegmentedControl.Root>
-            <Text as="div" size="1" color="gray" mt="1">
+            <Text as="div" id="account-kind-hint" size="1" color="gray">
               You can change how you bill later — this just sets up your
               account.
             </Text>
-          </Box>
+          </Flex>
 
-          <Box>
-            <Text as="label" size="2" weight="medium" htmlFor="email">
-              Email
-            </Text>
+          <Field id="email" label="Email">
             <TextField.Root
               id="email"
               type="email"
               name="email"
+              size="3"
               autoComplete="email"
               required
-              mt="1"
+              disabled={pending}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
-          </Box>
-          <Box>
-            <Text as="label" size="2" weight="medium" htmlFor="password">
-              Password
-            </Text>
+          </Field>
+
+          <Field id="password" label="Password" hint="At least 8 characters">
             <TextField.Root
               id="password"
               type="password"
               name="password"
+              size="3"
               autoComplete="new-password"
+              aria-describedby="password-hint"
               required
-              mt="1"
+              disabled={pending}
             />
-            <Text as="div" size="1" color="gray" mt="1">
-              At least 8 characters
-            </Text>
+          </Field>
+
+          {/* THE TRIAL TERMS, stated before the button rather than under
+              it. trialDays is the checkout's own constant; the card is
+              entered at Stripe's checkout on the next screen, which is why
+              this says "next step" and does not ask for one here. */}
+          <Box
+            p="3"
+            style={{
+              background: "var(--gray-2)",
+              border: "1px solid var(--gray-a5)",
+              borderRadius: "var(--radius-3)",
+            }}
+          >
+            <Flex direction="column" gap="1">
+              <Text size="2" weight="medium">
+                {trialDays} days free.
+              </Text>
+              <Text size="1" color="gray">
+                You pick a plan and enter a card on the next step. Nothing is
+                charged until the trial ends.
+              </Text>
+            </Flex>
           </Box>
 
-          <Box>
-            <Text as="label" size="2" weight="medium" htmlFor="home_base">
-              Based airport <Text color="gray">(optional)</Text>
-            </Text>
-            <TextField.Root
-              id="home_base"
-              name="home_base"
-              autoCapitalize="characters"
-              placeholder="e.g. KTEB"
-              mt="1"
-              value={homeBase}
-              onChange={(e) => setHomeBase(e.target.value)}
-            />
-          </Box>
+          <FormError message={state.error} />
 
-          {state.error ? (
-            <Text size="1" color="red" role="alert" aria-live="polite">
-              {state.error}
-            </Text>
-          ) : null}
-
-          <Button type="submit" disabled={pending} mt="1">
-            {pending ? "Creating account…" : "Create account"}
-          </Button>
+          <SubmitButton
+            pending={pending}
+            idle="Create account"
+            busy="Creating account…"
+          />
 
           {/*
             "See our", NOT "by creating an account you agree to our". Both
@@ -179,24 +228,26 @@ export default function SignUpForm() {
           */}
           <Text size="1" color="gray" align="center">
             See our{" "}
-            <Text asChild size="1">
+            <Link asChild size="1">
               <NextLink href="/terms">Terms</NextLink>
-            </Text>{" "}
+            </Link>{" "}
             and{" "}
-            <Text asChild size="1">
+            <Link asChild size="1">
               <NextLink href="/privacy">Privacy Policy</NextLink>
-            </Text>
+            </Link>
             .
-          </Text>
-
-          <Text size="1" color="gray" align="center">
-            Already have an account?{" "}
-            <Text asChild size="1">
-              <NextLink href="/login">Sign in</NextLink>
-            </Text>
           </Text>
         </Flex>
       </form>
-    </Card>
+
+      <AuthFooter>
+        <Text size="2" color="gray">
+          Already have an account?{" "}
+          <Link asChild size="2">
+            <NextLink href="/login">Sign in</NextLink>
+          </Link>
+        </Text>
+      </AuthFooter>
+    </Flex>
   );
 }

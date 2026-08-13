@@ -169,12 +169,16 @@
 }
 
 /* ---------------------------------------------------------------------------
-   MARKETING SURFACE ONLY — app/(marketing)/*.
+   SIGNED-OUT SURFACE ONLY — app/(marketing)/* and app/(auth)/*.
    Everything below is scoped to classes prefixed .v1-m-, used by nothing in
-   the authenticated product. It exists because the public site is the one
-   place this product deliberately steps outside Radix's ordinary light
-   theme: a full-bleed navy hero, a gradient CTA band, and the frame around
-   the hand-built product mock. The same reasoning as the
+   the authenticated product. It exists because the signed-out site is the
+   one place this product deliberately steps outside Radix's ordinary light
+   theme: a full-bleed navy hero, a gradient CTA band, the auth screens'
+   navy brand panel, and the frame around the hand-built product mock.
+   (.v1-m-dark went from marketing-only to shared in the 2026-08 rewrite,
+   when the auth screens took the same navy panel so a visitor crossing
+   from the landing page into signup never changes design systems mid-flow.)
+   The same reasoning as the
    --v1-marketing-navy pair already documented above applies — these are
    brand grounds, not Radix scale steps, so they are declared here (the one
    file scripts/verify-tokens.mjs exempts) and reached by var() everywhere
@@ -291,21 +295,107 @@
   border-radius: var(--radius-full);
 }
 
-/* The one-trip-in / three-outputs diagram. The connector is a plain
-   background line behind the three output columns; it is decorative and
-   drops out below the md breakpoint where the columns stack. */
-.v1-m-flow-rail {
-  position: relative;
+/* THE ONE-TO-THREE CONNECTOR, between the "you type — the trip" input card
+   and the three output cards it feeds.
+
+   It replaces .v1-m-flow-rail, which drew a single hairline at
+   inset-block-start: 0 — i.e. across the TOP EDGE of the three cards,
+   inset 12% each side. That connected nothing to nothing and read as a
+   stray floating rule; a reviewer flagged it and it is gone rather than
+   nudged. This version is a real diagram: a stem down from the input card,
+   a crossbar, and a leg dropping into each of the three columns.
+
+   Decorative by construction (the element carries aria-hidden) and drawn
+   only at the width where the outputs sit side by side — below that they
+   stack, one under another, and a connector would be a line to nowhere
+   again. The legs are children rather than pseudo-elements because a
+   crossbar plus three legs is four strokes and an element has two. */
+.v1-m-flow-connector {
+  display: none;
 }
 
-@media (min-width: 62em) {
-  .v1-m-flow-rail::before {
+/* 1024px, NOT 62em. This has to be the SAME number Radix's `md` uses,
+   because the thing the connector points at is
+   <Grid columns={{ initial: "1", md: "3" }}> on app/(marketing)/page.tsx and
+   Radix's md is a literal `@media (min-width: 1024px)` in styles.css. At
+   62em (992px at a 16px root — Theme `scaling` moves --font-size-*, not the
+   root) the connector switched on 32px before the grid did, so between
+   992px and 1023px a crossbar and three legs were drawn over a single
+   stacked column: the line to nowhere this rule was written to remove,
+   reintroduced in a 32px window. The outer gap on that stack flips at md
+   too, so both switch together now. */
+@media (min-width: 1024px) {
+  .v1-m-flow-connector {
+    display: block;
+    position: relative;
+    height: var(--space-6);
+  }
+
+  /* Stem: down the middle, from the input card to the crossbar. */
+  .v1-m-flow-connector::before {
     content: "";
     position: absolute;
     inset-block-start: 0;
-    inset-inline: 12%;
+    inset-inline-start: 50%;
+    width: 1px;
+    height: 50%;
+    background-color: var(--gray-a6);
+  }
+
+  /* Crossbar: ends sit over the centres of the outer two columns. */
+  .v1-m-flow-connector::after {
+    content: "";
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline: 16.666%;
     height: 1px;
     background-color: var(--gray-a6);
+  }
+
+  /* Legs: down from the crossbar into each of the three cards. */
+  .v1-m-flow-leg {
+    position: absolute;
+    inset-block-start: 50%;
+    width: 1px;
+    height: 50%;
+    background-color: var(--gray-a6);
+  }
+
+  .v1-m-flow-leg-1 {
+    inset-inline-start: 16.666%;
+  }
+
+  .v1-m-flow-leg-2 {
+    inset-inline-start: 50%;
+  }
+
+  .v1-m-flow-leg-3 {
+    inset-inline-start: 83.333%;
+  }
+}
+
+/* NO PINCH-ZOOM ON FOCUS. iOS Safari zooms the viewport whenever a focused
+   text input renders below 16px, and it cannot be turned off from the
+   viewport meta any more. Every field on the signed-out and onboarding
+   surfaces is below it: Radix's --font-size-3 is calc(16px * var(--scaling))
+   and app/layout.tsx pins scaling="90%", so a size="3" field renders at
+   14.4px and the wizard's default size="2" fields at 12.6px. Tapping the
+   email field on /login therefore scaled the page up and left the pilot
+   pinch-zooming back out — on exactly the phone the split layout was built
+   for.
+
+   16px is a literal because it is a literal: it is Safari's threshold, not
+   a step on a type ramp, and scaling it would defeat the point. It is
+   confined to (pointer: coarse) so the desktop rendering of these forms is
+   untouched — the bug is a touch-device bug and the fix should be one too.
+   Applied by class on the two shells (app/(auth)/layout.tsx and
+   app/(onboarding)/layout.tsx) rather than at ~25 field call sites, so a
+   field added tomorrow inherits it. */
+@media (pointer: coarse) {
+  .v1-nozoom-fields input,
+  .v1-nozoom-fields textarea,
+  .v1-nozoom-fields select {
+    font-size: 16px;
   }
 }
 
@@ -341,15 +431,10 @@
   content: "–";
 }
 
-/* Alternating feature blocks. The text column is always FIRST in the DOM —
-   that is the reading order a screen reader and a phone should both get —
-   and only the wide layout swaps the visual order, which is exactly the
-   case CSS `order` is safe for. */
-@media (min-width: 62em) {
-  .v1-m-flip > :first-child {
-    order: 2;
-  }
-}
+/* .v1-m-flip is gone with the seven alternating feature blocks it existed
+   for — the 2026-08 rewrite replaced that band with one spec block, and a
+   rule with no call site is a rule someone will later restore a layout
+   around. */
 
 /* Belt and braces for the mock frame: a flex/grid child will not shrink
    below its content without min-width:0, and without that the 42rem inner
