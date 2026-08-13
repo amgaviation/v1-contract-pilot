@@ -1,10 +1,11 @@
 import { redirect } from "next/navigation";
-import { Button, Card, Flex, Text } from "@/components/ui";
+import { Button, Callout, Flex } from "@/components/ui";
 import { getSessionContext } from "@/lib/supabase/account";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import { PLAN_TIERS, TIER_DISPLAY } from "@/lib/entitlements";
 import { tierPriceLabels } from "@/lib/stripe/prices";
 import { TRIAL_PERIOD_DAYS } from "@/lib/stripe/server";
+import { AuthFooter, AuthHeading } from "../auth-parts";
 import { signOut } from "./actions";
 import { PlanPicker, type PlanOption } from "./welcome-actions";
 
@@ -17,11 +18,18 @@ export const metadata = { title: "Welcome" };
  * provisioning anything itself.
  *
  * Plan selection happens HERE, at checkout: the three tiers come from
- * lib/entitlements.ts (the one tier source) and every displayed amount
- * is read from the live Stripe Price object (lib/stripe/prices.ts) —
- * the string a pilot reads and the amount Stripe charges are the same
- * fact. A tier whose price env vars aren't configured renders as
- * unavailable instead of breaking the page.
+ * lib/entitlements.ts (the one tier source) and every displayed amount is
+ * read from the live Stripe Price object (lib/stripe/prices.ts) — the
+ * string a pilot reads and the amount Stripe charges are the same fact.
+ * A tier whose price env vars aren't configured renders as UNAVAILABLE
+ * instead of breaking the page or inventing a figure; that fallback is
+ * load-bearing and must survive any redesign of this screen.
+ *
+ * The pitch itself lives on the navy panel in ../layout.tsx, so this
+ * column carries only the decision. One claim rule survives from the copy
+ * that used to sit here and binds anything written on this screen later:
+ * expenses ATTACH to a trip, they are never "posted from" one — nothing in
+ * this product creates an expense from a trip.
  */
 export default async function WelcomePage({
   searchParams,
@@ -40,23 +48,18 @@ export default async function WelcomePage({
   // pitch again to someone who just paid, which would read as a failure.
   if (checkout === "complete") {
     return (
-      <Card size="4" style={{ width: "100%", maxWidth: "28rem" }}>
-        <Flex direction="column" align="center" gap="3" style={{ textAlign: "center" }}>
-          <Text size="6" weight="bold">
-            Setting up your workspace
-          </Text>
-          <Text size="2" color="gray">
-            Payment confirmed. We&rsquo;re provisioning your account now —
-            this usually takes a few seconds.
-          </Text>
-          {/* A plain link, not a client poller: one deliberate refresh is
-              honest about the state and avoids a spinner that could hide
-              a genuine webhook failure forever. */}
-          <Button asChild mt="2">
-            <a href="/welcome">Refresh</a>
-          </Button>
-        </Flex>
-      </Card>
+      <Flex direction="column" gap="6">
+        <AuthHeading title="Setting up your account">
+          Payment confirmed. We&rsquo;re provisioning now — this usually takes
+          a few seconds.
+        </AuthHeading>
+        {/* A plain link, not a client poller: one deliberate refresh is
+            honest about the state and avoids a spinner that could hide a
+            genuine webhook failure forever. */}
+        <Button asChild size="3" style={{ width: "100%" }}>
+          <a href="/welcome">Refresh</a>
+        </Button>
+      </Flex>
     );
   }
 
@@ -80,38 +83,27 @@ export default async function WelcomePage({
   }));
 
   return (
-    <Card size="4" style={{ width: "100%", maxWidth: "32rem" }}>
-      <Flex direction="column" align="center" gap="3" style={{ textAlign: "center" }}>
-        <Text size="6" weight="bold">
-          You&rsquo;re signed in
-        </Text>
-        {/*
-          "expenses attach to it", not "post from it". Nothing in this product
-          creates an expense from a trip — expenses come from the pilot, a
-          scanned receipt, or a bank import, and a trip is what they get
-          ATTACHED to so they reach the right invoice and the right tax year.
-          "Post from it" asserted automatic generation that does not exist.
-        */}
-        <Text size="2" color="gray">
-          Log the trip once — your logbook draft and your invoice lines both
-          come from it, and your expenses attach to it. Pick a plan to start
-          your trial; you can change plans any time from Settings.
-        </Text>
+    <Flex direction="column" gap="6">
+      <AuthHeading title="Pick your plan">
+        Your account starts the moment checkout completes. You can change
+        plans any time from Settings.
+      </AuthHeading>
 
-        {checkout === "cancelled" ? (
-          <Text size="1" color="gray">
-            Checkout cancelled — nothing was charged.
-          </Text>
-        ) : null}
+      {checkout === "cancelled" ? (
+        <Callout.Root color="gray" size="1">
+          <Callout.Text>Checkout cancelled — nothing was charged.</Callout.Text>
+        </Callout.Root>
+      ) : null}
 
-        <PlanPicker options={options} trialDays={TRIAL_PERIOD_DAYS} />
+      <PlanPicker options={options} trialDays={TRIAL_PERIOD_DAYS} />
 
+      <AuthFooter>
         <form action={signOut}>
-          <Button type="submit" variant="ghost" color="gray" size="1">
+          <Button type="submit" variant="ghost" color="gray" size="2">
             Sign out
           </Button>
         </form>
-      </Flex>
-    </Card>
+      </AuthFooter>
+    </Flex>
   );
 }

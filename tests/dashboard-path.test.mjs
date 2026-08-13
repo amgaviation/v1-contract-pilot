@@ -62,8 +62,8 @@ const ROOT_AS_DASHBOARD = {
     { pattern: /\bhref=\{?\s*["'`]\/["'`]\s*\}?/g, what: 'href="/"' },
   ],
   exempt: [
-    // These four genuinely mean the ROOT, and must keep saying "/" even if
-    // the dashboard moves again.
+    // These genuinely mean the ROOT, and must keep saying "/" even if the
+    // dashboard moves again.
     "app/(marketing)/", // is the root route
     "lib/supabase/proxy.ts", // allow-lists "/" as a signed-out surface
     "app/robots.ts",
@@ -74,6 +74,16 @@ const ROOT_AS_DASHBOARD = {
     // Pointing it at the dashboard would send a stranger who mistyped a URL
     // straight into a login wall. The one case where the bounce is the point.
     "app/not-found.tsx",
+    // The auth shell's brand mark (app/(auth)/layout.tsx), which arrived
+    // with the 2026-08 rewrite: /signup, /login, /forgot-password,
+    // /reset-password and /welcome now share the marketing surface's navy
+    // panel, and the mark on it links back to the front door — the same
+    // link app/(marketing)/site-header.tsx carries, exempt for the same
+    // reason that whole directory is. It must keep saying "/" if the
+    // dashboard moves: a visitor sitting on the signup screen has no
+    // dashboard to be sent to, and a signed-in one is carried onward by
+    // the marketing page's own redirect.
+    "app/(auth)/layout.tsx",
     "lib/nav.ts",
     "tests/dashboard-path.test.mjs",
   ],

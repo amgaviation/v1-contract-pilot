@@ -1,11 +1,13 @@
 import NextLink from "next/link";
 import {
   Badge,
+  Box,
   Button,
   Callout,
   Card,
   Flex,
   Grid,
+  Separator,
   Table,
   Text,
   VisuallyHidden,
@@ -22,10 +24,25 @@ import { countOf } from "@/lib/supabase/rows";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import { formatCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
-import { tripValueCents, type TripDayValueRow } from "@/lib/trip-value";
 import { STAT_ROW_LAYOUT } from "@/components/ui/skeletons";
+import EmptyState from "@/components/ui/empty-state";
 import { EXPIRY_LADDER_BADGE, type ExpiryBadge } from "../documents/expiry-badge";
 import PageShell from "../page-shell";
+import {
+  clientLabel,
+  clientRowsShortfallCents,
+  clientRowsState,
+  daysSince,
+  draftAction,
+  draftHref,
+  formatDays,
+  pluralizeDays,
+  sortClientRows,
+  unbilledLede,
+  type UnbilledClientRow,
+  type UnbilledSummaryRow,
+  type UnbilledTripMoneyRow,
+} from "./unbilled-lib";
 
 export const metadata = { title: "Overview" };
 
@@ -39,17 +56,12 @@ function pluralize(count: number, noun: string) {
 // issue), so every query result is reasserted to its real row type here,
 // once, at the point it crosses from Supabase into this component.
 // ---------------------------------------------------------------------------
-type UnbilledTripRow = {
-  id: string;
-  client_id: string | null;
-  starts_on: string;
-  ends_on: string;
-  aircraft_ident: string | null;
-  day_rate_cents: number;
-  day_count: number;
-  travel_day_count: number | null;
-  travel_day_rate_cents: number | null;
-};
+// The unbilled row shapes are NOT declared here. They belong to
+// ./unbilled-lib, beside the pure functions that consume them and the unit
+// tests that pin those functions — see that file's header. This page used
+// to carry an UnbilledTripRow of its own and price it in JavaScript; that
+// arithmetic now lives in pilot.unbilled_trip_money and the shape travels
+// with it.
 
 type ClientRow = {
   id: string;
@@ -66,12 +78,18 @@ type ExpenseRow = {
   amount_cents: number;
   /**
    * The date the cost was incurred. Read even though the query is NOT
-   * date-filtered, because this one read feeds figures at two different
-   * scopes: rebillByTrip prices trips of any age (a trip started in
-   * December and invoiced in January must keep its receipts), while the
-   * deductible KPI sits under a "This calendar year" heading and must be
-   * cut to that year in JS. Filtering the query itself would silently
-   * under-price last year's unbilled trips.
+   * date-filtered, because this one read still feeds figures at two
+   * different scopes: the "unassigned receipts" nudge in "Needs attention"
+   * is ALL-TIME (a receipt filed last December and never sorted is exactly
+   * the one worth surfacing, and a year filter on the query would hide it
+   * every January), while the deductible KPI sits under a "This calendar
+   * year" heading and must be cut to that year. So the cut is made in JS,
+   * per figure.
+   *
+   * This read no longer prices anything. Rebillable receipts on unbilled
+   * trips are summed by pilot.unbilled_trip_money now, which is why the
+   * unbilled figure is no longer exposed to this read's AGGREGATE_LIMIT
+   * truncation.
    */
   incurred_on: string;
 };
@@ -154,6 +172,28 @@ const EXPIRATIONS_LIMIT = 6;
 // explicit rather than left to the Data API's own silent cap.
 const AGGREGATE_LIMIT = 1000;
 
+/**
+ * The stand-in used when pilot.unbilled_summary could not be read.
+ *
+ * That function returns exactly ONE row in every success case, including
+ * "nothing is unbilled" — an ungrouped aggregate over an empty input still
+ * produces a row of zeros. So no row coming back is never the fact "you
+ * have nothing unbilled"; it is the fact "we could not find out", and this
+ * object exists ONLY so the render has a shape to destructure. Every figure
+ * it would feed is gated behind `moneyOk` and prints "—" instead. Reading
+ * these zeros as data is exactly the reassuring-zero defect
+ * lib/supabase/rows.ts was written to close.
+ */
+const UNREADABLE_SUMMARY: UnbilledSummaryRow = {
+  client_count: 0,
+  trip_count: 0,
+  billable_days: 0,
+  day_value_cents: 0,
+  rebill_expense_cents: 0,
+  total_cents: 0,
+  oldest_ends_on: null,
+};
+
 export default async function OverviewPage() {
   // The argument is the post-login return path (lib/supabase/account.ts
   // threads it through as ?next=), so it must name THIS screen. It said "/"
@@ -173,7 +213,9 @@ export default async function OverviewPage() {
   // Phase 1 — everything that doesn't depend on another query's result.
   // ---------------------------------------------------------------------
   const [
-    tripsRes,
+    unbilledSummaryRes,
+    unbilledClientsRes,
+    unbilledTripsRes,
     clientsRes,
     expensesRes,
     liveInvoicesRes,
@@ -187,14 +229,57 @@ export default async function OverviewPage() {
     anyTripCountRes,
     anyInvoiceCountRes,
   ] = await Promise.all([
+    // ---------------------------------------------------------------
+    // THE UNBILLED SURFACE — three reads, ONE definition.
+    //
+    // pilot.unbilled_summary → pilot.unbilled_by_client →
+    // pilot.unbilled_trip_money is a derivation chain in the database
+    // (20260813010000_unbilled_money_reads.sql), so the headline figure,
+    // the per-client rows and the trip list on this screen are the same
+    // number at three levels of detail and cannot disagree. That is the
+    // whole reason the day-money arithmetic moved out of this file: it
+    // used to be computed here in JS from three separate reads (trips,
+    // trip_days, day_types) plus a fourth for the rebillable receipts,
+    // and every panel that wanted the figure re-derived it.
+    //
+    // The `as never` on the args is this codebase's standing .rpc()
+    // boundary cast — see trips/actions.ts and accounting/page.tsx for
+    // the same call shape against the same hand-authored types.
+    //
+    // NO .limit() ON THE FIRST TWO. The summary is one row by
+    // construction, and the client rollup is O(clients). Neither can be
+    // shortchanged by the Data API's silent row cap the way the raw
+    // trips/expenses reads below still can — and where the client rows
+    // COULD in principle be capped, clientRowsShortfallCents below
+    // detects it by comparing their sum against the summary rather than
+    // guessing from an array length.
+    supabase.rpc("unbilled_summary", { target_account_id: account.id } as never),
+    supabase.rpc("unbilled_by_client", { target_account_id: account.id } as never),
+    // Only what "Ready to invoice" renders — the count beside that list and
+    // its "+N more" come from the summary, never from this array's length.
+    //
+    // The .order() is REDUNDANT WITH the function's own `order by
+    // starts_on, ends_on, id` and is here anyway: a set-returning function
+    // in a FROM clause has no guaranteed row order, so relying on the
+    // body's ORDER BY surviving the wrapper PostgREST puts around it would
+    // be relying on unspecified behaviour to decide WHICH six trips a pilot
+    // is shown. Stated at the API level, "the six that have been waiting
+    // longest" is a promise the query makes rather than one the planner
+    // happens to keep.
+    //
+    // ALL THREE KEYS, INCLUDING trip_id — the function body's tiebreaker
+    // restated, not just its first two. Same-day trips for different clients
+    // are ordinary (four one-day trips on one date is a normal week), and
+    // with only two keys the tied rows are ordered arbitrarily and then CUT
+    // at the limit: a trip appears, the pilot reloads, a sibling has taken
+    // its place. Restating two of three keys would leave exactly the
+    // arbitrariness this .order() exists to remove.
     supabase
-      .from("trips")
-      .select(
-        "id, client_id, starts_on, ends_on, aircraft_ident, day_rate_cents, day_count, travel_day_count, travel_day_rate_cents"
-      )
-      .eq("status", "completed")
-      .eq("billing_state", "unbilled")
-      .order("starts_on", { ascending: true }),
+      .rpc("unbilled_trip_money", { target_account_id: account.id } as never)
+      .order("starts_on", { ascending: true })
+      .order("ends_on", { ascending: true })
+      .order("trip_id", { ascending: true })
+      .limit(READY_TO_INVOICE_LIMIT),
     // .limit(1000): Supabase's Data API caps rows (commonly 1000) and
     // TRUNCATES SILENTLY on a plain select — no error, just a shorter
     // array, so a summed KPI from a truncated read would be silently
@@ -286,7 +371,11 @@ export default async function OverviewPage() {
     supabase.from("invoices").select("id", { count: "exact", head: true }),
   ]);
 
-  const trips = (tripsRes.data ?? []) as UnbilledTripRow[];
+  const unbilledSummary =
+    ((unbilledSummaryRes.data ?? []) as UnbilledSummaryRow[])[0] ??
+    UNREADABLE_SUMMARY;
+  const unbilledClients = (unbilledClientsRes.data ?? []) as UnbilledClientRow[];
+  const unbilledTrips = (unbilledTripsRes.data ?? []) as UnbilledTripMoneyRow[];
   const clients = (clientsRes.data ?? []) as ClientRow[];
   const expenses = (expensesRes.data ?? []) as ExpenseRow[];
   const liveInvoices = (liveInvoicesRes.data ?? []) as LiveInvoiceRow[];
@@ -314,7 +403,11 @@ export default async function OverviewPage() {
   // ---------------------------------------------------------------------
   // Phase 2 — depends on the trip ids / invoice ids resolved above.
   // ---------------------------------------------------------------------
-  const tripIds = trips.map((t) => t.id);
+  // Only the trips actually rendered in "Ready to invoice" — the RPC above
+  // is already limited to them, so this route lookup no longer scales with
+  // the size of the unbilled backlog the way the old unbounded trips read
+  // did.
+  const tripIds = unbilledTrips.map((t) => t.trip_id);
   // pilot.invoices_overdue is itself filtered to status in ('sent',
   // 'partial'), so every overdue invoice_id is already a member of
   // liveInvoices — one balance-due lookup covers both.
@@ -324,7 +417,13 @@ export default async function OverviewPage() {
   // needs — resolved with a second, dependent lookup.
   const operatorQualIds = operatorQualExpirations.map((e) => e.source_id);
 
-  const [legsRes, totalsRes, dayRowsRes, dayTypesRes, operatorQualClientsRes] = await Promise.all([
+  // The trip_days and day_types reads that used to sit in this block are
+  // GONE, not moved: they existed solely so this page could price a trip's
+  // day grid in JavaScript. pilot.unbilled_trip_money does that arithmetic
+  // now, in the database, mirroring lib/trip-value.ts row for row (see the
+  // migration header). Two fewer reads, and — more to the point — one fewer
+  // place this screen's money could drift from the invoice it previews.
+  const [legsRes, totalsRes, operatorQualClientsRes] = await Promise.all([
     tripIds.length
       ? supabase
           .from("trip_legs")
@@ -338,17 +437,6 @@ export default async function OverviewPage() {
           balanceIds
         )
       : Promise.resolve({ data: [] as InvoiceTotalRow[], error: null }),
-    // H6: the same F3 day-rows-aware pricing trips/page.tsx uses — pulled
-    // in here too so this screen's "Ready to invoice" figures can never
-    // disagree with Trips' or with what createInvoiceDraft actually bills.
-    // See lib/trip-value.ts's own comment for the shared contract.
-    tripIds.length
-      ? supabase
-          .from("trip_days")
-          .select("trip_id, day_type_id, rate_cents, quantity, units")
-          .in("trip_id", tripIds)
-      : Promise.resolve({ data: [] as (TripDayValueRow & { trip_id: string })[], error: null }),
-    supabase.from("day_types").select("id, billable"),
     operatorQualIds.length
       ? supabase
           .from("operator_qualifications")
@@ -370,7 +458,14 @@ export default async function OverviewPage() {
   // A query error is not "no data" — it must be visible, not quietly
   // rendered as a healthy zero-state dashboard.
   const errors = [
-    { context: "unbilled trips", error: tripsRes.error },
+    // Three contexts, not one, because they are three round trips and a
+    // pilot reading the banner should know WHICH part of the unbilled
+    // picture is missing. They cannot disagree about the money — the
+    // functions are one derivation chain — but they can fail
+    // independently.
+    { context: "your unbilled total", error: unbilledSummaryRes.error },
+    { context: "unbilled work by client", error: unbilledClientsRes.error },
+    { context: "unbilled trips", error: unbilledTripsRes.error },
     { context: "clients", error: clientsRes.error },
     { context: "expenses", error: expensesRes.error },
     { context: "invoices", error: liveInvoicesRes.error },
@@ -381,8 +476,6 @@ export default async function OverviewPage() {
     { context: "trip routes", error: legsRes.error },
     { context: "invoice balances", error: totalsRes.error },
     { context: "voided invoices", error: voidInvoicesRes.error },
-    { context: "trip day grids", error: dayRowsRes.error },
-    { context: "day types", error: dayTypesRes.error },
     { context: "operator qualification clients", error: operatorQualClientsRes.error },
     // The fifteenth read, and the one that was missing from this list. It is a
     // head:true COUNT rather than a row read, which is exactly why it got
@@ -416,60 +509,46 @@ export default async function OverviewPage() {
   // -----------------------------------------------------------------------
   const clientName = new Map(clients.map((c) => [c.id, c.name]));
   const balanceByInvoice = new Map(totals.map((t) => [t.invoice_id, t.balance_due_cents]));
-  const rebillByTrip = new Map<string, number>();
-  for (const e of expenses) {
-    if (e.treatment === "rebill" && e.trip_id) {
-      rebillByTrip.set(e.trip_id, (rebillByTrip.get(e.trip_id) ?? 0) + e.amount_cents);
-    }
-  }
   const legsByTrip = new Map<string, LegRow[]>();
   for (const leg of legs) {
     const list = legsByTrip.get(leg.trip_id) ?? [];
     list.push(leg);
     legsByTrip.set(leg.trip_id, list);
   }
-  const dayRowsByTrip = new Map<string, TripDayValueRow[]>();
-  for (const row of (dayRowsRes.data ?? []) as (TripDayValueRow & { trip_id: string })[]) {
-    const forTrip = dayRowsByTrip.get(row.trip_id) ?? [];
-    forTrip.push(row);
-    dayRowsByTrip.set(row.trip_id, forTrip);
-  }
-  const billableByDayType = new Map<string, boolean>(
-    ((dayTypesRes.data ?? []) as { id: string; billable: boolean }[]).map((t) => [
-      t.id,
-      t.billable,
-    ])
-  );
 
-  // KPI 1 — unbilled work. Day-rate + travel-day value PLUS the rebillable
-  // expenses attached to those trips, because that is what the invoice
-  // will actually total: createInvoiceDraft emits a reimbursable_expense
-  // line for every treatment='rebill' receipt on the trip.
+  // KPI 1 — unbilled work. ONE READ, and it is the same read the module
+  // below breaks down per client: pilot.unbilled_summary.total_cents.
   //
-  // Counting only the rate here was a real defect: the KPI card and the
-  // "Ready to invoice" list directly beneath it — which has always shown
-  // rate + expenses — printed different numbers for the same trips, and
-  // the KPI was the one that disagreed with the money the pilot bills.
-  // Three figures on one screen, two definitions.
-  const unbilledCents = trips.reduce(
-    (sum, t) =>
-      sum +
-      tripValueCents(t, dayRowsByTrip.get(t.id), billableByDayType) +
-      (rebillByTrip.get(t.id) ?? 0),
-    0
-  );
-  // "Oldest" is the MAX elapsed time since any unbilled trip ended, not
-  // trips[0]'s — trips is ordered by starts_on, so trips[0] is the
-  // earliest-STARTING trip, and a later-starting trip that ended sooner
-  // could still have a smaller ends_on gap. Picking trips[0] and measuring
-  // from its ends_on silently understates how stale the oldest unbilled
-  // work actually is.
-  const oldestTripDays = trips.reduce((max, t) => {
-    const days = Math.floor(
-      (Date.now() - Date.parse(`${t.ends_on}T00:00:00Z`)) / 86_400_000
-    );
-    return Math.max(max, days);
-  }, 0);
+  // WHAT THIS FIGURE MEANS is unchanged — day-grid (or scalar) day money
+  // plus every treatment='rebill' receipt on those trips, which is what the
+  // invoice will actually total, because createInvoiceDraft emits a
+  // reimbursable_expense line for each of those receipts. What changed is
+  // WHERE it is computed. It used to be summed here in JS across four
+  // reads, two of which (`expenses`, and the trips read itself) were
+  // bounded at AGGREGATE_LIMIT and truncated SILENTLY — so a pilot with
+  // more than a thousand receipts had a headline figure quietly built from
+  // an arbitrary thousand of them. The database now returns the total as
+  // one row, so that failure mode is gone rather than merely flagged.
+  //
+  // THE RECONCILIATION RULE this page has always enforced now holds by
+  // construction instead of by inspection: pilot.unbilled_summary is
+  // defined as an aggregate over pilot.unbilled_by_client, which is defined
+  // over pilot.unbilled_trip_money. This card, the per-client rows, and the
+  // "Ready to invoice" trip list are the SAME NUMBER at three levels of
+  // detail. There is no arrangement of the SQL in which they disagree.
+  const unbilledCents = Number(unbilledSummary.total_cents);
+  // "Oldest" is the elapsed time since the EARLIEST-ENDING unbilled trip,
+  // not the earliest-starting one — a later-starting trip that ended sooner
+  // has been billable for less time, so measuring from starts_on
+  // overstates staleness and picking the first row of a starts_on-ordered
+  // list understates it. pilot.unbilled_summary.oldest_ends_on is
+  // `min(ends_on)` over every unbilled trip, so this is exact even though
+  // only six trip rows were fetched.
+  const oldestTripDays = daysSince(unbilledSummary.oldest_ends_on, Date.now()) ?? 0;
+  // The COUNT of unbilled trips, from the same aggregate — deliberately not
+  // `unbilledTrips.length`, which is the length of a deliberately limited
+  // read and would report "6 trips" to a pilot with forty.
+  const readyCount = Number(unbilledSummary.trip_count);
 
   // KPI 2 — awaiting payment: balance_due_cents from pilot.invoice_totals,
   // for issued (sent/partial) invoices. This is the ONLY place this figure
@@ -497,8 +576,8 @@ export default async function OverviewPage() {
   // <section aria-label>), beside "Paid this year", and an all-time sum
   // under that heading is a false statement about a number a pilot takes
   // to their accountant. The cut is made HERE rather than on the query
-  // because the same `expenses` read also prices unbilled trips of any
-  // age through rebillByTrip — see ExpenseRow.incurred_on. Same year
+  // because the same `expenses` read also feeds the all-time
+  // unassigned-receipts nudge — see ExpenseRow.incurred_on. Same year
   // boundary as the payments read (`yearStart`), so the two figures in
   // the group agree about what "this year" means.
   const deductibleExpenses = expenses.filter(
@@ -508,17 +587,20 @@ export default async function OverviewPage() {
 
   // THE RULE: a query error is not "no data" — see the block comment above
   // `errors`. Every KPI below is a sum over at least one of the reads in
-  // that array (day types and trip day grids feed unbilledCents via
-  // tripValueCents; invoice balances/live invoices feed awaitingCents;
-  // payments/void invoices feed paidCents; expenses feeds deductibleCents),
+  // that array (pilot.unbilled_summary feeds unbilledCents; invoice
+  // balances/live invoices feed awaitingCents; payments/void invoices feed
+  // paidCents; expenses feeds deductibleCents),
   // so any read failing means every one of these four sums is potentially
   // built on a partial or empty input. Rather than track which specific
-  // combination of the fourteen reads above happens to back each card —
+  // combination of the reads above happens to back each card —
   // fragile, and wrong the next time a query is added to Phase 1 above
   // this without its dependants being re-audited — a failure ANYWHERE on
   // this page holds back the concrete figure on ALL four. This is exactly
-  // the U2 defect (a failed day_types read prints "$0.00" of real billable
-  // work) and it is not unique to that one card: an awaitingCents built
+  // the U2 defect (a failed read prints "$0.00" of real billable work —
+  // and note that pilot.unbilled_summary returns a row of ZEROS in the
+  // genuinely-nothing-unbilled case, so its failure branch is
+  // indistinguishable from good news without this gate) and it is not
+  // unique to that one card: an awaitingCents built
   // from a failed invoice_totals read would print "No invoices
   // outstanding" to a pilot who has several, which is the Rule's own
   // worked example of the worse lie.
@@ -552,8 +634,8 @@ export default async function OverviewPage() {
       href: "/trips",
       sub: !moneyOk
         ? "Couldn't load"
-        : trips.length
-          ? `${pluralize(trips.length, "trip")} · oldest ${pluralize(oldestTripDays, "day")}`
+        : readyCount
+          ? `${pluralize(readyCount, "trip")} · oldest ${pluralize(oldestTripDays, "day")}`
           : "No unbilled trips",
     },
     {
@@ -609,22 +691,92 @@ export default async function OverviewPage() {
     { id: "year" as const, label: `This calendar year`, size: "6" as const },
   ];
 
+  // -----------------------------------------------------------------------
+  // The unbilled module — per-client rows, sorted biggest-first.
+  //
+  // Every column here comes from pilot.unbilled_by_client, which is the
+  // KPI's own source one level down. Nothing is re-added in JavaScript: the
+  // one arithmetic operation performed on these rows is the RECONCILIATION
+  // CHECK below, whose entire job is to notice if the set arrived
+  // incomplete.
+  // -----------------------------------------------------------------------
+  const unbilledClientRows = sortClientRows(unbilledClients);
+  const namedClientRows = unbilledClientRows.filter((r) => r.client_id);
+  const hasUnassignedBucket = unbilledClientRows.some((r) => !r.client_id);
+  // The client rows sum to the headline total in the database by
+  // construction — but they travel here as a SET, and a set can be capped
+  // in transit while the one-row total cannot. A shortfall is the only
+  // signal that happened, and it is a stronger one than
+  // `rows.length === limit`, because it compares the actual money, the trip
+  // count and the bucket count rather than guessing from an array length.
+  //
+  // THE STATE, NOT JUST THE NUMBER. `shortfall !== 0` is not the same
+  // question as "was this list capped": the three unbilled reads are three
+  // PostgREST requests and therefore three transactions, so a write landing
+  // between them can leave the rows claiming MORE than the total. That is
+  // not truncation and must not be described as it — see clientRowsState.
+  const unbilledShortfallCents = clientRowsShortfallCents(
+    unbilledSummary,
+    unbilledClientRows
+  );
+  const unbilledBreakdown = clientRowsState(unbilledSummary, unbilledClientRows);
+  // "…across 3 clients" is COUNTED FROM THE ROWS, so a capped row set would
+  // make that clause say 3 when the truth is 40 — a wrong number in the
+  // module's opening line, which is the worst place on the screen to put
+  // one. Whenever the rows are anything but a complete view the sentence is
+  // withheld entirely and the caveat beneath the table says what happened
+  // instead. Withholding is the honest move: the total is still
+  // trustworthy, the count is not, and there is no version of the sentence
+  // that says only the trustworthy half.
+  const unbilledSentence =
+    unbilledBreakdown === "complete"
+      ? unbilledLede(
+          unbilledSummary,
+          namedClientRows.length,
+          hasUnassignedBucket,
+          formatCents
+        )
+      : null;
+
+  // ONE SET OF CELLS, TWO LAYOUTS. The module renders as a stacked list on a
+  // phone and as a table from md up (see the JSX below for why), and every
+  // figure is formatted HERE so the two cannot drift into saying different
+  // things about the same client. Nothing is computed in this map that isn't
+  // already in the row — it is labelling and formatting only, per this
+  // module's standing rule that no money is re-added in JavaScript.
+  const unbilledDisplayRows = unbilledClientRows.map((row) => ({
+    key: row.client_id ?? "no-client",
+    clientId: row.client_id,
+    label: clientLabel(row),
+    waiting: daysSince(row.oldest_ends_on, Date.now()),
+    trips: Number(row.trip_count),
+    days: formatDays(Number(row.billable_days)),
+    dayMoney: formatCents(Number(row.day_value_cents)),
+    reimbursables: formatCents(Number(row.rebill_expense_cents)),
+    total: formatCents(Number(row.total_cents)),
+  }));
+
   // Ready to invoice — client, route, tail number, day count, dates, and a
   // rate-plus-expenses split, so the figure on this card is traceable to
   // the same two numbers the eventual invoice line items will show.
-  const readyTrips = trips.slice(0, READY_TO_INVOICE_LIMIT).map((trip) => {
-    const rateCents = tripValueCents(trip, dayRowsByTrip.get(trip.id), billableByDayType);
-    const expenseCents = rebillByTrip.get(trip.id) ?? 0;
-    const days =
-      Number(trip.day_count) +
-      (trip.travel_day_count ? Number(trip.travel_day_count) : 0);
+  //
+  // The split, the day count and the total all come from
+  // pilot.unbilled_trip_money now. Worth noting what that FIXED rather than
+  // merely moved: `days` used to be `day_count + travel_day_count` — the
+  // scalar columns — even for a trip priced from its day grid, so a trip
+  // whose grid disagreed with those columns showed a day count that had
+  // nothing to do with the money printed beside it. The database counts the
+  // billable days it actually priced.
+  const readyTrips = unbilledTrips.map((trip) => {
+    const rateCents = Number(trip.day_value_cents);
+    const expenseCents = Number(trip.rebill_expense_cents);
     return {
-      id: trip.id,
-      client: trip.client_id ? clientName.get(trip.client_id) ?? "Unknown client" : "No client",
-      route: buildRoute(legsByTrip.get(trip.id) ?? []),
+      id: trip.trip_id,
+      client: clientLabel(trip),
+      route: buildRoute(legsByTrip.get(trip.trip_id) ?? []),
       tail: trip.aircraft_ident,
       dates: formatDateRange(trip.starts_on, trip.ends_on),
-      days,
+      days: Number(trip.billable_days),
       amountCents: rateCents + expenseCents,
       detail: expenseCents
         ? `${formatCents(rateCents)} rate + ${formatCents(expenseCents)} exp`
@@ -637,10 +789,17 @@ export default async function OverviewPage() {
   // N trips" can only be honest when every one of those N unbilled trips
   // shares a client. When they don't, the button must stop promising a
   // multi-client batch it cannot perform.
-  const unbilledClientIds = new Set(
-    trips.map((t) => t.client_id).filter((id): id is string => Boolean(id))
-  );
-  const soleClientId = unbilledClientIds.size === 1 ? [...unbilledClientIds][0] : null;
+  //
+  // Read off the per-client rollup rather than off the trip list, which is
+  // now limited to six: a pilot with forty unbilled trips for one client
+  // would otherwise have this answered from a sample. And note that the
+  // module below is what actually dissolves the limitation — a row per
+  // client, each with its own single-client draft link, is the honest
+  // version of the batch button this fallback exists to avoid promising.
+  const soleClientId =
+    namedClientRows.length === 1 && !hasUnassignedBucket
+      ? namedClientRows[0]?.client_id ?? null
+      : null;
 
   // Needs attention — past-due invoices, unassigned receipts, and clients
   // missing a W-9. Built as the FULL, unsliced list first and counted from
@@ -779,8 +938,6 @@ export default async function OverviewPage() {
     ...w9Display,
   ];
   const attentionMoreCount = attentionCount - NEEDS_ATTENTION.length;
-
-  const readyCount = trips.length;
 
   const expirationRows = expirations.slice(0, EXPIRATIONS_LIMIT);
 
@@ -1038,7 +1195,330 @@ export default async function OverviewPage() {
         ))}
       </Grid>
 
-      {/* Row 2 — document expirations. NOT a currency determination — see
+      {/* Row 2 — UNBILLED MONEY, BY CLIENT. The lead module: the one
+          question this screen exists to answer is "what should I invoice
+          next", and the answer is a client, not a total.
+
+          THIS IS NOT A SECOND UNBILLED FIGURE. Every cell below comes from
+          pilot.unbilled_by_client, and the "Unbilled work" card above comes
+          from pilot.unbilled_summary, which is defined as an aggregate OVER
+          pilot.unbilled_by_client. They are the same number; the total row
+          at the bottom of this table is where a pilot can see that for
+          themselves. See 20260813010000_unbilled_money_reads.sql.
+
+          Placed directly under the money row and above the document panel
+          on purpose: it is the actionable half of "Owed to you", and every
+          row carries the one tap that turns it into a draft. */}
+      <Card>
+        <Flex direction="column" gap="1" mb="3">
+          <Text size="4" weight="medium">
+            Unbilled money, by client
+          </Text>
+          {/* The computed sentence when there is one — the roadmap's own
+              "N unbilled trip days and $X in unbilled reimbursables across
+              M clients". It is withheld (null) both when nothing is
+              unbilled and when the breakdown came back partial, because in
+              the second case its client count would be wrong; the standing
+              description takes over rather than a half-true figure. */}
+          <Text size="2" color="gray" className="tnum">
+            {unbilledSentence ??
+              "Every completed trip you haven’t invoiced yet, grouped by who you’d bill it to."}
+          </Text>
+        </Flex>
+
+        {/* A failed read is not "you're caught up" — the single most
+            expensive false statement this module could make, since being
+            caught up is exactly what a pilot wants to be told. Gated on
+            the same page-wide `errors` as every other panel here. */}
+        {errors.length ? (
+          <Flex direction="column" align="center" gap="3" py="5">
+            <Text size="2" color="gray" align="center">
+              Couldn&rsquo;t load your unbilled work — see the notice above.
+              This is not a statement that you are caught up.
+            </Text>
+          </Flex>
+        ) : readyCount === 0 && showGettingStarted ? (
+          // FIRST RUN. "You're caught up" and "every completed trip on file
+          // has been invoiced" are both TRUE on an account with no trips at
+          // all — vacuously, which is the kind of true that reads as a lie.
+          // The Getting started panel directly above this one is
+          // simultaneously saying 0 of 4 steps are done, so the screen would
+          // congratulate and nag about the same empty account in adjacent
+          // cards, and offer "Log a trip" twice. Gated on the SAME signal
+          // that panel is gated on (no trips, no invoices), so the two
+          // cannot get out of step. No CTA here: step 2 up there is the CTA.
+          <EmptyState title="Nothing unbilled yet">
+            Once you log a trip and mark it flown, its billable days and
+            rebillable receipts appear here, grouped by the client
+            you&rsquo;d bill them to.
+          </EmptyState>
+        ) : readyCount === 0 ? (
+          <EmptyState
+            title="Nothing unbilled — you’re caught up"
+            action={
+              <Button asChild variant="outline">
+                <NextLink href="/trips/new">Log a trip</NextLink>
+              </Button>
+            }
+          >
+            Every completed trip on file has been invoiced. When you mark the
+            next one flown, its billable days and rebillable receipts show up
+            here, grouped by the client you&rsquo;d bill them to.
+          </EmptyState>
+        ) : (
+          <>
+            {/* PHONE LAYOUT — up to md. Not a nicety: a contract pilot reads
+                this between legs, standing in an FBO, and Radix's Table.Root
+                puts the whole <table> inside a ScrollArea. At ~375px the
+                seven-column table shows the Client column and hides the two
+                cells the module exists for — the unbilled amount and the
+                Draft invoice button — behind a horizontal scroll whose
+                scrollbar is an auto-hiding overlay. "What do I bill, for
+                whom, one tap" would degrade to a list of client names.
+
+                So the phone gets the same three answers stacked, in that
+                order, with the secondary figures on one gray line beneath —
+                the shape the "Ready to invoice" list already uses on this
+                screen. Both layouts read unbilledDisplayRows, so they cannot
+                disagree; the table below is the md+ view of these same
+                cells. */}
+            <Box display={{ initial: "block", md: "none" }}>
+              <Flex direction="column" gap="3" asChild>
+                <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                  {unbilledDisplayRows.map((row) => (
+                    <li key={row.key}>
+                      <Flex direction="column" gap="2">
+                        <Flex justify="between" align="start" gap="3">
+                          <Flex direction="column">
+                            <Text weight="medium">{row.label}</Text>
+                            {row.waiting === null ? null : (
+                              <Text size="1" color="gray" className="tnum">
+                                {`Oldest ${pluralize(row.waiting, "day")} ago`}
+                              </Text>
+                            )}
+                          </Flex>
+                          <Text weight="bold" className="tnum">
+                            {row.total}
+                          </Text>
+                        </Flex>
+                        <Text size="1" color="gray" className="tnum">
+                          {`${pluralize(row.trips, "trip")} · ${row.days} ${
+                            row.days === "1" ? "day" : "days"
+                          } · ${row.dayMoney} day money · ${
+                            row.reimbursables
+                          } reimbursables`}
+                        </Text>
+                        <Flex>
+                          <Button
+                            asChild
+                            size="2"
+                            variant={row.clientId ? "solid" : "outline"}
+                            aria-label={`${draftAction(row.clientId)} — ${row.label}`}
+                          >
+                            <NextLink href={draftHref(row.clientId)}>
+                              {draftAction(row.clientId)}
+                            </NextLink>
+                          </Button>
+                        </Flex>
+                      </Flex>
+                    </li>
+                  ))}
+                </ul>
+              </Flex>
+              {/* The same reconciliation total the table's <tfoot> carries,
+                  in the stacked shape. A pilot who can add the column up on
+                  a laptop should be able to on a phone. */}
+              <Separator my="3" size="4" />
+              <Flex justify="between" align="start" gap="3">
+                <Flex direction="column">
+                  <Text weight="bold">Total unbilled</Text>
+                  <Text size="1" color="gray" className="tnum">
+                    {`${pluralize(readyCount, "trip")} · ${formatDays(
+                      Number(unbilledSummary.billable_days)
+                    )} days · ${formatCents(
+                      Number(unbilledSummary.day_value_cents)
+                    )} day money · ${formatCents(
+                      Number(unbilledSummary.rebill_expense_cents)
+                    )} reimbursables`}
+                  </Text>
+                </Flex>
+                <Text weight="bold" className="tnum">
+                  {formatCents(unbilledCents)}
+                </Text>
+              </Flex>
+            </Box>
+
+            {/* TABLE LAYOUT — md and up, where seven columns fit without a
+                scroll and the column ranking is readable at a glance. */}
+            <Box display={{ initial: "none", md: "block" }}>
+            <Table.Root variant="surface">
+              {/* VisuallyHidden as a COMPONENT, never an `rt-` class — see
+                  the document-expirations table below for why. */}
+              <caption>
+                <VisuallyHidden>Unbilled money by client</VisuallyHidden>
+              </caption>
+              <Table.Header>
+                <Table.Row>
+                  <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell justify="end">Trips</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell justify="end">Days</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell justify="end">Day money</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell justify="end">Reimbursables</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell justify="end">Unbilled</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell>
+                    <VisuallyHidden>Action</VisuallyHidden>
+                  </Table.ColumnHeaderCell>
+                </Table.Row>
+              </Table.Header>
+              <Table.Body>
+                {unbilledDisplayRows.map((row) => (
+                  <Table.Row key={row.key}>
+                    <Table.RowHeaderCell>
+                      <Flex direction="column">
+                        <Text weight="medium">{row.label}</Text>
+                        {row.waiting === null ? null : (
+                          <Text size="1" color="gray" className="tnum">
+                            {`Oldest ${pluralize(row.waiting, "day")} ago`}
+                          </Text>
+                        )}
+                      </Flex>
+                    </Table.RowHeaderCell>
+                    <Table.Cell justify="end" className="tnum">
+                      {row.trips}
+                    </Table.Cell>
+                    <Table.Cell justify="end" className="tnum">
+                      {row.days}
+                    </Table.Cell>
+                    <Table.Cell justify="end" className="tnum">
+                      {row.dayMoney}
+                    </Table.Cell>
+                    <Table.Cell justify="end" className="tnum">
+                      {row.reimbursables}
+                    </Table.Cell>
+                    <Table.Cell justify="end" className="tnum">
+                      <Text weight="bold">{row.total}</Text>
+                    </Table.Cell>
+                    <Table.Cell>
+                      {/* One tap into the EXISTING draft flow, which is
+                          single-client by construction — which is why a
+                          row per client is the right shape and a batch
+                          button was never going to be. The no-client
+                          bucket goes to /trips instead: there is no
+                          client to draft against, and offering the draft
+                          flow anyway would open something that cannot
+                          include these trips. */}
+                      <Button
+                        asChild
+                        size="1"
+                        variant={row.clientId ? "solid" : "outline"}
+                        aria-label={`${draftAction(row.clientId)} — ${row.label}`}
+                      >
+                        <NextLink href={draftHref(row.clientId)}>
+                          {draftAction(row.clientId)}
+                        </NextLink>
+                      </Button>
+                    </Table.Cell>
+                  </Table.Row>
+                ))}
+              </Table.Body>
+              {/* THE RECONCILIATION ROW, in a real <tfoot>. Not a summary
+                  flourish: it is the same figure as the "Unbilled work" card
+                  above, from the same derivation chain, printed where a
+                  pilot can add the column up and check it.
+
+                  <tfoot> rather than a last <tbody> row because it IS the
+                  table's summary and assistive tech should say so — inside
+                  Table.Body it was announced as just another client, one a
+                  screen-reader user would reasonably try to draft an invoice
+                  for. Table.Root renders <table>{children}</table> (its
+                  ScrollArea wraps the table, not its rows), and Table.Row is
+                  a plain <tr>, so a raw <tfoot> composes here exactly as the
+                  raw <caption> above it already does. */}
+              <tfoot>
+                <Table.Row>
+                  <Table.RowHeaderCell>
+                    <Text weight="bold">Total unbilled</Text>
+                  </Table.RowHeaderCell>
+                  <Table.Cell justify="end" className="tnum">
+                    <Text weight="bold">{readyCount}</Text>
+                  </Table.Cell>
+                  <Table.Cell justify="end" className="tnum">
+                    <Text weight="bold">
+                      {formatDays(Number(unbilledSummary.billable_days))}
+                    </Text>
+                  </Table.Cell>
+                  <Table.Cell justify="end" className="tnum">
+                    <Text weight="bold">
+                      {formatCents(Number(unbilledSummary.day_value_cents))}
+                    </Text>
+                  </Table.Cell>
+                  <Table.Cell justify="end" className="tnum">
+                    <Text weight="bold">
+                      {formatCents(Number(unbilledSummary.rebill_expense_cents))}
+                    </Text>
+                  </Table.Cell>
+                  <Table.Cell justify="end" className="tnum">
+                    <Text weight="bold">{formatCents(unbilledCents)}</Text>
+                  </Table.Cell>
+                  <Table.Cell />
+                </Table.Row>
+              </tfoot>
+            </Table.Root>
+            </Box>
+
+            {/* TWO DIFFERENT THINGS CAN PUT THE ROWS OUT OF STEP WITH THE
+                TOTAL, and they need different sentences — see
+                clientRowsState. A capped row set is a strict shortfall and
+                is named as one. Rows claiming MORE than the total cannot be
+                truncation; it means the three reads saw different instants,
+                and telling that pilot "the client list came back
+                incomplete" would be a false diagnosis attached to
+                arithmetic they can see is impossible ("$900.00 of the
+                $800.00 total"). Said out loud either way rather than left
+                as a silent discrepancy the pilot has to spot. */}
+            {unbilledBreakdown === "partial" ? (
+              <Flex mt="3">
+                <Text size="1" color="gray">
+                  {`The rows above account for ${formatCents(
+                    unbilledCents - unbilledShortfallCents
+                  )} of the ${formatCents(
+                    unbilledCents
+                  )} total — the client list came back incomplete, so this breakdown is partial in its money, its trip counts and its days alike. The total row is not: it is one read that cannot be shortened.`}
+                </Text>
+              </Flex>
+            ) : unbilledBreakdown === "inconsistent" ? (
+              <Flex mt="3">
+                <Text size="1" color="gray">
+                  These rows and the total were read a moment apart and
+                  don&rsquo;t reconcile — something changed in between, most
+                  likely an invoice issued or voided while this page loaded.
+                  Reload to see one consistent picture.
+                </Text>
+              </Flex>
+            ) : null}
+
+            <Flex mt="3">
+              {/* Same discipline as the currency disclaimer two panels
+                  down: claim only what the figure is. Day money plus
+                  rebillable receipts is what lib/trip-value.ts has always
+                  meant by a trip's value, and createInvoiceDraft adds per
+                  diem and any contract minimum ON TOP of it — so this is
+                  not a prediction of the invoice total, and must not be
+                  written as one. */}
+              <Text size="1" color="gray">
+                Billable day money plus rebillable receipts, for completed
+                trips not yet on an issued invoice — the same figure as
+                &ldquo;Unbilled work&rdquo; above, which is why the total row
+                matches it. Per diem and any contract minimum are added when
+                the invoice is drafted, so a draft can come out higher than
+                the figures here.
+              </Text>
+            </Flex>
+          </>
+        )}
+      </Card>
+
+      {/* Row 3 — document expirations. NOT a currency determination — see
           the query comment above on why this deliberately excludes
           day/night/instrument recency. */}
       <Card>
@@ -1128,7 +1608,7 @@ export default async function OverviewPage() {
         </Flex>
       </Card>
 
-      {/* Row 3 — ready to invoice / needs attention. */}
+      {/* Row 4 — ready to invoice / needs attention. */}
       <Grid columns={{ initial: "1", md: "2" }} gap="4">
         <Card>
           <Flex direction="column" gap="1" mb="3">
@@ -1140,11 +1620,12 @@ export default async function OverviewPage() {
             </Text>
           </Flex>
 
-          {/* U1/U2: a failed read (trips itself, or one of the day-grid /
-              day-type reads readyTrips prices off — see moneyOk above)
-              must not render as "nothing to bill" or price a trip from a
-              partial billableByDayType map. Same page-wide gate as the
-              document-expirations panel above. */}
+          {/* U1/U2: a failed read must not render as "nothing to bill".
+              Narrower than it used to be — the trip rows arrive priced from
+              pilot.unbilled_trip_money, so there is no longer a partial
+              day-type map this list could quietly misprice a trip from —
+              but the gate stays page-wide (see moneyOk above), the same as
+              the document-expirations panel. */}
           {errors.length ? (
             <Flex direction="column" align="center" gap="3" py="5">
               <Text size="2" color="gray" align="center">
@@ -1174,7 +1655,11 @@ export default async function OverviewPage() {
                       <Flex direction="column">
                         <Text weight="medium">{trip.client}</Text>
                         <Text size="1" color="gray">
-                          {[trip.route, trip.tail, `${pluralize(trip.days, "day")}`, trip.dates]
+                          {/* pluralizeDays, not pluralize: a billable day
+                              count is numeric(3,1) per row, so 6.5 is a
+                              real answer and "6.5 days" must not become
+                              "7 days". */}
+                          {[trip.route, trip.tail, pluralizeDays(trip.days), trip.dates]
                             .filter(Boolean)
                             .join(" · ")}
                         </Text>
