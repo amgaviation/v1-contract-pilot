@@ -5,7 +5,6 @@ import {
   Callout,
   Card,
   Flex,
-  Heading,
   Link as RadixLink,
   Table,
   Text,
@@ -16,6 +15,7 @@ import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import { tripValueCents, type TripDayValueRow } from "@/lib/trip-value";
+import EmptyState from "@/components/ui/empty-state";
 import PageShell from "../page-shell";
 import MarkFlownButton from "./mark-flown-button";
 
@@ -180,16 +180,21 @@ export default async function TripsPage() {
             <Callout.Text>{friendlyDbError(error, "trips.select")}</Callout.Text>
           </Callout.Root>
         ) : trips.length === 0 ? (
-          <Flex direction="column" align="center" gap="3" py="6" px="3">
-            <Heading as="h3" size="4">No trips yet</Heading>
-            <Text size="2" color="gray" align="center">
-              Log the trip once. Its legs feed your logbook, its days feed
-              the invoice, and its expenses file themselves against it.
-            </Text>
-            <Button asChild>
-              <NextLink href="/trips/new">Log your first trip</NextLink>
-            </Button>
-          </Flex>
+          // The shared primitive (components/ui/empty-state.tsx). The words
+          // stay here — they are about trips — and only the shape is shared.
+          // The error branch above deliberately does NOT route through it:
+          // "couldn't load" is not "you have none".
+          <EmptyState
+            title="No trips yet"
+            action={
+              <Button asChild>
+                <NextLink href="/trips/new">Log your first trip</NextLink>
+              </Button>
+            }
+          >
+            Log the trip once. Its legs feed your logbook, its days feed the
+            invoice, and its expenses file themselves against it.
+          </EmptyState>
         ) : (
           <>
             {clientNamesError ? (

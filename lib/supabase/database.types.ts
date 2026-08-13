@@ -1937,6 +1937,88 @@ export type Database = {
           },
         ];
       };
+      // -----------------------------------------------------------------
+      // 20260813000000_preferences_and_custom_options.sql — Phase 9
+      // Layers 2 and 3. Taxonomy is the tenant's; state machines are ours,
+      // so neither table names a status, treatment, billing_state or
+      // line_type. Both tables have an Update type WITHOUT archived_at on
+      // built-ins and without any identity column, because the database
+      // enforces exactly that (column-scoped grants plus, on
+      // custom_options, the custom_options_protect trigger) — these types
+      // describe what the grant actually permits, not the full row.
+      // -----------------------------------------------------------------
+      account_preferences: {
+        Row: {
+          account_id: string;
+          // Appearance (accent slot, density, dark mode) and layout (nav
+          // order, hidden sections). Deliberately `Json`, not a modelled
+          // interface: the column is jsonb precisely so a new preference
+          // never costs a migration, and the database guarantees only
+          // that it is an object under 16 KB. The shape is interpreted by
+          // lib/theme-slots.ts's resolver, which is TOTAL — anything
+          // missing or unrecognised falls back to the app/layout.tsx
+          // default — so a narrower type here would assert a guarantee
+          // neither the column nor the reader actually makes.
+          prefs: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          // The row is seeded LAZILY: the app upserts it into existence on
+          // the first preference change (on_conflict=account_id). There is
+          // no seeding trigger, because an absent row and '{}' resolve
+          // identically.
+          account_id: string;
+          prefs?: Json;
+        };
+        Update: {
+          // prefs is the only column in the UPDATE grant. account_id is
+          // the primary key and is not rewritable; "reset to defaults" is
+          // an update writing '{}', never a delete — there is no DELETE
+          // policy or grant on this table at all.
+          prefs?: Json;
+        };
+        Relationships: [];
+      };
+      custom_options: {
+        Row: {
+          id: string;
+          account_id: string;
+          domain: "expense_category" | "trip_kind" | "document_kind";
+          // The stable handle actually stored on the expense/trip/document
+          // row. Immutable after insert (absent from the UPDATE grant AND
+          // refused by custom_options_protect).
+          key: string;
+          label: string;
+          sort_order: number;
+          // The seeder's claim about provenance — never client-writable in
+          // either direction. Built-ins additionally cannot be archived.
+          is_builtin: boolean;
+          archived_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          // Only these five columns are in the INSERT grant. is_builtin is
+          // the seeder's to assert, and archived_at is withheld because a
+          // brand-new option is born live.
+          account_id: string;
+          domain: "expense_category" | "trip_kind" | "document_kind";
+          key: string;
+          label: string;
+          sort_order?: number;
+        };
+        Update: {
+          // Rename, reorder, retire. Archiving a row whose is_builtin is
+          // true is refused at runtime by custom_options_protect, which no
+          // static type can express — see that migration for why built-ins
+          // must stay offerable.
+          label?: string;
+          sort_order?: number;
+          archived_at?: string | null;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       expirations: {

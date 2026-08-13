@@ -6,6 +6,7 @@ import type { PlanTier } from "@/lib/entitlements";
 import {
   changePlan,
   openBillingPortal,
+  setCancelAtPeriodEnd,
   type BillingActionState,
 } from "./actions";
 
@@ -114,8 +115,62 @@ export function SwitchIntervalButton({
 }
 
 /**
- * Opens Stripe's hosted billing portal (payment method, invoices,
- * cancellation). A full-page redirect to Stripe and back.
+ * Cancel-at-period-end and its exact inverse, Resume. One component for
+ * both because they are one Stripe field (see setCancelAtPeriodEnd), and
+ * rendering them as separate controls would invite the state where both
+ * are on screen at once.
+ *
+ * The destructive direction is `variant="outline" color="red"` rather than
+ * a solid red button: it is a scheduled, fully reversible flag flip, not a
+ * delete, and dressing it as a delete would misstate what it does. The
+ * copy under it — supplied by the caller, which knows the period end —
+ * carries the actual consequence.
+ */
+export function CancelResumeButton({
+  cancelling,
+  disabled,
+}: {
+  /** True when the subscription is ALREADY set to cancel. */
+  cancelling: boolean;
+  disabled?: boolean;
+}) {
+  const [state, formAction, pending] = useActionState(
+    setCancelAtPeriodEnd,
+    initialState
+  );
+
+  return (
+    <form action={formAction}>
+      <Flex direction="column" gap="1" align="start">
+        <Button
+          type="submit"
+          name="intent"
+          value={cancelling ? "resume" : "cancel"}
+          variant={cancelling ? "solid" : "outline"}
+          color={cancelling ? undefined : "red"}
+          size="2"
+          disabled={disabled || pending}
+        >
+          {pending
+            ? "Confirming with Stripe…"
+            : cancelling
+              ? "Resume my subscription"
+              : "Cancel at period end"}
+        </Button>
+        {state.error ? (
+          <Text size="1" color="red">
+            {state.error}
+          </Text>
+        ) : null}
+      </Flex>
+    </form>
+  );
+}
+
+/**
+ * Opens Stripe's hosted billing portal (payment method, the full invoice
+ * archive, tax and address details). A full-page redirect to Stripe and
+ * back.
  */
 export function BillingPortalButton({ disabled }: { disabled?: boolean }) {
   const [state, formAction, pending] = useActionState(

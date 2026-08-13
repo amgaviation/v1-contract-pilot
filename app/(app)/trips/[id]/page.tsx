@@ -5,6 +5,7 @@ import { Box, Button, Card, Flex, Grid, Heading, Text } from "@/components/ui";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { loadFleetOptions } from "@/lib/fleet";
+import { loadOptionChoices } from "@/lib/custom-options-read";
 import { formatCents, formatDateRange } from "@/lib/format";
 import { tripValueCents } from "@/lib/trip-value";
 import PageShell from "../../page-shell";
@@ -38,6 +39,7 @@ export default async function TripPage({
     { data: tripDayData, error: tripDayError },
     { data: clientRateData, error: clientRateError },
     { data: committedOn, error: committedError },
+    tripKinds,
   ] = await Promise.all([
     supabase.from("trips").select("*").eq("id", id).maybeSingle(),
     supabase
@@ -85,6 +87,7 @@ export default async function TripPage({
       p_account_id: account.id,
       p_trip_id: id,
     } as never),
+    loadOptionChoices("trip_kind"),
   ]);
 
   // A failed QUERY is not a missing trip. Rendering "this page could not
@@ -253,6 +256,7 @@ export default async function TripPage({
           <TripForm
             action={updateTrip}
             clients={clients}
+            tripKinds={tripKinds}
             values={trip}
             submitLabel="Save trip"
             cancelHref="/trips"

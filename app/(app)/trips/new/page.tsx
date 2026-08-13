@@ -1,6 +1,7 @@
 import { requireAccount } from "@/lib/supabase/account";
 import { createClient } from "@/lib/supabase/server";
 import { loadFleetOptions } from "@/lib/fleet";
+import { loadOptionChoices } from "@/lib/custom-options-read";
 import PageShell from "../../page-shell";
 import TripForm, { type ClientOption } from "../trip-form";
 import { createTrip } from "../actions";
@@ -27,6 +28,9 @@ export default async function NewTripPage() {
     .order("name", { ascending: true });
 
   const fleet = await loadFleetOptions();
+  // The tenant's own trip-kind list. Never empty — choicesFor falls back
+  // to the stock vocabulary if the options table can't be read.
+  const tripKinds = await loadOptionChoices("trip_kind");
 
   // Without this, a failed query renders the reassuring "No active
   // clients yet" empty state to a pilot who has plenty.
@@ -42,6 +46,7 @@ export default async function NewTripPage() {
       <TripForm
         action={createTrip}
         clients={(data ?? []) as ClientOption[]}
+        tripKinds={tripKinds}
         submitLabel="Create trip"
         fleet={fleet}
         // The onboarding wizard's account-level rate defaults

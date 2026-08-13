@@ -3,7 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Box, Flex, Separator, Text } from "@/components/ui";
-import { NAV_SETTINGS, isCurrentSection, type NavItem } from "@/lib/nav";
+import {
+  NAV_SETTINGS,
+  isCurrentSection,
+  navGroupsAreContiguous,
+  type NavItem,
+} from "@/lib/nav";
 
 /**
  * The section rail — the product's one dark surface. The dark ground
@@ -109,6 +114,15 @@ export function NavRail({
 }) {
   const pathname = usePathname();
 
+  // Headers only while they still mean something. A tenant nav layout can
+  // interleave two groups, and "render a header wherever the group
+  // changes" then prints BUSINESS twice with a four-step gap mid-list —
+  // headers that group nothing. navGroupsAreContiguous (lib/nav.ts) is
+  // the predicate; when it fails the rail renders FLAT, which is the
+  // arrangement the pilot actually asked for. Hiding sections, reordering
+  // inside a group, or promoting a whole group all keep their headers.
+  const grouped = navGroupsAreContiguous(sections);
+
   return (
     <Flex asChild direction="column" gap="1" p="3" height="100%">
       <nav aria-label="Sections">
@@ -120,7 +134,7 @@ export function NavRail({
           // label is enough).
           const previous = index > 0 ? sections[index - 1] : undefined;
           const showHeader =
-            item.group !== undefined && item.group !== previous?.group;
+            grouped && item.group !== undefined && item.group !== previous?.group;
           return (
             <Box key={item.href}>
               {showHeader ? (

@@ -3,26 +3,8 @@
 import { useState } from "react";
 import { Badge, Box, Button, Callout, Flex, Select, Table, Text } from "@/components/ui";
 import { formatCents, formatDate } from "@/lib/format";
+import type { OptionChoice } from "@/lib/custom-options";
 import { confirmTransaction, ignoreTransaction } from "./actions";
-
-const CATEGORIES = [
-  { value: "airline", label: "Airline" },
-  { value: "hotel", label: "Hotel" },
-  { value: "rental_car", label: "Rental car" },
-  { value: "rideshare", label: "Rideshare" },
-  { value: "fuel", label: "Fuel" },
-  { value: "meals", label: "Meals" },
-  { value: "parking", label: "Parking" },
-  { value: "other", label: "Other" },
-  // Travel above; below, the costs a freelance pilot carries themselves.
-  { value: "training", label: "Training / recurrent" },
-  { value: "medical", label: "Medical exam" },
-  { value: "insurance", label: "Insurance (own)" },
-  { value: "charts", label: "Charts / EFB subscription" },
-  { value: "equipment", label: "Equipment" },
-  { value: "uniform", label: "Uniform" },
-  { value: "dues", label: "Dues / publications" },
-];
 
 const TREATMENTS = [
   { value: "unassigned", label: "Decide later" },
@@ -61,7 +43,16 @@ export type TransactionRowData = {
 
 export type TripOption = { id: string; label: string };
 
-export default function TransactionRow({ txn, trips }: { txn: TransactionRowData; trips: TripOption[] }) {
+export default function TransactionRow({
+  txn,
+  trips,
+  categories,
+}: {
+  txn: TransactionRowData;
+  trips: TripOption[];
+  /** The tenant's own category vocabulary — see expense-form.tsx. */
+  categories: readonly OptionChoice[];
+}) {
   const isExpenseCandidate = txn.amount_cents < 0;
   const [open, setOpen] = useState(false);
   const [category, setCategory] = useState(txn.suggested_category ?? "other");
@@ -165,7 +156,7 @@ export default function TransactionRow({ txn, trips }: { txn: TransactionRowData
                   <Select.Root value={category} onValueChange={setCategory}>
                     <Select.Trigger />
                     <Select.Content>
-                      {CATEGORIES.map((c) => (
+                      {categories.map((c) => (
                         <Select.Item key={c.value} value={c.value}>
                           {c.label}
                         </Select.Item>

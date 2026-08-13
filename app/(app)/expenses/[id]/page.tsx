@@ -8,6 +8,7 @@ import PageShell from "../../page-shell";
 import ExpenseForm, { type ExpenseFormValues } from "../expense-form";
 import { updateExpense } from "../actions";
 import { loadTripOptions } from "../trip-options";
+import { loadOptionChoices } from "@/lib/custom-options-read";
 import DeleteExpenseButton from "./delete-expense-button";
 import ReceiptLink from "./receipt-link";
 
@@ -22,10 +23,12 @@ export default async function ExpensePage({
   await requireAccount(`/expenses/${id}`);
 
   const supabase = await createClient();
-  const [{ data, error }, { trips, error: tripError }] = await Promise.all([
-    supabase.from("expenses").select("*").eq("id", id).maybeSingle(),
-    loadTripOptions(),
-  ]);
+  const [{ data, error }, { trips, error: tripError }, categories] =
+    await Promise.all([
+      supabase.from("expenses").select("*").eq("id", id).maybeSingle(),
+      loadTripOptions(),
+      loadOptionChoices("expense_category"),
+    ]);
 
   // A failed query is not a missing expense — rendering a 404 would send
   // the pilot looking for a receipt they never lost.
@@ -67,6 +70,7 @@ export default async function ExpensePage({
       <ExpenseForm
         action={updateExpense}
         trips={trips}
+        categories={categories}
         values={expense}
         submitLabel="Save expense"
       />

@@ -13,6 +13,7 @@ import {
   Text,
   TextField,
 } from "@/components/ui";
+import EmptyState from "@/components/ui/empty-state";
 import { InfoCircledIcon } from "@radix-ui/react-icons";
 import type { Database } from "@/lib/supabase/database.types";
 import { saveMileageRate, deleteMileageRate, type MileageRateFormState } from "./mileage-rates-actions";
@@ -92,10 +93,17 @@ export default function MileageRatesPanel({
           </Callout.Text>
         </Callout.Root>
 
+        {/* EmptyState, like every other empty region in the product. No
+            action button here on purpose: the add form is already the
+            next thing on the screen, and the Callout above it is the one
+            that must be read first — this product never fills in a
+            mileage rate for you. */}
         {sorted.length === 0 ? (
-          <Text size="2" color="gray">
-            No rates recorded yet.
-          </Text>
+          <EmptyState title="No rates recorded yet">
+            Add the IRS standard mileage rate for each tax year you claim, and every
+            mileage entry from that year is priced from it. Nothing is calculated
+            until a rate for the year exists.
+          </EmptyState>
         ) : (
           <Table.Root variant="ghost">
             <Table.Header>

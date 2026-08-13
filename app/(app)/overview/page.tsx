@@ -1,5 +1,15 @@
 import NextLink from "next/link";
-import { Badge, Button, Callout, Card, Flex, Grid, Table, Text } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  Callout,
+  Card,
+  Flex,
+  Grid,
+  Table,
+  Text,
+  VisuallyHidden,
+} from "@/components/ui";
 import {
   CheckCircledIcon,
   CircleIcon,
@@ -13,6 +23,7 @@ import { DASHBOARD_PATH } from "@/lib/nav";
 import { formatCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import { tripValueCents, type TripDayValueRow } from "@/lib/trip-value";
+import { STAT_ROW_LAYOUT } from "@/components/ui/skeletons";
 import { EXPIRY_LADDER_BADGE, type ExpiryBadge } from "../documents/expiry-badge";
 import PageShell from "../page-shell";
 
@@ -53,6 +64,16 @@ type ExpenseRow = {
   trip_id: string | null;
   treatment: "rebill" | "deduct" | "unassigned";
   amount_cents: number;
+  /**
+   * The date the cost was incurred. Read even though the query is NOT
+   * date-filtered, because this one read feeds figures at two different
+   * scopes: rebillByTrip prices trips of any age (a trip started in
+   * December and invoiced in January must keep its receipts), while the
+   * deductible KPI sits under a "This calendar year" heading and must be
+   * cut to that year in JS. Filtering the query itself would silently
+   * under-price last year's unbilled trips.
+   */
+  incurred_on: string;
 };
 
 type LiveInvoiceRow = {
@@ -187,7 +208,7 @@ export default async function OverviewPage() {
       .limit(AGGREGATE_LIMIT),
     supabase
       .from("expenses")
-      .select("id, trip_id, treatment, amount_cents")
+      .select("id, trip_id, treatment, amount_cents, incurred_on")
       .limit(AGGREGATE_LIMIT),
     // "Awaiting payment" per the spec is issued invoices (sent, or sent
     // with a partial payment already applied) — 'draft' has nothing billed
@@ -470,8 +491,19 @@ export default async function OverviewPage() {
   const yearPayments = payments.filter((p) => !voidInvoiceIds.has(p.invoice_id));
   const paidCents = yearPayments.reduce((sum, p) => sum + p.amount_cents, 0);
 
-  // KPI 4 — deductible expenses: treatment='deduct', full stop.
-  const deductibleExpenses = expenses.filter((e) => e.treatment === "deduct");
+  // KPI 4 — deductible expenses: treatment='deduct', WITHIN THIS CALENDAR
+  // YEAR. The year cut is not decoration: this card sits under the "This
+  // calendar year" group heading (KPI_GROUPS below, which is also the
+  // <section aria-label>), beside "Paid this year", and an all-time sum
+  // under that heading is a false statement about a number a pilot takes
+  // to their accountant. The cut is made HERE rather than on the query
+  // because the same `expenses` read also prices unbilled trips of any
+  // age through rebillByTrip — see ExpenseRow.incurred_on. Same year
+  // boundary as the payments read (`yearStart`), so the two figures in
+  // the group agree about what "this year" means.
+  const deductibleExpenses = expenses.filter(
+    (e) => e.treatment === "deduct" && e.incurred_on >= yearStart
+  );
   const deductibleCents = deductibleExpenses.reduce((sum, e) => sum + e.amount_cents, 0);
 
   // THE RULE: a query error is not "no data" — see the block comment above
@@ -491,11 +523,33 @@ export default async function OverviewPage() {
   // outstanding" to a pilot who has several, which is the Rule's own
   // worked example of the worse lie.
   const moneyOk = errors.length === 0;
+
+  /**
+   * THE MONEY ROW, GROUPED. The four figures were one undifferentiated
+   * row of identical cards, which is why the screen read as a wall of
+   * numbers rather than as an answer to a question. They are in fact TWO
+   * pairs answering two different questions, and saying so is the whole
+   * hierarchy fix:
+   *
+   *   "Owed to you"        work done that hasn't turned into money yet —
+   *                        live, actionable, and the reason to open this
+   *                        screen. Rendered a size larger.
+   *   "This calendar year"  what has already happened — a running total
+   *                        for the tax conversation, not a to-do.
+   *
+   * NO NEW FIGURE IS INVENTED HERE. Each keeps the single source it
+   * already had (see the four blocks above); `group`, `href` and `hint`
+   * are presentation. `href` sends the pilot to the screen that can
+   * explain the number, which is what a figure on a dashboard is for.
+   */
   const KPIS = [
     {
       id: "unbilled",
+      group: "owed" as const,
       label: "Unbilled work",
       value: moneyOk ? formatCents(unbilledCents) : "—",
+      hint: "Completed trips, priced from their day grids and rebillable receipts",
+      href: "/trips",
       sub: !moneyOk
         ? "Couldn't load"
         : trips.length
@@ -504,8 +558,11 @@ export default async function OverviewPage() {
     },
     {
       id: "awaiting",
+      group: "owed" as const,
       label: "Awaiting payment",
       value: moneyOk ? formatCents(awaitingCents) : "—",
+      hint: "Balance still due on invoices you've issued",
+      href: "/invoices?show=outstanding",
       sub: !moneyOk
         ? "Couldn't load"
         : liveInvoices.length
@@ -514,8 +571,11 @@ export default async function OverviewPage() {
     },
     {
       id: "paid",
+      group: "year" as const,
       label: "Paid this year",
       value: moneyOk ? formatCents(paidCents) : "—",
+      hint: "Cash actually received, by the date it arrived",
+      href: "/reports/profit-loss",
       sub: !moneyOk
         ? "Couldn't load"
         : yearPayments.length
@@ -524,14 +584,29 @@ export default async function OverviewPage() {
     },
     {
       id: "deductible",
+      group: "year" as const,
       label: "Deductible expenses",
       value: moneyOk ? formatCents(deductibleCents) : "—",
+      hint: "Receipts you tagged deduct, not rebill, dated this year",
+      href: "/expenses",
       sub: !moneyOk
         ? "Couldn't load"
         : deductibleExpenses.length
-          ? `${pluralize(deductibleExpenses.length, "receipt")} filed`
-          : "No deductible expenses filed",
+          ? `${pluralize(deductibleExpenses.length, "receipt")} filed this year`
+          : "No deductible expenses filed this year",
     },
+  ];
+
+  const KPI_GROUPS = [
+    {
+      id: "owed" as const,
+      label: "Owed to you",
+      // The live pair carries the bigger type. One step, not three — this
+      // is a working tool, and a hero number would push the second pair
+      // off the fold on a phone.
+      size: "7" as const,
+    },
+    { id: "year" as const, label: `This calendar year`, size: "6" as const },
   ];
 
   // Ready to invoice — client, route, tail number, day count, dates, and a
@@ -578,6 +653,13 @@ export default async function OverviewPage() {
     const invoice = liveInvoices.find((i) => i.id === row.invoice_id);
     return {
       id: `overdue-${row.invoice_id}`,
+      // `band` names WHY this item is where it is in the list. The
+      // ordering below was already deliberate and documented; the badge is
+      // what makes it legible, so a pilot can see that a lapsed
+      // qualification outranks a late invoice rather than having to infer
+      // it from position. Colour follows the same judgement.
+      band: "Invoice" as const,
+      tone: "amber" as const,
       label: `${invoice?.invoice_number ?? "Invoice"} past due`,
       detail: `${
         invoice?.client_id ? clientName.get(invoice.client_id) ?? "Unknown client" : "Unknown client"
@@ -610,6 +692,10 @@ export default async function OverviewPage() {
     return [
       {
         id: `operator-qual-${row.source_id}`,
+        // Red, and first. A lapsed 135.293/.297/.299 check is the ability
+        // to fly for that operator at all — a harder stop than money.
+        band: "Qualification" as const,
+        tone: "red" as const,
         label: row.item_label,
         detail:
           row.ladder_stage === "overdue"
@@ -628,6 +714,8 @@ export default async function OverviewPage() {
     ? [
         {
           id: "unassigned-receipts",
+          band: "Receipts" as const,
+          tone: "amber" as const,
           label: `${pluralize(unassignedCount, "receipt")} unassigned`,
           detail: "Won't be billed or deducted",
           action: "Sort",
@@ -639,6 +727,8 @@ export default async function OverviewPage() {
   const w9Clients = clients.filter((c) => !c.archived_at && c.w9_status !== "on_file");
   const w9ItemsAll = w9Clients.map((c) => ({
     id: `w9-${c.id}`,
+    band: "Paperwork" as const,
+    tone: "gray" as const,
     label: `W-9 outstanding · ${c.name}`,
     detail:
       c.w9_status === "requested"
@@ -828,7 +918,19 @@ export default async function OverviewPage() {
                 {`${stepsDone} of ${GETTING_STARTED_STEPS.length} done. Log the trip once — its legs feed your logbook, its days feed the invoice, and its expenses file themselves against it. The figures below fill in from there.`}
               </Text>
             </Flex>
-            <Flex direction="column" gap="3" asChild>
+            {/* The list reset is written out because Radix's is
+                class-scoped (`.rt-reset:where(ol, ul)`) and `asChild`
+                merges only `rt-Flex` onto the child — so without this the
+                UA sheet's 40px inline padding and 1em block margin stay,
+                and the rows sit indented inside an empty marker gutter
+                while everything else in the Card is flush. Same shape as
+                expenses/unassigned-queue.tsx and trips/leg-editor.tsx. */}
+            <Flex
+              direction="column"
+              gap="3"
+              asChild
+              style={{ listStyle: "none", margin: 0, padding: 0 }}
+            >
               <ol>
                 {GETTING_STARTED_STEPS.map((step, index) => (
                   <Flex key={step.id} asChild gap="3" align="start" justify="between" wrap="wrap">
@@ -881,22 +983,58 @@ export default async function OverviewPage() {
         </Callout.Root>
       ) : null}
 
-      {/* Row 1 — KPI statistics cards. */}
-      <Grid columns={{ initial: "1", sm: "2", lg: "4" }} gap="4">
-        {KPIS.map((kpi) => (
-          <Card key={kpi.id}>
-            <Flex direction="column" gap="1">
-              <Text size="1" color="gray">
-                {kpi.label}
+      {/* Row 1 — the money, in two named groups rather than one flat row
+          of four identical cards. See KPI_GROUPS above for the reasoning;
+          every figure keeps the single source it already had.
+
+          The breakpoints and gaps come from STAT_ROW_LAYOUT, which
+          components/ui/skeletons.tsx's StatRowSkeleton reads too — the
+          loading shape and the real shape are one definition, so the next
+          change to this row cannot leave the skeleton behind and reflow
+          the whole page on hydration. */}
+      <Grid columns={STAT_ROW_LAYOUT.groups} gap={STAT_ROW_LAYOUT.groupGap}>
+        {KPI_GROUPS.map((group) => (
+          <Flex key={group.id} direction="column" gap="2" asChild>
+            <section aria-label={group.label}>
+              <Text size="1" color="gray" weight="medium">
+                {group.label}
               </Text>
-              <Text size="6" weight="bold" className="tnum">
-                {kpi.value}
-              </Text>
-              <Text size="1" color="gray">
-                {kpi.sub}
-              </Text>
-            </Flex>
-          </Card>
+              <Grid columns={STAT_ROW_LAYOUT.cards} gap={STAT_ROW_LAYOUT.cardGap}>
+                {KPIS.filter((kpi) => kpi.group === group.id).map((kpi) => (
+                  <Card key={kpi.id} asChild>
+                    {/* The whole card is the link. A figure a pilot can't
+                        follow to the records behind it is a poster, not a
+                        dashboard — and the destination is always the
+                        screen that owns that number's source. */}
+                    <NextLink
+                      href={kpi.href}
+                      style={{ textDecoration: "none", color: "inherit" }}
+                    >
+                      <Flex direction="column" gap="1">
+                        <Text size="1" color="gray">
+                          {kpi.label}
+                        </Text>
+                        {/* tabular-nums on every figure on this screen —
+                            the .tnum class exists because a column of
+                            proportional digits is a legibility bug, and
+                            that applies to the counts underneath as much
+                            as to the dollars above. */}
+                        <Text size={group.size} weight="bold" className="tnum">
+                          {kpi.value}
+                        </Text>
+                        <Text size="1" color="gray" className="tnum">
+                          {kpi.sub}
+                        </Text>
+                        <Text size="1" color="gray">
+                          {moneyOk ? kpi.hint : "This is not a statement that it is zero."}
+                        </Text>
+                      </Flex>
+                    </NextLink>
+                  </Card>
+                ))}
+              </Grid>
+            </section>
+          </Flex>
         ))}
       </Grid>
 
@@ -937,7 +1075,13 @@ export default async function OverviewPage() {
           </Flex>
         ) : (
           <Table.Root variant="surface">
-            <caption className="rt-VisuallyHidden">Document expirations</caption>
+            {/* Radix ships VisuallyHidden as a COMPONENT (inline styles),
+                never as an `rt-VisuallyHidden` class — that class does not
+                exist in its stylesheet, so a caption carrying it rendered
+                as a stray centred line of visible text above the table. */}
+            <caption>
+              <VisuallyHidden>Document expirations</VisuallyHidden>
+            </caption>
             <Table.Header>
               <Table.Row>
                 <Table.ColumnHeaderCell>Document</Table.ColumnHeaderCell>
@@ -1102,25 +1246,55 @@ export default async function OverviewPage() {
               </Text>
             </Flex>
           ) : (
-            <Flex direction="column">
-              {NEEDS_ATTENTION.map((item) => (
-                <Flex key={item.id} justify="between" align="center" py="2">
-                  <Flex direction="column">
-                    <Text weight="medium">{item.label}</Text>
-                    <Text size="1" color="gray">
-                      {item.detail}
-                    </Text>
-                  </Flex>
-                  <Button
+            // A real ordered list, not a stack of rows. The order IS the
+            // information here — qualifications, then overdue invoices,
+            // then the reserved unassigned-receipts slot, then W-9s (see
+            // the slot arithmetic above) — and an <ol> is what tells a
+            // screen reader "this is 1 of 6, in priority order" instead of
+            // presenting six unrelated panels.
+            // The explicit reset is required — see the getting-started
+            // list above for why `asChild` does not bring Radix's with it.
+            <Flex
+              direction="column"
+              asChild
+              style={{ listStyle: "none", margin: 0, padding: 0 }}
+            >
+              <ol>
+                {NEEDS_ATTENTION.map((item, index) => (
+                  <Flex
+                    key={item.id}
                     asChild
-                    variant="outline"
-                    size="1"
-                    aria-label={`${item.action} — ${item.label}`}
+                    justify="between"
+                    align="center"
+                    gap="3"
+                    py="2"
+                    wrap="wrap"
                   >
-                    <NextLink href={item.href}>{item.action}</NextLink>
-                  </Button>
-                </Flex>
-              ))}
+                    <li>
+                      <Flex direction="column" gap="1" minWidth="0">
+                        <Flex align="center" gap="2" wrap="wrap">
+                          <Text size="1" color="gray" className="tnum" aria-hidden>
+                            {index + 1}
+                          </Text>
+                          <Badge color={item.tone}>{item.band}</Badge>
+                          <Text weight="medium">{item.label}</Text>
+                        </Flex>
+                        <Text size="1" color="gray" className="tnum">
+                          {item.detail}
+                        </Text>
+                      </Flex>
+                      <Button
+                        asChild
+                        variant="outline"
+                        size="1"
+                        aria-label={`${item.action} — ${item.label}`}
+                      >
+                        <NextLink href={item.href}>{item.action}</NextLink>
+                      </Button>
+                    </li>
+                  </Flex>
+                ))}
+              </ol>
             </Flex>
           )}
           {attentionMoreCount > 0 ? (

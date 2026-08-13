@@ -18,6 +18,7 @@ import { centsToInput } from "@/lib/format";
 import { TRIP_OPERATING_RULES } from "@/lib/operating-rule";
 import TailNumberField from "@/components/tail-number-field";
 import type { FleetOption } from "@/lib/fleet";
+import type { OptionChoice } from "@/lib/custom-options";
 import type { TripFormState } from "./actions";
 
 export type TripFormValues = {
@@ -56,22 +57,6 @@ export type ClientOption = {
    * type error rather than a quiet wrong answer. */
   operating_rule: string | null;
 };
-
-/**
- * Labels use the industry's words, not the database's. `owner_trip` is
- * what an aircraft owner's own flight is called; "repositioning" and
- * "ferry" are distinct operations and a pilot will notice if they're
- * collapsed.
- */
-const TRIP_KINDS = [
-  { value: "contract_pilot", label: "Contract pilot" },
-  { value: "owner_trip", label: "Owner trip" },
-  { value: "repositioning", label: "Repositioning" },
-  { value: "ferry", label: "Ferry" },
-  { value: "maintenance_flight", label: "Maintenance flight" },
-  { value: "delivery_flight", label: "Delivery flight" },
-  { value: "other", label: "Other" },
-];
 
 const STATUSES = [
   { value: "scheduled", label: "Scheduled" },
@@ -122,6 +107,7 @@ export default function TripForm({
   clients,
   values = {},
   submitLabel,
+  tripKinds,
   cancelHref = "/trips",
   locked = false,
   hasDayRows = false,
@@ -130,6 +116,15 @@ export default function TripForm({
 }: {
   action: (state: TripFormState, formData: FormData) => Promise<TripFormState>;
   clients: ClientOption[];
+  /**
+   * The tenant's own trip-kind vocabulary — their labels (an operator
+   * that says "positioning" rather than "repositioning" should see their
+   * word), their order, retired kinds already dropped. Read server-side
+   * (lib/custom-options-read.ts) and passed in, because the options table
+   * is only readable on the server and this is a client component.
+   * REQUIRED, so a new screen cannot silently fall back to the stock list.
+   */
+  tripKinds: readonly OptionChoice[];
   values?: TripFormValues;
   submitLabel: string;
   cancelHref?: string;
@@ -388,7 +383,7 @@ export default function TripForm({
             <Select.Root key={`trip-kind-${genTick}`} value={tripKind} onValueChange={setTripKind}>
               <Select.Trigger id={tripKindId} aria-labelledby={`${tripKindId}-label`} />
               <Select.Content>
-                {TRIP_KINDS.map((option) => (
+                {tripKinds.map((option) => (
                   <Select.Item key={option.value} value={option.value}>
                     {option.label}
                   </Select.Item>

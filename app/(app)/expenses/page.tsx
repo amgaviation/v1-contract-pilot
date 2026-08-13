@@ -16,7 +16,9 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+import EmptyState from "@/components/ui/empty-state";
 import PageShell from "../page-shell";
+import { loadOptionLabels } from "@/lib/custom-options-read";
 import { scheduleCMileageCents, type RatesByYear } from "@/lib/mileage";
 import UnassignedQueue, { type QueueRow } from "./unassigned-queue";
 
@@ -38,17 +40,6 @@ type TripRow = {
   starts_on: string;
   ends_on: string;
   aircraft_ident: string | null;
-};
-
-const CATEGORY_LABEL: Record<string, string> = {
-  airline: "Airline",
-  hotel: "Hotel",
-  rental_car: "Rental car",
-  rideshare: "Rideshare",
-  fuel: "Fuel",
-  meals: "Meals",
-  parking: "Parking",
-  other: "Other",
 };
 
 type Badge = { color: "amber" | "blue" | "green"; label: string };
@@ -76,12 +67,20 @@ export default async function ExpensesPage() {
   await requireAccount("/expenses");
 
   const supabase = await createClient();
+  // categoryLabels replaces a hand-written map that lived in this file
+  // and had ALREADY fallen behind: it held the travel eight only, so
+  // every self-funded category added in 20260810070000 — training,
+  // medical, insurance, charts, equipment, uniform, dues — rendered as
+  // "Other" on this screen. Resolving through the options table fixes
+  // that and picks up the tenant's own renames at the same time, and it
+  // includes retired categories, because this is a history screen.
   const [
     { data: expenseData, error },
     { data: tripData, error: tripsError },
     unreviewedCount,
     { data: mileageData, error: mileageError },
     { data: mileageRateData, error: mileageRateError },
+    categoryLabels,
   ] = await Promise.all([
     supabase
       .from("expenses")
@@ -109,6 +108,7 @@ export default async function ExpensesPage() {
       .select("drove_on, miles")
       .limit(MILEAGE_LIMIT),
     supabase.from("mileage_rates").select("tax_year, rate_cents_per_mile"),
+    loadOptionLabels("expense_category"),
   ]);
 
   const expenses = (expenseData ?? []) as ExpenseRow[];
@@ -169,7 +169,7 @@ export default async function ExpensesPage() {
 
   const queueRows: QueueRow[] = unassigned.map((expense) => ({
     id: expense.id,
-    label: `${CATEGORY_LABEL[expense.category] ?? "Other"}${
+    label: `${categoryLabels[expense.category] ?? "Other"}${
       expense.vendor ? ` · ${expense.vendor}` : ""
     }`,
     detail: `${formatDate(expense.incurred_on)} · ${formatCents(expense.amount_cents)}`,
@@ -359,18 +359,22 @@ export default async function ExpensesPage() {
 
           <Card size="3">
             {expenses.length === 0 ? (
-              <Flex direction="column" align="center" gap="3" py="6">
-                <Text size="4" weight="bold">
-                  No expenses yet
-                </Text>
-                <Text size="2" color="gray" align="center">
-                  Capture the receipt once and tag it rebill or deduct. It
-                  files itself against the trip from there.
-                </Text>
-                <Button asChild>
-                  <NextLink href="/expenses/new">Add your first expense</NextLink>
-                </Button>
-              </Flex>
+              <EmptyState
+                title="No expenses yet"
+                action={
+                  <Button asChild>
+                    <NextLink href="/expenses/new">Add your first expense</NextLink>
+                  </Button>
+                }
+                // No "import a statement" secondary action here on purpose:
+                // bank import is Pro-gated (FEATURES.bank_import), and an
+                // empty state that offers a Solo pilot a button straight to
+                // the upgrade wall is an upsell wearing a first-run
+                // instruction's clothes.
+              >
+                Capture the receipt once and tag it rebill or deduct. It files
+                itself against the trip from there.
+              </EmptyState>
             ) : (
               <Table.Root variant="ghost">
                 <Table.Header>
@@ -397,7 +401,7 @@ export default async function ExpensesPage() {
                           </RadixLink>
                         </Table.RowHeaderCell>
                         <Table.Cell>
-                          <Text color="gray">{CATEGORY_LABEL[expense.category] ?? "Other"}</Text>
+                          <Text color="gray">{categoryLabels[expense.category] ?? "Other"}</Text>
                         </Table.Cell>
                         <Table.Cell>
                           <Text color="gray">{expense.vendor ?? "—"}</Text>

@@ -32,6 +32,43 @@ estimated-tax, sales tax, year-end packet with 1099 reconciliation, CPA travel l
 cross-operator 135.267 flight-time totals. The FAA currency engine and its /currency board are
 built and ship dark behind CURRENCY_ENGINE_ENABLED.
 
+**Account depth.** `/settings` carries seven tabs: the business record (identity, invoice
+address, airman details, rate defaults), day types, mileage rates, and — added by the
+customisation and account waves —
+
+- **Appearance**, **Layout** and **Categories**: an enumerated set of theme slots (accent,
+  density, light/dark) stored per account and applied by the app shell, a reorderable and
+  hideable navigation rail, and renameable expense/trip/document category lists. Every value
+  a pilot can pick is enumerated in `lib/theme-slots.ts` and `lib/custom-options.ts`; nothing
+  here is a free-text colour or an arbitrary CSS value, and `tokens:verify` enforces that
+  those two files are the only origin for a runtime-injected visual value.
+- **Profile & security**: the signed-in *person*, kept separate from the business record —
+  change the sign-in email (with an honest "not in effect until you open the link" state and
+  a pending-change indicator read from Supabase's own `new_email`), change the password
+  (current password re-verified first, so a hijacked session cannot set a new one), and sign
+  out every other device. The plain header **Sign out** is now scoped `local`; it used to
+  default to supabase-js's *global* scope and silently end sessions on devices the pilot was
+  not holding.
+
+`/settings/billing` is a plan-management screen rather than a tier list: current plan with a
+plain-English meaning for every Stripe status, trial days remaining, next charge and renewal
+or cancellation date, seats billed, card on file, upgrade/downgrade, monthly⇄annual switch,
+cancel-at-period-end and resume, recent receipts linking to Stripe's hosted invoices, and the
+Stripe billing portal for the card and the full archive. **Every amount comes from a live
+Stripe `Price` or `Invoice`** (`lib/stripe/prices.ts`, `lib/stripe/billing-facts.ts`) and
+**every feature row comes from `lib/entitlements.ts`** — the same table the app gates on — so
+the comparison cannot drift from what a plan actually opens. `plan_tier` is still moved only
+by the Stripe webhook; nothing on this screen writes an entitlement column.
+
+**Shared UI primitives.** `components/ui/empty-state.tsx` and `components/ui/skeletons.tsx`
+replace eleven hand-written empty states and one universal spinner. The empty state supplies
+the shape and demands the words (there is no default title or body — a screen must say what
+it is *for*), and it is deliberately never used for a failed read: "couldn't load your trips"
+and "you have no trips" are different claims, and this product does not conflate them. The
+skeletons are built on Radix's own `Skeleton` and are `aria-hidden`; the single
+`role="status"` announcement lives once, in `app/(app)/loading-panel.tsx`, which every
+`loading.tsx` in the route group re-exports.
+
 `docs/WAVE-PARITY.md` scores all of it against Wave, row by row, with citations.
 
 **One thing blocks real users:** signup returns `Error sending confirmation
@@ -122,12 +159,29 @@ app/(app)/reports/  the year-end packet (`reports/year-end`): cash-basis
                     pilot.client_tax_forms.
 app/(app)/logbook/export/  streaming CSV export of the pilot's own logbook —
                     the record-portability path; CSV import is not built.
+app/(app)/settings/ the business record, day types, mileage rates, the three
+                    customisation tabs (appearance / layout / categories) and
+                    Profile & security — the one tab about the signed-in
+                    person rather than the account.
+app/(app)/settings/billing/  plan management: status, renewal, receipts,
+                    upgrade/downgrade, cancel/resume, Stripe portal.
 app/(auth)/         login, signup, password reset, and the post-checkout
                     welcome screen.
 app/api/stripe/     the webhook. The only place the service-role client is
                     used, anywhere in the product.
+components/ui/      the Radix defaults barrel (index.tsx — the ONE place a
+                    component default may live) plus the shared primitives
+                    built on it: empty-state.tsx, skeletons.tsx, logo.tsx.
 lib/supabase/       browser, server and service-role clients, all pinned to
-                    the `pilot` schema.
+                    the `pilot` schema, plus reauth.ts — a throwaway,
+                    cookie-less client used to verify a password without
+                    rotating the session it is verifying.
+lib/entitlements.ts  the one tier source. lib/billing-state.ts is its
+                    subscription-lifecycle counterpart (status meanings,
+                    trial and renewal arithmetic), pure and unit-tested.
+lib/preferences.ts  the one place account preferences are read, defaulted,
+                    validated and written; lib/theme-slots.ts is the only
+                    origin for a runtime-injected visual value.
 lib/csv.ts          the one CSV encoder both exports share — RFC 4180
                     quoting plus a formula-injection guard.
 supabase/migrations/  every schema change, applied in order. Read the file
@@ -140,7 +194,9 @@ scripts/            executable verification, the house convention in place
 ## Verification
 
 ```
-npm run test                  typecheck + tokens:verify
+npm run test                  typecheck + tokens:verify + the unit suite
+npm run test:unit             node --test over tests/*.test.mjs, against the
+                              real .ts modules (526 assertions)
 npm run tokens:verify         no visual value hardcoded outside the four files
 npm run tenancy:verify        two-tenant isolation — the gate on everything
 npm run billing:verify        trial, webhook idempotency, out-of-order events
