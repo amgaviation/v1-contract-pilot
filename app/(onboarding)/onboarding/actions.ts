@@ -7,6 +7,10 @@ import { requireAccount } from "@/lib/supabase/account";
 import { friendlyDbError } from "@/lib/db-errors";
 import { parseDollarsToCents } from "@/lib/format";
 import { DASHBOARD_PATH } from "@/lib/nav";
+// lib/airman.ts is the one list of 14 CFR 61.5(a)(1) certificate levels —
+// this action used to carry its own copy, which is exactly the drift
+// tests/airman-certificates.test.mjs now exists to prevent.
+import { CERTIFICATE_TYPES } from "@/lib/airman";
 import type { Database } from "@/lib/supabase/database.types";
 
 type AccountUpdate = Database["pilot"]["Tables"]["accounts"]["Update"];
@@ -15,15 +19,6 @@ export type OnboardingState = {
   error: string | null;
   values?: Record<string, string>;
 };
-
-const CERTIFICATE_TYPES = [
-  "student",
-  "sport",
-  "recreational",
-  "private",
-  "commercial",
-  "atp",
-] as const;
 
 /**
  * Every field the wizard collects, so a rejected submit can echo them all
@@ -142,6 +137,23 @@ export async function completeOnboarding(
   if (!dayRate.ok || !travelRate.ok || !perDiem.ok) {
     return {
       error: "Enter rates as plain dollar amounts, like 1200 or 1200.00.",
+      values: echo(formData),
+    };
+  }
+  // parseDollarsToCents deliberately accepts a leading "-" (expense
+  // amounts can be credits), but a negative standing rate default is
+  // never meaningful, and the 20260812400000 CHECKs (`... >= 0`) would
+  // refuse it with friendlyDbError's generic 23514 sentence that names
+  // no field. Rejected here with a real message instead. Same guard,
+  // verbatim, in updateProfileDefaults — the two actions write the same
+  // columns and must accept the same inputs.
+  if (
+    (dayRate.cents ?? 0) < 0 ||
+    (travelRate.cents ?? 0) < 0 ||
+    (perDiem.cents ?? 0) < 0
+  ) {
+    return {
+      error: "Rates can't be negative.",
       values: echo(formData),
     };
   }

@@ -103,6 +103,20 @@ const NO_CLIENT = "__none__";
 
 const initialState: TripFormState = { error: null };
 
+/**
+ * The account-level rate defaults collected by the onboarding wizard
+ * (pilot.accounts.default_day_rate_cents / default_travel_day_rate_cents,
+ * migration 20260812400000). Passed ONLY by trips/new: they seed a brand-
+ * new trip's blank rate fields, and sit beneath a picked client's own
+ * defaults. The edit screen must never pass them — an existing trip's
+ * stored rates are a recorded fact, and a legitimately blank rate on a
+ * saved trip must not get silently re-priced on open.
+ */
+export type AccountRateDefaults = {
+  day_rate_cents: number | null;
+  travel_day_rate_cents: number | null;
+};
+
 export default function TripForm({
   action,
   clients,
@@ -112,6 +126,7 @@ export default function TripForm({
   locked = false,
   hasDayRows = false,
   fleet = [],
+  accountDefaults = null,
 }: {
   action: (state: TripFormState, formData: FormData) => Promise<TripFormState>;
   clients: ClientOption[];
@@ -135,8 +150,17 @@ export default function TripForm({
    * it was before pilot.aircraft existed.
    */
   fleet?: FleetOption[];
+  /** See AccountRateDefaults above. Defaults null — the edit screen and
+   *  any caller that predates account defaults behave exactly as before. */
+  accountDefaults?: AccountRateDefaults | null;
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
+
+  // Belt-and-braces on top of "only trips/new passes the prop": even a
+  // caller that passed accountDefaults on the edit screen must not have a
+  // stored trip's legitimately blank rate re-priced on open — new-vs-edit
+  // is values.id, the same discriminator the hidden id input uses.
+  const seedDefaults = values.id ? null : accountDefaults;
 
   // Echoed submission wins over the row's stored values, so a rejected
   // submit shows what the pilot typed rather than silently reverting to
@@ -156,11 +180,58 @@ export default function TripForm({
   const [clientId, setClientId] = useState(() =>
     submitted?.client_id ?? (values.client_id ?? "")
   );
-  const [dayRate, setDayRate] = useState(() =>
-    submitted?.day_rate ?? centsToInput(values.day_rate_cents)
+  // Initializer precedence: echoed submit → stored trip value → account
+  // default (new trips only, via seedDefaults). The echo MUST stay first:
+  // a rejected submit where the pilot deliberately cleared a rate echoes
+  // "" — a defined value — and the `!== undefined` check preserves that
+  // emptiness instead of re-stuffing the default over their intent.
+  // centsToInput renders null/undefined as "", so an account with no
+  // default (all four columns are nullable, no DB default) still starts
+  // blank rather than at a false $0.00.
+  const [dayRate, setDayRate] = useState(() => {
+    if (submitted?.day_rate !== undefined) return submitted.day_rate;
+    if (values.day_rate_cents !== null && values.day_rate_cents !== undefined) {
+      return centsToInput(values.day_rate_cents);
+    }
+    return centsToInput(seedDefaults?.day_rate_cents);
+  });
+  const [travelRate, setTravelRate] = useState(() => {
+    if (submitted?.travel_day_rate !== undefined) return submitted.travel_day_rate;
+    if (
+      values.travel_day_rate_cents !== null &&
+      values.travel_day_rate_cents !== undefined
+    ) {
+      return centsToInput(values.travel_day_rate_cents);
+    }
+    return centsToInput(seedDefaults?.travel_day_rate_cents);
+  });
+  // Whether the rate field still holds the untouched, machine-written
+  // account seed from the initializers above. pickClient's blank-only
+  // guard rests on the premise that a non-empty rate was typed by the
+  // pilot as a deliberate per-trip override — mount-time seeding breaks
+  // that premise, and without these flags an account default would
+  // permanently block a picked client's own negotiated rate from ever
+  // filling in, inverting the "client default ?? account default"
+  // precedence documented in pickClient. Same touched-state pattern as
+  // operatingRuleTouched below. True only when the initializer actually
+  // fell through to the seed (no echo, no stored trip value, a real
+  // account default); cleared forever the moment the pilot edits the
+  // field, at which point the value is theirs and the blank-only rule
+  // takes back over.
+  const [dayRateIsAccountSeed, setDayRateIsAccountSeed] = useState(
+    () =>
+      submitted?.day_rate === undefined &&
+      (values.day_rate_cents === null || values.day_rate_cents === undefined) &&
+      seedDefaults?.day_rate_cents !== null &&
+      seedDefaults?.day_rate_cents !== undefined
   );
-  const [travelRate, setTravelRate] = useState(() =>
-    submitted?.travel_day_rate ?? centsToInput(values.travel_day_rate_cents)
+  const [travelRateIsAccountSeed, setTravelRateIsAccountSeed] = useState(
+    () =>
+      submitted?.travel_day_rate === undefined &&
+      (values.travel_day_rate_cents === null ||
+        values.travel_day_rate_cents === undefined) &&
+      seedDefaults?.travel_day_rate_cents !== null &&
+      seedDefaults?.travel_day_rate_cents !== undefined
   );
   // Radix's Select.Root always renders its posting <select> with
   // `defaultValue`, never `value` (@radix-ui/react-select's
@@ -216,14 +287,40 @@ export default function TripForm({
     // trip is a deliberate override and must not be clobbered by
     // switching the client — the schema's own comment calls the trip rate
     // "snapshotted from the client, then independently editable".
-    if (dayRate.trim() === "" && picked.default_day_rate_cents !== null) {
-      setDayRate(centsToInput(picked.default_day_rate_cents));
+    //
+    // The fill value is client default ?? account default (20260812400000,
+    // new trips only via seedDefaults): a client with no agreed rate falls
+    // back to the pilot's own standing rate. `??`, never `||` — a client
+    // default of 0 cents is a real negotiated $0.00 (e.g. flying for the
+    // aircraft's owner at no charge) and must win over the account rate.
+    //
+    // "Blank" for this purpose includes a field still holding the untouched
+    // account seed (dayRateIsAccountSeed / travelRateIsAccountSeed): that
+    // value is machine-written, not a pilot override, so the more specific
+    // client rate must be allowed to replace it — otherwise an account
+    // default would make the client half of `??` unreachable in exactly
+    // the case it exists for.
+    const dayFill =
+      picked.default_day_rate_cents ?? seedDefaults?.day_rate_cents ?? null;
+    if ((dayRate.trim() === "" || dayRateIsAccountSeed) && dayFill !== null) {
+      setDayRate(centsToInput(dayFill));
+      // After the fill the field holds either the client's own rate (no
+      // longer the seed — a later client swap follows the blank-only rule
+      // like any other machine fill always has) or, when this client has
+      // no agreed rate, the account default again — still the seed, still
+      // replaceable by a later pick of a client that does have one.
+      setDayRateIsAccountSeed(picked.default_day_rate_cents === null);
     }
+    const travelFill =
+      picked.default_travel_day_rate_cents ??
+      seedDefaults?.travel_day_rate_cents ??
+      null;
     if (
-      travelRate.trim() === "" &&
-      picked.default_travel_day_rate_cents !== null
+      (travelRate.trim() === "" || travelRateIsAccountSeed) &&
+      travelFill !== null
     ) {
-      setTravelRate(centsToInput(picked.default_travel_day_rate_cents));
+      setTravelRate(centsToInput(travelFill));
+      setTravelRateIsAccountSeed(picked.default_travel_day_rate_cents === null);
     }
     // 20260807130000: seeds operating_rule from the client's, same "fills
     // in, then independently editable" treatment as the rates above —
@@ -467,7 +564,12 @@ export default function TripForm({
               required
               inputMode="decimal"
               value={dayRate}
-              onChange={(event) => setDayRate(event.target.value)}
+              onChange={(event) => {
+                // The pilot has typed: the value is theirs now, never the
+                // account seed again — see dayRateIsAccountSeed above.
+                setDayRateIsAccountSeed(false);
+                setDayRate(event.target.value);
+              }}
               disabled={locked}
             />
             <Text size="1" color="gray">
@@ -500,7 +602,10 @@ export default function TripForm({
               name="travel_day_rate"
               inputMode="decimal"
               value={travelRate}
-              onChange={(event) => setTravelRate(event.target.value)}
+              onChange={(event) => {
+                setTravelRateIsAccountSeed(false);
+                setTravelRate(event.target.value);
+              }}
               disabled={locked}
             />
           </Flex>

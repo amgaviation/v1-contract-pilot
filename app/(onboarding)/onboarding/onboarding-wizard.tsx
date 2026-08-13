@@ -13,6 +13,7 @@ import {
   TextField,
 } from "@/components/ui";
 import { BRAND } from "@/lib/brand";
+import { CERTIFICATE_OPTIONS, NO_CERTIFICATE } from "@/lib/airman";
 import { completeOnboarding, type OnboardingState } from "./actions";
 
 export type OnboardingValues = {
@@ -44,19 +45,6 @@ const STEPS = [
   { title: "Rates & billing", hint: "Defaults that pre-fill each new trip and invoice. Change any of them per client later." },
 ] as const;
 
-// 14 CFR 61.5(a)(1) pilot certificate levels. Value maps 1:1 to the
-// accounts.certificate_type CHECK; "none" is the UI-only "prefer not to say"
-// that submits as an empty string.
-const CERTIFICATES: { value: string; label: string }[] = [
-  { value: "none", label: "Prefer not to say" },
-  { value: "student", label: "Student" },
-  { value: "sport", label: "Sport" },
-  { value: "recreational", label: "Recreational" },
-  { value: "private", label: "Private" },
-  { value: "commercial", label: "Commercial" },
-  { value: "atp", label: "Airline Transport Pilot (ATP)" },
-];
-
 export default function OnboardingWizard({
   values,
   kind,
@@ -82,7 +70,7 @@ export default function OnboardingWizard({
   };
 
   const [certType, setCertType] = useState(
-    values.certificate_type === "" ? "none" : values.certificate_type
+    values.certificate_type === "" ? NO_CERTIFICATE : values.certificate_type
   );
 
   const isLast = step === STEPS.length - 1;
@@ -149,18 +137,21 @@ export default function OnboardingWizard({
               <Box gridColumn={{ sm: "span 6" }}>
                 <Text as="label" size="1" weight="medium">Certificate held</Text>
                 {/* Radix Select isn't a native control; a hidden input carries
-                    its value into the form. "none" → "" (prefer not to say). */}
+                    its value into the form. NO_CERTIFICATE → "" (prefer not to
+                    say). Options come from lib/airman.ts — the one 14 CFR
+                    61.5(a)(1) list, shared with the action's membership check
+                    and the Settings panel. */}
                 <input
                   type="hidden"
                   name="certificate_type"
-                  value={certType === "none" ? "" : certType}
+                  value={certType === NO_CERTIFICATE ? "" : certType}
                 />
                 <Select.Root value={certType} onValueChange={setCertType}>
                   <Box mt="1">
                     <Select.Trigger style={{ width: "100%" }} />
                   </Box>
                   <Select.Content>
-                    {CERTIFICATES.map((c) => (
+                    {CERTIFICATE_OPTIONS.map((c) => (
                       <Select.Item key={c.value} value={c.value}>
                         {c.label}
                       </Select.Item>
