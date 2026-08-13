@@ -93,6 +93,23 @@ export default async function ReportsIndexPage() {
             windows — the picture no single operator can see.
           </Text>
         </Card>
+        {/* Sits beside Flight time as the second logbook-derived report.
+            The two answer different questions from the same record: that
+            one totals a regulation's windows for an operator about to
+            assign a trip, this one fills in the form an underwriter or a
+            chief pilot hands over before any of that. */}
+        <Card size="3">
+          <Heading as="h2" size="4" mb="1">
+            <RadixLink asChild>
+              <NextLink href="/reports/pilot-history">Pilot history</NextLink>
+            </RadixLink>
+          </Heading>
+          <Text as="div" size="2" color="gray">
+            Total time, PIC and SIC, time by type and by airframe, and the
+            dates on your paperwork — what an insurance or operator history
+            form asks for, ready to download.
+          </Text>
+        </Card>
       </Flex>
     </PageShell>
   );

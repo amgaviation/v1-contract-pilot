@@ -27,6 +27,7 @@ import { logbookFrom } from "../db";
 import {
   normaliseTypeDesignator,
   normaliseTypeRating,
+  parseTristate,
   tailKey,
   type AircraftGear,
   type AircraftInsert,
@@ -59,6 +60,8 @@ const FIELDS = [
   "make_model",
   "gear",
   "category_class",
+  "is_turbine",
+  "is_retractable",
   "notes",
 ] as const;
 
@@ -89,6 +92,8 @@ type Parsed =
         make_model: string | null;
         gear: AircraftGear | null;
         category_class: string | null;
+        is_turbine: boolean | null;
+        is_retractable: boolean | null;
         notes: string | null;
       };
     };
@@ -142,6 +147,17 @@ function parse(formData: FormData): Parsed {
       // from "tricycle".
       gear: gearRaw === "" ? null : (gearRaw as AircraftGear),
       category_class: trimmedOrNull(formData, "category_class"),
+      // TRI-STATE, and left unstated rather than guessed — the same rule as
+      // `gear` above, and the same rule the columns themselves carry
+      // (20260811040000, 20260813110000): NULL means nobody said, and it
+      // must never resolve to false. A turbine or retract figure computed
+      // over an unannotated fleet would be confidently short, so the
+      // pilot-history report reports the shortfall instead of hiding it —
+      // which only works if "not recorded" survives this parse. Anything
+      // unrecognised takes the same route, so a malformed post cannot
+      // manufacture an assertion.
+      is_turbine: parseTristate(String(formData.get("is_turbine") ?? "")),
+      is_retractable: parseTristate(String(formData.get("is_retractable") ?? "")),
       notes: trimmedOrNull(formData, "notes"),
     },
   };
