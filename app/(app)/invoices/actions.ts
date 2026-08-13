@@ -16,6 +16,10 @@ import {
   buildReminderMessage,
   daysOverdue,
 } from "@/lib/email/invoice-message";
+import {
+  dayQuantityThousandths,
+  roundThousandthsToHundredths,
+} from "@/lib/trip-value";
 import { categoryLabel } from "./labels";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -156,6 +160,17 @@ function parseQuantity(raw: string): number | undefined {
  * 0.1 + 0.2 is 0.30000000000000004 in JS. This is a guard against that
  * drift, not a fudge: it never changes what the sum "should" be, it only
  * removes noise below the column's own scale.
+ *
+ * NOT SUFFICIENT ON ITS OWN for a sum of `quantity * units` products — see
+ * dayQuantityThousandths in lib/trip-value.ts. Those products carry three
+ * decimals, so a group sum can land exactly on a .xx5 boundary, and at that
+ * boundary the double is as likely to sit below the true value as on it:
+ * `0.5 * 0.29` is 0.14499999999999999, which this rounds DOWN to 0.14 while
+ * the exact 0.145 rounds up to 0.15. Every day-row group therefore
+ * accumulates in integer thousandths and rounds with
+ * roundThousandthsToHundredths; this function is kept for the quantities
+ * that are already at 2dp scale (a minimum's shortfall, a sum of emitted
+ * line quantities), where no such boundary case exists.
  */
 function roundQuantity(value: number): number {
   return Math.round(value * 100) / 100;
@@ -577,7 +592,11 @@ export async function createInvoiceDraft(
   // ---------------------------------------------------------------------
   const monthlyBillable = new Map<
     string,
-    { qty: number; bestRateCents: number }
+    // qtyThousandths, not qty: the month's billable days accumulate in exact
+    // integer thousandths for the same reason the day-line groups do — see
+    // dayQuantityThousandths in lib/trip-value.ts. A guarantee compared
+    // against a float-drifted worked total tops up the wrong number of days.
+    { qtyThousandths: number; bestRateCents: number }
   >();
   // Best-effort: a failed read here means "don't know", so it suppresses
   // the cancellation-note warning rather than blocking the draft — no
@@ -633,7 +652,21 @@ export async function createInvoiceDraft(
       // ---------------------------------------------------------------
       const groups = new Map<
         string,
-        { dayTypeId: string; rateCents: number; dayOns: string[]; quantitySum: number }
+        {
+          dayTypeId: string;
+          rateCents: number;
+          dayOns: string[];
+          /**
+           * The group's summed quantity in EXACT INTEGER THOUSANDTHS, not
+           * as a float. quantity is numeric(3,1) and units numeric(3,2), so
+           * every contribution is an exact multiple of 0.001 that a double
+           * usually cannot hold — and a sum landing on a .xx5 boundary
+           * would then round the wrong way, billing a cent-scale
+           * disagreement against the same trip's figure on Overview and the
+           * trips list. See dayQuantityThousandths in lib/trip-value.ts.
+           */
+          quantityThousandths: number;
+        }
       >();
       const unpriced = new Map<string, number>(); // day type label -> count
 
@@ -663,7 +696,7 @@ export async function createInvoiceDraft(
           dayTypeId: row.day_type_id,
           rateCents,
           dayOns: [],
-          quantitySum: 0,
+          quantityThousandths: 0,
         };
         group.dayOns.push(row.day_on);
         // F1: sum the rows' OWN quantity (0.1-1.0 each, a half day is a
@@ -679,7 +712,13 @@ export async function createInvoiceDraft(
         // has units=1.00, so this sum is byte-for-byte unchanged for them.
         // See that migration's header for why units does not join the
         // grouping key above.
-        group.quantitySum += Number(row.quantity) * Number(row.units);
+        //
+        // Accumulated in integer thousandths so the sum is EXACT: the same
+        // group is priced in `numeric` by pilot.unbilled_trip_money for
+        // Overview, and a float sum disagrees with it at every .xx5
+        // boundary (lib/trip-value.ts's dayQuantityThousandths carries the
+        // worked example).
+        group.quantityThousandths += dayQuantityThousandths(row.quantity, row.units);
         groups.set(key, group);
 
         // Monthly guarantee accumulation — see monthlyBillable's own
@@ -697,10 +736,10 @@ export async function createInvoiceDraft(
         if (minimumBasis === "per_month") {
           const monthKey = `${row.day_on.slice(0, 7)}-01`;
           const bucket = monthlyBillable.get(monthKey) ?? {
-            qty: 0,
+            qtyThousandths: 0,
             bestRateCents: 0,
           };
-          bucket.qty += Number(row.quantity) * Number(row.units);
+          bucket.qtyThousandths += dayQuantityThousandths(row.quantity, row.units);
           if (rateCents > bucket.bestRateCents) bucket.bestRateCents = rateCents;
           monthlyBillable.set(monthKey, bucket);
         }
@@ -728,7 +767,7 @@ export async function createInvoiceDraft(
         // only trip on a genuine float artifact, never on real data; it
         // exists so that artifact fails silently-safe (no line) instead
         // of reaching invoice_lines' `quantity > 0` CHECK as a raw 23514.
-        const qty = roundQuantity(group.quantitySum);
+        const qty = roundThousandthsToHundredths(group.quantityThousandths);
         if (qty <= 0) continue;
 
         const sortedDays = [...group.dayOns].sort();
@@ -1083,7 +1122,7 @@ export async function createInvoiceDraft(
         // the data does not support.
         const settledLabel =
           settledInvoiceLabelById.get(alreadySettled) ?? "a draft invoice";
-        const addedDays = roundQuantity(bucket.qty);
+        const addedDays = roundThousandthsToHundredths(bucket.qtyThousandths);
         warnings.push(
           `${monthLabel}: this client's monthly guarantee was already settled on invoice ${settledLabel}, so no second top-up line was added — but this invoice still bills ${formatMinDays(
             addedDays
@@ -1092,7 +1131,7 @@ export async function createInvoiceDraft(
         continue;
       }
 
-      const worked = roundQuantity(bucket.qty);
+      const worked = roundThousandthsToHundredths(bucket.qtyThousandths);
       if (worked < minDays) {
         const shortfall = roundQuantity(minDays - worked);
         // RATE CHOICE — same reasoning as the per-trip minimum's own
