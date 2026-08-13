@@ -1,7 +1,7 @@
 import NextLink from "next/link";
 import { Box, Container, Flex, Grid, Separator, Text } from "@/components/ui";
 import { BRAND } from "@/lib/brand";
-import { GRAY_BAND } from "./marketing-style";
+import { GRAY_BAND } from "@/lib/surface-style";
 
 /**
  * The public site's footer — the SECOND of the two places BRAND.attribution
@@ -11,7 +11,7 @@ import { GRAY_BAND } from "./marketing-style";
  * app layout already follows.
  *
  * The ground is the same gray-2 band token the section rhythm uses
- * (marketing-style.ts GRAY_BAND), so the footer closes the page as one
+ * (lib/surface-style.ts GRAY_BAND), so the footer closes the page as one
  * more band of the canvas system rather than its own third gray.
  *
  * The attribution is real rendered text sourced from lib/brand.ts, not

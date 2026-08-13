@@ -1,5 +1,6 @@
 import "server-only";
 import { getStripe, isLiveMode } from "@/lib/stripe/server";
+import { CARD_METHOD, type AchCapability } from "@/lib/stripe/payment-methods";
 
 /**
  * Stripe Connect (Standard) — integration #2 (docs/PLAN.md decision #8),
@@ -163,10 +164,93 @@ export async function deauthorizeConnectAccount(
   }
 }
 
+/**
+ * Reads whether the PILOT'S OWN connected account may take ACH debits.
+ *
+ * WHY THIS EXISTS AT ALL, and why it is the first capability read in the
+ * product. Stripe's ACH docs are explicit that
+ * `us_bank_account_ach_payments` must be `active` on each connected account
+ * you want to enable — the platform enabling it for itself is not enough.
+ * Nothing in this codebase read a capability before today, so a link asking
+ * for `us_bank_account` on an account that has not been granted it would
+ * have failed at `paymentLinks.create` and the pilot would have seen
+ * "Couldn't create a Stripe payment link. Try again." for a condition no
+ * amount of trying fixes. A read is one round trip and turns that into a
+ * sentence naming the actual problem.
+ *
+ * NEVER THROWS, and that is the point of the 'unknown' value. A capability
+ * read failing must not stop a pilot generating a payment link — the
+ * invoice still needs collecting. lib/stripe/payment-methods.ts treats
+ * 'unknown' as "do not offer ACH, and say why", so the failure costs the
+ * cheaper payment method and never the payment.
+ *
+ * `accounts.retrieve` is called with the PLATFORM's key and the connected
+ * account id as its argument — this is a platform reading one of its own
+ * connected accounts, not a call made AS that account, so there is
+ * deliberately no `{ stripeAccount }` option here. That is the one call in
+ * this file scoped that way, and it is why it says so.
+ */
+export async function readAchCapability(connectAccountId: string): Promise<AchCapability> {
+  try {
+    const account = await getStripe().accounts.retrieve(connectAccountId);
+    const status = account.capabilities?.us_bank_account_ach_payments;
+    // A capability that has never been requested is ABSENT from the object
+    // rather than 'inactive'. Both mean the same thing to a payment link,
+    // so both answer 'inactive' — 'unknown' is reserved for "we could not
+    // ask", which is a different problem with a different sentence.
+    if (status === "active" || status === "pending" || status === "inactive") {
+      return status;
+    }
+    return "inactive";
+  } catch (err) {
+    console.error(
+      `accounts.retrieve(${connectAccountId}) for the ACH capability failed: ${
+        err instanceof Error ? err.message : "unknown error"
+      }`
+    );
+    return "unknown";
+  }
+}
+
+/**
+ * True when Stripe REJECTED the request outright — a 400-class
+ * invalid_request_error, which means no Payment Link was created and
+ * retrying with a narrower `payment_method_types` is safe.
+ *
+ * THE NARROW TEST IS THE WHOLE VALUE HERE. A network failure or a 500 may
+ * have created the link on Stripe's side before the response was lost, and
+ * retrying THAT would leave the invoice with two live links at the same
+ * price — the exact state createInvoicePaymentLink's "kill the old one
+ * first" ordering exists to prevent. So the retry is gated on Stripe having
+ * said no, not merely on something having gone wrong.
+ *
+ * LABELLED ASSUMPTION, because it is one: the precise error a payment link
+ * comes back with when `us_bank_account` is asked for on an account whose
+ * capability is inactive has NOT been observed against a real test-mode
+ * account here — the capability pre-check above is what normally prevents
+ * ever sending that request. This is the belt to that check's braces, and
+ * it is deliberately shaped to be harmless if the guess is wrong: it only
+ * ever converts one refused request into one card-only request.
+ */
+export function isStripeRequestRejection(err: unknown): boolean {
+  // `unknown` is the honest parameter type, so the null case is real: `throw
+  // null` and `throw undefined` are legal JS, and a property read on either
+  // throws a TypeError from INSIDE the catch block that called this — which
+  // would replace the caller's "couldn't create a payment link, try again"
+  // with an unhandled server-action error. Stripe's SDK throws Error objects
+  // today; this function is the designated place not to depend on that.
+  if (typeof err !== "object" || err === null) return false;
+  const type = (err as { type?: string }).type;
+  const rawType = (err as { rawType?: string }).rawType;
+  return type === "StripeInvalidRequestError" || rawType === "invalid_request_error";
+}
+
 export type CreatePaymentLinkResult = {
   id: string;
   url: string;
   livemode: boolean;
+  /** Exactly what Stripe was told to offer. Echoed back for the caller's copy. */
+  paymentMethodTypes: readonly string[];
 };
 
 /**
@@ -204,14 +288,66 @@ export type CreatePaymentLinkResult = {
  * is handled where the balance actually changes: recordPayment and
  * voidInvoice call deactivatePaymentLink below and clear the stored
  * columns, so a link never outlives the balance it was priced against.
+ *
+ * METADATA IS WHAT MAKES THE PAYMENT FINDABLE AGAIN (20260813100000).
+ * Stripe copies a Payment Link's metadata onto every Checkout Session the
+ * link spawns, and that Session is what
+ * app/api/stripe/connect-webhook/route.ts receives — so these three keys
+ * are the only durable handle from "someone paid" back to "this invoice".
+ * The Session also carries `payment_link` (the plink_... id), and the
+ * invoice does store one, but that column is CLEARED whenever a link is
+ * retired, regenerated or the account is disconnected; metadata travels
+ * with the payment and cannot be cleared. `invoice_id` and `account_id`
+ * are the row ids, not the invoice NUMBER — numbers are per-tenant and
+ * two pilots' invoice 0001 are different documents.
+ *
+ * These keys are visible to, and editable by, the pilot in their own
+ * Stripe dashboard: the link lives on THEIR account. That is exactly why
+ * the webhook treats them as untrusted and derives tenancy from
+ * event.account instead — see resolveAutoPayment in
+ * lib/stripe/connect-payments.ts. Metadata says WHICH invoice; Stripe's
+ * signature says WHOSE.
+ *
+ * METHODS ARE STATED, NOT LEFT TO THE ACCOUNT'S DASHBOARD (2026-08-13).
+ * Omitting `payment_method_types` entirely is a legitimate alternative —
+ * Stripe then offers whatever the CONNECTED account has switched on in its
+ * own dashboard settings — and it was rejected on purpose: it puts the
+ * decision somewhere this product cannot read, so neither the Settings
+ * panel nor the invoice screen could ever say what a link actually offers,
+ * and a per-invoice choice would be impossible. Naming the methods also
+ * suppresses Stripe's Link "Instant Bank Payments", which sounds like what
+ * is wanted here and is not: its default ceiling is well under the
+ * five-figure invoices this feature exists for, so a large invoice would
+ * silently get no bank option at all. An explicit `us_bank_account` is real
+ * ACH Direct Debit with no such ceiling. (docs.stripe.com/payments/link/
+ * instant-bank-payments, checked 2026-08-13.)
+ *
+ * THE CALLER DECIDES WHICH METHODS, not this function: the choice is a
+ * pilot preference crossed with the connected account's ACH capability, and
+ * that crossing is a pure decision with its own module and its own tests
+ * (lib/stripe/payment-methods.ts). This function does the I/O.
  */
 export async function createPaymentLinkForInvoice(params: {
   connectAccountId: string;
+  /** The tenant that owns the invoice. Written into the link's metadata. */
+  accountId: string;
+  /** The invoice ROW's id — the only globally unique handle it has. */
+  invoiceId: string;
   invoiceNumber: string;
   amountCents: number;
+  /**
+   * Stripe `payment_method_types` — from resolveOfferedMethods, never
+   * hand-built at a call site. Defaults to card alone so that a caller
+   * added later cannot accidentally mint a link offering nothing.
+   */
+  paymentMethodTypes?: readonly string[];
 }): Promise<CreatePaymentLinkResult> {
   const stripe = getStripe();
   const stripeAccount = params.connectAccountId;
+  const paymentMethodTypes =
+    params.paymentMethodTypes && params.paymentMethodTypes.length > 0
+      ? [...params.paymentMethodTypes]
+      : [CARD_METHOD];
 
   const price = await stripe.prices.create(
     {
@@ -226,13 +362,36 @@ export async function createPaymentLinkForInvoice(params: {
     {
       line_items: [{ price: price.id, quantity: 1 }],
       // No application_fee_amount. No on_behalf_of. No transfer_data.
+      payment_method_types: paymentMethodTypes,
+      // SINGLE USE STILL, AND ACH MAKES THE TIMING WORTH RE-STATING.
+      // Stripe deactivates the link when a Checkout Session COMPLETES —
+      // which for a bank debit is when the client accepts the mandate,
+      // days before the money settles. That is the behaviour wanted (it
+      // blocks a second debit for the same invoice during the wait), but
+      // it means a link can be spent while the invoice is still unpaid.
+      // The pending notice on the invoice screen exists to say so, and a
+      // FAILED debit leaves the invoice needing a NEW link — the webhook
+      // clears the stored one for exactly that reason.
       restrictions: { completed_sessions: { limit: 1 } },
-      metadata: { invoice_number: params.invoiceNumber },
+      metadata: {
+        invoice_id: params.invoiceId,
+        account_id: params.accountId,
+        // Kept, and kept LAST: it is the human-readable one, it is what a
+        // pilot recognises in their Stripe dashboard, and links minted
+        // before the two ids above carry only this. The webhook degrades
+        // to "ignored, record it by hand" for those rather than failing.
+        invoice_number: params.invoiceNumber,
+      },
     },
     { stripeAccount }
   );
 
-  return { id: link.id, url: link.url, livemode: isLiveMode() };
+  return {
+    id: link.id,
+    url: link.url,
+    livemode: isLiveMode(),
+    paymentMethodTypes,
+  };
 }
 
 export type DeactivateLinkResult = {

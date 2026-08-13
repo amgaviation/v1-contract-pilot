@@ -6,16 +6,22 @@ import {
   Button,
   Callout,
   Card,
+  Checkbox,
   Flex,
   Grid,
   Heading,
   Select,
+  Separator,
   Text,
   TextArea,
   TextField,
 } from "@/components/ui";
 import { centsToInput } from "@/lib/format";
 import { CLIENT_OPERATING_RULES } from "@/lib/operating-rule";
+import {
+  REMINDER_AFTER_DAYS,
+  REMINDER_BEFORE_DAYS,
+} from "@/lib/reminders/policy";
 import type { ClientFormState } from "./actions";
 
 export type ClientFormValues = {
@@ -42,7 +48,23 @@ export type ClientFormValues = {
   w9_status?: string | null;
   notes?: string | null;
   operating_rule?: string | null;
+  // 20260813130000 — the chase schedule and the agreed late fee. Every one
+  // of them is off/empty for a client that has never been given one, which
+  // is every client until a pilot decides otherwise.
+  reminder_before_due?: number[] | null;
+  reminder_on_due?: boolean | null;
+  reminder_after_due?: number[] | null;
+  late_fee_flat_cents?: number | null;
+  late_fee_bps_per_month?: number | null;
+  late_fee_grace_days?: number | null;
+  late_fee_note_on_reminders?: boolean | null;
 };
+
+const LATE_FEE_KINDS = [
+  { value: "none", label: "No late fee" },
+  { value: "flat", label: "A flat amount" },
+  { value: "rate", label: "A percentage per month" },
+];
 
 const TREATMENTS = [
   { value: "unassigned", label: "Decide per expense" },
@@ -147,6 +169,21 @@ export default function ClientForm({
     if (submitted?.operating_rule !== undefined) {
       setOperatingRule(String(submitted.operating_rule || "unspecified"));
     }
+    if (submitted?.late_fee_kind !== undefined) {
+      setLateFeeKind(String(submitted.late_fee_kind || "none"));
+    }
+    if (submitted?.reminder_before_due !== undefined) {
+      setBeforeDue(initialDays("reminder_before_due", null));
+    }
+    if (submitted?.reminder_after_due !== undefined) {
+      setAfterDue(initialDays("reminder_after_due", null));
+    }
+    if (submitted?.reminder_on_due !== undefined) {
+      setOnDue(submitted.reminder_on_due === "1");
+    }
+    if (submitted?.late_fee_note_on_reminders !== undefined) {
+      setLateFeeNote(submitted.late_fee_note_on_reminders === "1");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitted]);
   const expenseTreatmentId = useId();
@@ -154,6 +191,68 @@ export default function ClientForm({
   const perDiemModeId = useId();
   const minimumBasisId = useId();
   const operatingRuleId = useId();
+  const lateFeeKindId = useId();
+
+  // THE CHASE SCHEDULE. Held as controlled state and posted through hidden
+  // inputs as comma-separated day lists, for the same React-19 reason the
+  // Selects above are: an uncontrolled control loses its state on every action
+  // dispatch, the rejected one included, so a pilot who mis-typed a rate would
+  // also silently lose the schedule they had just ticked.
+  //
+  // EVERY BOX STARTS UNTICKED for a client that has never had a schedule.
+  // Shipping a default cadence would be this product deciding, on a pilot's
+  // behalf and in their name, how often to chase somebody they have a
+  // commercial relationship with.
+  const [beforeDue, setBeforeDue] = useState<number[]>(
+    () => initialDays("reminder_before_due", values.reminder_before_due)
+  );
+  const [onDue, setOnDue] = useState<boolean>(
+    () => initialFlag("reminder_on_due", values.reminder_on_due)
+  );
+  const [afterDue, setAfterDue] = useState<number[]>(
+    () => initialDays("reminder_after_due", values.reminder_after_due)
+  );
+  const [lateFeeKind, setLateFeeKind] = useState(() =>
+    initial(
+      "late_fee_kind",
+      values.late_fee_flat_cents != null
+        ? "flat"
+        : values.late_fee_bps_per_month != null
+          ? "rate"
+          : "none",
+      "none"
+    )
+  );
+  const [lateFeeNote, setLateFeeNote] = useState<boolean>(
+    () => initialFlag("late_fee_note_on_reminders", values.late_fee_note_on_reminders)
+  );
+
+  function initialDays(key: string, stored: number[] | null | undefined): number[] {
+    const echoed = submitted?.[key];
+    const source =
+      echoed !== undefined ? echoed.split(",") : (stored ?? []).map(String);
+    return source
+      .map((part) => Number(String(part).trim()))
+      .filter((day) => Number.isInteger(day));
+  }
+
+  function initialFlag(key: string, stored: boolean | null | undefined): boolean {
+    const echoed = submitted?.[key];
+    if (echoed !== undefined) return echoed === "1";
+    return stored === true;
+  }
+
+  function toggleDay(
+    day: number,
+    current: number[],
+    set: (next: number[]) => void
+  ) {
+    set(
+      current.includes(day)
+        ? current.filter((d) => d !== day)
+        : [...current, day].sort((a, b) => a - b)
+    );
+  }
 
   return (
     <Card size="3">
@@ -530,6 +629,234 @@ export default function ClientForm({
               the fee line yourself if the client owes one.
             </Text>
           </Flex>
+        </Grid>
+
+        <Flex direction="column" gap="1" mt="5" mb="3">
+          <Heading as="h2" size="4">Chasing this client</Heading>
+          {/* SAYS PLAINLY THAT MAIL LEAVES THE BUILDING. This is the only
+              screen in the product where a pilot arms something that emails
+              their client without them, so it names the client, says nothing
+              is on by default, and says where to stop it. */}
+          <Text size="2" color="gray">
+            Reminders go out on their own, in your name, to the contact above —
+            the same follow-up you can send by hand from an invoice, with the
+            invoice attached. Nothing is on until you tick it, and you can
+            switch reminders off for any single invoice from that invoice&rsquo;s
+            page.
+          </Text>
+        </Flex>
+        <Grid columns={{ initial: "1", md: "3" }} gap="3">
+          <Flex direction="column" gap="1">
+            <Text as="div" size="2" weight="medium">
+              Before it&rsquo;s due
+            </Text>
+            <Flex direction="column" gap="1" mt="1">
+              {REMINDER_BEFORE_DAYS.map((day) => (
+                <Text as="label" size="2" key={`before-${day}`}>
+                  <Flex gap="2" align="center">
+                    <Checkbox
+                      checked={beforeDue.includes(day)}
+                      onCheckedChange={() =>
+                        toggleDay(day, beforeDue, setBeforeDue)
+                      }
+                    />
+                    {day} days before
+                  </Flex>
+                </Text>
+              ))}
+            </Flex>
+            <input
+              type="hidden"
+              name="reminder_before_due"
+              value={beforeDue.join(",")}
+            />
+            <Text size="1" color="gray">
+              A courtesy note while there is still time to pay it.
+            </Text>
+          </Flex>
+
+          <Flex direction="column" gap="1">
+            <Text as="div" size="2" weight="medium">
+              On the due date
+            </Text>
+            <Text as="label" size="2" mt="1">
+              <Flex gap="2" align="center">
+                <Checkbox
+                  checked={onDue}
+                  onCheckedChange={(value) => setOnDue(value === true)}
+                />
+                Send one on the day
+              </Flex>
+            </Text>
+            <input type="hidden" name="reminder_on_due" value={onDue ? "1" : ""} />
+          </Flex>
+
+          <Flex direction="column" gap="1">
+            <Text as="div" size="2" weight="medium">
+              After it&rsquo;s due
+            </Text>
+            <Flex direction="column" gap="1" mt="1">
+              {REMINDER_AFTER_DAYS.map((day) => (
+                <Text as="label" size="2" key={`after-${day}`}>
+                  <Flex gap="2" align="center">
+                    <Checkbox
+                      checked={afterDue.includes(day)}
+                      onCheckedChange={() => toggleDay(day, afterDue, setAfterDue)}
+                    />
+                    {day} days past due
+                  </Flex>
+                </Text>
+              ))}
+            </Flex>
+            <input
+              type="hidden"
+              name="reminder_after_due"
+              value={afterDue.join(",")}
+            />
+          </Flex>
+
+          <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
+            {/* THE THREE THINGS A PILOT WOULD OTHERWISE FIND OUT BY WATCHING.
+                Each is a real rule in lib/reminders/policy.ts, not a
+                reassurance: one send per invoice per run, a quiet period after
+                any chase (yours included), and a pause when the client has
+                just opened the link. */}
+            <Text size="1" color="gray">
+              Only one reminder ever goes out per invoice per day — if you tick
+              several and an invoice is already well past due, the most recent
+              one is sent and the earlier ones are skipped, not queued up.
+              Nothing goes out within five days of any reminder, including one
+              you sent by hand, or while the client has just opened the invoice
+              link. Paid and voided invoices are never chased.
+            </Text>
+          </Flex>
+        </Grid>
+
+        <Flex direction="column" gap="1" mt="5" mb="3">
+          <Heading as="h2" size="4">Late fee</Heading>
+          {/* THE DOMAIN RULE, IN THE COPY. A late fee is a term the pilot
+              negotiated, not something this product works out they are owed —
+              so the heading is neutral, the wording says "you agreed", and the
+              default is none. */}
+          <Text size="2" color="gray">
+            Only if you agreed one with this client. This product never adds a
+            fee on its own: when one is due it offers you a separate draft
+            invoice, which you review and send like any other.
+          </Text>
+        </Flex>
+        <Grid columns={{ initial: "1", md: "3" }} gap="3">
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" htmlFor={lateFeeKindId}>
+              What you agreed
+            </Text>
+            <Select.Root
+              key={`late-fee-kind-${genTick}`}
+              value={lateFeeKind}
+              onValueChange={setLateFeeKind}
+            >
+              <Select.Trigger id={lateFeeKindId} />
+              <Select.Content>
+                {LATE_FEE_KINDS.map((option) => (
+                  <Select.Item key={option.value} value={option.value}>
+                    {option.label}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+            <input type="hidden" name="late_fee_kind" value={lateFeeKind} />
+          </Flex>
+
+          {lateFeeKind === "flat" ? (
+            <Flex direction="column" gap="1">
+              <Text as="label" size="2" weight="medium" htmlFor="late_fee_flat">
+                Amount (USD)
+              </Text>
+              <TextField.Root
+                id="late_fee_flat"
+                name="late_fee_flat"
+                inputMode="decimal"
+                defaultValue={initial(
+                  "late_fee_flat",
+                  centsToInput(values.late_fee_flat_cents)
+                )}
+              />
+              <Text size="1" color="gray">
+                Charged once, not every month.
+              </Text>
+            </Flex>
+          ) : null}
+
+          {lateFeeKind === "rate" ? (
+            <Flex direction="column" gap="1">
+              <Text as="label" size="2" weight="medium" htmlFor="late_fee_rate_percent">
+                Percent per month
+              </Text>
+              <TextField.Root
+                id="late_fee_rate_percent"
+                name="late_fee_rate_percent"
+                inputMode="decimal"
+                defaultValue={initial(
+                  "late_fee_rate_percent",
+                  values.late_fee_bps_per_month == null
+                    ? ""
+                    : String(values.late_fee_bps_per_month / 100)
+                )}
+              />
+              <Text size="1" color="gray">
+                1.5 is the common convention. Of the balance still outstanding,
+                per complete month — up to 5%.
+              </Text>
+            </Flex>
+          ) : null}
+
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" htmlFor="late_fee_grace_days">
+              Grace period (days)
+            </Text>
+            <TextField.Root
+              id="late_fee_grace_days"
+              type="number"
+              name="late_fee_grace_days"
+              defaultValue={initial(
+                "late_fee_grace_days",
+                values.late_fee_grace_days,
+                "0"
+              )}
+            />
+            <Text size="1" color="gray">
+              Days past due before anything starts running.
+            </Text>
+          </Flex>
+
+          {lateFeeKind !== "none" ? (
+            <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
+              <Separator size="4" my="1" />
+              <Text as="label" size="2">
+                <Flex gap="2" align="center">
+                  <Checkbox
+                    checked={lateFeeNote}
+                    onCheckedChange={(value) => setLateFeeNote(value === true)}
+                  />
+                  Mention it in reminders to this client
+                </Flex>
+              </Text>
+              <input
+                type="hidden"
+                name="late_fee_note_on_reminders"
+                value={lateFeeNote ? "1" : ""}
+              />
+              {/* SAYS EXACTLY WHAT THE CLIENT WOULD READ, because "mention it"
+                  could mean anything and this is a sentence going to somebody
+                  else's accounts department in the pilot's name. */}
+              <Text size="1" color="gray">
+                Adds one line to reminders: &ldquo;Per our agreement, a late fee
+                of {lateFeeKind === "flat" ? "$X" : "X% per month"} applies on
+                balances more than N days past their due date.&rdquo; It states
+                the term only — no running total, and never as part of the
+                amount due.
+              </Text>
+            </Flex>
+          ) : null}
         </Grid>
 
         {/* role="alert" so a screen reader hears the rejection; without it

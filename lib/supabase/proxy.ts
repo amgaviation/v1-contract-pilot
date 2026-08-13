@@ -142,6 +142,29 @@ async function refreshSession(
     // already lets both through (neither is excluded there).
     normalizedPath === "/robots.txt" ||
     normalizedPath === "/sitemap.xml" ||
+    // app/manifest.ts, served at /manifest.webmanifest. THE SAME FAILURE
+    // MODE AS THE TWO ABOVE, and the reason it survived a round of review
+    // is that it bites a SIGNED-IN pilot too: per the W3C manifest spec a
+    // browser fetches the manifest WITHOUT credentials unless the <link>
+    // carries crossorigin="use-credentials", and the tag Next injects is
+    // bare. The fetch therefore arrives here cookie-less no matter who is
+    // driving the browser, gets 307'd to /login, and the browser tries to
+    // parse a login page as JSON. Measured before this line existed:
+    // `curl /manifest.webmanifest` answered
+    // `307 -> /login?next=%2Fmanifest.webmanifest` and resolved to
+    // text/html. The consequence is not cosmetic — with no parseable
+    // manifest Android's install criteria never pass, and on iOS (which has
+    // no apple-mobile-web-app-capable fallback in app/layout.tsx, only the
+    // touch icon) Add to Home Screen yields a Safari bookmark rather than
+    // the standalone app. docs/WAVE-PARITY.md 7.5's "installable" claim
+    // rests entirely on this line.
+    //
+    // Serving it discloses nothing: app/manifest.ts is static brand strings
+    // and icon paths, byte-identical for every visitor, naming files that
+    // are already public. Kept on the ALLOW-LIST rather than excluded in
+    // proxy.ts's matcher (where favicon.ico sits) so the reasoning lives
+    // beside /robots.txt and /sitemap.xml, which this case exactly matches.
+    normalizedPath === "/manifest.webmanifest" ||
     path.startsWith("/auth/") ||
     // The Stripe webhook is machine-to-machine and carries no session. It
     // authenticates by signature (see the route), which is stronger than a

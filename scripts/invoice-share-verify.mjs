@@ -13,8 +13,11 @@
  *
  * WHAT THIS SCRIPT DOES NOT DO, AND WHY: it does not drive
  * app/invoice/[token]/page.tsx over HTTP (no running dev server in this
- * harness) — it exercises the exact same call the page makes
- * (`pilot.invoice_public` as the `anon` role) directly in SQL, which is
+ * harness) — it exercises the exact same calls the page makes
+ * (`pilot.invoice_public` as `anon`, and since 20260813020000
+ * `pilot.invoice_share_receipts` as `service_role`, with the roles that may
+ * NOT call the second one asserted to be refused — SHARE-6b..6f) directly
+ * in SQL, which is
  * where the entire access-control decision actually lives; the page itself
  * is a thin renderer of whatever this function returns or a 404 when it
  * returns null. Not verified here: the actual HTTP 404 response and the
@@ -230,6 +233,120 @@ begin
 end $$;
 
 -- ===========================================================================
+-- ASSERTION 6b — pilot.invoice_share_receipts (20260813020000) is NOT
+-- executable by anon, and not by authenticated either.
+--
+-- WHY THIS NEEDS ITS OWN ASSERTION RATHER THAN RIDING ON SHARE-1. SHARE-1
+-- proves anon has no direct SELECT on the tables. This function is SECURITY
+-- DEFINER, so its body bypasses exactly that — the ONLY thing standing
+-- between anon and its result is the missing EXECUTE grant, which SHARE-1
+-- says nothing about. And its result is not the kind of thing the rest of
+-- this boundary hands out: private-bucket storage paths of the shape
+-- <account_id>/<uuid>.jpg, i.e. the owning tenant's uuid plus internal
+-- object ids, which 20260809060000's field-by-field justification refuses
+-- to disclose. Its own header calls that posture "worth checking rather
+-- than believing" and pointed at SHARE-1/SHARE-1b, which do not check it.
+-- This is that check.
+--
+-- The regression it exists to catch is not exotic: the sibling functions on
+-- this boundary (invoice_public, document_packet_public) ARE anon-granted,
+-- so copying their grant line onto this one is the natural mistake, and
+-- every other assertion in this file would still pass.
+-- ===========================================================================
+set local role anon;
+do $$
+declare
+  v_token text := current_setting('share_verify.token_a1');
+begin
+  begin
+    perform pilot.invoice_share_receipts(v_token);
+    raise exception 'SHARE-6b FAILURE: anon could execute pilot.invoice_share_receipts';
+  exception when insufficient_privilege then
+    raise notice 'PASS (SHARE-6b, sqlstate confirmed 42501): anon cannot execute pilot.invoice_share_receipts, so a share-token holder cannot reach storage paths through PostgREST';
+  end;
+end $$;
+reset role;
+
+set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', '${UA}', 'role', 'authenticated')::text, true);
+do $$
+declare
+  v_token text := current_setting('share_verify.token_a1');
+begin
+  begin
+    perform pilot.invoice_share_receipts(v_token);
+    raise exception 'SHARE-6c FAILURE: authenticated could execute pilot.invoice_share_receipts';
+  exception when insufficient_privilege then
+    raise notice 'PASS (SHARE-6c, sqlstate confirmed 42501): authenticated cannot execute it either — the grant is service_role and nothing else, exactly as the migration says';
+  end;
+end $$;
+reset role;
+
+-- ===========================================================================
+-- ASSERTION 6d — service_role CAN execute it, and gets the owning
+-- account_id back. Without this, 6b/6c would keep passing if the function
+-- were renamed, dropped, or broken — "nobody can call it" is not the
+-- property under test, "only the server can call it" is.
+--
+-- receipts is [] here because INV_A1's only line is a flight_day with
+-- expense_id null, which is itself the assertion the migration's
+-- l.expense_id is not null clause deserves: a non-rebill line contributes
+-- no receipt row.
+-- ===========================================================================
+set local role service_role;
+do $$
+declare
+  v_token text := current_setting('share_verify.token_a1');
+  v_result jsonb;
+begin
+  v_result := pilot.invoice_share_receipts(v_token);
+  if v_result is null then
+    raise exception 'SHARE-6d FAILURE: service_role got null for a live, correctly-shared token';
+  end if;
+  if (v_result ->> 'account_id') <> '${A}' then
+    raise exception 'SHARE-6d FAILURE: wrong account_id returned: %', v_result ->> 'account_id';
+  end if;
+  if (v_result -> 'receipts') <> '[]'::jsonb then
+    raise exception 'SHARE-6d FAILURE: a non-rebill line produced receipt rows: %', v_result -> 'receipts';
+  end if;
+  raise notice 'PASS (SHARE-6d): service_role reads the owning account_id and an empty receipt list — the function is present and working, so 6b/6c are denials rather than absences';
+end $$;
+reset role;
+
+-- ===========================================================================
+-- ASSERTION 6e — FAIL-PROOF for 6b, in the same shape as SHARE-9 below:
+-- deliberately grant anon EXECUTE (the exact regression 6b exists to
+-- catch), watch the identical probe now succeed instead of raising 42501,
+-- then revoke and re-confirm the denial. A probe never seen to fail is not
+-- evidence.
+-- ===========================================================================
+grant execute on function pilot.invoice_share_receipts(text) to anon;
+set local role anon;
+do $$
+declare
+  v_token text := current_setting('share_verify.token_a1');
+  v_result jsonb;
+begin
+  v_result := pilot.invoice_share_receipts(v_token);
+  raise notice 'PASS (SHARE-6e, fail-proof): with anon deliberately granted EXECUTE, the SHARE-6b-shaped probe now returns account_id % instead of raising 42501 — proving SHARE-6b is a real, currently-passing assertion and not a tautology (this statement would itself have raised insufficient_privilege, aborting the script, had the grant not taken effect)', v_result ->> 'account_id';
+end $$;
+reset role;
+revoke execute on function pilot.invoice_share_receipts(text) from anon;
+set local role anon;
+do $$
+declare
+  v_token text := current_setting('share_verify.token_a1');
+begin
+  begin
+    perform pilot.invoice_share_receipts(v_token);
+    raise exception 'SHARE-6f FAILURE: revoke did not restore the denial';
+  exception when insufficient_privilege then
+    raise notice 'PASS (SHARE-6f): revoking the deliberately-added grant restores SHARE-6b''s denial — the schema is back to its real, shipped state for every assertion after this one';
+  end;
+end $$;
+reset role;
+
+-- ===========================================================================
 -- ASSERTION 7 — revoke, then the identical token returns null immediately
 -- (both as anon AND re-derived to prove it's truly gone, not cached).
 -- ===========================================================================
@@ -249,6 +366,25 @@ begin
     raise exception 'SHARE-7 FAILURE: a revoked token still returned invoice data';
   end if;
   raise notice 'PASS (SHARE-7): a revoked token returns null immediately, same as an unknown one';
+end $$;
+reset role;
+
+-- ASSERTION 7b — the SAME revocation, through the receipts function, AS
+-- service_role (the only role that may call it). The migration copied
+-- invoice_public's status/revocation predicate verbatim rather than
+-- factoring it out, precisely so a divergence would be visible in a diff —
+-- this is what makes "they still agree" a checked claim. It is also the
+-- assertion behind lib/invoice-share-receipts.ts's promise that nothing
+-- survives a revoked share by even one request.
+set local role service_role;
+do $$
+declare
+  v_token text := current_setting('share_verify.token_a1');
+begin
+  if pilot.invoice_share_receipts(v_token) is not null then
+    raise exception 'SHARE-7b FAILURE: a revoked token still returned receipt paths to service_role';
+  end if;
+  raise notice 'PASS (SHARE-7b): the receipts function honours the revoke on the very next call — its predicate has not drifted from pilot.invoice_public''s';
 end $$;
 reset role;
 

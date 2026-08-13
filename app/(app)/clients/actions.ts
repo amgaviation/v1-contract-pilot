@@ -7,6 +7,10 @@ import { requireAccount } from "@/lib/supabase/account";
 import { parseDollarsToCents, parseTenth } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import type { ClientOperatingRule } from "@/lib/operating-rule";
+import {
+  REMINDER_AFTER_DAYS,
+  REMINDER_BEFORE_DAYS,
+} from "@/lib/reminders/policy";
 import type { Database } from "@/lib/supabase/database.types";
 
 type ClientInsert = Database["pilot"]["Tables"]["clients"]["Insert"];
@@ -54,6 +58,16 @@ const CLIENT_FIELDS = [
   "w9_status",
   "notes",
   "operating_rule",
+  // 20260813130000. Posted as comma-separated day lists and a small set of
+  // scalars — see parseReminderDays and parseLateFee below.
+  "reminder_before_due",
+  "reminder_on_due",
+  "reminder_after_due",
+  "late_fee_kind",
+  "late_fee_flat",
+  "late_fee_rate_percent",
+  "late_fee_grace_days",
+  "late_fee_note_on_reminders",
 ] as const;
 
 function echo(formData: FormData) {
@@ -81,6 +95,14 @@ const MINIMUM_BASES = ["per_trip", "per_month"] as const;
 // 20260807130000. 'unspecified' stays the fallback — matches the
 // column's own DEFAULT, so a value this form can't recognize behaves the
 // same way an absent one already does (same reasoning as MINIMUM_BASES).
+/**
+ * Which KIND of late fee, if any. Not a stored column — it decides which of
+ * the two mutually-exclusive fee columns gets a value (see parseClientForm).
+ * 'none' is the fallback, matching both columns' NULL default: a value this
+ * form cannot recognise behaves exactly like an absent one.
+ */
+const LATE_FEE_KINDS = ["none", "flat", "rate"] as const;
+
 const OPERATING_RULES: readonly ClientOperatingRule[] = [
   "unspecified",
   "part_91",
@@ -104,6 +126,53 @@ function oneOf<T extends readonly string[]>(
   return (allowed as readonly string[]).includes(value)
     ? (value as T[number])
     : fallback;
+}
+
+/**
+ * A comma-separated day list from the reminder checkboxes ("3,7") to the
+ * integer array the column holds.
+ *
+ * Posted as one hidden input rather than as repeated checkbox inputs for the
+ * reason client-form.tsx's Select comment already sets out at length: React 19
+ * resets an uncontrolled form on every action dispatch, so a control whose
+ * state lives in the DOM loses it on a rejected submit. One controlled hidden
+ * input per group survives the reset and echoes back.
+ *
+ * SILENTLY DROPS anything not in the offered set rather than erroring. The set
+ * is fixed and rendered as checkboxes, so an out-of-range value did not come
+ * from a pilot mis-typing — it came from a crafted post or a stale tab, and
+ * the honest response to either is to store the part that is real. The
+ * database CHECK is the actual boundary and would reject the rest anyway.
+ */
+function parseReminderDays(
+  formData: FormData,
+  key: string,
+  allowed: readonly number[]
+): number[] {
+  return String(formData.get(key) ?? "")
+    .split(",")
+    .map((part) => Number(part.trim()))
+    .filter((day) => Number.isInteger(day) && allowed.includes(day))
+    .filter((day, index, all) => all.indexOf(day) === index)
+    .sort((a, b) => a - b);
+}
+
+/**
+ * A percent like "1.5" to basis points, bounded at 5%/month.
+ *
+ * Same shape as the invoice tax parser (invoices/actions.ts's
+ * parsePercentToBps) and for the same reason: percent is what a pilot reads
+ * off their own agreement, and basis points are what the column stores so no
+ * float ever touches money. `undefined` means "that isn't a number I can use",
+ * distinct from `null`, which means "no rate agreed".
+ */
+function parseRateToBps(raw: string): number | null | undefined {
+  const text = raw.trim();
+  if (text === "") return null;
+  if (!/^\d+(\.\d{1,2})?$/.test(text)) return undefined;
+  const bps = Math.round(Number(text) * 100);
+  if (!Number.isInteger(bps) || bps <= 0 || bps > 500) return undefined;
+  return bps;
 }
 
 type ParsedClient = {
@@ -173,10 +242,65 @@ function parseClientForm(formData: FormData): ParsedClient {
     };
   }
 
+  // THE LATE FEE, AND THE ONE SHAPE THE DATABASE REFUSES.
+  //
+  // A flat fee and a rate are mutually exclusive by CHECK, so the form asks
+  // WHICH KIND rather than offering two boxes and hoping. Reading the kind
+  // here — instead of "whichever box has something in it" — is what makes the
+  // impossible state unreachable from this action: exactly one of the two is
+  // ever non-null, whatever the other box happens to contain.
+  const lateFeeKind = oneOf(formData, "late_fee_kind", LATE_FEE_KINDS, "none");
+  const lateFeeFlat = parseDollarsToCents(String(formData.get("late_fee_flat") ?? ""));
+  if (lateFeeKind === "flat" && (lateFeeFlat === undefined || !lateFeeFlat)) {
+    return {
+      ...empty,
+      error: "A flat late fee needs an amount, like 50 or 50.00. Choose “No late fee” if you haven't agreed one.",
+    };
+  }
+  const lateFeeBps = parseRateToBps(String(formData.get("late_fee_rate_percent") ?? ""));
+  if (lateFeeKind === "rate" && (lateFeeBps === undefined || lateFeeBps === null)) {
+    return {
+      ...empty,
+      error:
+        "A monthly late fee rate must be a percent like 1.5, up to 5%. Choose “No late fee” if you haven't agreed one.",
+    };
+  }
+
+  const graceRaw = String(formData.get("late_fee_grace_days") ?? "").trim();
+  const graceDays = graceRaw === "" ? 0 : Number(graceRaw);
+  if (!Number.isInteger(graceDays) || graceDays < 0 || graceDays > 90) {
+    return {
+      ...empty,
+      error: "The late fee grace period must be a whole number of days, 0 to 90.",
+    };
+  }
+
+  // The note can only be on when there is something agreed to state. The
+  // database CHECK says the same thing; refusing it here means the pilot gets
+  // a sentence instead of "Some of those values aren't valid together."
+  const noteOnReminders =
+    lateFeeKind !== "none" &&
+    String(formData.get("late_fee_note_on_reminders") ?? "") === "1";
+
   return {
     error: null,
     values: {
       name,
+      reminder_before_due: parseReminderDays(
+        formData,
+        "reminder_before_due",
+        REMINDER_BEFORE_DAYS
+      ),
+      reminder_on_due: String(formData.get("reminder_on_due") ?? "") === "1",
+      reminder_after_due: parseReminderDays(
+        formData,
+        "reminder_after_due",
+        REMINDER_AFTER_DAYS
+      ),
+      late_fee_flat_cents: lateFeeKind === "flat" ? (lateFeeFlat ?? null) : null,
+      late_fee_bps_per_month: lateFeeKind === "rate" ? (lateFeeBps ?? null) : null,
+      late_fee_grace_days: graceDays,
+      late_fee_note_on_reminders: noteOnReminders,
       contact_name: optional(formData, "contact_name"),
       contact_email: optional(formData, "contact_email"),
       contact_phone: optional(formData, "contact_phone"),
