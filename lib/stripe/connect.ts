@@ -204,9 +204,32 @@ export type CreatePaymentLinkResult = {
  * is handled where the balance actually changes: recordPayment and
  * voidInvoice call deactivatePaymentLink below and clear the stored
  * columns, so a link never outlives the balance it was priced against.
+ *
+ * METADATA IS WHAT MAKES THE PAYMENT FINDABLE AGAIN (20260813100000).
+ * Stripe copies a Payment Link's metadata onto every Checkout Session the
+ * link spawns, and that Session is what
+ * app/api/stripe/connect-webhook/route.ts receives — so these three keys
+ * are the only durable handle from "someone paid" back to "this invoice".
+ * The Session also carries `payment_link` (the plink_... id), and the
+ * invoice does store one, but that column is CLEARED whenever a link is
+ * retired, regenerated or the account is disconnected; metadata travels
+ * with the payment and cannot be cleared. `invoice_id` and `account_id`
+ * are the row ids, not the invoice NUMBER — numbers are per-tenant and
+ * two pilots' invoice 0001 are different documents.
+ *
+ * These keys are visible to, and editable by, the pilot in their own
+ * Stripe dashboard: the link lives on THEIR account. That is exactly why
+ * the webhook treats them as untrusted and derives tenancy from
+ * event.account instead — see resolveAutoPayment in
+ * lib/stripe/connect-payments.ts. Metadata says WHICH invoice; Stripe's
+ * signature says WHOSE.
  */
 export async function createPaymentLinkForInvoice(params: {
   connectAccountId: string;
+  /** The tenant that owns the invoice. Written into the link's metadata. */
+  accountId: string;
+  /** The invoice ROW's id — the only globally unique handle it has. */
+  invoiceId: string;
   invoiceNumber: string;
   amountCents: number;
 }): Promise<CreatePaymentLinkResult> {
@@ -227,7 +250,15 @@ export async function createPaymentLinkForInvoice(params: {
       line_items: [{ price: price.id, quantity: 1 }],
       // No application_fee_amount. No on_behalf_of. No transfer_data.
       restrictions: { completed_sessions: { limit: 1 } },
-      metadata: { invoice_number: params.invoiceNumber },
+      metadata: {
+        invoice_id: params.invoiceId,
+        account_id: params.accountId,
+        // Kept, and kept LAST: it is the human-readable one, it is what a
+        // pilot recognises in their Stripe dashboard, and links minted
+        // before the two ids above carry only this. The webhook degrades
+        // to "ignored, record it by hand" for those rather than failing.
+        invoice_number: params.invoiceNumber,
+      },
     },
     { stripeAccount }
   );

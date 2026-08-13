@@ -4,7 +4,12 @@ import { useActionState, useEffect, useState } from "react";
 import { Button, Callout, Card, Flex, Select, Separator, Text, TextField } from "@/components/ui";
 import { formatCents, formatDate } from "@/lib/format";
 import { correctPayment, recordPayment, type InvoiceFormState } from "../actions";
-import { createInvoicePaymentLink, type CreateLinkState } from "../payment-link-actions";
+import {
+  createInvoicePaymentLink,
+  markConnectNoticeReviewed,
+  type CreateLinkState,
+  type ReviewNoticeState,
+} from "../payment-link-actions";
 
 export type PaymentRow = {
   id: string;
@@ -20,6 +25,34 @@ export type PaymentRow = {
    */
   reverses_payment_id?: string | null;
   reversal_reason?: string | null;
+  /**
+   * Who put this row here (20260813100000). 'stripe_link' means the
+   * Connect webhook recorded it when the client paid this invoice's
+   * payment link; 'manual' means a pilot typed it. Rendered, not just
+   * stored: a pilot who cannot tell the two apart at a glance is a pilot
+   * who records the same money twice, which is the whole reason the
+   * column exists rather than a note appended to `notes`.
+   */
+  source?: "manual" | "stripe_link" | null;
+};
+
+/**
+ * One unresolved pilot.stripe_connect_events row — a Stripe payment that
+ * arrived for this invoice and was deliberately NOT recorded.
+ *
+ * Two outcomes reach here (page.tsx's query says which and why):
+ * 'needs_review', where it looked as though the payment had already been
+ * entered by hand, and 'refused', where the invoice or the session could
+ * not take it — a client paying a link that outlived a voided invoice,
+ * most of all, which is real money sitting in the pilot's Stripe balance
+ * against a dead document. Both render identically because the pilot's job
+ * is identical: look, and decide. See markConnectNoticeReviewed for why
+ * dismissing is the only action.
+ */
+export type ConnectNoticeRow = {
+  id: string;
+  connected_account_id: string;
+  detail: string | null;
 };
 
 /**
@@ -138,20 +171,36 @@ function CorrectPaymentForm({
 const initialLinkState: CreateLinkState = { error: null };
 
 /**
- * "Pay online" — Stripe Connect (Standard), payment-link-only (docs/
- * PLAN.md decision #8). See
- * supabase/migrations/20260809040000_connect_payments.sql's header for
- * the full (a)-vs-(b) reasoning; the short version: auto-recording a
- * client's payment would need a Connect webhook writing tenant financial
- * data through a request with no session, which is exactly the kind of
- * second privileged entry point lib/supabase/service-role.ts's own header
- * says must not exist beyond the platform billing webhook. So this button
- * only ever CREATES a Stripe-hosted Payment Link (a direct charge on the
- * pilot's own connected account, no application fee, no funds routed
- * through this platform) — when the client pays, the pilot sees it land
- * in their own Stripe Dashboard and records it below exactly as they
- * would a cheque or a wire. That manual last step is a documented,
- * deliberate gap, not an oversight.
+ * "Pay online" — Stripe Connect (Standard), payment links (docs/PLAN.md
+ * decision #8).
+ *
+ * THE "RECORD IT BY HAND" PARAGRAPH THAT USED TO BE HERE IS GONE, AND
+ * SAYING SO IS THE POINT. It read, correctly at the time, that this button
+ * only ever creates a link and that "when the client pays, the pilot sees
+ * it land in their own Stripe Dashboard and records it below exactly as
+ * they would a cheque or a wire — a documented, deliberate gap, not an
+ * oversight". That gap was closed by
+ * supabase/migrations/20260813100000_connect_auto_payments.sql. A comment
+ * describing a manual step the software now performs is worse than no
+ * comment: it sends the next reader looking for a hand-off that does not
+ * exist, and it tells them the pilot must do something they must not do
+ * twice.
+ *
+ * What happens now: this button still only CREATES a Stripe-hosted
+ * Payment Link (a direct charge on the pilot's own connected account, no
+ * application fee, no funds routed through this platform, exactly as
+ * before). When the client pays it, Stripe delivers the Checkout Session
+ * to app/api/stripe/connect-webhook/route.ts, which records the payment
+ * onto this same invoice and advances its status. Those rows appear in
+ * the list above marked "paid online"; the pilot does not re-enter them,
+ * and the panel says so where they would otherwise be tempted to.
+ *
+ * The cost of that, stated once and honestly: it took a SECOND
+ * service-role entry point to build — the first that writes tenant
+ * business data rather than provisioning a tenant. Both are named in
+ * lib/supabase/service-role.ts. If the Connect webhook is not configured
+ * (no STRIPE_CONNECT_WEBHOOK_SECRET), nothing auto-records and the old
+ * by-hand flow is exactly what happens, unchanged.
  *
  * A LINK IS PRICED ONCE, WHEN IT IS GENERATED. Stripe builds a Payment
  * Link from a Price, and that Price snapshots the balance due at that
@@ -278,6 +327,64 @@ const METHOD_LABEL: Record<string, string> = Object.fromEntries(
 
 const initialState: InvoiceFormState = { error: null };
 
+const initialReviewState: ReviewNoticeState = { error: null };
+
+/**
+ * A Stripe payment that arrived for this invoice and was NOT recorded.
+ *
+ * This is the visible half of the double-record guard. The webhook can
+ * tell that money arrived; it cannot tell whether the row already sitting
+ * on this invoice is that same money entered by hand or a genuinely
+ * separate payment — and guessing wrong either credits a client twice or
+ * hides a payment. So it declines, writes down what it saw, and this
+ * renders that sentence where the pilot is already standing.
+ *
+ * Amber rather than red: nothing is broken and no money was lost. The
+ * only action is "I've checked" — there is deliberately no "record it
+ * anyway" button here, because the ordinary payment form is right below
+ * and is the honest way to add a payment the pilot has decided is real.
+ */
+function ConnectNotice({
+  invoiceId,
+  notice,
+}: {
+  invoiceId: string;
+  notice: ConnectNoticeRow;
+}) {
+  const [state, formAction, pending] = useActionState(
+    markConnectNoticeReviewed,
+    initialReviewState
+  );
+
+  return (
+    <Callout.Root color="amber" size="1" mb="3">
+      <Callout.Text>
+        {notice.detail ??
+          "A payment arrived through this invoice's payment link and was not recorded automatically. Check Stripe before recording it yourself."}
+      </Callout.Text>
+      <form action={formAction}>
+        <input type="hidden" name="invoice_id" value={invoiceId} />
+        <input type="hidden" name="event_id" value={notice.id} />
+        <input
+          type="hidden"
+          name="connected_account_id"
+          value={notice.connected_account_id}
+        />
+        <Flex align="center" gap="2" mt="2">
+          <Button type="submit" size="1" variant="soft" color="amber" disabled={pending}>
+            {pending ? "Dismissing…" : "I’ve checked this"}
+          </Button>
+          {state.error ? (
+            <Text size="1" color="red">
+              {state.error}
+            </Text>
+          ) : null}
+        </Flex>
+      </form>
+    </Callout.Root>
+  );
+}
+
 /**
  * Today as "YYYY-MM-DD" in the PILOT'S OWN local calendar, not
  * `new Date().toISOString().slice(0, 10)` — toISOString() converts to UTC
@@ -305,6 +412,7 @@ export default function PaymentPanel({
   existingPaymentLinkUrl,
   existingPaymentLinkAmountCents,
   balanceDueCents,
+  connectNotices = [],
 }: {
   invoiceId: string;
   status: "draft" | "sent" | "partial" | "paid" | "void";
@@ -323,6 +431,14 @@ export default function PaymentPanel({
   existingPaymentLinkUrl: string | null;
   existingPaymentLinkAmountCents: number | null;
   balanceDueCents: number | null;
+  /**
+   * Unresolved 'needs_review' and 'refused' rows from
+   * pilot.stripe_connect_events for this invoice. Almost always empty —
+   * these are the rare cases where a Stripe payment could not simply be
+   * recorded: it looked like the same money as a hand-typed row, or the
+   * invoice could not take it at all.
+   */
+  connectNotices?: ConnectNoticeRow[];
 }) {
   const [state, formAction, pending] = useActionState(recordPayment, initialState);
   // H5: a rejected payment used to blank amount/notes/date entirely — it
@@ -357,6 +473,13 @@ export default function PaymentPanel({
         Payments
       </Text>
 
+      {/* Above the ledger, not below it: this is a warning about a payment
+          that is NOT in the list, and putting it under the list would read
+          as a footnote to rows that are fine. */}
+      {connectNotices.map((notice) => (
+        <ConnectNotice key={notice.id} invoiceId={invoiceId} notice={notice} />
+      ))}
+
       {paymentsLoadError ? (
         <Text color="red">
           Couldn&rsquo;t load payments on this invoice. This is not a
@@ -374,12 +497,19 @@ export default function PaymentPanel({
             // offer to be cancelled again, and it should read as settled
             // rather than as money outstanding.
             const wasCorrected = corrected.has(payment.id);
+            // Recorded by the Connect webhook, not typed by the pilot. The
+            // suffix is for the glance down a list; the sentence below the
+            // row is for the moment the pilot wonders whether they still
+            // have to enter this one. Both, because the cost of the pilot
+            // guessing wrong is a client credited twice.
+            const paidOnline = payment.source === "stripe_link";
             return (
               <Flex key={payment.id} direction="column">
                 <Flex justify="between" align="center" gap="3">
                   <Text color="gray">
                     {formatDate(payment.paid_on)}
                     {payment.method ? ` · ${METHOD_LABEL[payment.method] ?? payment.method}` : ""}
+                    {paidOnline ? " · paid online" : ""}
                     {isCorrection ? " · correction" : ""}
                     {wasCorrected ? " · corrected" : ""}
                   </Text>
@@ -400,6 +530,21 @@ export default function PaymentPanel({
                     ) : null}
                   </Flex>
                 </Flex>
+                {/* Where the money actually IS, said at the moment it is
+                    easiest to wonder. The product never touches a client's
+                    funds — a payment link is a direct charge on the pilot's
+                    own connected account — but the only screen that said so
+                    was Settings, once, at connect time. An invoice flipping
+                    to Paid inside this app is exactly when a pilot new to
+                    Stripe asks whether V1 is holding their money and when
+                    "V1 pays out"; the answer is neither, and it belongs
+                    here. Matches settings/connect-panel.tsx's wording. */}
+                {paidOnline ? (
+                  <Text size="1" color="gray">
+                    Recorded automatically from your payment link — the money is in
+                    your own Stripe account, paid out on Stripe&rsquo;s schedule.
+                  </Text>
+                ) : null}
                 {payment.reversal_reason ? (
                   <Text size="1" color="gray">
                     {payment.reversal_reason}

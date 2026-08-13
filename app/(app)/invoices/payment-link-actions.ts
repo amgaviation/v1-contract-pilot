@@ -12,10 +12,31 @@ import { friendlyDbError } from "@/lib/db-errors";
 
 /**
  * "Pay online" for an invoice — the payment-link half of Stripe Connect
- * (docs/PLAN.md decision #8). See payment-panel.tsx's header comment and
- * supabase/migrations/20260809040000_connect_payments.sql's header for
- * why this stops at generating a link rather than auto-recording a
- * payment: no new service_role caller is added anywhere in this file.
+ * (docs/PLAN.md decision #8).
+ *
+ * THE PAYMENT IS NO LONGER RECORDED BY HAND. This file used to say that
+ * generating the link was the end of the story and the pilot typed the
+ * payment in themselves; that is out of date as of
+ * supabase/migrations/20260813100000_connect_auto_payments.sql. When a
+ * client pays one of these links, Stripe delivers the Checkout Session to
+ * app/api/stripe/connect-webhook/route.ts, which records the payment
+ * against this invoice and advances its status — the same row, the same
+ * table and the same status rule the manual path writes, marked
+ * source='stripe_link' so the pilot can see which is which.
+ *
+ * What that cost, stated plainly rather than left implicit: there are now
+ * TWO service_role callers in the product, not one. This file still adds
+ * none of them — it runs as the signed-in pilot, through RLS, exactly as
+ * before — but the sentence "no new service_role caller is added anywhere"
+ * that used to sit here was a claim about the whole feature, and the whole
+ * feature changed. The argument for the second one is in the migration's
+ * header and in lib/supabase/service-role.ts.
+ *
+ * The one thing this file must keep getting right for that to work is the
+ * METADATA on the link (invoice_id + account_id): it is the only durable
+ * handle from a Stripe payment back to an invoice. Links minted before it
+ * existed simply never auto-record, which is the old behaviour, not a
+ * failure.
  *
  * ONE LIVE LINK PER INVOICE (added after review). "Generate a new link"
  * used to leave the previous one live on Stripe and simply overwrite the
@@ -110,6 +131,12 @@ export async function createInvoicePaymentLink(
   try {
     link = await createPaymentLinkForInvoice({
       connectAccountId: account.connect_account_id,
+      // Both row ids ride along as link metadata — see that function's
+      // header. `account.id` comes from requireAccount, never from the
+      // form, so a forged invoice_id cannot drag a link onto another
+      // tenant's account even before the webhook re-checks it.
+      accountId: account.id,
+      invoiceId: invoice.id,
       invoiceNumber: invoice.invoice_number,
       amountCents: balanceDueCents,
     });
@@ -164,4 +191,64 @@ export async function createInvoicePaymentLink(
 
   revalidatePath(`/invoices/${invoiceId}`);
   return { error: null, url: link.url, warning };
+}
+
+export type ReviewNoticeState = { error: string | null };
+
+/**
+ * "I've checked it" — dismisses one pilot.stripe_connect_events row the
+ * invoice screen is showing ('needs_review' or 'refused').
+ *
+ * WHAT SUCH A ROW MEANS, and why dismissing it is the only action offered.
+ * The webhook received a real, signed, paid Stripe session for this
+ * invoice and DECLINED to record it. Either the money looks as though it
+ * was already entered by hand (the invoice was already settled, or a
+ * matching hand-typed row sits within the race window) — the handler will
+ * not guess between "the pilot typed this same payment in on Friday" and
+ * "the client paid twice", because one of those answers double-credits a
+ * client and only the pilot can tell them apart. Or the invoice could not
+ * take the payment at all: a link that outlived a void, a session in
+ * another currency. Either way the row sits on the invoice screen saying
+ * what happened, and this action clears it once they have looked.
+ *
+ * Deliberately not filtered by outcome here. The button is only rendered
+ * next to a row the screen chose to show, the update is scoped by primary
+ * key and account_id, and it writes one nullable timestamp — so widening
+ * which outcomes the screen surfaces must not require a second edit in
+ * this file, where forgetting it would leave a prompt that cannot be
+ * dismissed.
+ *
+ * It writes ONE nullable timestamp and nothing else: `reviewed_at` is the
+ * only column `authenticated` may update on that table (20260813100000),
+ * so this cannot restate what Stripe sent, cannot move money, and cannot
+ * touch another tenant's row — RLS scopes the update and the account_id
+ * filter below makes a zero-row match visible rather than silent.
+ */
+export async function markConnectNoticeReviewed(
+  _prevState: ReviewNoticeState,
+  formData: FormData
+): Promise<ReviewNoticeState> {
+  const invoiceId = String(formData.get("invoice_id") ?? "");
+  const eventId = String(formData.get("event_id") ?? "");
+  const connectedAccountId = String(formData.get("connected_account_id") ?? "");
+  if (!invoiceId || !eventId || !connectedAccountId) return { error: "Missing notice." };
+
+  const { account } = await requireAccount(`/invoices/${invoiceId}`);
+  const supabase = await createClient();
+
+  // count:"exact" for the house reason: PostgREST answers 200 for an
+  // UPDATE that matched nothing, and a notice that silently refuses to
+  // dismiss is worse than one that says it couldn't.
+  const { error, count } = await supabase
+    .from("stripe_connect_events")
+    .update({ reviewed_at: new Date().toISOString() } as never, { count: "exact" })
+    .eq("id", eventId)
+    .eq("connected_account_id", connectedAccountId)
+    .eq("account_id", account.id);
+
+  if (error) return { error: friendlyDbError(error, "stripe_connect_events.update(reviewed_at)") };
+  if (count === 0) return { error: "That notice is no longer on this invoice." };
+
+  revalidatePath(`/invoices/${invoiceId}`);
+  return { error: null };
 }

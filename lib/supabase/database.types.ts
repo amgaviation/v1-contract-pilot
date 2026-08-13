@@ -51,6 +51,17 @@
  *                                                      connect_account_link's new
  *                                                      signature,
  *                                                      invoices.stripe_payment_link_amount_cents)
+ *   20260813100000_connect_auto_payments.sql          (stripe_connect_events,
+ *                                                      invoice_payments.source,
+ *                                                      invoice_payments.stripe_payment_intent_id)
+ *
+ * The list above has always been partial — it names the migrations whose
+ * shapes this file was updated FOR, not every migration in the tree. Two
+ * columns that predate this note are added alongside the ones above
+ * because the Connect webhook selects them by name and a hand-written type
+ * that omits a column it reads is a compile error waiting to be silenced
+ * with a cast: invoice_payments.reverses_payment_id and .reversal_reason,
+ * from 20260810120000_payment_reversals.sql.
  */
 export type Json =
   | string
@@ -994,6 +1005,76 @@ export type Database = {
         };
         Relationships: [];
       };
+      // 20260813100000_connect_auto_payments.sql. The CONNECT delivery
+      // ledger — a sibling of stripe_events above, not a replacement:
+      // its PK is (connected_account_id, id) because Connect event ids are
+      // minted inside each connected account's namespace, and unlike
+      // stripe_events it IS readable by the tenant it was resolved to.
+      // `authenticated` may update exactly one column, reviewed_at; every
+      // other write is the webhook's.
+      stripe_connect_events: {
+        Row: {
+          id: string;
+          connected_account_id: string;
+          type: string;
+          stripe_created_at: string;
+          object_id: string | null;
+          payment_intent_id: string | null;
+          livemode: boolean;
+          account_id: string | null;
+          invoice_id: string | null;
+          outcome:
+            | "recorded"
+            | "duplicate"
+            | "needs_review"
+            | "refused"
+            | "ignored"
+            | null;
+          detail: string | null;
+          reviewed_at: string | null;
+          processed_at: string | null;
+          received_at: string;
+        };
+        Insert: {
+          id: string;
+          connected_account_id: string;
+          type: string;
+          stripe_created_at: string;
+          object_id?: string | null;
+          payment_intent_id?: string | null;
+          livemode: boolean;
+          account_id?: string | null;
+          invoice_id?: string | null;
+          outcome?:
+            | "recorded"
+            | "duplicate"
+            | "needs_review"
+            | "refused"
+            | "ignored"
+            | null;
+          detail?: string | null;
+          reviewed_at?: string | null;
+          processed_at?: string | null;
+          received_at?: string;
+        };
+        // Only `reviewed_at` is grantable to authenticated; the rest of
+        // this shape exists for the webhook's own service-role writes.
+        Update: {
+          account_id?: string | null;
+          invoice_id?: string | null;
+          outcome?:
+            | "recorded"
+            | "duplicate"
+            | "needs_review"
+            | "refused"
+            | "ignored"
+            | null;
+          detail?: string | null;
+          reviewed_at?: string | null;
+          processed_at?: string | null;
+        };
+        Relationships: [];
+      };
       invoice_number_sequences: {
         Row: { account_id: string; next_number: number };
         Insert: { account_id: string; next_number?: number };
@@ -1205,6 +1286,17 @@ export type Database = {
           amount_cents: number;
           method: "ach" | "check" | "wire" | "card" | "cash" | "other" | null;
           notes: string | null;
+          // 20260810120000_payment_reversals.sql. Set on a CORRECTION row,
+          // naming the payment it negates; the amount is then negative.
+          reverses_payment_id: string | null;
+          reversal_reason: string | null;
+          // 20260813100000_connect_auto_payments.sql. Both are absent from
+          // the authenticated INSERT grant — a tenant's row always takes
+          // source='manual' with a null intent id, which is why they are
+          // optional on Insert below and never populated by app code
+          // outside app/api/stripe/connect-webhook/route.ts.
+          source: "manual" | "stripe_link";
+          stripe_payment_intent_id: string | null;
           created_at: string;
         };
         Insert: {
@@ -1215,6 +1307,10 @@ export type Database = {
           amount_cents: number;
           method?: "ach" | "check" | "wire" | "card" | "cash" | "other" | null;
           notes?: string | null;
+          reverses_payment_id?: string | null;
+          reversal_reason?: string | null;
+          source?: "manual" | "stripe_link";
+          stripe_payment_intent_id?: string | null;
           created_at?: string;
         };
         Relationships: [
