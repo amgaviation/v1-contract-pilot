@@ -166,7 +166,9 @@ app/(app)/settings/ the business record, day types, mileage rates, the three
 app/(app)/settings/billing/  plan management: status, renewal, receipts,
                     upgrade/downgrade, cancel/resume, Stripe portal.
 app/(auth)/         login, signup, password reset, and the post-checkout
-                    welcome screen.
+                    welcome screen. One shared shell (the navy brand panel
+                    beside the form) in app/(auth)/layout.tsx, with the
+                    pieces every screen is built from in auth-parts.tsx.
 app/api/stripe/     the webhook. The only place the service-role client is
                     used, anywhere in the product.
 components/ui/      the Radix defaults barrel (index.tsx — the ONE place a

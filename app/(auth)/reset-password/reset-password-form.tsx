@@ -1,8 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { Box, Button, Card, Flex, Text, TextField } from "@/components/ui";
-import { BRAND } from "@/lib/brand";
+import { Flex, TextField } from "@/components/ui";
+import { AuthHeading, Field, FormError, SubmitButton } from "../auth-parts";
 import { setNewPassword, type ResetPasswordState } from "./actions";
 
 const initialState: ResetPasswordState = { error: null };
@@ -14,56 +14,49 @@ export default function ResetPasswordForm() {
   );
 
   return (
-    <Card size="4" style={{ width: "100%", maxWidth: "22rem" }}>
-      <form action={formAction}>
-        <Flex direction="column" gap="3">
-          <Flex direction="column" align="center" gap="1" mb="1">
-            <Text size="6" weight="bold">
-              {BRAND.name}
-            </Text>
-            <Text size="2" color="gray">
-              Choose a new password
-            </Text>
-          </Flex>
+    <Flex direction="column" gap="6">
+      <AuthHeading title="Choose a new password">
+        You&rsquo;re signed in from the emailed link. Set a password and
+        you&rsquo;re back in.
+      </AuthHeading>
 
-          <Box>
-            <Text as="label" size="2" weight="medium" htmlFor="password">
-              New password
-            </Text>
+      <form action={formAction}>
+        <Flex direction="column" gap="4">
+          <Field
+            id="password"
+            label="New password"
+            hint="At least 8 characters"
+          >
             <TextField.Root
               id="password"
               type="password"
               name="password"
+              size="3"
               autoComplete="new-password"
+              aria-describedby="password-hint"
+              autoFocus
               required
-              mt="1"
+              disabled={pending}
             />
-          </Box>
-          <Box>
-            <Text as="label" size="2" weight="medium" htmlFor="confirm">
-              Confirm new password
-            </Text>
+          </Field>
+
+          <Field id="confirm" label="Confirm new password">
             <TextField.Root
               id="confirm"
               type="password"
               name="confirm"
+              size="3"
               autoComplete="new-password"
               required
-              mt="1"
+              disabled={pending}
             />
-          </Box>
+          </Field>
 
-          {state.error ? (
-            <Text size="1" color="red" role="alert" aria-live="polite">
-              {state.error}
-            </Text>
-          ) : null}
+          <FormError message={state.error} />
 
-          <Button type="submit" disabled={pending} mt="1">
-            {pending ? "Saving…" : "Save password"}
-          </Button>
+          <SubmitButton pending={pending} idle="Save password" busy="Saving…" />
         </Flex>
       </form>
-    </Card>
+    </Flex>
   );
 }

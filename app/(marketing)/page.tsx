@@ -10,277 +10,345 @@ import {
   Grid,
   Heading,
   Section,
-  Separator,
+  Table,
   Text,
 } from "@/components/ui";
 import { BRAND } from "@/lib/brand";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import { getSessionContext } from "@/lib/supabase/account";
 import { TRIAL_PERIOD_DAYS } from "@/lib/stripe/server";
-import ProductMock from "./product-mock";
+import {
+  FEATURES,
+  TIER_RANK,
+  type FeatureId,
+  type PlanTier,
+} from "@/lib/entitlements";
 import {
   GRAY_BAND,
   HAIRLINE_TOP,
   NAVY_INK,
   NAVY_INK_MUTED,
   NAVY_SURFACE_INVERSE,
-} from "./marketing-style";
+} from "@/lib/surface-style";
+import ProductMock from "./product-mock";
 import {
   TIER_DISPLAY,
   TIER_ORDER,
   TIER_PRICE_COPY,
+  isPubliclyClaimable,
 } from "./pricing/pricing-model";
 
-// The trial figure is the SAME constant the checkout passes to Stripe
-// (lib/stripe/server.ts) — this page claims the trial the code enforces.
-// Prices come from ./pricing/pricing-model, the one marketing source for
-// the docs/PRICING.md §3.2 amounts; the Stripe Price objects remain what
-// actually charge the card (the in-app surfaces read those live).
-const TRIAL_LABEL = `${TRIAL_PERIOD_DAYS}-day free trial`;
+/**
+ * THE PUBLIC FRONT DOOR, rewritten 2026-08 against the approved strategy
+ * in docs/MARKETING.md. Read that file before changing a word here: it
+ * carries the positioning, the message hierarchy, the claim rules, and a
+ * per-section word budget this page is written to (~490 visible words,
+ * down from ~1,600).
+ *
+ * The three standing rules that bind the copy, restated because they are
+ * the ones a well-meaning edit breaks:
+ *
+ *   TWO GENERATED, ONE ORGANISED. A trip GENERATES invoice lines and a
+ *   logbook draft. Receipts are ORGANISED by it — nothing in this product
+ *   creates an expense from a trip. Never claim three generated.
+ *
+ *   NOTHING BEYOND SHIPPED CODE. Every feature line below is tied to a
+ *   FeatureId in lib/entitlements.ts, so its tier tag is derived rather
+ *   than typed, and anything the public-claim filter removes (the
+ *   counsel-gated currency board) or entitlements marks comingSoon (seats)
+ *   disappears from this page mechanically. See specGroups() below.
+ *
+ *   ONE TAGLINE, ONCE. BRAND.tagline appears in body copy exactly once —
+ *   the first comparison row — plus the footer and metadata, which read it
+ *   from lib/brand.ts. It is deliberately NOT the H1: the H1 shows the
+ *   mechanic instead of asserting it.
+ *
+ * Figures are interpolated, never typed: the trial is the SAME constant the
+ * checkout passes to Stripe (lib/stripe/server.ts), and the amounts come
+ * from ./pricing/pricing-model, the one marketing source for the
+ * docs/PRICING.md §3.2 numbers.
+ */
 
 /**
- * THE ONE IDEA, as three outputs of a single trip record.
- *
- * Worded against what the product actually does, which is narrower than
- * the tempting version: two things are GENERATED from a trip (a logbook
- * draft, invoice lines) and one is ORGANISED by it (expenses attach to the
- * trip; nothing in this product creates an expense from one). The earlier
- * copy on this page carried a comment saying exactly that, and it survives
- * the redesign because the fact did.
+ * WHAT ONE TRIP PRODUCES. Two generated, one organised — see the header.
+ * The input card that feeds these three is rendered inline below; it is
+ * the source, so it is the one card on the page with its own ground.
  */
-const OUTPUTS = [
+const OUTPUTS: { step: string; title: string; body: string }[] = [
   {
     step: "01",
     title: "Invoice lines",
-    body: "Flight days, travel days, and any expense you tagged rebill become line items on an invoice with its own sequential number, a PDF, and — once you've connected Stripe — a link your client can pay online.",
+    body: "Billable days price themselves off that client's rate card, with anything you tagged rebill. Sequential number, PDF, email delivery, and a payment link once you connect Stripe.",
   },
   {
     step: "02",
     title: "A logbook draft",
-    body: "The legs you flew come back as a drafted logbook entry. You confirm it before anything is saved; nothing writes itself into your logbook behind you.",
+    // ONE DRAFT PER LEG, not one per trip: draftPayloadForLeg() in
+    // app/(app)/logbook/db.ts is per-leg, the queue is titled "Trip drafts —
+    // legs from completed trips", and one entry per flight is the only form
+    // 14 CFR 61.51 recognises. "The legs … a draft entry" read as a merge.
+    body: "Each leg comes back as a draft entry, PIC and SIC kept distinct. Nothing saves until you confirm it.",
   },
   {
     step: "03",
     title: "Receipts, already filed",
-    body: "Scan or import a receipt and assign it to the trip. Tag it rebill and it goes onto that trip's invoice; tag it deduct and it lands in the year's deductible total. You file it once, where you already are.",
+    // "lands in the year's deductible total" DESCRIBES THE SOFTWARE. It
+    // must never become "lowers your taxable income" or "is deductible":
+    // `deduct` is an expense treatment enum (app/(app)/expenses/actions.ts),
+    // and the product's own mileage screen says in as many words that it
+    // records drives rather than determining what is deductible. The front
+    // door is the one signed-out surface with no disclaimer on it, so a tax
+    // outcome asserted here is asserted naked. See docs/MARKETING.md §5
+    // rule 10.
+    body: "Scan it in the FBO, assign it to the trip. Tag it rebill and it bills the client; tag it deduct and it lands in the year's deductible total.",
   },
 ];
 
 /**
- * Feature sections. Each `points` entry maps to a route that exists in
- * the tree at commit time — the claim-to-route mapping is recorded in
- * this session's report, and nothing here describes planned work. The
- * counsel-gated feature (currency) is deliberately absent rather than
- * hedged, and message templates are absent because they did not ship.
+ * THE SPEC BLOCK — one three-column list, grouped by the pilot's job
+ * rather than by tier, replacing the seven-block feature band that was 40%
+ * of the old page.
+ *
+ * Each line declares the FeatureId(s) it describes, and that is what makes
+ * the block honest without hand-maintenance:
+ *
+ *   - the tier tag is DERIVED from FEATURES[id].minTier, so a line can
+ *     never read as included when the code gates it (five of the seven old
+ *     blocks silently mixed Solo, Pro and Business);
+ *   - a line whose feature is not publicly claimable is dropped, so the
+ *     counsel-gated currency board can never reappear here by edit;
+ *   - a line whose feature entitlements marks comingSoon is dropped, which
+ *     is why multi_seat appears nowhere on this page. The Business per-seat
+ *     PRICE is a billing fact and may be stated (see the plans line);
+ *     inviting a bookkeeper is not shipped and is claimed nowhere.
+ *
+ * The prose is written for the reader; the gating is read from the code.
  */
-const FEATURES: {
-  eyebrow: string;
-  title: string;
-  body: string;
-  points: string[];
-}[] = [
+type SpecItem = { text: string; features: readonly FeatureId[] };
+type SpecGroup = { title: string; items: readonly SpecItem[] };
+
+const SPEC: readonly SpecGroup[] = [
   {
-    eyebrow: "Trips",
-    title: "The trip is the record. Everything else hangs off it.",
-    body: "One job is one trip: its legs, its typed day records — flight, travel, standby, off — the aircraft, and the client it was flown for. Type the dates and the tail number there, and you are done typing them.",
-    points: [
-      "Legs with departure and destination, and the route they add up to",
-      "Day records typed flight, travel, standby or off, so the billable ones price themselves",
-      "The client attached to the trip, carried through to the estimate, the invoice, and the statement",
+    title: "The trip",
+    items: [
+      { text: "Legs, aircraft and client on one record", features: ["trips"] },
+      {
+        text: "Per-client day rates; W-9 status on every client",
+        features: ["clients"],
+      },
+      {
+        text: "Invoices: sequential numbers, a PDF with the trip's receipts attached, email delivery, view tracking",
+        features: ["invoices"],
+      },
+      {
+        text: "Estimates, recurring invoices, client statements",
+        features: ["estimates", "recurring_invoices", "client_statements"],
+      },
     ],
   },
   {
-    eyebrow: "Estimates & invoices",
-    title: "Quote the trip, then bill it — without typing either twice.",
-    body: "Put a number on the work before you fly; when the client says yes, the estimate converts to a draft invoice. Invoices themselves come straight from the trips you logged, numbered sequentially, in the document your client actually sees.",
-    points: [
-      "Estimates with their own numbering, marked accepted when the client says yes — then converted to a draft invoice in one step",
-      "Sequential invoice numbers, a PDF with the trip's receipts attached, and email delivery",
-      "A share link that shows you when the invoice was viewed — and a payment link, once you connect Stripe, so it gets paid online",
-      "Recurring invoices for standing clients, drafted on schedule for you to confirm",
-      "A one-click reminder for the invoice that's gone quiet",
+    title: "Your records",
+    items: [
+      {
+        text: "Logbook: manual entry, PIC and SIC distinct, CSV import from ForeFlight or LogTen Pro, export any time",
+        features: ["logbook"],
+      },
+      {
+        // "the rate you set" is load-bearing. lib/mileage.ts stores
+        // "that year's rate in cents per mile, AS THE PILOT ENTERED IT", and
+        // a year with no rate on file renders miles with no dollar figure
+        // ("no IRS rate on file for {year}", reports/quarterly). The product
+        // ships no rate table; dropping the qualifier turned an input field
+        // into an advertised capability.
+        text: "Receipt scanning in your own browser; mileage priced at the standard rate you set for each tax year",
+        features: ["expenses"],
+      },
+      {
+        text: "Certificate, medical, flight review and insurance expiry dates, shareable with a client as a link",
+        features: ["documents"],
+      },
+      {
+        text: "Bank and card statement import, CSV or OFX",
+        features: ["bank_import"],
+      },
     ],
   },
   {
-    eyebrow: "Expenses",
-    title: "Scan the receipt in the hotel lobby, not in April.",
-    body: "Receipt scanning runs in your own browser — the image doesn't leave your device until you save it. Or import a bank or card statement and work down the list.",
-    points: [
-      "In-browser receipt scanning",
-      "Bank and card statement import — CSV or OFX — with a review queue that suggests categories and flags likely duplicates",
-      "Every line tagged rebill or deduct, so it either bills the client or lowers your taxable income",
-      "A mileage log priced at the year's standard mileage rate, entered once in Settings",
-    ],
-  },
-  {
-    eyebrow: "Logbook",
-    title: "One logbook, and your history comes with you.",
-    body: "Enter a flight by hand, confirm the draft a trip produced, or bring years of history in from the app you keep it in now. And it exports back out just as easily — it is your record, not ours.",
-    points: [
-      "Manual entry, with PIC and SIC time kept distinct",
-      "Trip-derived drafts you review before they're saved",
-      "CSV import from ForeFlight, LogTen Pro, or any export, through a generic column mapper — and CSV export of the whole logbook, any time",
-    ],
-  },
-  {
-    eyebrow: "Clients, statements & documents",
-    title: "The paperwork the day rate doesn't cover.",
-    body: "Who you fly for, what they still owe you a W-9 for, what each operator's paperwork asks of you, and a statement when a client wants the whole picture on one page.",
-    points: [
-      "Client roster with W-9 status, per-client rates, and the recurring check dates each operator asks about",
-      "A client statement — every invoice and payment in one printable view",
-      "Expiry tracking for the documents you carry — certificates, medical, flight reviews, insurance — with a credential packet you can share as a link",
-    ],
-  },
-  {
-    eyebrow: "Reports & tax",
-    title: "What the year actually looks like, ready for your CPA.",
-    body: "Everything you recorded rolls up into the numbers April asks for — and all of it downloads, because your records leaving with you is a feature, not a threat.",
-    points: [
-      "Profit & loss, a sales tax report, and a summary for each IRS estimated-tax period",
-      "A year-end packet for whoever prepares your return",
-      "An account-wide export: one CSV for every record type, from clients to mileage",
-    ],
-  },
-  {
-    eyebrow: "Accounting",
-    title: "A real ledger underneath, for the pilot who wants the books to balance.",
-    body: "The Business plan adds a double-entry accounting layer built from what you already recorded — not a second set of books to maintain beside the first.",
-    points: [
-      "A chart of accounts shaped for a flying business, with balances derived from your invoices and expenses",
-      "Journal entries for what money does outside a trip — and owner pay tracked as draws, the way a one-person business actually pays itself",
-      "Bank reconciliation against the statements you import",
+    title: "The year",
+    items: [
+      {
+        text: "Profit & loss, IRS estimated-tax-period summaries, a year-end packet for your CPA",
+        features: ["reports_core"],
+      },
+      {
+        // account_export is minTier "solo" DELIBERATELY — read the comment
+        // on that row in lib/entitlements.ts. The old page's FAQ said "Pro
+        // and Business add the account-wide export", which contradicted the
+        // code and understated this product's strongest trust claim. This
+        // line is the correction, and its tag is derived, so it cannot
+        // drift back.
+        text: "Account-wide CSV export — every record type, on every plan",
+        features: ["account_export"],
+      },
+      { text: "Sales tax report", features: ["sales_tax_report"] },
+      {
+        text: "Double-entry books with reconciliation",
+        features: ["accounting"],
+      },
     ],
   },
 ];
 
+/** The highest tier any of a line's features needs, or null for Solo. */
+function tagFor(features: readonly FeatureId[]): PlanTier | null {
+  let top: PlanTier = "solo";
+  for (const id of features) {
+    const min = FEATURES[id].minTier;
+    if (TIER_RANK[min] > TIER_RANK[top]) top = min;
+  }
+  return top === "solo" ? null : top;
+}
+
+/** The spec block as rendered: unclaimable and unshipped lines removed. */
+function specGroups(): { title: string; items: { text: string; tag: string | null }[] }[] {
+  return SPEC.map((group) => ({
+    title: group.title,
+    items: group.items
+      .filter((item) =>
+        item.features.every(
+          (id) => isPubliclyClaimable(id) && !FEATURES[id].comingSoon
+        )
+      )
+      .map((item) => {
+        const tier = tagFor(item.features);
+        return { text: item.text, tag: tier ? TIER_DISPLAY[tier].name : null };
+      }),
+  }));
+}
+
 /**
- * The comparison. WORKFLOW ONLY — no competitor pricing, no claim that any
- * of these tools is bad at its own job. A logbook app is good at logbooks;
- * the cost being named here is the seam between three tools that don't
+ * THE COMPARISON. WORKFLOW ONLY — no competitor pricing, and no claim that
+ * any of these tools is bad at its own job. A logbook app is good at
+ * logbooks; the cost named here is the seam between three tools that do not
  * know about each other, which is a real and specific cost to the person
- * doing the typing.
+ * doing the typing. This editorial constraint predates the rewrite and
+ * survives it intact.
+ *
+ * Row one's second cell is the ONE place BRAND.tagline appears in body copy
+ * on this page.
  */
 const COMPARISON: { step: string; today: string; here: string }[] = [
   {
     step: "After the trip",
-    today: "Type the legs into a logbook app.",
-    here: "Log the trip — legs and day records — once.",
+    today: "Legs typed into the logbook app",
+    here: BRAND.tagline,
   },
   {
     step: "Billing the client",
-    today: "Retype the same dates into a spreadsheet to work out the day count and the rate.",
-    here: "Draft the invoice from the trip; the days are already there.",
-  },
-  {
-    step: "Getting paid",
-    today: "Rebuild the invoice in accounting software, export a PDF, email it, wait.",
-    here: "Sequential number, PDF, email delivery, and a payment link your client can settle online.",
-  },
-  {
-    step: "Receipts",
-    today: "A folder, a shoebox, or a photo roll — matched to trips at tax time, if at all.",
-    here: "Scanned or imported, attached to the trip, tagged rebill or deduct as you go.",
+    today: "The same dates retyped in a spreadsheet to get the day count",
+    here: "The days are already there",
   },
   {
     step: "Tax time",
-    today: "Reconcile three sources that disagree, then hand your CPA the mess.",
-    here: "Profit & loss, sales tax, estimated-tax-period summaries, and a year-end packet built from what you recorded.",
-  },
-];
-
-const FAQ: { q: string; a: string }[] = [
-  {
-    q: "What happens after the free trial?",
-    a: `The trial runs ${TRIAL_PERIOD_DAYS} days and a card is required to start it. When it ends, that card is charged for the plan you picked — ${TIER_PRICE_COPY.solo.monthly}, ${TIER_PRICE_COPY.pro.monthly}, or ${TIER_PRICE_COPY.business.monthly} per seat a month. Cancel before the trial ends and nothing is charged.`,
-  },
-  {
-    q: "Do I own my data?",
-    a: "Yes, and nothing here is designed to be hard to leave with. On every plan your whole logbook exports to CSV, and profit & loss, the estimated-tax-period summaries and the year-end packet all download. Pro and Business add the account-wide export in Settings: one CSV per record type, from clients and trips down to mileage and documents. Uploaded receipt and document files download from their own pages.",
-  },
-  {
-    q: "What happens if I downgrade or cancel?",
-    a: "Nothing is deleted — ever. Downgrading stops new work on the screens your new plan doesn't include; everything already created stays visible and exportable, and those screens come straight back if you upgrade again. Cancelling puts the whole account in read-only with export still working. A pilot's logbook is a legal record; a lapsed card will never be the thing that destroys one.",
-  },
-  {
-    q: "I already keep a logbook. Do I have to start over?",
-    a: "No. Import your history from a ForeFlight or LogTen Pro export, or from any CSV through the generic column mapper, and carry on from there.",
-  },
-  {
-    q: "Who is this for?",
-    a: "The independent contract pilot running as a one-person business — flying for several owners or operators on a day rate, invoicing them, and filing the taxes on it. The Business plan stretches that to a two-pilot operation or a pilot who wants their bookkeeper in the books. It is not a crew-scheduling system for a flight department.",
-  },
-  {
-    q: "Does it decide whether I'm current or legal to fly?",
-    a: "No, and it never will present itself that way. It tracks expiry dates you entered off your own documents so you can see what's coming. Currency and airworthiness decisions remain yours.",
+    today: "Three sources that disagree, reconciled by you",
+    here: "One set of numbers, already built",
   },
 ];
 
 /**
- * The public front door. "/" moved here from app/(app)/page.tsx (now
- * app/(app)/overview/page.tsx) because that file's route group is wrapped,
- * unconditionally, by app/(app)/layout.tsx's requireAccount() — there is
- * no way to make one route inside a gated layout render for a signed-out
- * visitor, so the only page that CAN be public at "/" is one that lives
- * outside that group entirely. This is that page.
- *
- * A signed-in visitor should still land on the Overview dashboard they get
- * today, so that case is handled here explicitly, before any marketing
- * copy renders: provisioned account -> /overview (the same screen, new
- * URL); signed in with no account yet -> /welcome, exactly what
- * requireAccount() would have done. Only a genuinely signed-out visitor
- * reaches the return below.
+ * THREE QUESTIONS, down from six. Only the ones that remove a real barrier
+ * and are answered nowhere else on the page. The second is non-negotiable:
+ * it carries the substance of lib/brand.ts's counsel-reviewed
+ * CURRENCY_DISCLAIMER — this product never presents itself as deciding
+ * whether a pilot is legal to fly.
+ */
+const FAQ: { q: string; a: string }[] = [
+  {
+    q: "I already keep a logbook. Do I have to start over?",
+    a: "No. Import a ForeFlight or LogTen Pro export, or any CSV through the column mapper, and carry on from there.",
+  },
+  {
+    q: "Does it decide whether I'm current or legal to fly?",
+    a: "No, and it will never present itself that way. It tracks the expiry dates you entered off your own documents so you can see what's coming. Currency and airworthiness decisions stay yours.",
+  },
+  {
+    q: "What happens if I cancel or downgrade?",
+    // The export sentence that used to sit third is gone, not moved: the
+    // spec line "Account-wide CSV export — every record type, on every plan"
+    // makes that promise on this same page, and docs/MARKETING.md §6's rule
+    // is that a body restating something the page already says is deleted
+    // rather than trimmed. What is left is the two claims nothing else here
+    // carries: what a downgrade stops, and that the records survive.
+    a: "Nothing is deleted. Downgrading stops new work on the screens your plan no longer includes; cancelling puts the account in read-only. A pilot's logbook is a legal record; a lapsed card will never be the thing that destroys one.",
+  },
+];
+
+/**
+ * "/" moved here from app/(app)/page.tsx because that route group is
+ * wrapped, unconditionally, by app/(app)/layout.tsx's requireAccount() —
+ * there is no way to make one route inside a gated layout render for a
+ * signed-out visitor. A signed-in visitor is bounced before any marketing
+ * copy renders: provisioned account -> the dashboard, signed in with no
+ * account yet -> /welcome, exactly what requireAccount() would have done.
  */
 export default async function LandingPage() {
   const ctx = await getSessionContext();
   if (ctx?.account) redirect(DASHBOARD_PATH);
   if (ctx) redirect("/welcome");
 
+  const groups = specGroups();
+
   return (
     <>
       {/* ---------------------------------------------------------------
-          HERO. The one full-bleed navy panel on the site, plus the
-          product mock sitting on it — see app/globals.css's .v1-m-dark.
-          The navy stays through the indigo rebuild deliberately: it is
-          the brand ground the mark is cut from, and the app's new indigo
-          accent sits in the same blue family (REBUILD-BRIEF §6).
-          --------------------------------------------------------------- */}
+          1. HERO. Ten seconds: what it is, what it does, who it's for,
+          what it costs — then the mock, which does the explaining the old
+          65-word paragraph did badly.
+
+          ONE MEASURE FOR THE WHOLE PAGE — Container size="4", the same
+          wrapper every band below uses. The hero was size="3" (880px) over
+          sections at size="4" (1136px), which put a 128px stair-step
+          between the H1 and every heading under it: the page had no
+          established left edge at all. The measure that a paragraph
+          actually needs is a property of the TEXT, not of the band, so it
+          is a maxWidth on the copy column and the mock gets the full
+          width. --------------------------------------------------------- */}
       <Box className="v1-m-dark">
         <Section size={{ initial: "3", md: "4" }}>
           <Container size="4" px="4">
             <Flex direction="column" gap="6">
-              <Flex direction="column" gap="4" align="start">
+              <Flex
+                direction="column"
+                gap="4"
+                align="start"
+                style={{ maxWidth: "48rem" }}
+              >
                 <Text size="1" weight="medium" className="v1-m-eyebrow" style={NAVY_INK_MUTED}>
-                  For the independent contract pilot
+                  For the contract pilot — day rates, several operators,
+                  one-person business
                 </Text>
 
-                <Heading size={{ initial: "8", sm: "9" }} trim="start" style={NAVY_INK}>
-                  {BRAND.tagline}
-                  <br />
-                  <Text size={{ initial: "6", sm: "8" }} weight="light" style={NAVY_INK_MUTED}>
-                    Bill it, log it, and file the receipts from that one record.
-                  </Text>
+                {/* THE page's only h1. Radix's Heading defaults to as="h1",
+                    so every heading below states its level explicitly rather
+                    than inheriting one — the page used to render ten h1s and
+                    no h2, which flattens the rotor and the crawl to a single
+                    rank. */}
+                <Heading as="h1" size={{ initial: "8", sm: "9" }} trim="start" style={NAVY_INK}>
+                  One trip in. Invoice out. Logbook out. Receipts filed.
                 </Heading>
 
-                {/*
-                  "Two generated, one organised" — the honest count. Nothing
-                  in this product creates an expense from a trip: expenses
-                  come from the pilot, a scanned receipt, or a bank import,
-                  and the trip is what they ATTACH to. The re-typing is
-                  still the whole pitch.
-                */}
-                <Text size="4" style={{ ...NAVY_INK_MUTED, maxWidth: "40rem" }}>
-                  {BRAND.name} makes the trip the record everything else hangs
-                  off. Your logbook draft and your invoice lines both come from
-                  it, and your receipts attach to it — so the dates and the
-                  tail number get typed once instead of three times. Built for
-                  the pilot who keeps this in a logbook app, a spreadsheet, and
-                  accounting software that has never heard of a leg.
+                {/* Its own element, not a <Text> nested inside the
+                    <Heading> — which is what the old sub-line was. */}
+                <Text as="p" size={{ initial: "4", sm: "5" }} style={NAVY_INK_MUTED}>
+                  Type the dates, the legs and the tail number once — on the
+                  trip. Everything after comes off that record.
                 </Text>
 
                 <Flex gap="3" wrap="wrap" mt="1">
                   <Button asChild size="4" style={NAVY_SURFACE_INVERSE}>
-                    <NextLink href="/signup">Start your {TRIAL_LABEL}</NextLink>
+                    <NextLink href="/signup">
+                      Start the {TRIAL_PERIOD_DAYS}-day trial
+                    </NextLink>
                   </Button>
                   <Button asChild size="4" variant="outline" style={NAVY_INK}>
                     <NextLink href="/pricing">See pricing</NextLink>
@@ -288,19 +356,18 @@ export default async function LandingPage() {
                 </Flex>
 
                 <Text size="2" style={NAVY_INK_MUTED}>
-                  Plans from {TIER_PRICE_COPY.solo.monthly}/month after the
-                  trial. Card required to start, and your records are in every
-                  plan.
+                  From {TIER_PRICE_COPY.solo.monthly}/month after the trial.
+                  Card required to start.
                 </Text>
               </Flex>
 
-              {/* THE PRODUCT VISUAL. Built from the product's own
-                  components with invented data — see product-mock.tsx. */}
+              {/* THE PRODUCT VISUAL, above the fold. Built from the
+                  product's own components with invented data — see
+                  product-mock.tsx. */}
               <ProductMock />
 
               <Text size="1" style={NAVY_INK_MUTED}>
-                Illustration of the Overview screen. Pilot, client names, tail
-                numbers and figures are invented for this page.
+                Illustrative data.
               </Text>
             </Flex>
           </Container>
@@ -308,231 +375,226 @@ export default async function LandingPage() {
       </Box>
 
       {/* ---------------------------------------------------------------
-          HOW IT WORKS: ONE TRIP IN, THREE OUTPUTS. Anchor target for the
-          header's "How it works" link.
+          2. WHAT ONE TRIP PRODUCES. The proof, immediately: one input
+          card feeding three numbered outputs. No intro paragraph — the
+          heading is the intro. Anchor target for the header's link.
           --------------------------------------------------------------- */}
       <Section size={{ initial: "3", md: "4" }} id="how-it-works">
         <Container size="4" px="4">
-          <Flex direction="column" gap="6">
-            <Flex direction="column" gap="3" align="center">
-              <Badge color="indigo" variant="soft" size="2">
-                How it works
-              </Badge>
-              <Heading size={{ initial: "7", sm: "8" }} align="center" trim="start">
-                Enter it once. Three things come out.
-              </Heading>
-              <Text size="3" color="gray" align="center" style={{ maxWidth: "34rem" }}>
-                A trip carries the dates, the aircraft, the legs and the client.
-                Everything downstream reads from it instead of asking you again.
-              </Text>
-            </Flex>
+          <Flex direction="column" gap="5">
+            <Heading as="h2" size={{ initial: "7", sm: "8" }} trim="start">
+              What one trip produces
+            </Heading>
 
-            <Box className="v1-m-flow-rail">
-              <Grid columns={{ initial: "1", md: "3" }} gap="4">
-                {OUTPUTS.map((output) => (
-                  <Card key={output.title} size="3">
-                    <Flex direction="column" gap="3">
-                      <Text size="6" weight="bold" color="indigo" className="tnum">
+            {/* Input, connector, outputs. The gap goes to zero where the
+                connector is drawn, because the connector IS the spacing
+                there; below that breakpoint it is display:none and the
+                cards need a gap of their own. */}
+            <Flex direction="column" gap={{ initial: "4", md: "0" }}>
+            {/* The source record. Its own ground, because the three cards
+                below come off it. */}
+            <Card size="3" style={{ background: "var(--accent-2)" }}>
+              <Flex direction="column" gap="2">
+                <Text size="1" weight="medium" color="indigo">
+                  YOU TYPE — THE TRIP
+                </Text>
+                <Text size="3">
+                  The client, the aircraft, the legs, and each day as flight,
+                  travel, standby or off.
+                </Text>
+              </Flex>
+            </Card>
+
+            {/* A real one-to-three connector — stem, crossbar, three legs —
+                drawn only where the outputs sit side by side. It replaces a
+                lone hairline that used to render across the TOP EDGE of the
+                three cards and read as a stray floating rule. */}
+            <Box className="v1-m-flow-connector" aria-hidden>
+              <Box className="v1-m-flow-leg v1-m-flow-leg-1" />
+              <Box className="v1-m-flow-leg v1-m-flow-leg-2" />
+              <Box className="v1-m-flow-leg v1-m-flow-leg-3" />
+            </Box>
+
+            <Grid columns={{ initial: "1", md: "3" }} gap="4">
+              {OUTPUTS.map((output) => (
+                <Card key={output.title} size="3">
+                  <Flex direction="column" gap="3">
+                    <Flex align="center" gap="2">
+                      <Text size="4" weight="bold" color="indigo" className="tnum">
                         {output.step}
                       </Text>
-                      <Heading size="4" trim="start">
+                      <Heading as="h3" size="4" trim="start">
                         {output.title}
                       </Heading>
-                      <Text size="2" color="gray">
-                        {output.body}
-                      </Text>
                     </Flex>
-                  </Card>
-                ))}
-              </Grid>
+                    <Text size="2" color="gray">
+                      {output.body}
+                    </Text>
+                  </Flex>
+                </Card>
+              ))}
+            </Grid>
+            </Flex>
+          </Flex>
+        </Container>
+      </Section>
+
+      {/* ---------------------------------------------------------------
+          3. WHAT'S IN IT. One three-column spec block, grouped by the
+          pilot's job, every Pro/Business line tagged from the code.
+          --------------------------------------------------------------- */}
+      <Section size={{ initial: "3", md: "4" }} style={GRAY_BAND}>
+        <Container size="4" px="4">
+          <Flex direction="column" gap="5">
+            <Heading as="h2" size={{ initial: "7", sm: "8" }} trim="start">
+              Everything the day rate doesn&rsquo;t cover.
+            </Heading>
+
+            <Grid columns={{ initial: "1", md: "3" }} gap="4">
+              {groups.map((group) => (
+                <Card key={group.title} size="3">
+                  <Flex direction="column" gap="3">
+                    <Text size="1" weight="medium" color="indigo">
+                      {group.title.toUpperCase()}
+                    </Text>
+                    <Flex direction="column" gap="3" asChild>
+                      <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                        {group.items.map((item) => (
+                          <li key={item.text}>
+                            <Flex gap="2" align="start">
+                              <Text size="2" color="indigo" weight="medium" aria-hidden>
+                                —
+                              </Text>
+                              <Text size="2">
+                                {item.text}
+                                {/* The tier tag is a Badge, not a suffix in
+                                    gray: a reader scanning for what their
+                                    plan includes has to be able to find it
+                                    without reading the line. Its VALUE is
+                                    derived from entitlements — see
+                                    specGroups() — so it cannot claim the
+                                    wrong tier. */}
+                                {item.tag ? (
+                                  <>
+                                    {" "}
+                                    <Badge color="gray" variant="soft" size="1">
+                                      {item.tag}
+                                    </Badge>
+                                  </>
+                                ) : null}
+                              </Text>
+                            </Flex>
+                          </li>
+                        ))}
+                      </ul>
+                    </Flex>
+                  </Flex>
+                </Card>
+              ))}
+            </Grid>
+          </Flex>
+        </Container>
+      </Section>
+
+      {/* ---------------------------------------------------------------
+          4. THE SAME TRIP, THREE TIMES. Shared row labels in one table
+          instead of two cards the eye has to scan between.
+          --------------------------------------------------------------- */}
+      <Section size={{ initial: "3", md: "4" }} style={HAIRLINE_TOP}>
+        <Container size="4" px="4">
+          <Flex direction="column" gap="5">
+            <Heading as="h2" size={{ initial: "7", sm: "8" }} trim="start">
+              The same trip, three times.
+            </Heading>
+
+            <Card size="2">
+              <Box style={{ overflowX: "auto" }}>
+                <Table.Root size="2" style={{ minWidth: "36rem" }}>
+                  <Table.Header>
+                    <Table.Row>
+                      <Table.ColumnHeaderCell>
+                        <Text size="1" color="gray">
+                          Step
+                        </Text>
+                      </Table.ColumnHeaderCell>
+                      <Table.ColumnHeaderCell>
+                        A logbook app + a spreadsheet + accounting software
+                      </Table.ColumnHeaderCell>
+                      <Table.ColumnHeaderCell>
+                        {BRAND.name}
+                      </Table.ColumnHeaderCell>
+                    </Table.Row>
+                  </Table.Header>
+                  <Table.Body>
+                    {COMPARISON.map((row) => (
+                      <Table.Row key={row.step}>
+                        <Table.RowHeaderCell>
+                          <Text size="2" weight="medium">
+                            {row.step}
+                          </Text>
+                        </Table.RowHeaderCell>
+                        <Table.Cell>
+                          <Text size="2" color="gray">
+                            {row.today}
+                          </Text>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <Text size="2">{row.here}</Text>
+                        </Table.Cell>
+                      </Table.Row>
+                    ))}
+                  </Table.Body>
+                </Table.Root>
+              </Box>
+            </Card>
+          </Flex>
+        </Container>
+      </Section>
+
+      {/* ---------------------------------------------------------------
+          5. PLANS. One line and a link — /pricing is one click away and
+          rebuilding it here at lower fidelity helps nobody. Amounts and
+          names render from the shared model so they cannot drift.
+          --------------------------------------------------------------- */}
+      <Section size={{ initial: "3", md: "4" }} style={GRAY_BAND}>
+        <Container size="4" px="4">
+          <Flex
+            direction={{ initial: "column", sm: "row" }}
+            align={{ initial: "start", sm: "center" }}
+            justify="between"
+            gap="4"
+          >
+            <Text size="3" style={{ maxWidth: "44rem" }}>
+              {TIER_ORDER.map((tier) => (
+                <span key={tier}>
+                  {TIER_DISPLAY[tier].name} {TIER_PRICE_COPY[tier].monthly}
+                  {TIER_PRICE_COPY[tier].unit === "per seat"
+                    ? ` per seat, ${TIER_PRICE_COPY[tier].seatMinimum}-seat minimum`
+                    : "/month"}
+                  .{" "}
+                </span>
+              ))}
+              {TRIAL_PERIOD_DAYS}-day free trial on every plan; annual is two
+              months free.
+            </Text>
+            <Box flexShrink="0">
+              <Button asChild size="3" variant="outline">
+                <NextLink href="/pricing">Compare plans →</NextLink>
+              </Button>
             </Box>
           </Flex>
         </Container>
       </Section>
 
       {/* ---------------------------------------------------------------
-          FEATURES. Alternating two-column blocks on a gray-2 band — the
-          same canvas token the app paints behind its panels, so the
-          public site and the product read as one system.
-          --------------------------------------------------------------- */}
-      <Section size={{ initial: "3", md: "4" }} style={GRAY_BAND}>
-        <Container size="4" px="4">
-          <Flex direction="column" gap="8">
-            {FEATURES.map((feature, index) => (
-              <Grid
-                key={feature.title}
-                columns={{ initial: "1", md: "2" }}
-                gap={{ initial: "4", md: "7" }}
-                align="center"
-                width="100%"
-                className={index % 2 === 1 ? "v1-m-flip" : undefined}
-              >
-                <Flex direction="column" gap="3">
-                  <Text size="1" weight="medium" color="indigo">
-                    {feature.eyebrow.toUpperCase()}
-                  </Text>
-                  <Heading size={{ initial: "6", sm: "7" }} trim="start">
-                    {feature.title}
-                  </Heading>
-                  <Text size="3" color="gray">
-                    {feature.body}
-                  </Text>
-                </Flex>
-
-                <Card size="3">
-                  <Flex direction="column" gap="3">
-                    {feature.points.map((point, pointIndex) => (
-                      <Box key={point}>
-                        {pointIndex > 0 ? <Separator size="4" mb="3" /> : null}
-                        <Flex gap="3" align="start">
-                          <Text size="2" color="indigo" weight="medium" aria-hidden>
-                            —
-                          </Text>
-                          <Text size="2">{point}</Text>
-                        </Flex>
-                      </Box>
-                    ))}
-                  </Flex>
-                </Card>
-              </Grid>
-            ))}
-          </Flex>
-        </Container>
-      </Section>
-
-      {/* ---------------------------------------------------------------
-          COMPARISON. Workflow, not competitor pricing, and no claim that
-          any of those tools is bad at its own job.
-          --------------------------------------------------------------- */}
-      <Section size={{ initial: "3", md: "4" }} style={HAIRLINE_TOP}>
-        <Container size="4" px="4">
-          <Flex direction="column" gap="6">
-            <Flex direction="column" gap="3">
-              <Text size="1" weight="medium" color="indigo">
-                THE SAME TRIP, THREE TIMES
-              </Text>
-              <Heading size={{ initial: "7", sm: "8" }} trim="start">
-                What this replaces
-              </Heading>
-              <Text size="3" color="gray" style={{ maxWidth: "40rem" }}>
-                A logbook app, a spreadsheet and accounting software each do
-                their own job well. None of them knows what a trip is, so you
-                are the integration between them — entering the same three days
-                in three places and reconciling them later.
-              </Text>
-            </Flex>
-
-            <Grid columns={{ initial: "1", md: "2" }} gap="4">
-              <Card size="3">
-                <Flex direction="column" gap="3">
-                  <Badge color="gray" variant="soft" size="2">
-                    Logbook app + spreadsheet + accounting software
-                  </Badge>
-                  {COMPARISON.map((row, index) => (
-                    <Box key={row.step}>
-                      {index > 0 ? <Separator size="4" mb="3" /> : null}
-                      <Flex direction="column" gap="1">
-                        <Text size="1" color="gray">
-                          {row.step}
-                        </Text>
-                        <Text size="2">{row.today}</Text>
-                      </Flex>
-                    </Box>
-                  ))}
-                </Flex>
-              </Card>
-
-              <Card size="3">
-                <Flex direction="column" gap="3">
-                  <Badge color="indigo" size="2">
-                    {BRAND.name}
-                  </Badge>
-                  {COMPARISON.map((row, index) => (
-                    <Box key={row.step}>
-                      {index > 0 ? <Separator size="4" mb="3" /> : null}
-                      <Flex direction="column" gap="1">
-                        <Text size="1" color="gray">
-                          {row.step}
-                        </Text>
-                        <Text size="2">{row.here}</Text>
-                      </Flex>
-                    </Box>
-                  ))}
-                </Flex>
-              </Card>
-            </Grid>
-          </Flex>
-        </Container>
-      </Section>
-
-      {/* ---------------------------------------------------------------
-          PLANS TEASER. Names and blurbs from lib/entitlements.ts via the
-          pricing view-model — the same source the pricing page renders
-          from, so the two pages cannot drift.
-          --------------------------------------------------------------- */}
-      <Section size={{ initial: "3", md: "4" }} style={GRAY_BAND}>
-        <Container size="4" px="4">
-          <Flex direction="column" gap="6">
-            <Flex direction="column" gap="3" align="center">
-              <Badge color="indigo" variant="soft" size="2">
-                Plans
-              </Badge>
-              <Heading size={{ initial: "7", sm: "8" }} align="center" trim="start">
-                Three plans. Your records are in all of them.
-              </Heading>
-              <Text size="3" color="gray" align="center" style={{ maxWidth: "36rem" }}>
-                The higher plans add business depth — estimates, statements,
-                bank import, deeper reports, seats. Your logbook and your
-                documents are never the upsell.
-              </Text>
-            </Flex>
-
-            <Grid columns={{ initial: "1", md: "3" }} gap="4">
-              {TIER_ORDER.map((tier) => {
-                const copy = TIER_PRICE_COPY[tier];
-                return (
-                  <Card key={tier} size="3">
-                    <Flex direction="column" gap="3" height="100%">
-                      <Heading size="4" trim="start">
-                        {TIER_DISPLAY[tier].name}
-                      </Heading>
-                      <Flex align="baseline" gap="1">
-                        <Text size="7" weight="bold" className="tnum">
-                          {copy.monthly}
-                        </Text>
-                        <Text size="2" color="gray">
-                          {copy.unit === "per seat" ? "/seat/month" : "/month"}
-                        </Text>
-                      </Flex>
-                      <Text size="2" color="gray" style={{ flexGrow: 1 }}>
-                        {TIER_DISPLAY[tier].blurb}
-                      </Text>
-                      <Text asChild size="2" color="indigo" weight="medium">
-                        <NextLink href="/pricing">See what&rsquo;s included</NextLink>
-                      </Text>
-                    </Flex>
-                  </Card>
-                );
-              })}
-            </Grid>
-
-            <Flex justify="center">
-              <Text size="2" color="gray">
-                {TRIAL_LABEL} on every plan. Annual is two months free.
-              </Text>
-            </Flex>
-          </Flex>
-        </Container>
-      </Section>
-
-      {/* ---------------------------------------------------------------
-          FAQ. Native <details>/<summary> — see .v1-m-faq in globals.css.
+          6. BEFORE YOU SIGN UP. Native <details>/<summary> — works with
+          no JavaScript, keyboard- and screen-reader-correct for free.
           --------------------------------------------------------------- */}
       <Section size={{ initial: "3", md: "4" }}>
         <Container size="2" px="4">
-          <Flex direction="column" gap="5">
-            <Heading size={{ initial: "7", sm: "8" }} trim="start">
-              Questions worth asking first
+          <Flex direction="column" gap="4">
+            <Heading as="h2" size={{ initial: "7", sm: "8" }} trim="start">
+              Before you sign up
             </Heading>
             <Box>
               {FAQ.map((item) => (
@@ -555,9 +617,17 @@ export default async function LandingPage() {
       </Section>
 
       {/* ---------------------------------------------------------------
-          CLOSING CTA BAND.
+          7. CLOSING CTA. One line, two buttons. Trial length, price and
+          card-required were stated in the hero and again in plans; a
+          fourth statement is not persuasion, it is noise.
           --------------------------------------------------------------- */}
-      <Section size="3" px="4">
+      {/* No px on the Section: Section and Container each render their own
+          element, so px on both inset this band 28.8px a side while every
+          other section on the page is inset 14.4px — a navy block visibly
+          narrower than the cards above it, with nothing (no radius, no
+          shadow) to read as deliberate. The Container owns horizontal
+          padding here exactly as it does everywhere else. */}
+      <Section size="3">
         <Container size="4" px="4">
           <Box className="v1-m-dark" p={{ initial: "5", sm: "8" }}>
             <Flex
@@ -566,19 +636,14 @@ export default async function LandingPage() {
               justify="between"
               gap="5"
             >
-              <Flex direction="column" gap="2" style={{ maxWidth: "34rem" }}>
-                <Heading size={{ initial: "6", sm: "7" }} trim="start" style={NAVY_INK}>
-                  Try it on your next trip.
-                </Heading>
-                <Text size="3" style={NAVY_INK_MUTED}>
-                  {TRIAL_LABEL}, plans from {TIER_PRICE_COPY.solo.monthly} a
-                  month after. Card required to start, and your logbook and
-                  reports export from the day you put them in.
-                </Text>
-              </Flex>
+              <Heading as="h2" size={{ initial: "6", sm: "7" }} trim="start" style={NAVY_INK}>
+                Try it on your next trip.
+              </Heading>
               <Flex gap="3" wrap="wrap" flexShrink="0">
                 <Button asChild size="4" style={NAVY_SURFACE_INVERSE}>
-                  <NextLink href="/signup">Start free trial</NextLink>
+                  <NextLink href="/signup">
+                    Start the {TRIAL_PERIOD_DAYS}-day trial
+                  </NextLink>
                 </Button>
                 <Button asChild size="4" variant="outline" style={NAVY_INK}>
                   <NextLink href="/pricing">Compare plans</NextLink>

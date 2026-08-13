@@ -2,8 +2,14 @@
 
 import { useActionState, useState } from "react";
 import NextLink from "next/link";
-import { Box, Button, Card, Flex, Text, TextField } from "@/components/ui";
-import { BRAND } from "@/lib/brand";
+import { Flex, Link, Text, TextField } from "@/components/ui";
+import {
+  AuthFooter,
+  AuthHeading,
+  Field,
+  FormError,
+  SubmitButton,
+} from "../auth-parts";
 import { signIn, type SignInState } from "./actions";
 
 const initialState: SignInState = { error: null };
@@ -18,72 +24,67 @@ export default function LoginForm({ next }: { next: string }) {
   const [email, setEmail] = useState("");
 
   return (
-    <Card size="4" style={{ width: "100%", maxWidth: "22rem" }}>
-      <form action={formAction}>
-        <Flex direction="column" gap="3">
-          <Flex direction="column" align="center" gap="1" mb="1">
-            <Text size="6" weight="bold">
-              {BRAND.name}
-            </Text>
-            <Text size="2" color="gray">
-              {BRAND.descriptor}
-            </Text>
-          </Flex>
+    <Flex direction="column" gap="6">
+      <AuthHeading title="Sign in">
+        Pick up where your last trip left off.
+      </AuthHeading>
 
+      <form action={formAction}>
+        <Flex direction="column" gap="4">
           <input type="hidden" name="next" value={next} />
 
-          <Box>
-            <Text as="label" size="2" weight="medium" htmlFor="email">
-              Email
-            </Text>
+          <Field id="email" label="Email">
             <TextField.Root
               id="email"
               type="email"
               name="email"
+              size="3"
               autoComplete="email"
+              autoFocus
               required
-              mt="1"
+              disabled={pending}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
-          </Box>
-          <Box>
-            <Text as="label" size="2" weight="medium" htmlFor="password">
-              Password
-            </Text>
+          </Field>
+
+          <Field id="password" label="Password">
             <TextField.Root
               id="password"
               type="password"
               name="password"
+              size="3"
               autoComplete="current-password"
               required
-              mt="1"
+              disabled={pending}
             />
-          </Box>
+          </Field>
 
-          {state.error ? (
-            <Text size="1" color="red" role="alert" aria-live="polite">
-              {state.error}
-            </Text>
-          ) : null}
+          <FormError message={state.error} />
 
-          <Button type="submit" disabled={pending} mt="1">
-            {pending ? "Signing in…" : "Sign in"}
-          </Button>
-
-          <Flex direction="column" align="center" gap="1" mt="1">
-            <Text asChild size="1">
-              <NextLink href="/forgot-password">Forgot your password?</NextLink>
-            </Text>
-            <Text size="1" color="gray">
-              New here?{" "}
-              <Text asChild size="1">
-                <NextLink href="/signup">Create an account</NextLink>
-              </Text>
-            </Text>
-          </Flex>
+          <SubmitButton pending={pending} idle="Sign in" busy="Signing in…" />
         </Flex>
       </form>
-    </Card>
+
+      {/* Link, NOT Text asChild. `<Text asChild>` renders the anchor with
+          class "rt-Text" and nothing else — .rt-Text sets only line-height
+          and letter-spacing, and colour comes exclusively from
+          .rt-Text:where([data-accent-color]), which is only stamped when a
+          `color` prop is passed. With none, the anchor fell through to the
+          UA sheet: #0000EE and an underline. Link adds rt-reset (all:unset
+          on the anchor) plus rt-Link, which is what every in-app link
+          already uses. */}
+      <AuthFooter>
+        <Link asChild size="2">
+          <NextLink href="/forgot-password">Forgot your password?</NextLink>
+        </Link>
+        <Text size="2" color="gray">
+          New here?{" "}
+          <Link asChild size="2">
+            <NextLink href="/signup">Create an account</NextLink>
+          </Link>
+        </Text>
+      </AuthFooter>
+    </Flex>
   );
 }
