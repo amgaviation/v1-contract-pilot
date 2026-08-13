@@ -242,7 +242,7 @@ end $$;
 -- between anon and its result is the missing EXECUTE grant, which SHARE-1
 -- says nothing about. And its result is not the kind of thing the rest of
 -- this boundary hands out: private-bucket storage paths of the shape
--- `<account_id>/<uuid>.jpg`, i.e. the owning tenant's uuid plus internal
+-- <account_id>/<uuid>.jpg, i.e. the owning tenant's uuid plus internal
 -- object ids, which 20260809060000's field-by-field justification refuses
 -- to disclose. Its own header calls that posture "worth checking rather
 -- than believing" and pointed at SHARE-1/SHARE-1b, which do not check it.
@@ -290,7 +290,7 @@ reset role;
 --
 -- receipts is [] here because INV_A1's only line is a flight_day with
 -- expense_id null, which is itself the assertion the migration's
--- `l.expense_id is not null` clause deserves: a non-rebill line contributes
+-- l.expense_id is not null clause deserves: a non-rebill line contributes
 -- no receipt row.
 -- ===========================================================================
 set local role service_role;
