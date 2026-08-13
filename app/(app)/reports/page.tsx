@@ -52,6 +52,17 @@ export default async function ReportsIndexPage() {
         <Card size="3">
           <Heading as="h2" size="4" mb="1">
             <RadixLink asChild>
+              <NextLink href="/reports/trip-pl">Trip profitability</NextLink>
+            </RadixLink>
+          </Heading>
+          <Text as="div" size="2" color="gray">
+            What each trip and each client billed, what it cost you, and
+            the margin per day &mdash; invoiced, not collected.
+          </Text>
+        </Card>
+        <Card size="3">
+          <Heading as="h2" size="4" mb="1">
+            <RadixLink asChild>
               <NextLink href="/reports/sales-tax">Sales tax</NextLink>
             </RadixLink>
           </Heading>
