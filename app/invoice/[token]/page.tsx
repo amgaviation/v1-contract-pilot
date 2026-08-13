@@ -1,9 +1,11 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { Badge, Box, Button, Callout, Card, Container, Flex, Separator, Table, Text } from "@/components/ui";
+import { Badge, Box, Button, Callout, Card, Container, Flex, Heading, Separator, Table, Text } from "@/components/ui";
 import { Logo } from "@/components/ui/logo";
 import { createClient } from "@/lib/supabase/server";
 import { isLiveMode } from "@/lib/stripe/server";
 import { formatCents, formatDate } from "@/lib/format";
+import { loadShareReceipts } from "@/lib/invoice-share-receipts";
 
 export const dynamic = "force-dynamic";
 
@@ -133,6 +135,43 @@ export const dynamic = "force-dynamic";
  * data (expenses.amount_cents as the PILOT paid it never appears here —
  * only the rebilled invoice_lines.amount_cents the CLIENT owes), no
  * expenses.treatment, no internal notes table, no logbook, no expirations.
+ *
+ * REBILLED-EXPENSE RECEIPTS, ADDED AFTER THE ABOVE WAS WRITTEN, and the
+ * one place this page reaches past pilot.invoice_public.
+ *
+ * The field list above records that this page "ships text-only rather than
+ * add a second signed-URL surface for this first version". That still holds
+ * literally — there is STILL no signed URL on this page, and still none for
+ * the logo. What changed is narrower: a pilot who fronts a hotel bill on a
+ * client's trip rebills it, and the client's accounts-payable desk needs
+ * the receipt against that line. The emailed PDF has carried those receipt
+ * pages since commit fb1ea11; this page, which is the surface the client
+ * actually clicks, showed the line and not the receipt. Same document, same
+ * client, two different answers.
+ *
+ * So the receipts below come from lib/invoice-share-receipts.ts, and every
+ * security question about them is answered in that module's header and in
+ * supabase/migrations/20260813020000_invoice_share_receipts.sql — READ BOTH
+ * before changing this section. In summary: a separate SECURITY DEFINER
+ * function re-proves the token, the revocation and the invoice status on
+ * every call; it is granted to service_role ONLY (anon's privileges are
+ * completely unchanged by that migration, because a storage path is exactly
+ * the kind of internal identifier the field list above refuses to disclose);
+ * the bytes are inlined into THIS page rather than served from any
+ * addressable URL, so no second bearer credential exists and nothing
+ * survives a revoked share by even one request; and every failure renders
+ * this page exactly as it rendered before the feature existed.
+ *
+ * WHY A <Suspense> BOUNDARY IS SAFE HERE WHEN loading.tsx WAS NOT. The note
+ * above explains that a loading.tsx makes Next flush a 200 BEFORE this
+ * function has run far enough to reach either notFound(), which permanently
+ * costs an invalid token its 404. An INNER boundary is a different thing:
+ * both notFound() calls run to completion inside this function before it
+ * returns any JSX at all, so the status code is already decided by the time
+ * anything streams. What the boundary buys is that fetching, decoding and
+ * base64-ing a dozen receipt images does not sit between the client and the
+ * bill they came to read — the invoice, the totals and the pay button paint
+ * first, and the receipts arrive underneath.
  */
 
 type PublicInvoice = {
@@ -430,7 +469,106 @@ export default async function PublicInvoicePage({
             </>
           ) : null}
         </Card>
+
+        {/* APPENDED BELOW THE INVOICE, not folded into it — the same place
+            the PDF puts them (receipt pages follow the invoice page). It
+            also keeps the pay button where a client expects it instead of
+            pushing it under a column of full-width images. */}
+        <Suspense fallback={null}>
+          <ShareReceipts token={token} />
+        </Suspense>
       </Container>
+    </Box>
+  );
+}
+
+/**
+ * The receipt pages, rendered from the same ReceiptAttachment shape the PDF
+ * builds and captioned with the same line description and amount, so a
+ * client comparing the two documents sees the same receipts, in the same
+ * order, with the same explanation attached to any that could not be shown.
+ *
+ * `fallback={null}` above rather than a spinner: this is an appendix, and a
+ * skeleton at the foot of a bill invites a client to wait for something
+ * before paying. If there are no receipts (the common case — nothing
+ * rebilled) that is also exactly what should render, so nothing about the
+ * page moves.
+ *
+ * Renders NOTHING at all rather than an empty heading when there is nothing
+ * to show — including on every failure path, which loadShareReceipts
+ * flattens to an empty list on purpose (see its header: it will not assert
+ * that receipts exist when the read that would have proved it failed).
+ */
+async function ShareReceipts({ token }: { token: string }) {
+  const { attachments, omitted } = await loadShareReceipts(token);
+  if (attachments.length === 0) return null;
+
+  return (
+    <Box mt="4">
+      <Card size="4">
+        <Heading as="h2" size="4" mb="1">
+          Receipts
+        </Heading>
+        <Text as="div" size="2" color="gray" mb="4">
+          Supporting the rebilled expenses on this invoice.
+        </Text>
+
+        <Flex direction="column" gap="4">
+          {attachments.map((receipt, index) => (
+            <Box key={index}>
+              <Flex justify="between" gap="3" wrap="wrap" mb="2">
+                <Text size="2" weight="medium">
+                  {receipt.description}
+                </Text>
+                {receipt.amountCents === null ? null : (
+                  <Text size="2" color="gray" className="tnum">
+                    {formatCents(receipt.amountCents)}
+                  </Text>
+                )}
+              </Flex>
+              {receipt.imageDataUri ? (
+                // A plain <img>, deliberately. The source is a data: URI
+                // built server-side this request, so there is no remote
+                // fetch for next/image to optimise and no URL for it to
+                // rewrite — putting the optimiser in front of it would only
+                // add a second copy of bytes that are already in this
+                // response. `alt` carries the caption for a reader who
+                // cannot see the image; the caption above is not a
+                // substitute, because a screen reader reaching the image
+                // has already passed it.
+                <img
+                  src={receipt.imageDataUri}
+                  alt={`Receipt for ${receipt.description}`}
+                  style={{ maxWidth: "100%", height: "auto", display: "block" }}
+                />
+              ) : (
+                // The same sentence lib/invoice-receipts.ts gives the PDF's
+                // caption pages. Never rewritten here — one explanation,
+                // whichever surface the client opened.
+                <Text as="div" size="2" color="gray">
+                  {receipt.note}
+                </Text>
+              )}
+              {index < attachments.length - 1 ? <Separator size="4" mt="4" /> : null}
+            </Box>
+          ))}
+        </Flex>
+
+        {omitted > 0 ? (
+          // Stated, not silently dropped: a client counting rebilled lines
+          // against receipts would otherwise find the page short with no way
+          // to know whether the rest exist. Worded as "on file, available on
+          // request" — the same promise receiptFallbackNote makes — rather
+          // than pointing at the emailed PDF, because whether this reader
+          // has that PDF, and whether it carried receipts at all (the send
+          // dialog's checkbox), are both things this page cannot know.
+          <Text as="div" size="2" color="gray" mt="4">
+            {omitted === 1
+              ? "One further receipt for a rebilled expense on this invoice is on file. A copy is available on request."
+              : `${omitted} further receipts for rebilled expenses on this invoice are on file. Copies are available on request.`}
+          </Text>
+        ) : null}
+      </Card>
     </Box>
   );
 }

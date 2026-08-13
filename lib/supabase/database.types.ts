@@ -2390,6 +2390,19 @@ export type Database = {
         Args: { p_token: string };
         Returns: Json;
       };
+      // Added by 20260813020000_invoice_share_receipts.sql. Same
+      // live-token / unrevoked / shareable-status predicate as
+      // invoice_public, but granted to service_role ONLY and to nobody
+      // else: it returns private-bucket STORAGE PATHS, which carry the
+      // account uuid and are exactly the class of internal identifier the
+      // public boundary otherwise refuses to disclose. Its one caller is
+      // lib/invoice-share-receipts.ts, which fetches the bytes server-side
+      // and inlines them into the token-gated page — read that module's
+      // header before adding a second.
+      invoice_share_receipts: {
+        Args: { p_token: string };
+        Returns: Json;
+      };
       // -----------------------------------------------------------------
       // 20260812100000_accounting_ledger.sql. ledger_sync /
       // journal_entry_create / journal_entry_delete are SECURITY DEFINER

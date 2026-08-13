@@ -14,6 +14,11 @@ import {
   normalizeNavLayout,
   type NavLayout,
 } from "@/lib/nav";
+import {
+  DEFAULT_MESSAGE_TEMPLATES,
+  normalizeMessageTemplates,
+  type MessageTemplates,
+} from "@/lib/message-templates";
 
 /**
  * PER-TENANT PREFERENCES — the one place they are read, defaulted,
@@ -60,20 +65,27 @@ type PreferencesUpdate = Database["pilot"]["Tables"]["account_preferences"]["Upd
 export type Preferences = {
   theme: ThemeSlots;
   nav: NavLayout;
+  templates: MessageTemplates;
 };
 
 export const DEFAULT_PREFERENCES: Preferences = {
   theme: DEFAULT_THEME_SLOTS,
   nav: DEFAULT_NAV_LAYOUT,
+  templates: DEFAULT_MESSAGE_TEMPLATES,
 };
 
 /**
- * The stored shape. Two top-level keys, each owned by the module that
+ * The stored shape. Three top-level keys, each owned by the module that
  * validates it. New preferences are added as new keys here and nowhere
- * else — that is the whole point of the jsonb column.
+ * else — that is the whole point of the jsonb column, and `templates`
+ * (lib/message-templates.ts) is the first section added by taking the
+ * column at its word: no migration, because 20260813000000's
+ * `grant update (prefs)`, its RLS policies and its 16 KB CHECK already
+ * cover it exactly.
  */
 const THEME_KEY = "theme";
 const NAV_KEY = "nav";
+const TEMPLATES_KEY = "templates";
 
 /** Untrusted jsonb → known-good preferences. Total; never throws. */
 export function resolvePreferences(raw: unknown): Preferences {
@@ -85,6 +97,7 @@ export function resolvePreferences(raw: unknown): Preferences {
   return {
     theme: resolveThemeSlots(source[THEME_KEY]),
     nav: normalizeNavLayout(source[NAV_KEY]),
+    templates: normalizeMessageTemplates(source[TEMPLATES_KEY]),
   };
 }
 
@@ -137,22 +150,28 @@ export async function loadResolvedTheme(accountId: string): Promise<ResolvedThem
 /**
  * Writes one section of the preferences object, leaving the rest alone.
  *
- * READ-MODIFY-WRITE, and stated rather than hidden: the appearance panel
- * and the layout panel each own a disjoint key, so the only way to lose a
- * write is for one pilot to save both panels in the same instant from two
- * tabs. The cost of the alternative (a jsonb merge expression, which
- * PostgREST cannot express without an RPC) is a database function whose
- * whole job would be to serialise two writes a single-seat product makes
- * seconds apart. If seats-per-account ever makes this a real race, an RPC
- * doing `prefs = prefs || $1` is the fix.
+ * READ-MODIFY-WRITE, and stated rather than hidden: the appearance, layout
+ * and message-template panels each own a disjoint key, so the only way to
+ * lose a write is for one pilot to save two of them in the same instant
+ * from two tabs. The cost of the alternative (a jsonb merge expression,
+ * which PostgREST cannot express without an RPC) is a database function
+ * whose whole job would be to serialise two writes a single-seat product
+ * makes seconds apart. If seats-per-account ever makes this a real race, an
+ * RPC doing `prefs = prefs || $1` is the fix.
  *
  * The candidate is passed through the resolver before it is stored, so
  * the row can only ever hold values this build recognises.
+ *
+ * TAKES A PATCH, not a (name, value) pair. With two sections the pair
+ * needed one `as` cast per section to widen the value; with three it would
+ * need three, and a cast is exactly how a caller eventually stores a
+ * NavLayout under the theme key with the compiler saying nothing. A
+ * `Partial<Preferences>` makes the key and its value type agree by
+ * construction.
  */
 async function writePreferenceSection(
   accountId: string,
-  section: typeof THEME_KEY | typeof NAV_KEY,
-  value: ThemeSlots | NavLayout
+  patch: Partial<Preferences>
 ): Promise<{ error: string | null }> {
   const supabase = await createClient();
 
@@ -171,10 +190,7 @@ async function writePreferenceSection(
 
   const existing = (existingData as { prefs: unknown } | null)?.prefs;
   const current = resolvePreferences(existing);
-  const next: Preferences =
-    section === THEME_KEY
-      ? { ...current, theme: value as ThemeSlots }
-      : { ...current, nav: value as NavLayout };
+  const next: Preferences = { ...current, ...patch };
 
   // Re-resolved on the way out: the stored blob is always in the shape
   // this build's readers expect, never whatever a caller happened to hand
@@ -182,11 +198,16 @@ async function writePreferenceSection(
   const resolved = resolvePreferences({
     [THEME_KEY]: next.theme,
     [NAV_KEY]: next.nav,
+    [TEMPLATES_KEY]: next.templates,
   });
 
   const prefs = {
     [THEME_KEY]: resolved.theme,
     [NAV_KEY]: { order: [...resolved.nav.order], hidden: [...resolved.nav.hidden] },
+    [TEMPLATES_KEY]: {
+      invoice: resolved.templates.invoice,
+      reminder: resolved.templates.reminder,
+    },
   };
 
   /**
@@ -277,12 +298,28 @@ export async function saveThemeSlots(
   accountId: string,
   slots: ThemeSlots
 ): Promise<{ error: string | null }> {
-  return writePreferenceSection(accountId, THEME_KEY, resolveThemeSlots(slots));
+  return writePreferenceSection(accountId, { theme: resolveThemeSlots(slots) });
 }
 
 export async function saveNavLayout(
   accountId: string,
   layout: NavLayout
 ): Promise<{ error: string | null }> {
-  return writePreferenceSection(accountId, NAV_KEY, normalizeNavLayout(layout));
+  return writePreferenceSection(accountId, { nav: normalizeNavLayout(layout) });
+}
+
+/**
+ * The message-template section. Normalised through the SAME total function
+ * the reader uses, so a template that would be rejected on read can never
+ * be stored on write — the state where a pilot's saved wording is quietly
+ * never used, with nothing on any screen to explain it, is the one this
+ * feature most needs not to have.
+ */
+export async function saveMessageTemplates(
+  accountId: string,
+  templates: MessageTemplates
+): Promise<{ error: string | null }> {
+  return writePreferenceSection(accountId, {
+    templates: normalizeMessageTemplates(templates),
+  });
 }
