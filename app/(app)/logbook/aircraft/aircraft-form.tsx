@@ -4,7 +4,15 @@ import { useActionState, useEffect, useState } from "react";
 import { Button, Callout, Flex, Grid, Select, Text, TextArea, TextField } from "@/components/ui";
 import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import type { AircraftFormState } from "./actions";
-import { CATEGORY_CLASS_SUGGESTIONS, GEAR_LABEL, type AircraftGear } from "./db";
+import {
+  CATEGORY_CLASS_SUGGESTIONS,
+  GEAR_LABEL,
+  TRISTATE_NO,
+  TRISTATE_UNSTATED,
+  TRISTATE_YES,
+  tristateValue,
+  type AircraftGear,
+} from "./db";
 
 export type AircraftFormValues = {
   id?: string;
@@ -14,6 +22,8 @@ export type AircraftFormValues = {
   make_model?: string | null;
   gear?: AircraftGear | null;
   category_class?: string | null;
+  is_turbine?: boolean | null;
+  is_retractable?: boolean | null;
   notes?: string | null;
 };
 
@@ -23,6 +33,72 @@ export type AircraftFormValues = {
 const GEAR_UNSTATED = "__unstated__";
 
 const initialState: AircraftFormState = { error: null };
+
+/**
+ * A nullable boolean, as three named options rather than a checkbox.
+ *
+ * A CHECKBOX WOULD BE THE WRONG CONTROL, not merely a plainer one: an
+ * unchecked box posts nothing and reads as "no", and these two columns are
+ * documented — in the migrations and in db.ts — as three-state, where NULL
+ * means nobody said and must never resolve to false. The pilot-history
+ * report leans on that distinction to report how much of the fleet is
+ * unannotated instead of quietly totalling a short figure, and a control
+ * that cannot express "not recorded" would silently destroy it on the
+ * first save of any existing airframe.
+ *
+ * Same Radix mechanics as the gear picker below it: Radix's Select posts
+ * through a bubble <select> rendered with `defaultValue`, so React 19's
+ * post-action form.reset() would restore it to its mount-time option even
+ * on a rejected submit. `name` is kept off it and the real value posts
+ * from a controlled hidden input.
+ */
+function TriStateField({
+  name,
+  label,
+  hint,
+  submittedValue,
+  storedValue,
+}: {
+  name: string;
+  label: string;
+  hint: React.ReactNode;
+  submittedValue: string | undefined;
+  storedValue: boolean | null | undefined;
+}) {
+  const [value, setValue] = useState(() =>
+    submittedValue !== undefined
+      ? submittedValue || TRISTATE_UNSTATED
+      : tristateValue(storedValue)
+  );
+  useEffect(() => {
+    if (submittedValue !== undefined) setValue(submittedValue || TRISTATE_UNSTATED);
+  }, [submittedValue]);
+
+  const labelId = `${name}-label`;
+  return (
+    <Flex direction="column" gap="1">
+      <Text as="label" size="1" color="gray" id={labelId}>
+        {label}
+      </Text>
+      <Select.Root value={value} onValueChange={setValue}>
+        <Select.Trigger aria-labelledby={labelId} />
+        <Select.Content>
+          <Select.Item value={TRISTATE_UNSTATED}>Not recorded</Select.Item>
+          <Select.Item value={TRISTATE_YES}>Yes</Select.Item>
+          <Select.Item value={TRISTATE_NO}>No</Select.Item>
+        </Select.Content>
+      </Select.Root>
+      <input
+        type="hidden"
+        name={name}
+        value={value === TRISTATE_UNSTATED ? "" : value}
+      />
+      <Text size="1" color="gray">
+        {hint}
+      </Text>
+    </Flex>
+  );
+}
 
 export default function AircraftForm({
   action,
@@ -175,6 +251,29 @@ export default function AircraftForm({
               Pick one, or type your own.
             </Text>
           </Flex>
+        </Grid>
+
+        {/* The two lines an insurance pilot-history form rates separately
+            from total time, and the two this product could not answer at
+            all until the fleet carried them. Neither is derivable from
+            anything already on file: `gear` below records what the
+            aeroplane stands on, not whether the legs fold, and nothing
+            anywhere says what is under the cowling. */}
+        <Grid columns={{ initial: "1", sm: "2" }} gap="3">
+          <TriStateField
+            name="is_turbine"
+            label="Turbine powered"
+            submittedValue={submitted?.is_turbine}
+            storedValue={values.is_turbine}
+            hint="Turbine time is its own line on a pilot-history form and an open-pilot warranty. Leaving it unrecorded is fine — nothing here will assume piston."
+          />
+          <TriStateField
+            name="is_retractable"
+            label="Retractable gear"
+            submittedValue={submitted?.is_retractable}
+            storedValue={values.is_retractable}
+            hint="Also its own rated line. Separate from the landing gear below: a Bonanza is tricycle and retractable, a Super Cub is tailwheel and fixed."
+          />
         </Grid>
 
         <Flex direction="column" gap="1">

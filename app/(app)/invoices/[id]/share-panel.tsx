@@ -18,6 +18,21 @@ import { createInvoiceShare, revokeInvoiceShare, type ShareState } from "../shar
  * reach this component (see [id]/page.tsx) — matching
  * pilot.invoice_share_create's own status gate, so the button is never
  * offered where the database would refuse it.
+ *
+ * THIS PANEL IS WHERE A PILOT CONSENTS TO WHAT THE LINK DISCLOSES, which
+ * is why the copy below has to name all of it. Creating a link is a
+ * deliberate per-invoice act — no invoice has a public URL until this
+ * button is pressed — and that is what makes "my client can see this" an
+ * informed choice rather than a default. It stops being informed the
+ * moment the page shows something this panel never mentioned. So the
+ * receipts sentence below is load-bearing, not decoration: since
+ * 20260813020000 the link renders the receipt IMAGE for every rebilled
+ * line that has one, and StatusActions' "Attach N receipts" checkbox
+ * governs the EMAILED PDF only — it is a per-send choice, stored nowhere,
+ * and it has no bearing on this surface. A pilot who does not want a
+ * particular receipt image in their client's hands revokes this link or
+ * never creates it. That is the control, and it only works if this panel
+ * says what the link shows.
  */
 
 const initialState: ShareState = { error: null };
@@ -40,9 +55,22 @@ export type ShareRow = {
 export default function SharePanel({
   invoiceId,
   share,
+  receiptCount,
 }: {
   invoiceId: string;
   share: ShareRow;
+  /**
+   * Rebill lines on THIS invoice whose expense has a receipt on file —
+   * the same server-resolved count StatusActions and the download button
+   * take ([id]/page.tsx), and exactly the set pilot.invoice_share_receipts
+   * will return for this invoice's token. 0 means the link has no receipt
+   * to show, so the sentence below does not claim one.
+   *
+   * It is a COUNT rather than a boolean because the copy names it: "the
+   * two receipts" is checkable against the lines on screen, whereas "any
+   * receipts" would leave a pilot to work out which lines qualify.
+   */
+  receiptCount: number;
 }) {
   const [createState, createAction, creating] = useActionState(createInvoiceShare, initialState);
   const [revokeState, revokeAction, revoking] = useActionState(revokeInvoiceShare, initialState);
@@ -89,6 +117,25 @@ export default function SharePanel({
         A link your client can open without an account — the invoice, its status, and a Pay
         button if one is set up. You send it; nothing here emails it for you.
       </Text>
+
+      {/* SAID BEFORE THE LINK EXISTS, not after. This sits above the
+          create/rotate controls so a pilot reads it while deciding, and it
+          is deliberately NOT phrased as a reassurance: the emailed PDF's
+          receipts checkbox is a per-send choice that is stored nowhere, so
+          a pilot who unticked it for this invoice would otherwise have no
+          way to learn that the link they are about to hand over shows the
+          images anyway. See this component's header. */}
+      {receiptCount > 0 ? (
+        <Text as="div" size="1" color="gray" mb="3">
+          It also shows{" "}
+          {receiptCount === 1
+            ? "the receipt for the rebilled expense"
+            : `the ${receiptCount} receipts for rebilled expenses`}{" "}
+          on this invoice, whether or not you attached{" "}
+          {receiptCount === 1 ? "it" : "them"} to the email. Revoke the link if you&rsquo;d
+          rather your client didn&rsquo;t see {receiptCount === 1 ? "it" : "them"}.
+        </Text>
+      ) : null}
 
       {shareUrl ? (
         <Flex direction="column" gap="2" width="100%">

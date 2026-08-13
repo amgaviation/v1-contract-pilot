@@ -9,6 +9,8 @@
  * logbookFrom(), which these table names were added to — see its comment.
  */
 
+import { tailKeyOf } from "@/lib/logbook-views";
+
 /**
  * 61.57(a)(1) requires the three takeoffs and landings to be made TO A
  * FULL STOP "if the aircraft to be flown is an airplane with a tailwheel"
@@ -68,6 +70,23 @@ export type AircraftRow = {
   make_model: string | null;
   gear: AircraftGear | null;
   category_class: string | null;
+  /**
+   * 20260811040000_currency_snapshots.sql. NULL means NOT RECORDED and
+   * must never be read as false — the same three-state rule as `gear`
+   * above. The fleet form writes it, and the pilot-history report reports
+   * hours on unannotated airframes as unrecorded rather than folding them
+   * into a zero.
+   */
+  is_turbine: boolean | null;
+  /** Same migration, same NULL rule. Not read by any module today. */
+  certificated_more_than_one_pilot: boolean | null;
+  /**
+   * 20260813110000_pilot_history.sql. NOT derivable from `gear`, which
+   * records what the aeroplane stands on (tricycle/tailwheel/skid/float/
+   * ski), not whether the legs fold — a Bonanza is tricycle AND
+   * retractable. Same NULL rule again.
+   */
+  is_retractable: boolean | null;
   notes: string | null;
   archived_at: string | null;
   created_at: string;
@@ -83,8 +102,35 @@ export type AircraftFields = Pick<
   | "make_model"
   | "gear"
   | "category_class"
+  | "is_turbine"
+  | "is_retractable"
   | "notes"
 >;
+
+/**
+ * The three-state tri-switch the fleet form posts for a nullable boolean.
+ * Radix's Select.Item forbids an empty-string value, and "not recorded" is
+ * a real answer rather than an absence here — exactly the reasoning
+ * aircraft-form.tsx already records for `gear`.
+ */
+export const TRISTATE_UNSTATED = "__unstated__";
+export const TRISTATE_YES = "yes";
+export const TRISTATE_NO = "no";
+
+/** A posted tri-switch → the column value. Total; unknown input is
+ *  "not recorded", never a guessed false. */
+export function parseTristate(raw: string): boolean | null {
+  if (raw === TRISTATE_YES) return true;
+  if (raw === TRISTATE_NO) return false;
+  return null;
+}
+
+/** The column value → the tri-switch's own value, for rendering it back. */
+export function tristateValue(value: boolean | null | undefined): string {
+  if (value === true) return TRISTATE_YES;
+  if (value === false) return TRISTATE_NO;
+  return TRISTATE_UNSTATED;
+}
 
 export type AircraftInsert = AircraftFields & { account_id: string };
 export type AircraftUpdate = Partial<AircraftFields> & { archived_at?: string | null };
@@ -166,5 +212,10 @@ export function tailKey(raw: string): string {
   // empty-key guard in actions.ts, silently consumed the account's one
   // `unique (account_id, '')` slot, and produced a row that could never
   // match a logbook entry.
-  return raw.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  // ONE IMPLEMENTATION, TWO CALLERS. Saved logbook views normalise a tail
+  // key as well (lib/logbook-views.ts, which owns the function this now
+  // delegates to), and the paragraph above is the account of what a second
+  // copy of exactly this normalisation cost the first time there was one.
+  // The signature and every call site here are unchanged.
+  return tailKeyOf(raw);
 }

@@ -104,6 +104,7 @@ export default async function InvoicesPage({
     { data: clientData, error: clientError },
     { data: recurringScheduleData, error: recurringScheduleError },
     { data: recurringGenerationData, error: recurringGenerationError },
+    { data: connectNoticeData },
   ] = await Promise.all([
     supabase
       .from("invoices")
@@ -128,6 +129,28 @@ export default async function InvoicesPage({
       .select("id, account_id, client_id, cadence, anchor_date, end_date, description, amount_cents, tax_rate_bps, active, created_at, updated_at")
       .eq("active", true),
     supabase.from("recurring_invoice_generations").select("schedule_id, period_start"),
+    // Invoices carrying an unresolved Connect prompt — a Stripe payment
+    // that arrived and was deliberately not recorded (20260813100000).
+    //
+    // WHY IT IS ON THE LIST AND NOT ONLY ON THE INVOICE. The prompt's most
+    // serious trigger is a client paying an invoice that already reads
+    // Paid, and a Paid invoice is precisely the one a pilot has no reason
+    // to open: the list says settled, so the amber "if the client paid
+    // twice, refund them" sits unread until the client complains. There is
+    // still no notification (docs/WAVE-PARITY §8 #1 says so plainly); this
+    // is the cheapest thing that makes the prompt reachable from the screen
+    // a pilot does open — one indexed read against
+    // stripe_connect_events_needs_review_idx.
+    //
+    // Best-effort, like the recurring reads above: a failed read costs a
+    // badge, not a figure, so it is kept out of firstError.
+    supabase
+      .from("stripe_connect_events")
+      .select("invoice_id")
+      .in("outcome", ["needs_review", "refused"])
+      .is("reviewed_at", null)
+      .not("invoice_id", "is", null)
+      .limit(LIST_LIMIT),
   ]);
 
   // A failed totals/overdue/clients query is not "no data" — rendering it
@@ -172,6 +195,11 @@ export default async function InvoicesPage({
   // the hand-authored types file, and a pilot's client list is small.
   const clientNames = new Map(
     ((clientData ?? []) as { id: string; name: string }[]).map((c) => [c.id, c.name])
+  );
+  const noticeInvoiceIds = new Set(
+    ((connectNoticeData ?? []) as { invoice_id: string | null }[])
+      .map((row) => row.invoice_id)
+      .filter((invoiceId): invoiceId is string => invoiceId !== null)
   );
 
   const overdueCount = overdueIds.size;
@@ -428,11 +456,22 @@ export default async function InvoicesPage({
                       )}
                     </Table.Cell>
                     <Table.Cell>
-                      {overdue ? (
-                        <Badge color="red">Overdue</Badge>
-                      ) : (
-                        <Badge color={badge.color}>{badge.label}</Badge>
-                      )}
+                      <Flex align="center" gap="2" wrap="wrap">
+                        {overdue ? (
+                          <Badge color="red">Overdue</Badge>
+                        ) : (
+                          <Badge color={badge.color}>{badge.label}</Badge>
+                        )}
+                        {/* Beside the status, not instead of it: a Stripe
+                            payment arrived for this invoice and was not
+                            recorded. Amber, because nothing is broken and
+                            no money was lost — but the sentence explaining
+                            it lives on the invoice, so this is only a
+                            pointer to it. */}
+                        {noticeInvoiceIds.has(invoice.id) ? (
+                          <Badge color="amber">Check payment</Badge>
+                        ) : null}
+                      </Flex>
                     </Table.Cell>
                     <Table.Cell justify="end">
                       <Text weight="medium" className="tnum">

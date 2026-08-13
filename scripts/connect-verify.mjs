@@ -536,6 +536,277 @@ begin
 end $$;
 reset role;
 
+-- ===========================================================================
+-- ASSERTION 7 — AUTOMATIC PAYMENT RECORDING's database contract
+-- (20260813100000_connect_auto_payments.sql).
+--
+-- Why every part of this needs a probe rather than a reading of the SQL:
+-- the webhook writes as service_role, and BOTH triggers on this path
+-- (invoice_payments_validate, invoices_protect_issued) early-return for
+-- that role. So the only database-side guarantees left on the auto-record
+-- path are the ones below — a column grant, a CHECK and a unique index —
+-- and if any of them silently stops holding, nothing else notices.
+--
+--   7a  a tenant cannot claim invoice_payments.source — the provenance
+--       label is not theirs to write, or "recorded automatically" means
+--       nothing. (No backticks anywhere inside this SQL string: it is a
+--       JS template literal, and one backtick ends it. That mistake made
+--       this entire script unparseable, which is a special kind of
+--       useless for a file whose job is to be the evidence.)
+--   7b  a tenant cannot write invoice_payments.stripe_payment_intent_id —
+--       if they could, one tenant could squat the dedupe key and block a
+--       real payment (which is also why that index is allowed to be
+--       global).
+--   7c  the same PaymentIntent cannot be recorded twice. THE one that
+--       stops a client being credited twice when Stripe redelivers an
+--       event the handler crashed halfway through.
+--   7d  source and the intent id move together, both ways.
+--   7e  the Connect events ledger is readable by its own tenant only, and
+--       writable by them in exactly one column.
+--   7f  a 'refused' payment on this tenant's own invoice reaches them —
+--       the database half of the invoice screen's prompt query.
+-- ===========================================================================
+set local role service_role;
+insert into pilot.invoices (id, account_id, client_id, status)
+  values ('00000000-0000-0000-0000-00000000d1e4', '${A}', '00000000-0000-0000-0000-00000000d1c1', 'draft');
+insert into pilot.invoice_lines (account_id, invoice_id, line_type, description, unit_amount_cents)
+  values ('${A}', '00000000-0000-0000-0000-00000000d1e4', 'flight_day', 'seed line', 450000);
+update pilot.invoices set status = 'sent' where id = '00000000-0000-0000-0000-00000000d1e4' and account_id = '${A}';
+reset role;
+
+set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', '${UA}', 'role', 'authenticated')::text, true);
+
+do $$
+begin
+  begin
+    insert into pilot.invoice_payments (account_id, invoice_id, paid_on, amount_cents, source)
+      values ('${A}', '00000000-0000-0000-0000-00000000d1e4', current_date, 10000, 'stripe_link');
+    raise exception 'CONNECT-7a FAILURE: a tenant wrote invoice_payments.source — provenance is forgeable';
+  exception when insufficient_privilege then
+    raise notice 'PASS (CONNECT-7a, sqlstate confirmed 42501): a tenant cannot write invoice_payments.source, so every row they record is ''manual''';
+  end;
+end $$;
+
+do $$
+begin
+  begin
+    insert into pilot.invoice_payments (account_id, invoice_id, paid_on, amount_cents, stripe_payment_intent_id)
+      values ('${A}', '00000000-0000-0000-0000-00000000d1e4', current_date, 10000, 'pi_squatted');
+    raise exception 'CONNECT-7b FAILURE: a tenant wrote invoice_payments.stripe_payment_intent_id — the dedupe key is squattable';
+  exception when insufficient_privilege then
+    raise notice 'PASS (CONNECT-7b, sqlstate confirmed 42501): a tenant cannot write invoice_payments.stripe_payment_intent_id';
+  end;
+end $$;
+reset role;
+
+set local role service_role;
+insert into pilot.invoice_payments
+  (account_id, invoice_id, paid_on, amount_cents, method, source, stripe_payment_intent_id)
+  values ('${A}', '00000000-0000-0000-0000-00000000d1e4', current_date, 450000, 'card', 'stripe_link', 'pi_connect_verify');
+
+do $$
+begin
+  begin
+    insert into pilot.invoice_payments
+      (account_id, invoice_id, paid_on, amount_cents, method, source, stripe_payment_intent_id)
+      values ('${A}', '00000000-0000-0000-0000-00000000d1e4', current_date, 450000, 'card', 'stripe_link', 'pi_connect_verify');
+    raise exception 'CONNECT-7c FAILURE: the same Stripe PaymentIntent was recorded twice — a redelivered event double-credits the client';
+  exception when unique_violation then
+    raise notice 'PASS (CONNECT-7c, sqlstate confirmed 23505): one PaymentIntent can only ever produce one payment row, so a webhook retry cannot credit a client twice';
+  end;
+end $$;
+
+do $$
+begin
+  begin
+    insert into pilot.invoice_payments (account_id, invoice_id, paid_on, amount_cents, source)
+      values ('${A}', '00000000-0000-0000-0000-00000000d1e4', current_date, 10000, 'stripe_link');
+    raise exception 'CONNECT-7d FAILURE: a stripe_link payment was recorded with no PaymentIntent — it would be re-recorded on the next retry';
+  exception when check_violation then
+    raise notice 'PASS (CONNECT-7d, sqlstate confirmed 23514): source=stripe_link requires a payment-intent id';
+  end;
+end $$;
+
+do $$
+begin
+  begin
+    insert into pilot.invoice_payments (account_id, invoice_id, paid_on, amount_cents, stripe_payment_intent_id)
+      values ('${A}', '00000000-0000-0000-0000-00000000d1e4', current_date, 10000, 'pi_orphan');
+    raise exception 'CONNECT-7d2 FAILURE: a manual payment carried a PaymentIntent, which would block the real auto-record of it';
+  exception when check_violation then
+    raise notice 'PASS (CONNECT-7d2, sqlstate confirmed 23514): a manual payment cannot carry a payment-intent id';
+  end;
+end $$;
+
+insert into pilot.stripe_connect_events
+  (id, connected_account_id, type, stripe_created_at, object_id, payment_intent_id,
+   livemode, account_id, invoice_id, outcome, detail, processed_at)
+  values ('evt_connect_verify', 'acct_connect_verify', 'checkout.session.completed', now(),
+          'cs_connect_verify', 'pi_connect_verify', false, '${A}',
+          '00000000-0000-0000-0000-00000000d1e4', 'needs_review', 'looks already recorded', now());
+reset role;
+
+-- Tenant B must not be able to see it at all.
+set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', '${UB}', 'role', 'authenticated')::text, true);
+do $$
+declare
+  n integer;
+begin
+  select count(*) into n from pilot.stripe_connect_events;
+  if n <> 0 then
+    raise exception 'CONNECT-7e FAILURE: tenant B can read % Connect event row(s) belonging to tenant A', n;
+  end if;
+  raise notice 'PASS (CONNECT-7e): the Connect events ledger is invisible to another tenant';
+end $$;
+reset role;
+
+set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', '${UA}', 'role', 'authenticated')::text, true);
+do $$
+begin
+  begin
+    update pilot.stripe_connect_events set outcome = 'recorded' where id = 'evt_connect_verify';
+    raise exception 'CONNECT-7e FAILURE: a tenant rewrote what Stripe sent';
+  exception when insufficient_privilege then
+    raise notice 'PASS (CONNECT-7e, sqlstate confirmed 42501): a tenant cannot rewrite a Connect event''s outcome';
+  end;
+end $$;
+
+do $$
+declare
+  n integer;
+begin
+  update pilot.stripe_connect_events set reviewed_at = now()
+    where id = 'evt_connect_verify' and connected_account_id = 'acct_connect_verify'
+      and account_id = '${A}';
+  get diagnostics n = row_count;
+  if n <> 1 then
+    raise exception 'CONNECT-7e FAILURE: the pilot could not dismiss their own review prompt (% rows)', n;
+  end if;
+  raise notice 'PASS (CONNECT-7e): a pilot can dismiss their own review prompt, and that is the only column they may write';
+end $$;
+reset role;
+
+-- 7f  a 'refused' row tied to one of this tenant's invoices is READABLE by
+--     them, and dismissible on the same terms as a 'needs_review' one.
+--
+--     This is the database half of the invoice screen's query, which reads
+--     outcome in ('needs_review','refused','payment_pending','payment_failed')
+--     as of 20260813120000. The sentence a refusal carries
+--     is often the most urgent one this handler ever writes — "the client
+--     paid $4,500 through a link that should have been deactivated, refund
+--     them" — and it went for a while to the events ledger and a platform
+--     log only, with no reader anywhere in the product. If a future policy
+--     ever narrows SELECT by outcome, that sentence loses its audience
+--     again and this assertion is what says so.
+set local role service_role;
+insert into pilot.stripe_connect_events
+  (id, connected_account_id, type, stripe_created_at, object_id, payment_intent_id,
+   livemode, account_id, invoice_id, outcome, detail, processed_at)
+  values ('evt_connect_verify_refused', 'acct_connect_verify', 'checkout.session.completed', now(),
+          'cs_connect_verify_2', 'pi_connect_verify_2', false, '${A}',
+          '00000000-0000-0000-0000-00000000d1e4', 'refused',
+          'invoice is void — the client paid a link that should have been deactivated', now());
+reset role;
+
+set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', '${UA}', 'role', 'authenticated')::text, true);
+do $$
+declare
+  n integer;
+begin
+  -- The invoice screen's query, verbatim. The needs_review row above was
+  -- dismissed a moment ago, so this must find exactly the refused one.
+  select count(*) into n from pilot.stripe_connect_events
+    where invoice_id = '00000000-0000-0000-0000-00000000d1e4'
+      and outcome in ('needs_review', 'refused', 'payment_pending', 'payment_failed')
+      and reviewed_at is null;
+  if n <> 1 then
+    raise exception 'CONNECT-7f FAILURE: the invoice screen''s query returns % unresolved prompt(s) — a refused payment is not reaching the pilot', n;
+  end if;
+  update pilot.stripe_connect_events set reviewed_at = now()
+    where id = 'evt_connect_verify_refused' and connected_account_id = 'acct_connect_verify'
+      and account_id = '${A}';
+  get diagnostics n = row_count;
+  if n <> 1 then
+    raise exception 'CONNECT-7f FAILURE: the pilot could not dismiss a refused-payment prompt (% rows)', n;
+  end if;
+  raise notice 'PASS (CONNECT-7f): a refused payment on this tenant''s invoice is readable by them and dismissible, exactly like a needs_review one';
+end $$;
+reset role;
+
+-- 7g  the two ASYNC outcomes (20260813120000) are accepted by the CHECK,
+--     reach the pilot through the same query, and are dismissible.
+--
+--     WHY THIS IS A REAL-POSTGRES ASSERTION AND NOT A UNIT TEST. The
+--     vocabulary lives in a CHECK constraint, and that migration DROPS the
+--     original inline check by looking it up in pg_constraint rather than
+--     by its generated name. If that lookup ever misses, the ADD still
+--     succeeds and the table keeps TWO checks — the older one refusing
+--     exactly these two values — and the webhook then 500s on every
+--     pending ACH delivery while Stripe retries for three days. Nothing in
+--     the TypeScript can see that; this insert can.
+set local role service_role;
+insert into pilot.stripe_connect_events
+  (id, connected_account_id, type, stripe_created_at, object_id, payment_intent_id,
+   livemode, account_id, invoice_id, outcome, detail, processed_at)
+  values
+    ('evt_connect_verify_pending', 'acct_connect_verify', 'checkout.session.completed', now(),
+     'cs_connect_verify_3', 'pi_connect_verify_3', false, '${A}',
+     '00000000-0000-0000-0000-00000000d1e4', 'payment_pending',
+     'bank payment (ACH) initiated — not paid yet', now()),
+    ('evt_connect_verify_failed', 'acct_connect_verify', 'checkout.session.async_payment_failed', now(),
+     'cs_connect_verify_4', 'pi_connect_verify_4', false, '${A}',
+     '00000000-0000-0000-0000-00000000d1e4', 'payment_failed',
+     'the bank payment failed — generate a new link', now());
+
+do $$
+begin
+  begin
+    insert into pilot.stripe_connect_events
+      (id, connected_account_id, type, stripe_created_at, livemode, outcome)
+      values ('evt_connect_verify_bogus', 'acct_connect_verify', 'checkout.session.completed',
+              now(), false, 'settled_probably');
+    raise exception 'CONNECT-7g FAILURE: the outcome vocabulary accepts anything at all';
+  exception when check_violation then
+    raise notice 'PASS (CONNECT-7g, sqlstate confirmed 23514): the outcome CHECK still refuses a value outside the list';
+  end;
+end $$;
+reset role;
+
+set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', '${UA}', 'role', 'authenticated')::text, true);
+do $$
+declare
+  n integer;
+begin
+  -- Both async rows must reach the invoice screen. A pending five-figure
+  -- debit that nobody can see is how a pilot chases a client who has
+  -- already paid, or hand-records money the settlement event then records
+  -- again.
+  select count(*) into n from pilot.stripe_connect_events
+    where invoice_id = '00000000-0000-0000-0000-00000000d1e4'
+      and outcome in ('needs_review', 'refused', 'payment_pending', 'payment_failed')
+      and reviewed_at is null;
+  if n <> 2 then
+    raise exception 'CONNECT-7g FAILURE: the invoice screen sees % of the 2 async prompts', n;
+  end if;
+  -- reviewed_at is still the only column they may write, and it is what
+  -- the webhook itself stamps to supersede a pending notice once the
+  -- payment settles or fails.
+  update pilot.stripe_connect_events set reviewed_at = now()
+    where id in ('evt_connect_verify_pending', 'evt_connect_verify_failed')
+      and connected_account_id = 'acct_connect_verify' and account_id = '${A}';
+  get diagnostics n = row_count;
+  if n <> 2 then
+    raise exception 'CONNECT-7g FAILURE: the pilot could not dismiss the async prompts (% rows)', n;
+  end if;
+  raise notice 'PASS (CONNECT-7g): a pending and a failed bank payment both reach the pilot and are dismissible';
+end $$;
+reset role;
+
 rollback;
 `;
 

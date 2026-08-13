@@ -14,6 +14,22 @@ import {
   normalizeNavLayout,
   type NavLayout,
 } from "@/lib/nav";
+import {
+  resolveLogbookViews,
+  type LogbookView,
+} from "@/lib/logbook-views";
+import {
+  DEFAULT_PAYMENT_METHOD_CHOICE,
+  normalizePaymentMethodChoice,
+  type PaymentMethodChoice,
+} from "@/lib/stripe/payment-methods";
+import {
+  DEFAULT_MESSAGE_TEMPLATES,
+  normalizeMessageTemplates,
+  type MessageTemplates,
+} from "@/lib/message-templates";
+
+
 
 /**
  * PER-TENANT PREFERENCES — the one place they are read, defaulted,
@@ -57,23 +73,64 @@ import {
 type PreferencesInsert = Database["pilot"]["Tables"]["account_preferences"]["Insert"];
 type PreferencesUpdate = Database["pilot"]["Tables"]["account_preferences"]["Update"];
 
+/**
+ * WHAT AN INVOICE'S PAYMENT LINK OFFERS BY DEFAULT.
+ *
+ * An account-level default that every new link is generated with, and that
+ * the invoice screen may override for one invoice — the same "account
+ * defaults prefill, the screen decides" idiom as day rates and payment
+ * terms. It is a preference and not a column for exactly the reason
+ * 20260813000000's header gives: nothing in the database computes on it.
+ *
+ * The VALUE is validated by lib/stripe/payment-methods.ts, which is also
+ * what the link generator and the Settings panel read — one enumerated
+ * list, one resolver, no second opinion about what "ach" means.
+ */
+export type PaymentPreferences = { methods: PaymentMethodChoice };
+
 export type Preferences = {
   theme: ThemeSlots;
   nav: NavLayout;
+  /**
+   * Named logbook filters. Owned and validated by lib/logbook-views.ts,
+   * exactly as `theme` is owned by lib/theme-slots.ts and `nav` by
+   * lib/nav.ts — this file knows the key exists and knows nothing about
+   * what is inside it.
+   */
+  logbookViews: LogbookView[];
+  payments: PaymentPreferences;
+  templates: MessageTemplates;
+
+
 };
 
 export const DEFAULT_PREFERENCES: Preferences = {
   theme: DEFAULT_THEME_SLOTS,
   nav: DEFAULT_NAV_LAYOUT,
+  // No saved views is the ordinary resting state of every account, not an
+  // absence to be filled in. The empty array IS the default.
+  logbookViews: [],
+  templates: DEFAULT_MESSAGE_TEMPLATES,
+  payments: { methods: DEFAULT_PAYMENT_METHOD_CHOICE },
+
 };
 
 /**
- * The stored shape. Two top-level keys, each owned by the module that
+ * The stored shape. Three top-level keys, each owned by the module that
  * validates it. New preferences are added as new keys here and nowhere
- * else — that is the whole point of the jsonb column.
+ * else — that is the whole point of the jsonb column, and `templates`
+ * (lib/message-templates.ts) is the first section added by taking the
+ * column at its word: no migration, because 20260813000000's
+ * `grant update (prefs)`, its RLS policies and its 16 KB CHECK already
+ * cover it exactly.
  */
 const THEME_KEY = "theme";
 const NAV_KEY = "nav";
+const LOGBOOK_VIEWS_KEY = "logbookViews";
+const TEMPLATES_KEY = "templates";
+const PAYMENTS_KEY = "payments";
+
+
 
 /** Untrusted jsonb → known-good preferences. Total; never throws. */
 export function resolvePreferences(raw: unknown): Preferences {
@@ -85,7 +142,28 @@ export function resolvePreferences(raw: unknown): Preferences {
   return {
     theme: resolveThemeSlots(source[THEME_KEY]),
     nav: normalizeNavLayout(source[NAV_KEY]),
+    logbookViews: resolveLogbookViews(source[LOGBOOK_VIEWS_KEY]),
+    payments: resolvePaymentPreferences(source[PAYMENTS_KEY]),
+    templates: normalizeMessageTemplates(source[TEMPLATES_KEY]),
+
+
   };
+}
+
+/**
+ * Total over `unknown`, like every other resolver here — and note that
+ * `payments` is ABSENT from every row written before this build, which is
+ * the ordinary case rather than the edge one. An absent key, a null, a
+ * string where an object belongs and an unrecognised method all resolve to
+ * the product's default, which is what an account that has never opened
+ * this control should get.
+ */
+function resolvePaymentPreferences(raw: unknown): PaymentPreferences {
+  const source =
+    typeof raw === "object" && raw !== null && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  return { methods: normalizePaymentMethodChoice(source.methods) };
 }
 
 /** Preferences → the props the app shell renders with. */
@@ -137,22 +215,36 @@ export async function loadResolvedTheme(accountId: string): Promise<ResolvedThem
 /**
  * Writes one section of the preferences object, leaving the rest alone.
  *
- * READ-MODIFY-WRITE, and stated rather than hidden: the appearance panel
- * and the layout panel each own a disjoint key, so the only way to lose a
- * write is for one pilot to save both panels in the same instant from two
- * tabs. The cost of the alternative (a jsonb merge expression, which
- * PostgREST cannot express without an RPC) is a database function whose
- * whole job would be to serialise two writes a single-seat product makes
- * seconds apart. If seats-per-account ever makes this a real race, an RPC
- * doing `prefs = prefs || $1` is the fix.
+ * READ-MODIFY-WRITE, and stated rather than hidden: the appearance, layout
+ * and message-template panels each own a disjoint key, so the only way to
+ * lose a write is for one pilot to save two of them in the same instant
+ * from two tabs. The cost of the alternative (a jsonb merge expression,
+ * which PostgREST cannot express without an RPC) is a database function
+ * whose whole job would be to serialise two writes a single-seat product
+ * makes seconds apart. If seats-per-account ever makes this a real race, an
+ * RPC doing `prefs = prefs || $1` is the fix.
  *
  * The candidate is passed through the resolver before it is stored, so
  * the row can only ever hold values this build recognises.
+ *
+ * TAKES A PATCH, not a (name, value) pair. With two sections the pair
+ * needed one `as` cast per section to widen the value; with three it would
+ * need three, and a cast is exactly how a caller eventually stores a
+ * NavLayout under the theme key with the compiler saying nothing. A
+ * `Partial<Preferences>` makes the key and its value type agree by
+ * construction.
  */
 async function writePreferenceSection(
   accountId: string,
-  section: typeof THEME_KEY | typeof NAV_KEY,
-  value: ThemeSlots | NavLayout
+  /**
+   * The one section being written, as a partial of the resolved shape. A
+   * partial rather than a (key, value) pair because the pair form needed a
+   * union-typed `value` and a cast per branch, and a third key made that
+   * cast the place a future fourth key would land in the wrong slot with
+   * no type error. Every key NOT present here is carried through from the
+   * stored row untouched.
+   */
+  patch: Partial<Preferences>
 ): Promise<{ error: string | null }> {
   const supabase = await createClient();
 
@@ -171,22 +263,38 @@ async function writePreferenceSection(
 
   const existing = (existingData as { prefs: unknown } | null)?.prefs;
   const current = resolvePreferences(existing);
-  const next: Preferences =
-    section === THEME_KEY
-      ? { ...current, theme: value as ThemeSlots }
-      : { ...current, nav: value as NavLayout };
+  const next: Preferences = { ...current, ...patch };
+
+
 
   // Re-resolved on the way out: the stored blob is always in the shape
   // this build's readers expect, never whatever a caller happened to hand
-  // in.
+  // in. EVERY key is listed — a key omitted here would be silently dropped
+  // from the row on the next save of any other panel.
   const resolved = resolvePreferences({
     [THEME_KEY]: next.theme,
     [NAV_KEY]: next.nav,
+    [LOGBOOK_VIEWS_KEY]: next.logbookViews,
+    [PAYMENTS_KEY]: next.payments,
+    [TEMPLATES_KEY]: next.templates,
+
+
   });
 
   const prefs = {
     [THEME_KEY]: resolved.theme,
     [NAV_KEY]: { order: [...resolved.nav.order], hidden: [...resolved.nav.hidden] },
+    [LOGBOOK_VIEWS_KEY]: resolved.logbookViews.map((view) => ({
+      name: view.name,
+      filter: { ...view.filter },
+    })),
+    [PAYMENTS_KEY]: resolved.payments,
+    [TEMPLATES_KEY]: {
+      invoice: resolved.templates.invoice,
+      reminder: resolved.templates.reminder,
+    },
+
+
   };
 
   /**
@@ -277,12 +385,65 @@ export async function saveThemeSlots(
   accountId: string,
   slots: ThemeSlots
 ): Promise<{ error: string | null }> {
-  return writePreferenceSection(accountId, THEME_KEY, resolveThemeSlots(slots));
+  return writePreferenceSection(accountId, { theme: resolveThemeSlots(slots) });
 }
 
 export async function saveNavLayout(
   accountId: string,
   layout: NavLayout
 ): Promise<{ error: string | null }> {
-  return writePreferenceSection(accountId, NAV_KEY, normalizeNavLayout(layout));
+  return writePreferenceSection(accountId, { nav: normalizeNavLayout(layout) });
+}
+
+/**
+ * The whole saved-view list at once, not one view at a time — the same
+ * read-modify-write shape the other two panels use, and for the same
+ * reason: PostgREST cannot express a jsonb array append without an RPC,
+ * and this is a list a single pilot edits a few times a year. The caller
+ * (app/(app)/logbook/views-actions.ts) does the add/replace/remove against
+ * the CURRENT list it just read, so the window in which a write can be
+ * lost is one round trip wide.
+ */
+export async function saveLogbookViews(
+  accountId: string,
+  views: readonly LogbookView[]
+): Promise<{ error: string | null }> {
+  return writePreferenceSection(accountId, {
+    logbookViews: resolveLogbookViews(views),
+  });
+}
+
+/**
+ * The message-template section. Normalised through the SAME total function
+ * the reader uses, so a template that would be rejected on read can never
+ * be stored on write — the state where a pilot's saved wording is quietly
+ * never used, with nothing on any screen to explain it, is the one this
+ * feature most needs not to have.
+ */
+export async function saveMessageTemplates(
+  accountId: string,
+  templates: MessageTemplates
+): Promise<{ error: string | null }> {
+  return writePreferenceSection(accountId, {
+    templates: normalizeMessageTemplates(templates),
+  });
+}
+
+/**
+ * The account's default for what a new payment link offers.
+ *
+ * Changes NOTHING about links already sent: a Payment Link's methods are
+ * fixed on Stripe when it is created, and this product does not update
+ * links in place. The panel that calls this says so, because "I turned card
+ * payments off" reading as "the link in my client's inbox stopped taking
+ * cards" would be a very expensive misunderstanding.
+ */
+export async function savePaymentMethods(
+  accountId: string,
+  methods: PaymentMethodChoice
+): Promise<{ error: string | null }> {
+  return writePreferenceSection(accountId, {
+    payments: { methods: normalizePaymentMethodChoice(methods) },
+
+  });
 }

@@ -51,6 +51,17 @@
  *                                                      connect_account_link's new
  *                                                      signature,
  *                                                      invoices.stripe_payment_link_amount_cents)
+ *   20260813100000_connect_auto_payments.sql          (stripe_connect_events,
+ *                                                      invoice_payments.source,
+ *                                                      invoice_payments.stripe_payment_intent_id)
+ *
+ * The list above has always been partial — it names the migrations whose
+ * shapes this file was updated FOR, not every migration in the tree. Two
+ * columns that predate this note are added alongside the ones above
+ * because the Connect webhook selects them by name and a hand-written type
+ * that omits a column it reads is a compile error waiting to be silenced
+ * with a cast: invoice_payments.reverses_payment_id and .reversal_reason,
+ * from 20260810120000_payment_reversals.sql.
  */
 export type Json =
   | string
@@ -102,6 +113,13 @@ export type Database = {
           // applied to this account. Webhook/service-role-writable only;
           // the concurrent-event ordering guard.
           last_billing_event_at: string;
+          // Added by 20260813130000_payment_reminders_and_late_fees.sql —
+          // when the due-reminder pass last completed for this account,
+          // scheduled or run by hand. NULL = never run. Operational, not
+          // billing state: it is in the tenant UPDATE grant (the owner may
+          // press "run now") and deliberately NOT in
+          // accounts_protect_billing_columns, which would misdescribe it.
+          reminders_last_run_at: string | null;
           // Added by 20260812400000_account_onboarding_profile.sql — the
           // post-checkout onboarding wizard's gate and the fields it
           // collects. onboarding_complete is owner-writable (a UX flag, not
@@ -157,6 +175,7 @@ export type Database = {
           connect_account_id?: string | null;
           invoice_prefix?: string;
           last_billing_event_at?: string;
+          reminders_last_run_at?: string | null;
           onboarding_complete?: boolean;
           dba_name?: string | null;
           phone?: string | null;
@@ -215,6 +234,7 @@ export type Database = {
           connect_account_id?: string | null;
           invoice_prefix?: string;
           last_billing_event_at?: string;
+          reminders_last_run_at?: string | null;
           onboarding_complete?: boolean;
           dba_name?: string | null;
           phone?: string | null;
@@ -312,6 +332,29 @@ export type Database = {
           // the default for every pre-existing row — see that migration's
           // header.
           operating_rule: "part_91" | "part_135" | "both" | "unspecified";
+          // -------------------------------------------------------------
+          // 20260813130000_payment_reminders_and_late_fees.sql. Per-client
+          // CONTRACT preferences, in the same family as payment_terms_days
+          // — deliberately columns and not account_preferences, whose
+          // stated test is that nothing in the database computes on the
+          // value (a scheduled job reading these plainly does).
+          //
+          // Every one of them is OFF for every pre-existing row: empty
+          // arrays, false, and NULL fees. Nothing in this feature can send
+          // an email or compute a fee until a pilot sets one.
+          // -------------------------------------------------------------
+          /** Subset of {3,7,14} by CHECK. Empty = no before-due reminders. */
+          reminder_before_due: number[];
+          reminder_on_due: boolean;
+          /** Subset of {3,7,14,30} by CHECK. Empty = no chase ladder. */
+          reminder_after_due: number[];
+          /** Mutually exclusive with late_fee_bps_per_month, by CHECK. */
+          late_fee_flat_cents: number | null;
+          /** Basis points per calendar month, capped at 500 by CHECK. */
+          late_fee_bps_per_month: number | null;
+          late_fee_grace_days: number;
+          /** Whether a reminder may STATE the agreed fee. Off by default. */
+          late_fee_note_on_reminders: boolean;
           archived_at: string | null;
           created_at: string;
           updated_at: string;
@@ -343,6 +386,16 @@ export type Database = {
           w9_received_at?: string | null;
           notes?: string | null;
           operating_rule?: "part_91" | "part_135" | "both" | "unspecified";
+          // 20260813130000. All seven are in both the INSERT and UPDATE
+          // grants: a pilot sets a reminder schedule and a late fee on the
+          // client form, at any point in that client's life.
+          reminder_before_due?: number[];
+          reminder_on_due?: boolean;
+          reminder_after_due?: number[];
+          late_fee_flat_cents?: number | null;
+          late_fee_bps_per_month?: number | null;
+          late_fee_grace_days?: number;
+          late_fee_note_on_reminders?: boolean;
           archived_at?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -374,6 +427,16 @@ export type Database = {
           w9_received_at?: string | null;
           notes?: string | null;
           operating_rule?: "part_91" | "part_135" | "both" | "unspecified";
+          // 20260813130000. All seven are in both the INSERT and UPDATE
+          // grants: a pilot sets a reminder schedule and a late fee on the
+          // client form, at any point in that client's life.
+          reminder_before_due?: number[];
+          reminder_on_due?: boolean;
+          reminder_after_due?: number[];
+          late_fee_flat_cents?: number | null;
+          late_fee_bps_per_month?: number | null;
+          late_fee_grace_days?: number;
+          late_fee_note_on_reminders?: boolean;
           archived_at?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -994,6 +1057,76 @@ export type Database = {
         };
         Relationships: [];
       };
+      // 20260813100000_connect_auto_payments.sql. The CONNECT delivery
+      // ledger — a sibling of stripe_events above, not a replacement:
+      // its PK is (connected_account_id, id) because Connect event ids are
+      // minted inside each connected account's namespace, and unlike
+      // stripe_events it IS readable by the tenant it was resolved to.
+      // `authenticated` may update exactly one column, reviewed_at; every
+      // other write is the webhook's.
+      stripe_connect_events: {
+        Row: {
+          id: string;
+          connected_account_id: string;
+          type: string;
+          stripe_created_at: string;
+          object_id: string | null;
+          payment_intent_id: string | null;
+          livemode: boolean;
+          account_id: string | null;
+          invoice_id: string | null;
+          outcome:
+            | "recorded"
+            | "duplicate"
+            | "needs_review"
+            | "refused"
+            | "ignored"
+            | null;
+          detail: string | null;
+          reviewed_at: string | null;
+          processed_at: string | null;
+          received_at: string;
+        };
+        Insert: {
+          id: string;
+          connected_account_id: string;
+          type: string;
+          stripe_created_at: string;
+          object_id?: string | null;
+          payment_intent_id?: string | null;
+          livemode: boolean;
+          account_id?: string | null;
+          invoice_id?: string | null;
+          outcome?:
+            | "recorded"
+            | "duplicate"
+            | "needs_review"
+            | "refused"
+            | "ignored"
+            | null;
+          detail?: string | null;
+          reviewed_at?: string | null;
+          processed_at?: string | null;
+          received_at?: string;
+        };
+        // Only `reviewed_at` is grantable to authenticated; the rest of
+        // this shape exists for the webhook's own service-role writes.
+        Update: {
+          account_id?: string | null;
+          invoice_id?: string | null;
+          outcome?:
+            | "recorded"
+            | "duplicate"
+            | "needs_review"
+            | "refused"
+            | "ignored"
+            | null;
+          detail?: string | null;
+          reviewed_at?: string | null;
+          processed_at?: string | null;
+        };
+        Relationships: [];
+      };
       invoice_number_sequences: {
         Row: { account_id: string; next_number: number };
         Insert: { account_id: string; next_number?: number };
@@ -1032,6 +1165,12 @@ export type Database = {
           stripe_payment_link_url: string | null;
           stripe_payment_link_livemode: boolean | null;
           stripe_payment_link_amount_cents: number | null;
+          // 20260813130000. The pilot's per-invoice "leave this one alone".
+          // In invoices_protect_issued's writable allowlist, so unlike every
+          // other column here it can move AFTER issue — which is the only
+          // time it is ever useful. It changes no total, prints on no
+          // document and reaches no client.
+          reminders_suppressed: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -1056,6 +1195,10 @@ export type Database = {
           stripe_payment_link_url?: string | null;
           stripe_payment_link_livemode?: boolean | null;
           stripe_payment_link_amount_cents?: number | null;
+          // reminders_suppressed is deliberately ABSENT from Insert: there
+          // is no INSERT grant for it (20260813130000). An invoice is born
+          // un-suppressed — a draft is never chased at all — and suppression
+          // is a decision taken later about a document already out.
           created_at?: string;
           updated_at?: string;
         };
@@ -1083,6 +1226,12 @@ export type Database = {
           stripe_payment_link_url?: string | null;
           stripe_payment_link_livemode?: boolean | null;
           stripe_payment_link_amount_cents?: number | null;
+          // 20260813130000. The one column on this table a pilot may change
+          // on an ISSUED invoice besides status/sent_at/delivery_method/
+          // notes and the payment-link set — it is in
+          // invoices_protect_issued's allowlist for exactly that reason.
+          // See the migration's section 3 for why that is safe.
+          reminders_suppressed?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -1205,6 +1354,17 @@ export type Database = {
           amount_cents: number;
           method: "ach" | "check" | "wire" | "card" | "cash" | "other" | null;
           notes: string | null;
+          // 20260810120000_payment_reversals.sql. Set on a CORRECTION row,
+          // naming the payment it negates; the amount is then negative.
+          reverses_payment_id: string | null;
+          reversal_reason: string | null;
+          // 20260813100000_connect_auto_payments.sql. Both are absent from
+          // the authenticated INSERT grant — a tenant's row always takes
+          // source='manual' with a null intent id, which is why they are
+          // optional on Insert below and never populated by app code
+          // outside app/api/stripe/connect-webhook/route.ts.
+          source: "manual" | "stripe_link";
+          stripe_payment_intent_id: string | null;
           created_at: string;
         };
         Insert: {
@@ -1215,6 +1375,10 @@ export type Database = {
           amount_cents: number;
           method?: "ach" | "check" | "wire" | "card" | "cash" | "other" | null;
           notes?: string | null;
+          reverses_payment_id?: string | null;
+          reversal_reason?: string | null;
+          source?: "manual" | "stripe_link";
+          stripe_payment_intent_id?: string | null;
           created_at?: string;
         };
         Relationships: [
@@ -1938,6 +2102,112 @@ export type Database = {
         ];
       };
       // -----------------------------------------------------------------
+      // 20260813130000_payment_reminders_and_late_fees.sql.
+      //
+      // Both tables are APPEND-ONLY at the database: SELECT and a
+      // column-scoped INSERT for authenticated, and no UPDATE or DELETE
+      // policy or grant at all — hence neither has an Update type. That is
+      // not an omission, it is the shape recurring_invoice_generations
+      // established: a row here records something that already happened to
+      // somebody else's inbox, or a period that has already been billed,
+      // and the ability to edit or remove one is the ability to send a
+      // second reminder or raise a second fee for the same thing.
+      // -----------------------------------------------------------------
+      invoice_reminder_sends: {
+        Row: {
+          id: string;
+          account_id: string;
+          invoice_id: string;
+          /**
+           * 'before_7' / 'on_due' / 'after_30' / ... , or 'manual'.
+           * lib/reminders/policy.ts's rungKey() is the only thing that
+           * spells these — a typo would not surface as a wrong string, it
+           * would surface as a client receiving the same reminder twice.
+           * Every value except 'manual' is unrepeatable per invoice, by the
+           * partial unique index invoice_reminder_sends_rung_once.
+           */
+          rule_key: string;
+          /**
+           * 'sent' — handed to Resend and an id came back.
+           * 'failed' — attempted and refused, or the service stopped
+           *   answering (in which case detail says the outcome is genuinely
+           *   unknown). A failure consumes the rung: a job that retries a
+           *   failing send daily is how a client gets forty copies.
+           * 'skipped' — deliberately not attempted: 'superseded' (a later
+           *   rung came due in the same run) or 'stale' (a before-due rung
+           *   whose moment has passed).
+           */
+          outcome: "sent" | "failed" | "skipped";
+          /** The mail service's own words, or the skip reason. */
+          detail: string | null;
+          /** Present exactly when outcome = 'sent', by CHECK. */
+          provider_message_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          account_id: string;
+          invoice_id: string;
+          rule_key: string;
+          outcome: "sent" | "failed" | "skipped";
+          detail?: string | null;
+          provider_message_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "invoice_reminder_sends_account_id_invoice_id_fkey";
+            columns: ["account_id", "invoice_id"];
+            isOneToOne: false;
+            referencedRelation: "invoices";
+            referencedColumns: ["account_id", "id"];
+          },
+        ];
+      };
+      invoice_late_fees: {
+        Row: {
+          id: string;
+          account_id: string;
+          /** The invoice that was late. */
+          source_invoice_id: string;
+          /** The separate DRAFT invoice raised for the fee. */
+          fee_invoice_id: string;
+          /** First of the calendar month this fee covers, by CHECK. */
+          period_start: string;
+          /** Snapshotted at creation — a later settings change must never
+           *  restate a fee already billed. */
+          amount_cents: number;
+          basis: "flat" | "bps_per_month";
+          basis_bps: number | null;
+          months_accrued: number | null;
+          created_at: string;
+        };
+        Insert: {
+          account_id: string;
+          source_invoice_id: string;
+          fee_invoice_id: string;
+          period_start: string;
+          amount_cents: number;
+          basis: "flat" | "bps_per_month";
+          basis_bps?: number | null;
+          months_accrued?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "invoice_late_fees_account_id_source_invoice_id_fkey";
+            columns: ["account_id", "source_invoice_id"];
+            isOneToOne: false;
+            referencedRelation: "invoices";
+            referencedColumns: ["account_id", "id"];
+          },
+          {
+            foreignKeyName: "invoice_late_fees_account_id_fee_invoice_id_fkey";
+            columns: ["account_id", "fee_invoice_id"];
+            isOneToOne: false;
+            referencedRelation: "invoices";
+            referencedColumns: ["account_id", "id"];
+          },
+        ];
+      };
+      // -----------------------------------------------------------------
       // 20260813000000_preferences_and_custom_options.sql — Phase 9
       // Layers 2 and 3. Taxonomy is the tenant's; state machines are ours,
       // so neither table names a status, treatment, billing_state or
@@ -2390,6 +2660,19 @@ export type Database = {
         Args: { p_token: string };
         Returns: Json;
       };
+      // Added by 20260813020000_invoice_share_receipts.sql. Same
+      // live-token / unrevoked / shareable-status predicate as
+      // invoice_public, but granted to service_role ONLY and to nobody
+      // else: it returns private-bucket STORAGE PATHS, which carry the
+      // account uuid and are exactly the class of internal identifier the
+      // public boundary otherwise refuses to disclose. Its one caller is
+      // lib/invoice-share-receipts.ts, which fetches the bytes server-side
+      // and inlines them into the token-gated page — read that module's
+      // header before adding a second.
+      invoice_share_receipts: {
+        Args: { p_token: string };
+        Returns: Json;
+      };
       // -----------------------------------------------------------------
       // 20260812100000_accounting_ledger.sql. ledger_sync /
       // journal_entry_create / journal_entry_delete are SECURITY DEFINER
@@ -2503,6 +2786,67 @@ export type Database = {
           unattributed_line_count: number;
           draft_unattributed_line_cents: number;
           draft_unattributed_line_count: number;
+        }[];
+      };
+      // -----------------------------------------------------------------
+      // 20260813010000_unbilled_money_reads.sql — the unbilled-money
+      // surface. All three are SECURITY INVOKER `stable` reads over the
+      // caller's own rows, and all three are DERIVED FROM EACH OTHER:
+      // unbilled_summary aggregates unbilled_by_client, which aggregates
+      // unbilled_trip_money. That chain is why Overview can print a
+      // headline total and a per-client breakdown of it on one screen
+      // without two definitions of "unbilled" — see the migration header.
+      //
+      // The `*_days` fields are Postgres `numeric` (half days are a
+      // shipped feature: trip_days.quantity is numeric(3,1)). Declared
+      // `number` here to match how the rest of this file types numeric
+      // columns, and every call site still passes them through Number()
+      // at the boundary — the same defensive read trips.day_count
+      // already gets.
+      // -----------------------------------------------------------------
+      unbilled_trip_money: {
+        Args: { target_account_id: string };
+        Returns: {
+          trip_id: string;
+          client_id: string | null;
+          client_name: string | null;
+          starts_on: string;
+          ends_on: string;
+          aircraft_ident: string | null;
+          billable_days: number;
+          day_value_cents: number;
+          rebill_expense_cents: number;
+        }[];
+      };
+      unbilled_by_client: {
+        Args: { target_account_id: string };
+        Returns: {
+          client_id: string | null;
+          client_name: string | null;
+          trip_count: number;
+          billable_days: number;
+          day_value_cents: number;
+          rebill_expense_cents: number;
+          total_cents: number;
+          oldest_ends_on: string | null;
+        }[];
+      };
+      // Always exactly one row, even when nothing is unbilled — an
+      // ungrouped aggregate over an empty input still returns a row of
+      // zeros. A caller therefore never has to tell "no row came back"
+      // apart from "nothing is unbilled"; a FAILED read is an error and
+      // must render as one.
+      unbilled_summary: {
+        Args: { target_account_id: string };
+        Returns: {
+          client_count: number;
+          trip_count: number;
+          billable_days: number;
+          day_value_cents: number;
+          rebill_expense_cents: number;
+          total_cents: number;
+          oldest_ends_on: string | null;
+
         }[];
       };
     };

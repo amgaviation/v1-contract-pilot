@@ -6,7 +6,34 @@
 -- sentence, not around it.
 --
 -- ***************************************************************************
--- THE DECISION THIS MIGRATION MAKES, AND WHY (read before editing)
+-- SUPERSEDED IN PART BY 20260813100000_connect_auto_payments.sql.
+--
+-- Everything in this file about direct charges, no application fee,
+-- single-use links, and the narrow SECURITY DEFINER door for
+-- connect_account_id is still exactly how this works. ONE decision was
+-- reversed: the refusal to auto-record a client's payment.
+--
+-- The argument below is annotated rather than deleted, because it is still
+-- the right argument — it just lost. What it weighed correctly: a Connect
+-- webhook is a SECOND service-role entry point, and the first one to write
+-- tenant BUSINESS data rather than provision a tenant. What it
+-- underweighted: the cost of the alternative was not paid by this
+-- codebase, it was paid by the pilot, every single time. The client pays,
+-- Stripe emails them, and the invoice in this product goes on saying
+-- "Sent" — counted as outstanding, chased as overdue — until the pilot
+-- notices and re-types a figure they already have. A gap a user
+-- experiences that way is not usefully described as "documented".
+--
+-- So the count of service-role entry points is TWO now, and
+-- lib/supabase/service-role.ts names both. In particular the sentence a
+-- few lines below — "No new service_role caller is added anywhere by this
+-- migration or the application code that follows it" — was true when it
+-- was written and is FALSE as a description of the product today. Read it
+-- as history, not as a rule still being kept.
+-- ***************************************************************************
+--
+-- ***************************************************************************
+-- THE DECISION THIS MIGRATION MADE, AND WHY (kept for the reasoning)
 -- ***************************************************************************
 -- The obvious design — a Connect webhook auto-records
 -- pilot.invoice_payments when a client pays — needs a write path into

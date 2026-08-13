@@ -48,6 +48,70 @@ export function logbookFrom(supabase: PilotClient, table: LogbookTableName): any
   return (supabase as unknown as { from: (t: string) => unknown }).from(table);
 }
 
+/**
+ * The same escape hatch for the two FUNCTIONS the saved-view filter is
+ * read through (supabase/migrations/20260813110000_pilot_history.sql).
+ *
+ * `.rpc()` needs the name to exist in Database["pilot"]["Functions"], and
+ * lib/supabase/database.types.ts is hand-authored and does not carry
+ * these — the same gap logbookFrom exists to bridge for the logbook
+ * tables, one door along. The union below is what keeps this narrow: it
+ * admits exactly two names and nothing else, so this cannot quietly become
+ * a way to call any function at all.
+ *
+ * WHY THE FILTER IS APPLIED IN THE DATABASE rather than in a chain of
+ * `.eq()` calls: the tail facet matches on a NORMALISED key (so an entry
+ * logged as "n-447sp" still matches an airframe registered as "N447SP")
+ * and the type facet matches a coalesce across a join to pilot.aircraft.
+ * Neither is expressible in PostgREST's filter syntax, and reproducing
+ * them in TypeScript would need every row fetched first — which is the
+ * ~1000-row truncation the totals must never be computed over. The
+ * migration's header has the full reasoning.
+ */
+export type LogbookFunctionName = "logbook_filtered" | "logbook_filtered_totals";
+
+/** The arguments both functions take. NULL means "this facet is not
+ *  filtered", so the all-null call is the whole logbook. */
+export type LogbookFilterArgs = {
+  p_account_id: string;
+  p_tail_key: string | null;
+  p_type_label: string | null;
+  p_role: string | null;
+  p_from: string | null;
+  p_to: string | null;
+};
+
+export function logbookRpc(
+  supabase: PilotClient,
+  fn: LogbookFunctionName,
+  args: LogbookFilterArgs,
+  options?: { count?: "exact" }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): any {
+  return (
+    supabase as unknown as {
+      rpc: (name: string, args: unknown, options?: unknown) => unknown;
+    }
+  ).rpc(fn, args, options);
+}
+
+/** One row of pilot.logbook_filtered_totals — column-for-column
+ *  pilot.logbook_totals, in the same order. */
+export type LogbookFilteredTotalsRow = {
+  entry_count: number;
+  /** AIRCRAFT time: simulator hours are in their own column, never here. */
+  total_time: number;
+  pic_time: number;
+  sic_time: number;
+  night_time: number;
+  cross_country_time: number;
+  instrument_time: number;
+  landings: number;
+  simulator_time: number;
+  first_entry_date: string | null;
+  last_entry_date: string | null;
+};
+
 export type LogbookSource = "trip" | "import" | "manual" | "foreflight_sync";
 // PIC/SIC per 61.51(e)/(f); SOLO per 61.51(d) — sole occupant; DUAL_RECEIVED
 // per 61.51(h) — training received from an authorized instructor.
