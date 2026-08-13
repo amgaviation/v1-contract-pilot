@@ -68,8 +68,13 @@ export const TIER_DISPLAY: Record<PlanTier, { name: string; blurb: string }> = {
   },
   business: {
     name: "Business",
+    // The blurb used to close "…plus priority support". A blurb is prose the
+    // matrix cannot annotate, so it asserted as live the one row that is now
+    // comingSoon (see priority_support in FEATURES below) — the flag would
+    // mark the row honestly while the card above it still promised the
+    // thing. It comes back when the channel does.
     blurb:
-      "The full back office: double-entry accounting with reconciliation and financial statements, plus priority support.",
+      "The full back office: double-entry accounting with reconciliation and financial statements.",
   },
 };
 
@@ -327,6 +332,16 @@ export const FEATURES: Record<FeatureId, FeatureDef> = {
     label: "Priority support",
     minTier: "business",
     routePatterns: [],
+    // comingSoon BECAUSE THERE IS NO CHANNEL AT ALL — not "the queue is not
+    // prioritised yet". There is no support address, no contact route and no
+    // help link anywhere in the product or in the marketing footer, so a
+    // Business subscriber has nowhere to send a request, prioritised or
+    // otherwise. Without this flag the pricing matrix rendered a bare ✓ under
+    // Business while that page's own subtitle told the reader everything
+    // unmarked is live today. Clear it when a support channel ships and is
+    // routed, and not before; the Business blurb above loses its "plus
+    // priority support" clause for the same reason.
+    comingSoon: true,
   },
 };
 

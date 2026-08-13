@@ -2,15 +2,9 @@
 
 import { useState } from "react";
 import { useActionState } from "react";
-import {
-  Box,
-  Button,
-  Flex,
-  RadioCards,
-  SegmentedControl,
-  Text,
-} from "@/components/ui";
+import { Flex, RadioCards, SegmentedControl, Text } from "@/components/ui";
 import type { BillingInterval, PlanTier } from "@/lib/entitlements";
+import { FormError, SubmitButton } from "../auth-parts";
 import { startCheckout, type CheckoutState } from "./actions";
 
 const initialState: CheckoutState = { error: null };
@@ -41,6 +35,15 @@ export type PlanOption = {
   seatNote: Record<BillingInterval, string | null>;
 };
 
+/**
+ * THE 2026-08 PASS OVER THIS FILE WAS VISUAL ONLY. Every branch below —
+ * the first-available default, the interval switch that re-homes an
+ * illegal selection, the disabled unavailable card, the hidden tier and
+ * interval fields the server action re-validates — is unchanged. The
+ * "Unavailable" state in particular is load-bearing: it is what a tier
+ * with no configured Stripe price renders as, and the alternative is a
+ * made-up number on the screen where a card gets entered.
+ */
 export function PlanPicker({
   options,
   trialDays,
@@ -61,9 +64,12 @@ export function PlanPicker({
   const anyAnnual = options.some((o) => o.price.annual !== null);
 
   return (
-    <Box width="100%">
+    <Flex direction="column" gap="4">
       {anyAnnual ? (
-        <Flex justify="center" mb="3">
+        <Flex justify="between" align="center" gap="3" wrap="wrap">
+          <Text size="2" weight="medium">
+            Billing
+          </Text>
           <SegmentedControl.Root
             value={interval}
             onValueChange={(value) => {
@@ -77,7 +83,7 @@ export function PlanPicker({
                 if (fallback) setTier(fallback.tier);
               }
             }}
-            size="1"
+            size="2"
           >
             <SegmentedControl.Item value="monthly">Monthly</SegmentedControl.Item>
             <SegmentedControl.Item value="annual">Annual</SegmentedControl.Item>
@@ -93,6 +99,7 @@ export function PlanPicker({
         }}
         columns="1"
         gap="2"
+        size="2"
       >
         {options.map((option) => {
           const label = option.price[interval];
@@ -105,10 +112,12 @@ export function PlanPicker({
               disabled={unavailable}
             >
               <Flex direction="column" width="100%" gap="1" style={{ textAlign: "left" }}>
-                <Flex justify="between" gap="2" align="center">
-                  <Text weight="bold">{option.name}</Text>
-                  <Flex direction="column" align="end" gap="0">
-                    <Text size="2" color="gray">
+                <Flex justify="between" gap="3" align="baseline">
+                  <Text size="3" weight="bold">
+                    {option.name}
+                  </Text>
+                  <Flex direction="column" align="end" gap="0" flexShrink="0">
+                    <Text size="3" weight="medium" className="tnum">
                       {unavailable ? "Unavailable" : label}
                     </Text>
                     {/* The per-seat breakdown for a per-seat tier, so the
@@ -132,41 +141,38 @@ export function PlanPicker({
       </RadioCards.Root>
 
       <form action={formAction}>
-        {/* The chosen tier/interval ride as hidden fields; the server
-            action re-validates both and resolves the PRICE itself, so a
-            tampered value can only change what gets paid for — the
-            webhook maps the tier from the price, never from the form. */}
-        <input type="hidden" name="tier" value={tier} />
-        <input type="hidden" name="interval" value={interval} />
-        <Button
-          type="submit"
-          disabled={pending || selectedLabel === null}
-          mt="3"
-          style={{ width: "100%" }}
-        >
-          {pending ? "Opening checkout…" : `Start your ${trialDays}-day trial`}
-        </Button>
-      </form>
-      {/*
-        "cancel anytime" stays out of this copy on purpose (see the git
-        history of this file): the cancel path lives in Stripe's billing
-        portal via Settings → Billing, which exists only once the account
-        does — this screen belongs to someone who doesn't have one yet.
-      */}
-      <Text as="div" size="1" color="gray" mt="1">
-        {selectedLabel
-          ? `${selectedLabel}${
-              selectedSeatNote ? ` (${selectedSeatNote})` : ""
-            } after the trial. Card required now.`
-          : "Card required now."}
-      </Text>
-      {state.error ? (
-        <Flex mt="2">
-          <Text size="1" color="red">
-            {state.error}
+        <Flex direction="column" gap="3">
+          {/* The chosen tier/interval ride as hidden fields; the server
+              action re-validates both and resolves the PRICE itself, so a
+              tampered value can only change what gets paid for — the
+              webhook maps the tier from the price, never from the form. */}
+          <input type="hidden" name="tier" value={tier} />
+          <input type="hidden" name="interval" value={interval} />
+
+          <FormError message={state.error} />
+
+          <SubmitButton
+            pending={pending}
+            idle={`Start your ${trialDays}-day trial`}
+            busy="Opening checkout…"
+            disabled={pending || selectedLabel === null}
+          />
+
+          {/*
+            "cancel anytime" stays out of this copy on purpose (see the git
+            history of this file): the cancel path lives in Stripe's billing
+            portal via Settings → Billing, which exists only once the account
+            does — this screen belongs to someone who doesn't have one yet.
+          */}
+          <Text as="div" size="1" color="gray" align="center">
+            {selectedLabel
+              ? `${selectedLabel}${
+                  selectedSeatNote ? ` (${selectedSeatNote})` : ""
+                } after the trial. Card required now.`
+              : "Card required now."}
           </Text>
         </Flex>
-      ) : null}
-    </Box>
+      </form>
+    </Flex>
   );
 }

@@ -2648,6 +2648,66 @@ export type Database = {
           signed_cents: number;
         }[];
       };
+      // -----------------------------------------------------------------
+      // 20260813010000_unbilled_money_reads.sql — the unbilled-money
+      // surface. All three are SECURITY INVOKER `stable` reads over the
+      // caller's own rows, and all three are DERIVED FROM EACH OTHER:
+      // unbilled_summary aggregates unbilled_by_client, which aggregates
+      // unbilled_trip_money. That chain is why Overview can print a
+      // headline total and a per-client breakdown of it on one screen
+      // without two definitions of "unbilled" — see the migration header.
+      //
+      // The `*_days` fields are Postgres `numeric` (half days are a
+      // shipped feature: trip_days.quantity is numeric(3,1)). Declared
+      // `number` here to match how the rest of this file types numeric
+      // columns, and every call site still passes them through Number()
+      // at the boundary — the same defensive read trips.day_count
+      // already gets.
+      // -----------------------------------------------------------------
+      unbilled_trip_money: {
+        Args: { target_account_id: string };
+        Returns: {
+          trip_id: string;
+          client_id: string | null;
+          client_name: string | null;
+          starts_on: string;
+          ends_on: string;
+          aircraft_ident: string | null;
+          billable_days: number;
+          day_value_cents: number;
+          rebill_expense_cents: number;
+        }[];
+      };
+      unbilled_by_client: {
+        Args: { target_account_id: string };
+        Returns: {
+          client_id: string | null;
+          client_name: string | null;
+          trip_count: number;
+          billable_days: number;
+          day_value_cents: number;
+          rebill_expense_cents: number;
+          total_cents: number;
+          oldest_ends_on: string | null;
+        }[];
+      };
+      // Always exactly one row, even when nothing is unbilled — an
+      // ungrouped aggregate over an empty input still returns a row of
+      // zeros. A caller therefore never has to tell "no row came back"
+      // apart from "nothing is unbilled"; a FAILED read is an error and
+      // must render as one.
+      unbilled_summary: {
+        Args: { target_account_id: string };
+        Returns: {
+          client_count: number;
+          trip_count: number;
+          billable_days: number;
+          day_value_cents: number;
+          rebill_expense_cents: number;
+          total_cents: number;
+          oldest_ends_on: string | null;
+        }[];
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

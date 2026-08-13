@@ -1,17 +1,26 @@
 /**
- * The inline style objects the public site repeats.
+ * The inline style objects the SIGNED-OUT surface repeats — the public
+ * marketing pages (app/(marketing)/*) and the auth screens
+ * (app/(auth)/*), which now share one composition: a navy brand panel
+ * beside light content.
  *
- * The marketing surface's primary action is the brand navy, which is NOT a
- * Radix accent-scale name — so it cannot be a `color` prop and has to be
+ * It lives in lib/ rather than inside app/(marketing)/ because two route
+ * groups read it. Before the 2026-08 marketing rewrite it was
+ * app/(marketing)/marketing-style.ts; the auth redesign gave the signup
+ * and login screens the same navy panel as the hero, and a route group
+ * reaching sideways into another route group's private file is the kind
+ * of coupling that survives exactly until someone moves a folder.
+ *
+ * The signed-out surface's primary action is the brand navy, which is NOT
+ * a Radix accent-scale name — so it cannot be a `color` prop and has to be
  * set through the --v1-marketing-* custom properties declared in
  * app/globals.css (see that file's comment for why the literals live
- * there and only there). These were being spelled out at five call sites;
- * one definition each means the header, hero, CTA band and pricing page
- * cannot drift apart.
+ * there and only there).
  *
  * Nothing here is a visual VALUE — every entry is a var() reference, which
  * is the escape hatch scripts/verify-tokens.mjs deliberately keeps open.
  */
+
 export const NAVY_SURFACE = {
   background: "var(--v1-marketing-navy)",
   color: "var(--v1-marketing-navy-ink)",
