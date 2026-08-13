@@ -59,7 +59,7 @@ how much it matters to this persona, is in §8.
 | 2.1 | Card payments: Visa/MC/Discover 2.9% + $0.60, Amex 3.4% + $0.60 (Pro: +$0 fee first 10/mo); "Pay now" button on invoices; PCI-DSS L1 (waveapps.com/payments, /pricing) | **MATCHED-DIFFERENTLY** | Stripe Connect **Standard** payment links per invoice: `app/(app)/invoices/payment-link-actions.ts`, `app/api/stripe/connect/callback/route.ts`, migrations `20260809040000_connect_payments.sql`, `20260810010000_connect_link_hardening.sql`, `20260811010000_invoice_public_link_amount.sql`. Structural difference: **the pilot is the merchant of record and v1 takes no application fee** (PLAN.md decision #8, asserted by `scripts/connect-verify.mjs`) — the pilot pays Stripe's published rates directly (2.9% + 30¢ domestic cards per stripe.com/pricing, read 2026-08-10 in `docs/PRICING.md`). Wallets (Apple Pay etc.) are whatever the pilot's Stripe checkout offers — not a v1 code claim. |
 | 2.2 | Bank payments (ACH): 1% per transaction, $1.00 minimum (waveapps.com/payments) | **MATCHED-DIFFERENTLY** | Same Stripe links: ACH direct debit at Stripe's 0.8% **capped at $5.00** — a straight win over Wave's uncapped 1% on any four-figure day-rate invoice (`docs/PRICING.md` §2 does this arithmetic). Checks and manually-received ACH — how most operators actually pay (NET 15/30, check/ACH dominant) — are first-class via 2.3. |
 | 2.3 | Record payments manually; partial payments | **MATCHED** | `app/(app)/invoices/[id]/payment-panel.tsx` (`recordPayment`, `correctPayment` in `invoices/actions.ts`), `partial` status, and audit-honest corrections that never delete a money record (`20260810120000_payment_reversals.sql`, `20260810170000_payment_reversal_partial_resync.sql`). |
-| 2.4 | Payment auto-sync to books; payout in 1–2 business days (waveapps.com/payments) | **GAP** (partial, deliberate mechanism) | Payouts are Stripe's and land in the pilot's own account (not comparable — v1 never touches funds). But a payment made through a link is **not** auto-recorded on the invoice: the pilot confirms it in their own Stripe dashboard and records it (reasoning documented in `payment-panel.tsx` — Connect Standard means the platform doesn't own the pilot's payment events). Wave marks the invoice paid by itself. Counted inside 1.7's notification gap; listed here so the mechanism is on record. |
+| 2.4 | Payment auto-sync to books; payout in 1–2 business days (waveapps.com/payments) | **MATCHED-DIFFERENTLY** (built 2026-08-13; this row previously read **GAP**) | Payouts are Stripe's and land in the pilot's own account — not comparable, v1 never touches funds. The auto-record half is now built: `app/api/stripe/connect-webhook/route.ts` receives the Checkout Session on the connected-accounts scope and writes the `pilot.invoice_payments` row itself, marked `source='stripe_link'`, advancing the invoice to partial/paid (migration `20260813100000_connect_auto_payments.sql`; decisions unit-tested in `tests/connect-auto-payment.test.mjs`, database contract in `connect:verify` ASSERTION 7). **This row used to say the pilot records it by hand and that the manual step was deliberate. That was true when written and is false now** — the same stale-in-the-refusing-direction failure `docs/LAUNCH-GATES.md` #16 already documents, which is why it is corrected rather than quietly reworded. Two honest qualifiers: it is dormant until `STRIPE_CONNECT_WEBHOOK_SECRET` and the connected-accounts endpoint are configured (the by-hand flow is exactly what happens until then), and a payment that looks as though the pilot already entered it is deliberately NOT recorded — it raises a review prompt on the invoice instead, because a visible missing row beats an invisible double credit. |
 | 2.5 | Recurring billing: auto-charge a repeat customer's saved card (Pro) (waveapps.com/invoicing, /payments) | **GAP** | v1 stores no client payment methods anywhere and its recurring schedules stop at a draft (1.3). Auto-charging would live in the pilot's Stripe account; nothing wires it. |
 
 ## 3. Expenses, receipts, and banking
@@ -126,9 +126,17 @@ the sales tax report — both shipped on this branch and moved to MATCHED in the
 One sub-item of the old #1 survives here as a smaller entry: deposit requests, which need
 schema that does not exist. What follows is the CURRENT gap list.)*
 
-1. **Invoice viewed/paid notifications** (1.7, 2.4) — share-link view tracking is a column
-   and a stamp; paid-notification is harder under Connect Standard (the platform doesn't own
-   the pilot's payment events) and the manual-record mechanism was chosen deliberately.
+1. **Invoice viewed/paid NOTIFICATIONS** (1.7) — share-link view tracking is a column and a
+   stamp, and nothing emails the pilot when either happens. Note the narrowing: 2.4 has left
+   this item. A link payment now records itself on the invoice (see that row), so what is
+   still missing is the notification, not the bookkeeping. One case rides on this and is
+   worth naming: when the webhook *declines* to record a payment (it looked already-entered
+   by hand, or the invoice had been voided and its link outlived it), the sentence it writes
+   for the pilot is reachable only from the invoice screen and from the amber **Check
+   payment** badge now shown beside that invoice's status in the list. No email, no push.
+   The badge exists because the worst version of that case is an invoice that already reads
+   *Paid* — the one a pilot has no reason to open. Notifying is the proper fix and belongs to
+   this item.
 2. **Multi-user / bookkeeper seat UI** (4.5) — schema and RLS ready since the first
    migration; blocked on the owner's deferred per-seat plan (G10), so this is an owner
    decision before it is engineering.
@@ -148,6 +156,17 @@ schema that does not exist. What follows is the CURRENT gap list.)*
    the costume of success. Neither may be shipped as a claim before it is shipped as a
    behaviour: nothing in this product says "works offline" today and nothing may until
    something does. Native apps remain a product-line decision, not a parity patch.
+8. **Refunds and disputes do not flow back** (2.4) — the auto-record path is one-way by
+   decision. Nothing subscribes to `charge.refunded` or `charge.dispute.*`, so a pilot who
+   refunds a client in their own Stripe dashboard — including the refund this product asks
+   them to make when a client pays a link that outlived a voided invoice — must correct the
+   payment on the invoice by hand, or it goes on reading *Paid*. Reversing money
+   automatically is a strictly larger claim than recording it and has no equivalent of the
+   payment-intent unique index to make a retry safe (`lib/stripe/connect-payments.ts`), so
+   this is deliberate; it is listed because it drifts the books in the same direction 2.4 was
+   built to stop, and a deliberate gap still has to be a gap someone chose in writing. Also
+   at the launch gate, in `docs/LAUNCH-GATES.md` under the Connect switch.
+
 9. **Multi-currency** (4.6) — low for the persona (US pilots bill US operators in USD,
    including on international trips); real for a pilot invoicing a foreign operator.
 10. **Google Sheets / integrations** (7.3) — not persona-critical; conflicts with the

@@ -9,11 +9,11 @@ import type { Database } from "@/lib/supabase/database.types";
  * than anything the design-token verify script checks, and unlike that
  * script this one has no automated backstop yet (see docs/PLAN.md
  * "tenancy:verify" — it's meant to assert this module's caller set is
- * exactly the Stripe webhook route, and doesn't exist yet because there's
- * no live database to test it against). Until that exists, the only
- * control is: read this comment before you import this function.
+ * exactly the two Stripe webhook routes named below, and doesn't exist yet
+ * because there's no live database to test it against). Until that exists,
+ * the only control is: read this comment before you import this function.
  *
- * It exists for exactly THREE entry points, and that list IS the control —
+ * It exists for exactly FOUR entry points, and that list IS the control —
  * adding a fourth is a security decision, not a refactor. (It said TWO until
  * 20260813130000 added the scheduled reminder pass, which is written up as
  * entry point 3 below with the argument for why it earns its place. Adding
@@ -66,9 +66,23 @@ import type { Database } from "@/lib/supabase/database.types";
  *      A future change wanting this client for a report, a backfill or a
  *      support lookup is a NEW decision, not an extension of this one.
  *
+ *   4. THE STRIPE CONNECT WEBHOOK (app/api/stripe/connect-webhook/route.ts)
+ *      — a client paying a pilot's invoice payment link. No user session,
+ *      because the person paying is not a user of this product at all:
+ *      they are the pilot's client, on Stripe's own checkout page. Like
+ *      entry point 3 this WRITES tenant business data (a
+ *      pilot.invoice_payments row and the invoice's status) — the line
+ *      20260809040000_connect_payments.sql originally declined to cross,
+ *      crossed on purpose by 20260813100000 with the reasoning in its
+ *      header. It is narrowed by construction rather than by promise:
+ *      Stripe must have signed the delivery, the tenant is derived from
+ *      the signed `event.account` and never from link metadata (which the
+ *      connected account's own owner can type), and the only rows it may
+ *      touch belong to that account's own invoice.
+ *
  * It must never be imported into a Client Component, never used to read or
  * write tenant business data on a pilot's behalf outside the narrow, fixed
- * operation described in entry point 3, and never become a
+ * operations described in entry points 3 and 4, and never become a
  * general-purpose "admin" escape hatch — there is no support tooling in
  * this product that reads across tenants by design. Entry point 2 does not
  * soften that: it reads one BLOB, for one invoice, for a bearer the
@@ -93,6 +107,7 @@ import type { Database } from "@/lib/supabase/database.types";
  * decision to create the share link, which holds only while the UI that
  * mints it says what it discloses — see the header of
  * supabase/migrations/20260813020000_invoice_share_receipts.sql.
+
  *
  * Read docs/PLAN.md's note on the trust story before treating "no admin
  * bypass" as a stronger claim than it is: this client, in the hands of

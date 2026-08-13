@@ -14,7 +14,7 @@ import HeaderForm, { type ClientOption } from "./header-form";
 import LinesEditor, { type LineRow, type RebillableExpense } from "./lines-editor";
 import PdfDownload from "./pdf-download";
 import StatusActions from "./status-actions";
-import PaymentPanel, { type PaymentRow } from "./payment-panel";
+import PaymentPanel, { type ConnectNoticeRow, type PaymentRow } from "./payment-panel";
 import SharePanel, { type ShareRow } from "./share-panel";
 import ReminderPanel, {
   type LateFeeView,
@@ -94,6 +94,7 @@ export default async function InvoicePage({
     { data: overdueData, error: overdueError },
     { data: clientData, error: clientError },
     { data: shareData },
+    { data: connectNoticeData },
   ] = await Promise.all([
     supabase.from("invoices").select("*").eq("id", id).maybeSingle(),
     supabase
@@ -130,6 +131,38 @@ export default async function InvoicePage({
       .select("token, revoked_at, first_viewed_at, last_viewed_at")
       .eq("invoice_id", id)
       .maybeSingle(),
+    // Stripe payments for this invoice that the Connect webhook deliberately
+    // did NOT record (20260813100000). Almost always zero rows.
+    //
+    // BOTH OUTCOMES, not just 'needs_review'. They differ in why the money
+    // was not recorded — 'needs_review' means it looked like money already
+    // entered by hand, 'refused' means the invoice or the session could not
+    // take it (a client paying a link that outlived a voided invoice; a
+    // session that settled in another currency) — and they do not differ at
+    // all in what the pilot must do: look, and decide. Querying
+    // 'needs_review' alone meant the handler's most urgent sentence, "the
+    // client paid $4,500 through a link that should have been deactivated —
+    // check Stripe and refund them", was written to a reader who did not
+    // exist: it reached the events ledger and the platform's server log,
+    // neither of which a pilot has ever seen.
+    //
+    // A 'refused' row that could not be tied to one of THIS tenant's
+    // invoices has a null invoice_id and so cannot match here — a forged
+    // link naming a stranger's invoice never appears on anyone's screen.
+    //
+    // Best-effort, like the share read above and for the same reason: this
+    // is a prompt, not a figure. A failed read hides a warning the pilot can
+    // still reach from their Stripe dashboard, whereas folding it into
+    // moneyError would blank the totals on this screen over a notice. RLS
+    // scopes it to this tenant; rows the webhook could not attribute to any
+    // account carry a null account_id and are visible to nobody.
+    supabase
+      .from("stripe_connect_events")
+      .select("id, connected_account_id, detail")
+      .eq("invoice_id", id)
+      .in("outcome", ["needs_review", "refused"])
+      .is("reviewed_at", null)
+      .order("stripe_created_at", { ascending: false }),
   ]);
 
   // A failed QUERY is not a missing invoice — see trips/[id]/page.tsx for
@@ -154,6 +187,7 @@ export default async function InvoicePage({
     contact_email: string | null;
   })[];
   const share = (shareData ?? null) as ShareRow;
+  const connectNotices = (connectNoticeData ?? []) as ConnectNoticeRow[];
 
   // The client this invoice actually bills, for the send controls. Read off
   // the list already fetched rather than issuing a sixth query.
@@ -605,6 +639,7 @@ export default async function InvoicePage({
                 : null
             }
             balanceDueCents={totals?.balance_due_cents ?? null}
+            connectNotices={connectNotices}
           />
         </Flex>
       </Grid>

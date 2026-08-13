@@ -266,6 +266,31 @@ and `app/(app)/settings/connect-actions.ts` builds it as
 G5. `exchangeConnectCode` refuses a grant whose livemode disagrees with the deployment's key
 mode, so a live pilot cannot link against a test grant.
 
+`STRIPE_CONNECT_WEBHOOK_SECRET` is the second half of this switch, and it is the one that is
+easiest to leave undone because nothing visibly breaks without it. It is the signing secret of a
+**second** webhook endpoint — not `STRIPE_WEBHOOK_SECRET`, which cannot verify a Connect
+delivery. Register it in the Stripe dashboard, in the same mode as the platform key, pointed at
+`/api/stripe/connect-webhook`, with **"Listen to events on connected accounts"** selected (the
+non-default choice; a direct charge on a pilot's own account is only delivered on that scope)
+and subscribed to `checkout.session.completed` **and**
+`checkout.session.async_payment_succeeded`. Until it is set, the route answers 503 to every
+delivery before touching Stripe or the database, and a client's payment is not recorded on the
+invoice — the pilot has to enter it by hand from their Stripe dashboard, which is exactly the
+behaviour that existed before 2026-08-13 and is not a fault, just an unfinished switch.
+
+Subscribe to **those two event types only**. Refunds and disputes (`charge.refunded`,
+`charge.dispute.*`) are deliberately out of scope for automatic recording, and this is the
+place that has to say so before launch rather than after a pilot discovers it: when a pilot
+refunds a client in their own Stripe dashboard — including the refund this product itself asks
+them to make when a client pays a link that outlived a voided invoice — **nothing removes the
+payment from the invoice**. They correct it themselves with the invoice screen's "Correct"
+control, and the invoice reads Paid until they do. The reasoning (reversing money
+automatically is a strictly larger claim than recording it, and there is no equivalent of the
+payment-intent unique index to make an auto-reversal safe to retry) is in the header of
+`lib/stripe/connect-payments.ts`. This is a documented decision, not an oversight — but it is
+a gap in the same books-drift direction the auto-recording feature was built to close, so it
+is written down where the launch checklist will meet it.
+
 A pilot can be paying us on live platform billing while still connecting a test-mode Connect
 account, or the reverse. Neither is visible from the other's dashboard. Check both.
 
@@ -312,6 +337,7 @@ has to be registered against the final origin.
 | Stripe Connect redirect URI | Stripe Connect settings, live mode | OAuth fails at the callback, after the pilot has already authorised |
 | Supabase Auth Site URL + redirect allowlist | Supabase dashboard; consumed by `app/auth/confirm/route.ts` | Confirmation and password-reset links land on the old origin |
 | Stripe webhook endpoint URL | Stripe dashboard, live mode | Silent: Stripe keeps delivering to the old URL and provisioning stops |
+| Stripe **Connect** webhook endpoint URL | Stripe dashboard, live mode, connected-accounts scope | Silent, and worse than silent: payments keep arriving in the pilot's Stripe balance and stop being recorded on their invoices, which go on reading as overdue |
 | Shared invoice links | `app/(app)/invoices/[id]/share-panel.tsx` builds them from `window.location.origin` | Links a pilot already sent to *their* client keep pointing at the old host — so the old host must keep resolving, it cannot simply be turned off |
 | Credential packet links | `app/packet/[token]` | Same as above |
 

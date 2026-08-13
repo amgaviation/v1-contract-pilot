@@ -43,6 +43,19 @@ database there.
 | `statement-parsing.test.mjs` | `lib/bank-import/{csv,apply-mapping,ofx,date}.ts` |
 | `receipt-extract.test.mjs` | `lib/receipt-ocr/extract.ts` |
 | `receipt-trip-match.test.mjs` | `lib/receipt-ocr/match-trip.ts` |
+| `connect-auto-payment.test.mjs` | `lib/stripe/connect-payments.ts` |
+
+`connect-auto-payment.test.mjs` is the clearest illustration of the split
+above. It pins the DECISIONS that move money when a client pays an invoice
+payment link — cross-tenant metadata forgery, event replay, a payment the
+pilot already typed in by hand, a link that outlived its invoice — using
+plain objects, with no Stripe and no database. The guarantees those
+decisions lean on (that `source` and `stripe_payment_intent_id` are
+ungrantable to a tenant, that the unique index really does refuse a second
+row for one PaymentIntent, that the Connect events ledger is RLS-scoped to
+one tenant and writable by them in one column) are asserted against real
+Postgres by `npm run connect:verify`, ASSERTION 7. Neither file is
+evidence for the other's half.
 
 `lib/receipt-ocr/engine.ts` is deliberately **absent** from that list and
 cannot be added to it: it decodes an image, draws to a canvas and drives a
