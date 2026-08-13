@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+import { loadOptionChoices } from "@/lib/custom-options-read";
 import PageShell from "../../page-shell";
 import TransactionRow, {
   type DuplicateCandidate,
@@ -53,6 +54,7 @@ export default async function TransactionsPage() {
     { data: txnData, error },
     { data: accountData, error: accountsError },
     { data: tripData, error: tripsError },
+    categories,
   ] = await Promise.all([
     supabase
       .from("bank_transactions")
@@ -62,6 +64,10 @@ export default async function TransactionsPage() {
       .limit(TXN_LIMIT),
     supabase.from("bank_accounts").select("id, label, last4"),
     supabase.from("trips").select("id, starts_on, ends_on, aircraft_ident").order("starts_on", { ascending: false }),
+    // The same tenant vocabulary the expense form offers — a category
+    // picked here becomes pilot.expenses.category, so the two lists must
+    // not diverge.
+    loadOptionChoices("expense_category"),
   ]);
 
   if (error) {
@@ -247,7 +253,7 @@ export default async function TransactionsPage() {
             </Table.Header>
             <Table.Body>
               {rows.map((t) => (
-                <TransactionRow key={t.id} txn={t} trips={trips} />
+                <TransactionRow key={t.id} txn={t} trips={trips} categories={categories} />
               ))}
             </Table.Body>
           </Table.Root>

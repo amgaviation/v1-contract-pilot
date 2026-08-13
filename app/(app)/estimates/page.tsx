@@ -16,6 +16,7 @@ import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import { rowsOf, type DbErrorLike } from "@/lib/supabase/rows";
+import EmptyState from "@/components/ui/empty-state";
 import PageShell from "../page-shell";
 import {
   ESTIMATE_STATUS_BADGE,
@@ -239,37 +240,37 @@ export default async function EstimatesPage({
           // saying it while a filter hides the rest is the class of lie
           // the trips screens used to tell. Empty ≠ failed ≠ filtered.
           estimates.length === 0 ? (
-            <Flex direction="column" align="center" gap="3" py="6">
-              <Text size="4" weight="bold">
-                No estimates yet
-              </Text>
-              <Text size="2" color="gray" align="center">
-                Quote the trip before it&rsquo;s booked — day rates, travel days,
-                per diem. When the client accepts, the estimate becomes a draft
-                invoice without retyping a number.
-              </Text>
-              <Button asChild>
-                <NextLink href="/estimates/new">Draft your first estimate</NextLink>
-              </Button>
-            </Flex>
+            <EmptyState
+              title="No estimates yet"
+              action={
+                <Button asChild>
+                  <NextLink href="/estimates/new">Draft your first estimate</NextLink>
+                </Button>
+              }
+            >
+              Quote the trip before it&rsquo;s booked — day rates, travel days, per
+              diem. When the client accepts, the estimate becomes a draft invoice
+              without retyping a number.
+            </EmptyState>
           ) : (
-            <Flex direction="column" align="center" gap="3" py="6">
-              <Text size="4" weight="bold">
-                {filter === "open"
+            <EmptyState
+              title={
+                filter === "open"
                   ? "Nothing open"
                   : filter === "expired"
                     ? "Nothing expired"
-                    : "Nothing here"}
-              </Text>
-              <Text size="2" color="gray" align="center">
-                {filter === "open"
-                  ? `Every estimate has an answer. You have ${estimates.length} in total.`
-                  : `None of your ${estimates.length} estimates match this filter.`}
-              </Text>
-              <Button asChild variant="soft">
-                <NextLink href="/estimates?show=all">Show all estimates</NextLink>
-              </Button>
-            </Flex>
+                    : "Nothing here"
+              }
+              action={
+                <Button asChild variant="soft">
+                  <NextLink href="/estimates?show=all">Show all estimates</NextLink>
+                </Button>
+              }
+            >
+              {filter === "open"
+                ? `Every estimate has an answer. You have ${estimates.length} in total.`
+                : `None of your ${estimates.length} estimates match this filter.`}
+            </EmptyState>
           )
         ) : (
           <Table.Root variant="ghost">

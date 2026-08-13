@@ -16,6 +16,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+import EmptyState from "@/components/ui/empty-state";
 import PageShell from "../page-shell";
 import { computeDuePeriods } from "./recurring/actions";
 import type { Database } from "@/lib/supabase/database.types";
@@ -339,37 +340,40 @@ export default async function InvoicesPage({
           // Saying it while a filter is hiding forty of them is the same
           // class of lie the trips screens used to tell.
           invoices.length === 0 ? (
-            <Flex direction="column" align="center" gap="3" py="6">
-              <Text size="4" weight="bold">
-                No invoices yet
-              </Text>
-              <Text size="2" color="gray" align="center">
-                Draft one from a client and the trips you&rsquo;ve already flown
-                for them — the flight days, travel days, and rebilled expenses
-                fill themselves in.
-              </Text>
-              <Button asChild>
-                <NextLink href="/invoices/new">Draft your first invoice</NextLink>
-              </Button>
-            </Flex>
+            <EmptyState
+              title="No invoices yet"
+              action={
+                <Button asChild>
+                  <NextLink href="/invoices/new">Draft your first invoice</NextLink>
+                </Button>
+              }
+            >
+              Draft one from a client and the trips you&rsquo;ve already flown for
+              them — the flight days, travel days, and rebilled expenses fill
+              themselves in.
+            </EmptyState>
           ) : (
-            <Flex direction="column" align="center" gap="3" py="6">
-              <Text size="4" weight="bold">
-                {filter === "outstanding"
+            // Same primitive, different case: the filtered state. Keeping
+            // both on one component is what stops the two from drifting
+            // apart visually and reading as two different screens.
+            <EmptyState
+              title={
+                filter === "outstanding"
                   ? "Nothing outstanding"
                   : filter === "overdue"
                     ? "Nothing past due"
-                    : "Nothing here"}
-              </Text>
-              <Text size="2" color="gray" align="center">
-                {filter === "outstanding"
-                  ? `Every invoice you've sent has been paid. You have ${invoices.length} in total.`
-                  : `None of your ${invoices.length} invoices match this filter.`}
-              </Text>
-              <Button asChild variant="soft">
-                <NextLink href="/invoices?show=all">Show all invoices</NextLink>
-              </Button>
-            </Flex>
+                    : "Nothing here"
+              }
+              action={
+                <Button asChild variant="soft">
+                  <NextLink href="/invoices?show=all">Show all invoices</NextLink>
+                </Button>
+              }
+            >
+              {filter === "outstanding"
+                ? `Every invoice you've sent has been paid. You have ${invoices.length} in total.`
+                : `None of your ${invoices.length} invoices match this filter.`}
+            </EmptyState>
           )
         ) : (
           <Table.Root variant="ghost">

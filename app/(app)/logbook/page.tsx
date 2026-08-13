@@ -17,6 +17,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+import EmptyState from "@/components/ui/empty-state";
 import PageShell from "../page-shell";
 import { logbookFrom, type LogbookEntryRow, type LogbookSource } from "./db";
 import type { TimeByTypeRow } from "./aircraft/db";
@@ -366,42 +367,51 @@ export default async function LogbookPage({
               // nothing on file: ?page= is past the last page. Telling a
               // pilot with 8,000 entries "No logbook entries yet" here is
               // the same class of claim as saying it after a failed read.
-              <Flex direction="column" align="center" gap="3" py="6">
-                <Heading as="h2" size="4">Nothing on this page</Heading>
-                <Text size="2" color="gray" align="center">
-                  {`You have ${totalCount} entr${
-                    totalCount === 1 ? "y" : "ies"
-                  } on file — page ${page} is past the last one, which is page ${pageCount}.`}
-                </Text>
-                <Button asChild mt="2">
-                  <NextLink href="/logbook">Back to the first page</NextLink>
-                </Button>
-              </Flex>
+              // `as="h2"`: on this screen the empty state IS the panel
+              // heading, so it must not drop to h3 and skip a level.
+              <EmptyState
+                as="h2"
+                title="Nothing on this page"
+                action={
+                  <Button asChild>
+                    <NextLink href="/logbook">Back to the first page</NextLink>
+                  </Button>
+                }
+              >
+                {`You have ${totalCount} entr${
+                  totalCount === 1 ? "y" : "ies"
+                } on file — page ${page} is past the last one, which is page ${pageCount}.`}
+              </EmptyState>
             ) : entries.length === 0 ? (
-              <Flex direction="column" align="center" gap="3" py="6">
-                <Heading as="h2" size="4">No logbook entries yet</Heading>
-                <Text size="2" color="gray" align="center">
-                  This is your own copy of the 61.51 record — flight time, PIC and SIC,
-                  night, instrument and landings, per entry and totalled for a career.
-                  Log a flight by hand, or confirm the entries a completed trip proposes.
-                </Text>
-                <Flex gap="3" mt="2">
+              <EmptyState
+                as="h2"
+                title="No logbook entries yet"
+                action={
                   <Button asChild>
                     <NextLink href="/logbook/new">Log your first entry</NextLink>
                   </Button>
-                  <Button asChild variant="outline">
-                    <NextLink href="/logbook/drafts">Review trip drafts</NextLink>
-                  </Button>
-                  {/* Reachable before the first entry exists. The Hours by
-                      type panel is the only other link to the fleet screen
-                      and it renders only when there ARE entries, so a pilot
-                      who wanted to set their aircraft up first had no path
-                      to it at all. */}
-                  <Button asChild variant="outline">
-                    <NextLink href="/logbook/aircraft">Your aircraft</NextLink>
-                  </Button>
-                </Flex>
-              </Flex>
+                }
+                secondaryAction={
+                  <>
+                    <Button asChild variant="outline">
+                      <NextLink href="/logbook/drafts">Review trip drafts</NextLink>
+                    </Button>
+                    {/* Reachable before the first entry exists. The Hours by
+                        type panel is the only other link to the fleet screen
+                        and it renders only when there ARE entries, so a pilot
+                        who wanted to set their aircraft up first had no path
+                        to it at all. */}
+                    <Button asChild variant="outline">
+                      <NextLink href="/logbook/aircraft">Your aircraft</NextLink>
+                    </Button>
+                  </>
+                }
+              >
+                This is your own copy of the 61.51 record — flight time, PIC and
+                SIC, night, instrument and landings, per entry and totalled for a
+                career. Log a flight by hand, or confirm the entries a completed
+                trip proposes.
+              </EmptyState>
             ) : (
               <Table.Root variant="ghost">
                 <Table.Header>

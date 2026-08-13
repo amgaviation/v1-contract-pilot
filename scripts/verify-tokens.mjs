@@ -138,6 +138,65 @@ const RADIX_THEMES_IMPORT_EXEMPT_FILE = join(
   "ui",
   "index.tsx"
 );
+
+/*
+ * ---------------------------------------------------------------------------
+ * THE SLOT-ORIGIN RULES (category "slot-origin"), added with Phase 9's
+ * per-tenant appearance.
+ *
+ * Everything above this point polices values a DEVELOPER writes. A tenant
+ * theme adds a second, sharper problem: a visual value that arrives at
+ * render time, from a database row, and therefore from outside every rule
+ * above — none of which can see a string that is not in the source.
+ *
+ * The answer is not to police the value (there is nothing to grep) but to
+ * police the ORIGIN. lib/theme-slots.ts enumerates every overridable
+ * visual value as a closed list of Radix accent / scaling / appearance
+ * names, and resolves an untrusted blob against it with a total function.
+ * If that file is the only place such a value can come from, and the only
+ * places it can be APPLIED are the two files that render a resolved slot,
+ * then no other file in the product can inject one — which is the same
+ * guarantee the rules above give for hardcoded values, extended to values
+ * that do not exist until runtime.
+ *
+ * Two constructions carry that risk and both are banned outside their one
+ * permitted home:
+ *
+ *   runtime-css-var     `var(--${x})` — a custom property NAME assembled
+ *                       at runtime. This is the construction that turns an
+ *                       arbitrary string into a token reference, and it is
+ *                       how a free-text colour would eventually be smuggled
+ *                       into a style. Only lib/theme-slots.ts may write it
+ *                       (today it does not need to: each slot's preview
+ *                       token is written out per slot, which is stricter
+ *                       still — the rule guards the next author, not this
+ *                       one).
+ *   dynamic-theme-prop  a <Theme> prop whose value is a JSX expression
+ *                       rather than a literal. Everywhere except the app
+ *                       shell and the appearance panel's live preview, a
+ *                       Theme prop must be a literal — so app/layout.tsx's
+ *                       six documented defaults, and the two nested
+ *                       appearance="dark" islands, stay exactly as they
+ *                       are, and no third file can start theming anything
+ *                       from data.
+ *
+ * NOTE WHAT IS NOT DONE HERE. lib/theme-slots.ts is deliberately NOT added
+ * to EXEMPT_FILES. The hex ban must keep applying to it above all — "a
+ * curated palette of Radix accent names, never a free hex" is the promise
+ * that file exists to make, and exempting it from the hex rule would be
+ * exempting it from its own contract. It needs no value exemption anyway:
+ * its swatches are var() references to Radix's own scales, not colours.
+ * ---------------------------------------------------------------------------
+ */
+const SLOT_ORIGIN_FILE = join(ROOT, "lib", "theme-slots.ts");
+const THEME_APPLIER_FILES = new Set([
+  // The app shell: one nested <Theme> carrying the tenant's resolved slots.
+  join(ROOT, "app", "(app)", "layout.tsx"),
+  // The appearance panel's preview card, which shows a pilot the accent
+  // they are about to save before they save it. Same values, same
+  // enumerated source, one screen.
+  join(ROOT, "app", "(app)", "settings", "appearance-panel.tsx"),
+]);
 // .js/.jsx included alongside .ts/.tsx/.css: Next.js compiles .jsx and
 // .js in app/ exactly the same as .tsx, so an import or a hardcoded
 // value written in one of those files would otherwise be invisible to
@@ -368,6 +427,42 @@ const RULES = [
     appliesTo: "code",
     pattern: /["'`]@radix-ui\/themes(?!\/styles\.css["'`])(?:\/[^"'`]*)?["'`]/g,
   },
+  {
+    // See the long note above SLOT_ORIGIN_FILE. Matches `var(--${x})` and
+    // `var(${x})` in either quoting style, and — like every rule here —
+    // runs against the whole file so a wrapped expression cannot hide.
+    // The `[^)\n]*` stops at the closing paren so a legitimate
+    // `var(--gray-2)` followed later on the same line by an unrelated
+    // template literal is not swept up.
+    id: "runtime-css-var",
+    category: "slot-origin",
+    name: "CSS custom property assembled at runtime (only lib/theme-slots.ts may originate one)",
+    appliesTo: "code",
+    pattern: /var\(\s*(?:--)?[^)\n]*\$\{/g,
+  },
+  {
+    // A JSX-expression value on one of the theme-configuring <Theme>
+    // props, or a spread onto <Theme>. A literal (`appearance="dark"`,
+    // `accentColor="indigo"`) is untouched — the rule is about a value
+    // the theme layer did not choose, not about the props themselves.
+    //
+    // ANCHORED ON `<Theme`, and it has to be. The first version of this
+    // rule matched the prop name alone and immediately fired on
+    // `<SettingsTabs appearance={<AppearancePanel …/>} />` — a prop that
+    // happens to share a name with a Theme prop and carries a React node,
+    // not a colour. `[^>]*?` cannot cross the `>` that closes the opening
+    // tag, so the prop must genuinely belong to that Theme element;
+    // newlines are inside the negated class, so a multi-line <Theme …>
+    // is still matched. Probed both ways after changing it (a real
+    // <Theme appearance={x}> in a non-permitted file fails; the
+    // SettingsTabs prop passes).
+    id: "dynamic-theme-prop",
+    category: "slot-origin",
+    name: "<Theme> prop with a runtime value (only the app shell and the appearance preview may apply one)",
+    appliesTo: "code",
+    pattern:
+      /<Theme\b[^>]*?(?:\b(?:accentColor|grayColor|panelBackground|scaling|appearance)\s*=\s*\{|\{\s*\.\.\.)/g,
+  },
 ];
 
 /** @type {{file: string, line: number, rule: string, snippet: string}[]} */
@@ -426,6 +521,19 @@ function scanFile(file) {
     ) {
       continue;
     }
+    // The slot-origin carve-outs, keyed off `id` for the same reason the
+    // one above is (see the note over RULES): an error message is prose
+    // and is expected to change; behaviour must not move with it. These
+    // are deliberately NOT folded into EXEMPT_FILES — that set means "may
+    // spell a visual value out", and lib/theme-slots.ts specifically must
+    // NOT be allowed to.
+    if (rule.id === "runtime-css-var" && file === SLOT_ORIGIN_FILE) continue;
+    if (
+      rule.id === "dynamic-theme-prop" &&
+      (file === SLOT_ORIGIN_FILE || THEME_APPLIER_FILES.has(file))
+    ) {
+      continue;
+    }
     for (const match of content.matchAll(rule.pattern)) {
       if (rule.filter && !rule.filter(match)) continue;
       const line = lineNumberAt(content, match.index);
@@ -474,7 +582,14 @@ if (violations.length > 0) {
       "                         components/ui/index.tsx's component defaults. That is\n" +
       "                         the entire design system; there is no token file to edit.\n\n" +
       "Only app/globals.css, lib/brand.ts, lib/pdf-palette.ts and lib/invoice-pdf.tsx may\n" +
-      "spell a value out, and each documents why at the top of the file.\n"
+      "spell a value out, and each documents why at the top of the file.\n\n" +
+      "A per-tenant visual value (accent, density, light/dark) is a different rule:\n" +
+      "  it must ORIGINATE in lib/theme-slots.ts, which enumerates every one of them\n" +
+      "  and resolves an untrusted stored value against that list. A <Theme> prop may\n" +
+      "  only take a runtime value in the app shell (app/(app)/layout.tsx) and the\n" +
+      "  appearance panel's preview; a var(--...) name may only be assembled at\n" +
+      "  runtime in lib/theme-slots.ts. Add the slot to that file, don't inject the\n" +
+      "  value here.\n"
   );
   process.exit(1);
 }

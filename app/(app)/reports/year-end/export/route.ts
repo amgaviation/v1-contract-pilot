@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
-import { CATEGORY_LABEL } from "../db";
+import { loadOptionLabels } from "@/lib/custom-options-read";
 import { loadYearEndReport } from "../queries";
 import { loadTravelLog } from "../travel-log-queries";
 import { csvRow } from "@/lib/csv";
@@ -133,6 +133,9 @@ export async function GET(request: NextRequest) {
   }
 
   const report = await loadYearEndReport(supabase, account.id, year);
+  // Same labels the screen shows — a CSV that disagreed with the report
+  // it was exported from would be its own bug.
+  const categoryLabels = await loadOptionLabels("expense_category");
 
   if (report.error) {
     console.error("[year-end export] report load failed", report.error);
@@ -197,7 +200,7 @@ export async function GET(request: NextRequest) {
         rows.push(
           csvRow([
             e.incurredOn,
-            CATEGORY_LABEL[e.category] ?? e.category,
+            categoryLabels[e.category] ?? e.category,
             e.vendor ?? "",
             centsToDollarsString(e.amountCents),
           ])
@@ -228,7 +231,7 @@ export async function GET(request: NextRequest) {
         rows.push(
           csvRow([
             r.incurredOn,
-            CATEGORY_LABEL[r.category] ?? r.category,
+            categoryLabels[r.category] ?? r.category,
             r.vendor ?? "",
             centsToDollarsString(r.expenseAmountCents),
             r.clientName ?? "",
@@ -249,7 +252,7 @@ export async function GET(request: NextRequest) {
         rows.push(
           csvRow([
             e.incurredOn,
-            CATEGORY_LABEL[e.category] ?? e.category,
+            categoryLabels[e.category] ?? e.category,
             e.vendor ?? "",
             centsToDollarsString(e.amountCents),
           ])

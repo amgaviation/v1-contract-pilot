@@ -8,7 +8,7 @@ import PageShell from "../../page-shell";
 import DocumentForm, { type DocumentFormValues } from "../document-form";
 import { updateDocument } from "../actions";
 import { loadClientOptions } from "../client-options";
-import { DOCUMENT_KIND_LABEL } from "../kinds";
+import { loadOptionChoices, loadOptionLabels } from "@/lib/custom-options-read";
 import DeleteDocumentButton from "./delete-document-button";
 import DocumentLink from "./document-link";
 
@@ -23,10 +23,17 @@ export default async function DocumentPage({
   await requireAccount(`/documents/${id}`);
 
   const supabase = await createClient();
-  const [{ data, error }, { clients, error: clientError }] = await Promise.all([
-    supabase.from("documents").select("*").eq("id", id).maybeSingle(),
-    loadClientOptions(),
-  ]);
+  // Kinds twice over, and they are not the same list: `kinds` is what the
+  // picker may OFFER (retired ones dropped), `kindLabels` is what a
+  // stored key is CALLED (retired ones included, because this document
+  // may be filed under one).
+  const [{ data, error }, { clients, error: clientError }, kinds, kindLabels] =
+    await Promise.all([
+      supabase.from("documents").select("*").eq("id", id).maybeSingle(),
+      loadClientOptions(),
+      loadOptionChoices("document_kind"),
+      loadOptionLabels("document_kind"),
+    ]);
 
   // A failed query is not a missing document — rendering a 404 would send
   // the pilot looking for a file they never lost.
@@ -46,7 +53,7 @@ export default async function DocumentPage({
   return (
     <PageShell
       title={doc.label ?? ""}
-      subtitle={`${DOCUMENT_KIND_LABEL[doc.kind] ?? "Other"}${
+      subtitle={`${kindLabels[doc.kind] ?? "Other"}${
         doc.expires_on ? ` · Expires ${formatDate(doc.expires_on)}` : " · No expiry"
       }`}
       action={<DeleteDocumentButton id={doc.id} />}
@@ -66,6 +73,7 @@ export default async function DocumentPage({
       <DocumentForm
         action={updateDocument}
         clients={clients}
+        kinds={kinds}
         values={doc}
         submitLabel="Save document"
       />

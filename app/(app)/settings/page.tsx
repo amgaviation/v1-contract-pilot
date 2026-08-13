@@ -4,7 +4,7 @@ import { Card, Flex, Grid, Link as RadixLink, Text } from "@/components/ui";
 import { requireAccount } from "@/lib/supabase/account";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/database.types";
-import { centsToInput } from "@/lib/format";
+import { centsToInput, formatDate } from "@/lib/format";
 import PageShell from "../page-shell";
 import SettingsForm, { type SettingsValues } from "./settings-form";
 import ProfileDefaultsForm, {
@@ -15,6 +15,14 @@ import SettingsTabs from "./settings-tabs";
 import DayTypesPanel from "./day-types-panel";
 import ConnectPanel from "./connect-panel";
 import MileageRatesPanel from "./mileage-rates-panel";
+import AppearancePanel from "./appearance-panel";
+import LayoutPanel from "./layout-panel";
+import CategoriesPanel from "./categories-panel";
+import ProfilePanel from "./profile-panel";
+import { loadPreferences } from "@/lib/preferences";
+import { loadCustomOptionsResult } from "@/lib/custom-options-read";
+import { applyNavLayout, visibleNavSections } from "@/lib/nav";
+import { isCurrencyEngineEnabled } from "@/lib/currency/gate";
 
 type DayTypeRow = Database["pilot"]["Tables"]["day_types"]["Row"];
 type MileageRateRow = Database["pilot"]["Tables"]["mileage_rates"]["Row"];
@@ -41,6 +49,18 @@ type ProfileDefaultsRow = Pick<
   | "default_per_diem_cents"
   | "default_payment_terms_days"
 >;
+
+/**
+ * How a membership role is named to the person holding it. The database
+ * vocabulary (`owner` / `member` / `bookkeeper`) is not display copy, and
+ * a bookkeeper reading "bookkeeper" in lower case next to their email
+ * looks like a bug rather than a role.
+ */
+const ROLE_LABEL: Record<string, string> = {
+  owner: "Account owner",
+  member: "Member",
+  bookkeeper: "Bookkeeper",
+};
 
 export const metadata = { title: "Settings" };
 
@@ -132,6 +152,37 @@ export default async function SettingsPage({
     .order("tax_year", { ascending: false });
 
   const mileageRates = (mileageRatesData ?? []) as MileageRateRow[];
+
+  // Phase 9 Layers 2 and 3. loadPreferences is total: it falls back to
+  // the product's defaults for a missing or unreadable row, which is the
+  // ordinary state until a pilot changes something.
+  //
+  // The taxonomy read is deliberately the RESULT variant, not the total
+  // one the pickers use. A management screen must distinguish "you have
+  // no categories" from "we couldn't read your categories" — the picker
+  // fallback ([] and carry on) would have this panel print "Nothing here
+  // yet… set up for every account automatically" over a failed read, with
+  // no error anywhere on screen.
+  //
+  // The LAYOUT panel is offered every section this account has, in the
+  // tenant's current ORDER but WITHOUT the hidden filter applied — the
+  // hidden ones have to stay on screen, with their Show switch off, or a
+  // pilot who hid a section could never get it back. So the layout here
+  // is deliberately `{ order, hidden: [] }` rather than the whole thing;
+  // the rail (app/(app)/layout.tsx) applies both halves.
+  //
+  // A flag-gated section that is currently off is not offered here at
+  // all. Its stored HIDDEN state survives a save (the panel posts every
+  // hidden href it holds, rendered or not); its stored place in the order
+  // does not, and it returns at the end of the list when the engine is
+  // switched on.
+  const preferences = await loadPreferences(account.id);
+  const { rows: customOptions, error: customOptionsError } =
+    await loadCustomOptionsResult();
+  const navSections = applyNavLayout(visibleNavSections(isCurrencyEngineEnabled()), {
+    order: preferences.nav.order,
+    hidden: [],
+  });
 
   return (
     <PageShell
@@ -233,6 +284,48 @@ export default async function SettingsPage({
           ) : (
             <MileageRatesPanel rates={mileageRates} canEdit={canEdit} />
           )
+        }
+        appearance={<AppearancePanel slots={preferences.theme} canEdit={canEdit} />}
+        layout={
+          <LayoutPanel
+            sections={navSections}
+            layout={preferences.nav}
+            canEdit={canEdit}
+          />
+        }
+        categories={
+          <CategoriesPanel
+            options={customOptions}
+            canEdit={canEdit}
+            readError={customOptionsError}
+          />
+        }
+        // SCALARS ONLY. requireAccount's `user` is the full Supabase User —
+        // app_metadata, identities, and whatever a future provider hangs
+        // off it — and handing it to a client component would put all of
+        // that in the RSC flight payload whatever the prop type says. Same
+        // reasoning as the `values` query at the top of this file. Dates go
+        // through formatDate here rather than in the client component, so
+        // the panel holds no date logic and the whole screen formats dates
+        // one way.
+        //
+        // No canEdit prop, and that is not an omission: these controls act
+        // on the SIGNED-IN PERSON, not on the account, so a member or
+        // bookkeeper changes their own password exactly as an owner does.
+        // See profile-actions.ts's header.
+        profile={
+          <ProfilePanel
+            email={user.email ?? null}
+            emailConfirmed={Boolean(user.email_confirmed_at)}
+            pendingEmail={user.new_email ?? null}
+            pendingEmailSentAt={
+              user.email_change_sent_at ? formatDate(user.email_change_sent_at) : null
+            }
+            lastSignInAt={user.last_sign_in_at ? formatDate(user.last_sign_in_at) : null}
+            memberSince={user.created_at ? formatDate(user.created_at) : null}
+            roleLabel={ROLE_LABEL[role] ?? role}
+            accountName={account.legal_name}
+          />
         }
       />
     </PageShell>

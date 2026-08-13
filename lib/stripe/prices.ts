@@ -128,6 +128,58 @@ async function displayFor(
   }
 }
 
+/**
+ * A Stripe money amount, formatted. THE one place a figure read off a live
+ * Stripe object becomes a string for display, so the "no amount in code"
+ * rule (docs/PRICING.md §7) has a single door rather than every billing
+ * surface reaching for formatCents itself.
+ *
+ * `currency` is checked rather than assumed: this product sells in USD and
+ * formatCents renders USD, so a Stripe object in another currency would
+ * otherwise render a euro total with a dollar sign in front of it. An
+ * unexpected currency returns null and the caller shows nothing — the same
+ * posture as an unreachable Price above. Never a made-up figure, and never
+ * a right number with the wrong symbol.
+ */
+export function stripeAmountLabel(
+  amountCents: number | null | undefined,
+  currency: string | null | undefined
+): string | null {
+  if (typeof amountCents !== "number") return null;
+  if (currency && currency.toLowerCase() !== "usd") return null;
+  return formatCents(amountCents);
+}
+
+/**
+ * What the NEXT invoice on an existing subscription comes to: the
+ * subscription item's own live Price × its quantity, formatted.
+ *
+ * Read from the subscription rather than from TIER_PRICE_ENV on purpose.
+ * The env vars say what a tier costs to BUY today; this says what THIS
+ * customer is on — which differs for anyone grandfathered onto an older
+ * Price, or holding more Business seats than the two-seat minimum. Showing
+ * them the catalogue price instead of their own would be a figure that
+ * does not match their card statement.
+ *
+ * Returns null when the price is not a flat per-unit one (nothing this
+ * product sells is metered, so that means "don't display"), when the
+ * currency is unexpected, or when Stripe was unreachable — the caller then
+ * says nothing about the amount rather than guessing.
+ */
+export function subscriptionChargeLabel(
+  unitAmount: number | null | undefined,
+  currency: string | null | undefined,
+  quantity: number | null | undefined,
+  interval: BillingInterval | null
+): string | null {
+  if (typeof unitAmount !== "number") return null;
+  const seats = typeof quantity === "number" && quantity > 0 ? quantity : 1;
+  const total = stripeAmountLabel(unitAmount * seats, currency);
+  if (!total) return null;
+  if (!interval) return total;
+  return `${total.replace(/\.00$/, "")}/${interval === "monthly" ? "month" : "year"}`;
+}
+
 export type TierPriceLabels = Record<
   PlanTier,
   Record<BillingInterval, PriceDisplay | null>

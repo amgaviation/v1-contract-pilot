@@ -135,11 +135,83 @@ export async function changePlan(
 }
 
 /**
- * Stripe's hosted billing portal: payment method, invoices, and
- * cancellation live THERE, on Stripe's infrastructure, rather than being
- * reimplemented here — the same "Stripe is the billing system of
- * record" posture as everything else in this file. Any change made in
- * the portal comes back through the webhook like every other change.
+ * CANCEL AT PERIOD END / RESUME — the one billing decision a paying
+ * customer is most likely to want and, until now, could only reach by
+ * leaving for Stripe's portal.
+ *
+ * IT IS A FLAG FLIP, NOT A DELETION. `cancel_at_period_end: true` leaves
+ * the subscription active and paid-for until the period it has already
+ * been billed for runs out; Stripe then cancels it and the webhook moves
+ * `status` to `canceled`, at which point this product's read-only rule
+ * (ACCOUNT_WRITABLE_STATUSES) takes over — records stay readable and
+ * exportable, and nothing is deleted. Setting it back to false before that
+ * date undoes the whole thing with no proration and no gap, which is why
+ * the same action serves both directions: they are the same field.
+ *
+ * DELIBERATELY NOT `subscriptions.cancel()`. That ends the subscription
+ * IMMEDIATELY and throws away the remainder of a period the pilot has
+ * already paid for. No button on this screen should be able to do that by
+ * accident, and no copy on this screen promises it.
+ *
+ * plan_tier and status are still moved ONLY by the webhook. This action,
+ * like changePlan above, talks to Stripe and nothing else.
+ */
+export async function setCancelAtPeriodEnd(
+  _prev: BillingActionState,
+  formData: FormData
+): Promise<BillingActionState> {
+  // allowReadOnly for the same reason changePlan has it: RESUMING is part
+  // of the path back to a writable account, and a past_due account must be
+  // able to reach it.
+  const { account, role } = await requireAccount("/settings/billing", {
+    allowReadOnly: true,
+  });
+  if (role !== "owner") {
+    return { error: "Only the account owner can cancel or resume the plan." };
+  }
+
+  // The intent rides the submit button's own name/value, the same pattern
+  // ChangePlanButtons uses — no client state to go stale between render
+  // and submit.
+  const intent = formData.get("intent");
+  if (intent !== "cancel" && intent !== "resume") {
+    return { error: "Pick cancel or resume." };
+  }
+
+  const subscriptionId = account.stripe_subscription_id;
+  if (!subscriptionId) {
+    return {
+      error:
+        "This account isn't billed through Stripe, so its plan is managed for you. Get in touch to change it.",
+    };
+  }
+
+  try {
+    await getStripe().subscriptions.update(subscriptionId, {
+      cancel_at_period_end: intent === "cancel",
+    });
+  } catch (err) {
+    console.error(
+      "[stripe] cancel/resume failed",
+      err instanceof Error ? err.message : String(err)
+    );
+    return {
+      error:
+        "Couldn't change that just now. Try again, or use the Stripe billing portal below.",
+    };
+  }
+
+  revalidatePath("/settings/billing");
+  redirect(`/settings/billing?changed=${intent === "cancel" ? "cancel" : "resume"}`);
+}
+
+/**
+ * Stripe's hosted billing portal: the payment method, the full invoice
+ * archive, and tax/address details live THERE, on Stripe's
+ * infrastructure, rather than being reimplemented here — the same "Stripe
+ * is the billing system of record" posture as everything else in this
+ * file. Any change made in the portal comes back through the webhook like
+ * every other change.
  */
 export async function openBillingPortal(
   _prev: BillingActionState,

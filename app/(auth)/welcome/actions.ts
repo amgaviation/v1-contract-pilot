@@ -9,9 +9,14 @@ import { getStripe, TRIAL_PERIOD_DAYS } from "@/lib/stripe/server";
 import { priceIdFor } from "@/lib/stripe/prices";
 import { isBillingInterval, isPlanTier, seatsForTier } from "@/lib/entitlements";
 
+/**
+ * `scope: "local"` for the same reason app/(app)/actions.ts states at
+ * length: supabase-js defaults signOut() to the GLOBAL scope, so this
+ * button was ending sessions on devices the visitor is not holding.
+ */
 export async function signOut() {
   const supabase = await createClient();
-  await supabase.auth.signOut();
+  await supabase.auth.signOut({ scope: "local" });
   redirect("/login");
 }
 
