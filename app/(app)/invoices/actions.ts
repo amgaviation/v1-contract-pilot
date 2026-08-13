@@ -7,15 +7,14 @@ import { requireAccount } from "@/lib/supabase/account";
 import { parseDollarsToCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import { deactivatePaymentLink, LINK_STILL_LIVE_WARNING } from "@/lib/stripe/connect";
-import { isLiveMode } from "@/lib/stripe/server";
 import { DASHBOARD_PATH } from "@/lib/nav";
-import { buildInvoiceDocument } from "@/lib/invoice-document";
-import { sendEmail, emailIsConfigured, looksLikeEmail } from "@/lib/email/send";
+import { MAX_CUSTOM_MESSAGE_CHARS } from "@/lib/email/invoice-message";
+import { sendInvoiceEmail } from "@/lib/email/send-invoice";
+import { MANUAL_RULE_KEY } from "@/lib/reminders/policy";
 import {
-  buildInvoiceMessage,
-  buildReminderMessage,
-  daysOverdue,
-} from "@/lib/email/invoice-message";
+  dayQuantityThousandths,
+  roundThousandthsToHundredths,
+} from "@/lib/trip-value";
 import { categoryLabel } from "./labels";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -156,6 +155,17 @@ function parseQuantity(raw: string): number | undefined {
  * 0.1 + 0.2 is 0.30000000000000004 in JS. This is a guard against that
  * drift, not a fudge: it never changes what the sum "should" be, it only
  * removes noise below the column's own scale.
+ *
+ * NOT SUFFICIENT ON ITS OWN for a sum of `quantity * units` products — see
+ * dayQuantityThousandths in lib/trip-value.ts. Those products carry three
+ * decimals, so a group sum can land exactly on a .xx5 boundary, and at that
+ * boundary the double is as likely to sit below the true value as on it:
+ * `0.5 * 0.29` is 0.14499999999999999, which this rounds DOWN to 0.14 while
+ * the exact 0.145 rounds up to 0.15. Every day-row group therefore
+ * accumulates in integer thousandths and rounds with
+ * roundThousandthsToHundredths; this function is kept for the quantities
+ * that are already at 2dp scale (a minimum's shortfall, a sum of emitted
+ * line quantities), where no such boundary case exists.
  */
 function roundQuantity(value: number): number {
   return Math.round(value * 100) / 100;
@@ -577,7 +587,11 @@ export async function createInvoiceDraft(
   // ---------------------------------------------------------------------
   const monthlyBillable = new Map<
     string,
-    { qty: number; bestRateCents: number }
+    // qtyThousandths, not qty: the month's billable days accumulate in exact
+    // integer thousandths for the same reason the day-line groups do — see
+    // dayQuantityThousandths in lib/trip-value.ts. A guarantee compared
+    // against a float-drifted worked total tops up the wrong number of days.
+    { qtyThousandths: number; bestRateCents: number }
   >();
   // Best-effort: a failed read here means "don't know", so it suppresses
   // the cancellation-note warning rather than blocking the draft — no
@@ -633,7 +647,21 @@ export async function createInvoiceDraft(
       // ---------------------------------------------------------------
       const groups = new Map<
         string,
-        { dayTypeId: string; rateCents: number; dayOns: string[]; quantitySum: number }
+        {
+          dayTypeId: string;
+          rateCents: number;
+          dayOns: string[];
+          /**
+           * The group's summed quantity in EXACT INTEGER THOUSANDTHS, not
+           * as a float. quantity is numeric(3,1) and units numeric(3,2), so
+           * every contribution is an exact multiple of 0.001 that a double
+           * usually cannot hold — and a sum landing on a .xx5 boundary
+           * would then round the wrong way, billing a cent-scale
+           * disagreement against the same trip's figure on Overview and the
+           * trips list. See dayQuantityThousandths in lib/trip-value.ts.
+           */
+          quantityThousandths: number;
+        }
       >();
       const unpriced = new Map<string, number>(); // day type label -> count
 
@@ -663,7 +691,7 @@ export async function createInvoiceDraft(
           dayTypeId: row.day_type_id,
           rateCents,
           dayOns: [],
-          quantitySum: 0,
+          quantityThousandths: 0,
         };
         group.dayOns.push(row.day_on);
         // F1: sum the rows' OWN quantity (0.1-1.0 each, a half day is a
@@ -679,7 +707,13 @@ export async function createInvoiceDraft(
         // has units=1.00, so this sum is byte-for-byte unchanged for them.
         // See that migration's header for why units does not join the
         // grouping key above.
-        group.quantitySum += Number(row.quantity) * Number(row.units);
+        //
+        // Accumulated in integer thousandths so the sum is EXACT: the same
+        // group is priced in `numeric` by pilot.unbilled_trip_money for
+        // Overview, and a float sum disagrees with it at every .xx5
+        // boundary (lib/trip-value.ts's dayQuantityThousandths carries the
+        // worked example).
+        group.quantityThousandths += dayQuantityThousandths(row.quantity, row.units);
         groups.set(key, group);
 
         // Monthly guarantee accumulation — see monthlyBillable's own
@@ -697,10 +731,10 @@ export async function createInvoiceDraft(
         if (minimumBasis === "per_month") {
           const monthKey = `${row.day_on.slice(0, 7)}-01`;
           const bucket = monthlyBillable.get(monthKey) ?? {
-            qty: 0,
+            qtyThousandths: 0,
             bestRateCents: 0,
           };
-          bucket.qty += Number(row.quantity) * Number(row.units);
+          bucket.qtyThousandths += dayQuantityThousandths(row.quantity, row.units);
           if (rateCents > bucket.bestRateCents) bucket.bestRateCents = rateCents;
           monthlyBillable.set(monthKey, bucket);
         }
@@ -728,7 +762,7 @@ export async function createInvoiceDraft(
         // only trip on a genuine float artifact, never on real data; it
         // exists so that artifact fails silently-safe (no line) instead
         // of reaching invoice_lines' `quantity > 0` CHECK as a raw 23514.
-        const qty = roundQuantity(group.quantitySum);
+        const qty = roundThousandthsToHundredths(group.quantityThousandths);
         if (qty <= 0) continue;
 
         const sortedDays = [...group.dayOns].sort();
@@ -1083,7 +1117,7 @@ export async function createInvoiceDraft(
         // the data does not support.
         const settledLabel =
           settledInvoiceLabelById.get(alreadySettled) ?? "a draft invoice";
-        const addedDays = roundQuantity(bucket.qty);
+        const addedDays = roundThousandthsToHundredths(bucket.qtyThousandths);
         warnings.push(
           `${monthLabel}: this client's monthly guarantee was already settled on invoice ${settledLabel}, so no second top-up line was added — but this invoice still bills ${formatMinDays(
             addedDays
@@ -1092,7 +1126,7 @@ export async function createInvoiceDraft(
         continue;
       }
 
-      const worked = roundQuantity(bucket.qty);
+      const worked = roundThousandthsToHundredths(bucket.qtyThousandths);
       if (worked < minDays) {
         const shortfall = roundQuantity(minDays - worked);
         // RATE CHOICE — same reasoning as the per-trip minimum's own
@@ -1553,7 +1587,16 @@ export async function sendInvoice(
    * default; the send dialog's checkbox (status-actions.tsx) is what
    * turns it off. Ignored for manual_download, which attaches nothing.
    */
-  includeReceipts: boolean = true
+  includeReceipts: boolean = true,
+  /**
+   * What the pilot typed in this send's dialog, for this client, once. It
+   * rides ALONGSIDE the account's saved template rather than replacing it
+   * (lib/email/invoice-message.ts places the two in different blocks), so
+   * a pilot who has set standing wording does not lose it by adding a note
+   * about one trip. Bounded and trimmed below; empty means send exactly
+   * what would have been sent before this parameter existed.
+   */
+  customMessage: string | null = null
 ): Promise<{ error: string | null }> {
   // Validated the same way updateInvoiceHeader validates its id — an
   // unvalidated string reaches Postgres as a malformed uuid, which
@@ -1561,6 +1604,20 @@ export async function sendInvoice(
   if (!UUID_RE.test(id)) return { error: "That invoice no longer exists." };
 
   const { user, account } = await requireAccount(`/invoices/${id}`);
+
+  // CHECKED BEFORE THE STATUS TRANSITION, not after. A server action is a
+  // public endpoint and the dialog's maxLength is a courtesy, not a
+  // control — but the ORDERING is the part that matters: the transition
+  // below mints the permanent invoice number and cannot be undone, so
+  // refusing an over-long note afterwards would leave the invoice issued
+  // with the pilot's words silently dropped and no way back.
+  const note = customMessage?.trim() ?? "";
+  if (note.length > MAX_CUSTOM_MESSAGE_CHARS) {
+    return {
+      error: `That message is longer than ${MAX_CUSTOM_MESSAGE_CHARS} characters. Nothing was sent and the invoice is still a draft — shorten it and try again.`,
+    };
+  }
+
   const supabase = await createClient();
 
   const payload: InvoiceUpdate = {
@@ -1585,7 +1642,15 @@ export async function sendInvoice(
   if (deliveryMethod === "platform_email") {
     // Numbered and dated by the transition above, so the attachment now
     // matches the record exactly.
-    const sent = await emailInvoice(supabase, account.id, id, "invoice", user.email, includeReceipts);
+    const sent = await sendInvoiceEmail(
+      supabase,
+      account.id,
+      id,
+      "invoice",
+      user.email,
+      includeReceipts,
+      note === "" ? null : note
+    );
     if (!sent.ok) {
       return {
         error: `The invoice is now issued and numbered, but the email didn't go out — ${sent.error} Download the PDF and send it yourself; don't try to issue it again.`,
@@ -1607,11 +1672,21 @@ export async function sendInvoice(
  * not agreed with their client would do them real damage.
  */
 export async function sendInvoiceReminder(
-  id: string
+  id: string,
+  /** Same per-send note as sendInvoice's — see that parameter's own comment. */
+  customMessage: string | null = null
 ): Promise<{ error: string | null }> {
   if (!UUID_RE.test(id)) return { error: "That invoice no longer exists." };
 
   const { user, account } = await requireAccount(`/invoices/${id}`);
+
+  const note = customMessage?.trim() ?? "";
+  if (note.length > MAX_CUSTOM_MESSAGE_CHARS) {
+    return {
+      error: `That message is longer than ${MAX_CUSTOM_MESSAGE_CHARS} characters. Nothing was sent — shorten it and try again.`,
+    };
+  }
+
   const supabase = await createClient();
 
   // STATUS IS RE-READ HERE, not trusted from the screen that offered the
@@ -1646,8 +1721,66 @@ export async function sendInvoiceReminder(
     return { error: `No reminder sent. ${why} Reload the page to see where it stands.` };
   }
 
-  const sent = await emailInvoice(supabase, account.id, id, "reminder", user.email);
+  const sent = await sendInvoiceEmail(
+    supabase,
+    account.id,
+    id,
+    "reminder",
+    user.email,
+    // Receipts default ON everywhere else and a reminder keeps that
+    // default; passed explicitly only because the note is positional after
+    // it.
+    //
+    // NOT NECESSARILY "the same document the client already has", which is
+    // what this comment claimed before and is false in two ordinary cases.
+    // sendInvoice's receipts checkbox is a PER-SEND choice stored nowhere,
+    // so an invoice first emailed with it UNticked gets a reminder carrying
+    // the very receipt pages the pilot left out; and a manual_download
+    // invoice was never emailed by this product at all, so there is no
+    // "again" to appeal to. Rather than have the reminder guess at a
+    // decision it cannot read, the reminder dialog now states plainly that
+    // the full PDF goes with receipts included (status-actions.tsx), so the
+    // pilot decides with that in front of them.
+    //
+    // Remembering the original choice is the better fix and is a schema
+    // change — a column on pilot.invoices written at the draft->sent
+    // transition, which is an owner-gated migration in this repo. It would
+    // settle the same question for the client share link, whose half of
+    // this is carried by share-panel.tsx.
+    true,
+    note === "" ? null : note
+  );
   if (!sent.ok) return { error: sent.error };
+
+  // RECORDED, so the scheduler knows a human already chased this one.
+  //
+  // Without this row the two halves of this feature chase the same client
+  // twice in a week and neither knows about the other: the pilot presses this
+  // button on Tuesday, a rung comes due on Thursday, and the client gets two
+  // notes about one invoice from one business. lib/reminders/policy.ts's
+  // QUIET_PERIOD_DAYS is the rule; this insert is the fact it reads.
+  //
+  // BEST-EFFORT, AND DELIBERATELY NOT FATAL. The mail has already gone. A
+  // failure here is a bookkeeping loss (the scheduler may chase sooner than
+  // it should have), and reporting it as an error would tell the pilot their
+  // reminder failed when it did not — the exact "looks like failure, was
+  // success" inversion of the bug lib/email/send.ts exists to prevent. It is
+  // logged instead, where it is diagnosable.
+  const { error: ledgerError } = await supabase
+    .from("invoice_reminder_sends")
+    .insert({
+      account_id: account.id,
+      invoice_id: id,
+      rule_key: MANUAL_RULE_KEY,
+      outcome: "sent",
+      provider_message_id: sent.messageId,
+      detail: null,
+    } as never);
+  if (ledgerError) {
+    console.error(
+      `[reminders] manual send for invoice ${id} was not recorded: ${ledgerError.message}`
+    );
+  }
 
   revalidatePath(`/invoices/${id}`);
   revalidatePath("/invoices");
@@ -1655,159 +1788,17 @@ export async function sendInvoiceReminder(
 }
 
 /**
- * The shared half of both: load the client, render the document, compose the
- * words, hand it to the mail service. Returns rather than throws so every
- * caller has to deal with the failure in the UI.
+ * THE SHARED SENDER MOVED TO lib/email/send-invoice.ts.
+ *
+ * It used to live here, as `emailInvoice`, and it had to move the moment a
+ * SECOND caller appeared that has no session: the scheduled reminder run
+ * (lib/reminders/run.ts). Exporting it from this module to reach it was not
+ * an option and the reason is worth stating where the function used to be —
+ * this file carries "use server", under which every export is a public HTTP
+ * endpoint. An exported sender here would have published an unauthenticated
+ * "email this invoice to this client" action. The body moved verbatim, with
+ * its comments; see that file's header for what was added.
  */
-async function emailInvoice(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: any,
-  accountId: string,
-  invoiceId: string,
-  kind: "invoice" | "reminder",
-  /**
-   * WHERE A REPLY GOES, and it must not be the platform.
-   *
-   * INVOICE_FROM_EMAIL is one deployment-wide sender shared by every tenant,
-   * so without an explicit reply-to a client hitting Reply writes to a mailbox
-   * belonging to the software vendor rather than to their pilot. That is wrong
-   * in every case and actively harmful on a reminder, whose own words invite a
-   * reply: "if anything on it needs correcting, let me know and I will send a
-   * revised copy." The one person who can revise the bill would never see it,
-   * and — worse for a product whose trust story is that AMG cannot see a
-   * pilot's client relationships — the vendor would.
-   *
-   * The pilot's own signed-in address is the right target: it is verified by
-   * Supabase Auth, it is theirs, and it needs no new column. If an account-level
-   * billing address is ever wanted, this is the one place to change.
-   */
-  replyTo: string | undefined,
-  /**
-   * Attach rebilled-expense receipt pages to the PDF. Defaults true so the
-   * reminder path keeps the same default as every other surface; only
-   * sendInvoice's dialog checkbox ever passes false.
-   */
-  includeReceipts: boolean = true
-): Promise<{ ok: true; note: string } | { ok: false; error: string }> {
-  if (!emailIsConfigured()) {
-    return {
-      ok: false,
-      error:
-        "Emailing isn't set up on this account yet, so nothing was sent. Download the PDF and send it yourself, or set the mail service up in the project's environment first.",
-    };
-  }
-
-  const { data: invoiceRow, error: invoiceError } = await supabase
-    .from("invoices")
-    .select(
-      "id, client_id, notes, stripe_payment_link_url, stripe_payment_link_livemode"
-    )
-    .eq("id", invoiceId)
-    .eq("account_id", accountId)
-    .maybeSingle();
-
-  if (invoiceError) {
-    return {
-      ok: false,
-      error: `${friendlyDbError(invoiceError, "invoices.select")} Nothing was sent.`,
-    };
-  }
-  const invoice = invoiceRow as {
-    client_id: string;
-    notes: string | null;
-    stripe_payment_link_url: string | null;
-    stripe_payment_link_livemode: boolean | null;
-    due_on?: string | null;
-  } | null;
-  if (!invoice) return { ok: false, error: "That invoice no longer exists." };
-
-  const { data: clientRow, error: clientError } = await supabase
-    .from("clients")
-    .select("name, contact_name, contact_email")
-    .eq("id", invoice.client_id)
-    .eq("account_id", accountId)
-    .maybeSingle();
-
-  if (clientError) {
-    return {
-      ok: false,
-      error: `${friendlyDbError(clientError, "clients.select")} Nothing was sent.`,
-    };
-  }
-  const client = clientRow as {
-    name: string;
-    contact_name: string | null;
-    contact_email: string | null;
-  } | null;
-  if (!client) {
-    return { ok: false, error: "That invoice's client no longer exists." };
-  }
-  // The most common reason a send cannot happen, and the one the pilot can fix
-  // in ten seconds — so it names the client and points at the screen.
-  if (!looksLikeEmail(client.contact_email)) {
-    return {
-      ok: false,
-      error: `${client.name} has no email address on file, so nothing was sent. Add one on the client's page and try again.`,
-    };
-  }
-
-  const built = await buildInvoiceDocument(supabase, accountId, invoiceId, {
-    includeReceipts,
-  });
-  if (!built.ok) {
-    return { ok: false, error: `${built.error} Nothing was sent.` };
-  }
-  const doc = built.document;
-
-  // THE MODE GUARD. A payment link minted in Stripe test mode is unpayable,
-  // and putting one in a real client's inbox wastes their time and the
-  // pilot's credibility. Same condition the invoice screen already applies
-  // before it shows the link — kept identical on purpose.
-  const paymentUrl =
-    invoice.stripe_payment_link_url &&
-    invoice.stripe_payment_link_livemode === isLiveMode()
-      ? invoice.stripe_payment_link_url
-      : null;
-
-  const shared = {
-    accountName: doc.accountName,
-    clientName: client.name,
-    contactName: client.contact_name,
-    invoiceNumber: doc.invoiceNumber,
-    dueOn: doc.dueOn,
-    totalCents: doc.totalCents,
-    balanceDueCents: doc.balanceDueCents,
-    paymentUrl,
-    notes: invoice.notes,
-    // Genuinely-embedded receipt IMAGES only — not fallback/caption pages,
-    // and never the toggle's intent. buildInvoiceDocument counts only images
-    // that decoded and embedded, so the email cannot claim a receipt that
-    // rode along as an on-request caption page. See
-    // InvoiceMessageInput.receiptCount.
-    receiptCount: doc.receiptCount,
-  };
-
-  const message =
-    kind === "reminder"
-      ? buildReminderMessage({
-          ...shared,
-          daysOverdue: daysOverdue(doc.dueOn, new Date()),
-        })
-      : buildInvoiceMessage(shared);
-
-  const result = await sendEmail({
-    to: client.contact_email as string,
-    subject: message.subject,
-    text: message.text,
-    // Only set when it is a usable address — a malformed reply-to is worse
-    // than none, because some clients silently drop the whole message.
-    replyTo: looksLikeEmail(replyTo) ? replyTo : undefined,
-    attachments: [{ filename: doc.filename, content: doc.buffer }],
-  });
-
-  if (!result.ok) return { ok: false, error: result.error };
-  return { ok: true, note: result.id };
-}
 
 /**
  * Voiding an invoice that had a Stripe payment link on it USED TO FAIL

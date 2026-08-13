@@ -15,6 +15,8 @@ import SettingsTabs from "./settings-tabs";
 import DayTypesPanel from "./day-types-panel";
 import ConnectPanel from "./connect-panel";
 import MileageRatesPanel from "./mileage-rates-panel";
+import MessageTemplatesPanel from "./message-templates-panel";
+import RemindersPanel from "./reminders-panel";
 import AppearancePanel from "./appearance-panel";
 import LayoutPanel from "./layout-panel";
 import CategoriesPanel from "./categories-panel";
@@ -23,6 +25,12 @@ import { loadPreferences } from "@/lib/preferences";
 import { loadCustomOptionsResult } from "@/lib/custom-options-read";
 import { applyNavLayout, visibleNavSections } from "@/lib/nav";
 import { isCurrencyEngineEnabled } from "@/lib/currency/gate";
+import { emailIsConfigured } from "@/lib/email/send";
+import {
+  describeSchedule,
+  normalizeReminderPolicy,
+  reminderPolicyIsEmpty,
+} from "@/lib/reminders/policy";
 
 type DayTypeRow = Database["pilot"]["Tables"]["day_types"]["Row"];
 type MileageRateRow = Database["pilot"]["Tables"]["mileage_rates"]["Row"];
@@ -152,6 +160,50 @@ export default async function SettingsPage({
     .order("tax_year", { ascending: false });
 
   const mileageRates = (mileageRatesData ?? []) as MileageRateRow[];
+
+  // WHO THIS PRODUCT WILL WRITE TO ON THE PILOT'S BEHALF, listed by name.
+  //
+  // A per-client switch that only exists on each client's own page is a
+  // switch nobody can audit: a pilot with fourteen clients would have to open
+  // fourteen screens to answer "who am I chasing automatically?". This one
+  // read answers it in one place.
+  //
+  // A FAILED READ IS NOT AN EMPTY LIST HERE — it would render as "none of
+  // your 0 clients has a schedule, so nothing is sent automatically", which is
+  // the most reassuring possible rendering of "we don't know" and a positive
+  // claim this screen cannot vouch for while the scheduler keeps sending on
+  // the real schedules. So the error is bound and handed to the panel, which
+  // says it could not load rather than saying nobody is being chased — the
+  // same fold the Overview page does with its own degraded reads.
+  const { data: reminderClientData, error: reminderClientError } = await supabase
+    .from("clients")
+    .select("id, name, reminder_before_due, reminder_on_due, reminder_after_due")
+    .is("archived_at", null)
+    .order("name", { ascending: true });
+
+  const reminderClientRows = (reminderClientData ?? []) as {
+    id: string;
+    name: string;
+    reminder_before_due: number[] | null;
+    reminder_on_due: boolean | null;
+    reminder_after_due: number[] | null;
+  }[];
+  const clientsWithSchedules = reminderClientRows
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      policy: normalizeReminderPolicy({
+        beforeDue: row.reminder_before_due,
+        onDue: row.reminder_on_due,
+        afterDue: row.reminder_after_due,
+      }),
+    }))
+    .filter((entry) => !reminderPolicyIsEmpty(entry.policy))
+    .map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      summary: describeSchedule(entry.policy),
+    }));
 
   // Phase 9 Layers 2 and 3. loadPreferences is total: it falls back to
   // the product's defaults for a missing or unreadable row, which is the
@@ -284,6 +336,36 @@ export default async function SettingsPage({
           ) : (
             <MileageRatesPanel rates={mileageRates} canEdit={canEdit} />
           )
+        }
+        // loadPreferences is total, so `templates` is always a well-formed
+        // pair — {null, null} for the ordinary account that has never opened
+        // this tab, which the panel renders as two empty boxes showing the
+        // built-in wording. There is no failed-read card here, and that is
+        // the same call the appearance and layout panels make: a preferences
+        // read that fails yields the product's own defaults, and defaults
+        // are exactly what an unsaved template already means.
+        messages={
+          <MessageTemplatesPanel
+            templates={preferences.templates}
+            canEdit={canEdit}
+          />
+        }
+        reminders={
+          <RemindersPanel
+            // Both switches are ENVIRONMENT facts, resolved on the server:
+            // a client component must never see either variable, and the
+            // panel only needs to know whether they are set.
+            schedulerConfigured={Boolean(process.env.CRON_SECRET)}
+            mailConfigured={emailIsConfigured()}
+            lastRunAt={
+              account.reminders_last_run_at
+                ? formatDate(account.reminders_last_run_at)
+                : null
+            }
+            clientsWithSchedules={clientsWithSchedules}
+            clientsTotal={reminderClientRows.length}
+            clientsLoadFailed={Boolean(reminderClientError)}
+          />
         }
         appearance={<AppearancePanel slots={preferences.theme} canEdit={canEdit} />}
         layout={

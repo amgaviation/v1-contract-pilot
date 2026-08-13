@@ -9,6 +9,28 @@
  * Trips, and billed a third. That is the "two sources for one number"
  * defect the trips list's own comment was already warning about.
  *
+ * THIS RULE NOW HAS A SECOND IMPLEMENTATION, IN SQL, AND THE TWO MUST BE
+ * EDITED TOGETHER. pilot.unbilled_trip_money
+ * (supabase/migrations/20260813010000_unbilled_money_reads.sql) computes
+ * exactly this — same grouping key, same group-first-then-round, same
+ * billable-only filter, same scalar fallback — because Overview needs the
+ * figure AGGREGATED across every unbilled trip, and an aggregate summed in
+ * JavaScript from a Data-API read is silently truncated at 1,000 rows. The
+ * duplication is deliberate and bounded: the SQL exists to total, this
+ * exists to price ONE trip on the screens that show one (trips list, trip
+ * detail). If you change the arithmetic here, change it there, and vice
+ * versa — the migration's header carries the rounding-parity argument for
+ * why the two agree cent-for-cent on every value this schema can hold.
+ *
+ * PARITY REQUIRES EXACT DECIMAL ARITHMETIC, NOT MERELY THE SAME FORMULA.
+ * Postgres rounds the exact value; a double rounds whatever it could
+ * represent, and `0.5 * 0.29` is 0.14499999999999999 rather than 0.145. Every
+ * quantity below therefore accumulates in INTEGER THOUSANDTHS and rounds with
+ * integer arithmetic — see dayQuantityThousandths. Reverting any of that to
+ * `quantity * units` in floats reintroduces a silent cent-scale disagreement
+ * with both the SQL and the invoice, which is the exact defect this file
+ * exists to remove. tests/unbilled-money.test.mjs §7 is the guard.
+ *
  * PRICING RULE, mirrored from createInvoiceDraft's day-row path
  * (app/(app)/invoices/actions.ts): once a trip has trip_days rows it is
  * priced from THEM — grouped by (day_type_id, rate_cents), summing
@@ -71,13 +93,65 @@ export type TripDayValueRow = {
 };
 
 /**
- * Mirrors createInvoiceDraft's roundQuantity: 0.1 + 0.2 is
- * 0.30000000000000004 in JS, and pilot.trip_days.quantity is numeric(3,1),
- * so this removes float noise below the column's own scale rather than
- * changing what the sum should be.
+ * A day row's contribution to its group's summed quantity, as an EXACT
+ * INTEGER COUNT OF THOUSANDTHS.
+ *
+ * WHY INTEGERS AND NOT `quantity * units`. pilot.trip_days.quantity is
+ * numeric(3,1) and units numeric(3,2), so the true product is always an
+ * exact multiple of 0.001 — but IEEE 754 cannot hold most of those values,
+ * and the error lands exactly where it does damage. `0.5 * 0.29` is
+ * 0.14499999999999999 as a double, so rounding it to 2dp gives 0.14, while
+ * Postgres rounds the exact decimal 0.145 to 0.15. Ten (quantity, units)
+ * pairs inside this schema's own CHECK bounds diverge that way, and roughly
+ * one in a hundred multi-row group sums does.
+ *
+ * That divergence is not academic here: pilot.unbilled_trip_money computes
+ * the same figure in exact `numeric`, so a float-accumulated JS answer would
+ * make Overview's unbilled money disagree with the trips list, the trip
+ * detail, and the invoice createInvoiceDraft actually writes — the
+ * "two sources for one number" defect this file exists to remove. Working in
+ * thousandths keeps every intermediate exact, so the two implementations
+ * agree on every value the schema can hold rather than merely on the values
+ * anyone happened to try.
+ *
+ * `Math.round` on each factor is what pulls a wire value back onto its
+ * column's scale before it becomes an integer: a numeric arriving as 0.29
+ * gives 28.999999999999996 when multiplied by 100, and truncating that would
+ * silently drop a hundredth of a day.
  */
-function roundQuantity(value: number): number {
-  return Math.round(value * 100) / 100;
+export function dayQuantityThousandths(
+  quantity: number,
+  units: number | null | undefined
+): number {
+  const unitFraction = units == null ? 1 : Number(units);
+  return Math.round(Number(quantity) * 10) * Math.round(unitFraction * 100);
+}
+
+/**
+ * A summed quantity in thousandths, rounded to invoice_lines.quantity's own
+ * numeric(6,2) scale — the same rounding Postgres `round(numeric, 2)`
+ * performs on the exact value.
+ *
+ * Half-up, which equals Postgres's half-away-from-zero because every input
+ * is non-negative by CHECK (quantity > 0, units > 0). `n / 10` for an
+ * integer n is exact at the .5 boundary, so the tie is decided by the rule
+ * and never by representation error.
+ */
+export function roundThousandthsToHundredths(thousandths: number): number {
+  return Math.round(thousandths / 10) / 100;
+}
+
+/**
+ * Cents for one invoice-line-shaped group: a quantity in HUNDREDTHS times a
+ * whole-cent rate, rounded once — mirroring pilot.invoice_lines.amount_cents'
+ * generated `round(quantity * unit_amount_cents)`.
+ *
+ * The multiply happens in integers so the only inexact step is the final
+ * `/ 100`, where a tie is an exactly-representable `.5` and rounds half-up
+ * the way Postgres does.
+ */
+function groupCents(quantityHundredths: number, rateCents: number): number {
+  return Math.round((quantityHundredths * rateCents) / 100);
 }
 
 export function tripValueCents(
@@ -89,26 +163,40 @@ export function tripValueCents(
     // Key on day type AND rate, exactly as the draft does: the same day
     // type captured at two different agreed rates is two invoice lines,
     // and collapsing them here would round differently from the invoice.
-    const groups = new Map<string, { rateCents: number; quantitySum: number }>();
+    const groups = new Map<
+      string,
+      { rateCents: number; quantityThousandths: number }
+    >();
     for (const row of dayRows) {
       if (!billableByDayType.get(row.day_type_id)) continue;
       const key = `${row.day_type_id}:${row.rate_cents}`;
-      const group = groups.get(key) ?? { rateCents: row.rate_cents, quantitySum: 0 };
-      const units = row.units == null ? 1 : Number(row.units);
-      group.quantitySum += Number(row.quantity) * units;
+      const group =
+        groups.get(key) ?? { rateCents: row.rate_cents, quantityThousandths: 0 };
+      group.quantityThousandths += dayQuantityThousandths(row.quantity, row.units);
       groups.set(key, group);
     }
     let total = 0;
     for (const group of groups.values()) {
-      total += Math.round(roundQuantity(group.quantitySum) * group.rateCents);
+      // Round to hundredths ONCE per group, then price it — the same two
+      // steps, in the same order, as the SQL's
+      // `sum(round(round(sum(quantity * units), 2) * rate_cents))`.
+      const hundredths = Math.round(group.quantityThousandths / 10);
+      total += groupCents(hundredths, group.rateCents);
     }
     return total;
   }
 
+  // The scalar fallback, in tenths for the same reason: day_count and
+  // travel_day_count are numeric(5,1), so `rate * count` is exact in tenths
+  // of a cent and its .5 ties must round the way `round(numeric)` does
+  // rather than the way the nearest double happens to fall.
   return (
-    Math.round(trip.day_rate_cents * Number(trip.day_count)) +
-    Math.round(
-      (trip.travel_day_rate_cents ?? 0) * Number(trip.travel_day_count ?? 0)
-    )
+    scalarHalfCents(trip.day_rate_cents, trip.day_count) +
+    scalarHalfCents(trip.travel_day_rate_cents ?? 0, trip.travel_day_count ?? 0)
   );
+}
+
+/** One half of the scalar fallback: `round(rate_cents * count)`, exact. */
+function scalarHalfCents(rateCents: number, count: number): number {
+  return Math.round((rateCents * Math.round(Number(count) * 10)) / 10);
 }

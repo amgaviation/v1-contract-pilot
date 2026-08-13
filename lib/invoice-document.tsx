@@ -1,7 +1,7 @@
 import "server-only";
-import sharp from "sharp";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { InvoicePdf, type InvoicePdfLine } from "@/lib/invoice-pdf";
+import { decodeEmbeddableReceipt } from "@/lib/receipt-image";
 import {
   classifyReceiptBytes,
   receiptFallbackNote,
@@ -84,54 +84,14 @@ type TotalsRow = {
   balance_due_cents: number;
 };
 
-/**
- * Decode a receipt's bytes to a buffer react-pdf is guaranteed to embed, or
- * null if they don't decode to a real image.
- *
- * classifyReceiptBytes (lib/invoice-receipts.ts) only reads the LEADING magic
- * number, so a truncated or corrupt file that still begins with a valid
- * JPEG/PNG signature passes classification and reaches here looking
- * embeddable. It is not. Two things then go wrong if the raw bytes are handed
- * straight to react-pdf:
- *
- *  - @react-pdf/renderer 4.5.x does NOT throw on such a file — its layout pass
- *    wraps image resolution in a try/catch and merely console.warns, dropping
- *    the image (see @react-pdf/layout fetchImage). The receipt page then
- *    renders BLANK beneath its caption, with none of the honest "available on
- *    request" fallback copy, and — worse — the empty page is still counted as
- *    an embedded receipt, so the email claims an image that isn't there.
- *  - A future react-pdf, or an exotic-but-decodable encoding its bespoke
- *    decoders choke on (progressive JPEG, interlaced/16-bit PNG), could fail
- *    harder. Because the whole document is composed in ONE renderToBuffer,
- *    one bad image failing there would fail the entire invoice.
- *
- * So the bytes are put through a real decode FIRST. sharp reads every pixel
- * and re-encodes to a baseline JPEG / standard PNG — normalising the exotic
- * encodings to the plain forms react-pdf embeds most reliably, and returning
- * null for anything it cannot decode (`failOn: "error"` rejects genuinely
- * corrupt input while tolerating mere warnings). The caller embeds only what
- * decodes and degrades the rest to the same captioned fallback page every
- * other non-embeddable receipt already uses. This is the invariant proven
- * with the real renderer: any subset of corrupt receipts becomes fallback
- * pages and the invoice still renders a valid PDF.
+/*
+ * The receipt decode gate that used to live here is now lib/receipt-image.ts,
+ * shared with the client-facing share page (lib/invoice-share-receipts.ts).
+ * It moved rather than being copied: the two surfaces fail differently and a
+ * divergence between them would only ever be found by the pilot's client.
+ * Called below with no options, which is exactly its previous behaviour —
+ * full size, JPEG quality 90.
  */
-async function decodeEmbeddableReceipt(
-  bytes: Buffer,
-  mime: "image/jpeg" | "image/png"
-): Promise<Buffer | null> {
-  try {
-    const pipe = sharp(bytes, { failOn: "error" });
-    return mime === "image/png"
-      ? await pipe.png().toBuffer()
-      : await pipe.jpeg({ quality: 90 }).toBuffer();
-  } catch (cause) {
-    console.error(
-      "[invoice-document] receipt image would not decode, using caption page",
-      cause
-    );
-    return null;
-  }
-}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export async function buildInvoiceDocument(

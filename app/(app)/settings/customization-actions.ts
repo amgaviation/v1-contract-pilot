@@ -4,7 +4,16 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { friendlyDbError } from "@/lib/db-errors";
-import { saveNavLayout, saveThemeSlots } from "@/lib/preferences";
+import {
+  saveMessageTemplates as persistMessageTemplates,
+  saveNavLayout,
+  saveThemeSlots,
+} from "@/lib/preferences";
+import {
+  INVOICE_PLACEHOLDERS,
+  REMINDER_PLACEHOLDERS,
+} from "@/lib/email/invoice-message";
+import { messageTemplateProblem } from "@/lib/message-templates";
 import {
   isThemeAccent,
   isThemeAppearance,
@@ -171,6 +180,79 @@ export async function saveNavArrangement(
   if (error) return { error };
 
   revalidatePath("/", "layout");
+  return { error: null, saved: true };
+}
+
+// ---------------------------------------------------------------------------
+// MESSAGE WORDING (the reusable invoice / reminder templates)
+// ---------------------------------------------------------------------------
+
+/**
+ * The one screen where a pilot writes words their CLIENT will read.
+ *
+ * That makes the validation here different in kind from the appearance
+ * panel's above. An unknown accent is a bug or a probe and is refused
+ * flatly; an unknown PLACEHOLDER is a typo — `{{client}}` for
+ * `{{client_name}}` — made by someone composing a sentence, and the only
+ * moment it can be caught before an operator's accounts-payable desk reads
+ * the result is right here. So the refusal names the offending token and
+ * lists the ones that work (messageTemplateProblem), rather than saying
+ * "that isn't valid".
+ *
+ * BLANK IS A REAL CHOICE, NOT A MISSING VALUE. An empty box stores null,
+ * which means "use the built-in wording" — the state every account is in
+ * until it opens this panel, and the way back for a pilot who tried a
+ * template and preferred the product's own sentence. There is deliberately
+ * no separate "reset" control: clearing the field IS the reset, and it
+ * behaves identically to never having saved anything.
+ *
+ * Both templates are written in ONE action because they share one jsonb
+ * section and one read-modify-write (lib/preferences.ts). Saving them
+ * separately would be two round trips racing each other over the same key
+ * for no benefit — the panel shows them together and the pilot edits them
+ * together.
+ */
+export async function saveMessageTemplates(
+  _prev: CustomizationFormState,
+  formData: FormData
+): Promise<CustomizationFormState> {
+  const { account, role } = await requireAccount("/settings");
+  if (role !== "owner") {
+    return {
+      error: "Only the account owner can change the wording your clients receive.",
+    };
+  }
+
+  const invoice = String(formData.get("invoice_template") ?? "").trim();
+  const reminder = String(formData.get("reminder_template") ?? "").trim();
+  // Echoed on EVERY failure path: React 19 resets an uncontrolled form on
+  // every action dispatch, the error path included, and losing a
+  // half-written paragraph to a typo in the other box is the exact
+  // frustration this discipline exists to prevent.
+  const echo = { invoice_template: invoice, reminder_template: reminder };
+
+  if (invoice) {
+    const problem = messageTemplateProblem(invoice, INVOICE_PLACEHOLDERS);
+    if (problem) return { error: `Invoice message: ${problem}`, values: echo };
+  }
+  if (reminder) {
+    const problem = messageTemplateProblem(reminder, REMINDER_PLACEHOLDERS);
+    if (problem) return { error: `Reminder: ${problem}`, values: echo };
+  }
+
+  const { error } = await persistMessageTemplates(account.id, {
+    invoice: invoice === "" ? null : invoice,
+    reminder: reminder === "" ? null : reminder,
+  });
+  if (error) return { error, values: echo };
+
+  // Only /settings: unlike the appearance and layout sections, nothing
+  // outside this screen RENDERS a template. It is read at send time by
+  // app/(app)/invoices/actions.ts, from the database, on a request that
+  // starts after this one finishes — so there is no cached tree anywhere
+  // holding a stale copy, and a "/" layout revalidation would be a
+  // whole-tree invalidation bought for nothing.
+  revalidatePath("/settings");
   return { error: null, saved: true };
 }
 

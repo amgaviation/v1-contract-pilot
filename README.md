@@ -166,7 +166,9 @@ app/(app)/settings/ the business record, day types, mileage rates, the three
 app/(app)/settings/billing/  plan management: status, renewal, receipts,
                     upgrade/downgrade, cancel/resume, Stripe portal.
 app/(auth)/         login, signup, password reset, and the post-checkout
-                    welcome screen.
+                    welcome screen. One shared shell (the navy brand panel
+                    beside the form) in app/(auth)/layout.tsx, with the
+                    pieces every screen is built from in auth-parts.tsx.
 app/api/stripe/     the webhook. The only place the service-role client is
                     used, anywhere in the product.
 components/ui/      the Radix defaults barrel (index.tsx — the ONE place a
@@ -202,6 +204,11 @@ npm run tenancy:verify        two-tenant isolation — the gate on everything
 npm run billing:verify        trial, webhook idempotency, out-of-order events
 npm run trip:verify           trip → invoice line, expense, logbook DRAFT
 npm run customisation:verify  day types, rate cards, and the money regression
+npm run reminders:verify      the scheduler's database guarantees: a rung is
+                              consumed once and only once, a ledger row cannot
+                              claim more than happened, and reminders_suppressed
+                              is the ONLY column scheduled reminders unfroze on
+                              an issued invoice (38 assertions, local Postgres)
 ```
 
 The verify scripts drive real authenticated Supabase clients rather than the
