@@ -2461,6 +2461,50 @@ export type Database = {
           signed_cents: number;
         }[];
       };
+      trip_pl: {
+        Args: {
+          target_account_id: string;
+          period_start: string;
+          period_end: string;
+        };
+        Returns: {
+          trip_id: string;
+          client_id: string | null;
+          trip_kind: string;
+          trip_status: string;
+          billing_state: string;
+          starts_on: string;
+          ends_on: string;
+          aircraft_ident: string | null;
+          invoiced_day_money_cents: number;
+          /** SUBSET of invoiced_day_money_cents, never an addend. */
+          draft_day_money_cents: number;
+          rebilled_cost_cents: number;
+          rebill_invoiced_cents: number;
+          deductible_cents: number;
+          unassigned_cents: number;
+          day_quantity: number;
+          has_day_rows: boolean;
+          scalar_day_count: number;
+          /** MILES, deliberately not dollars — see the migration header. */
+          mileage_miles: number;
+          mileage_entry_count: number;
+        }[];
+      };
+      client_unattributed_lines: {
+        Args: {
+          target_account_id: string;
+          period_start: string;
+          period_end: string;
+        };
+        Returns: {
+          client_id: string;
+          unattributed_line_cents: number;
+          unattributed_line_count: number;
+          draft_unattributed_line_cents: number;
+          draft_unattributed_line_count: number;
+        }[];
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
