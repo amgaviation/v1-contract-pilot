@@ -53,6 +53,16 @@ export default function LoadingPanel({
       {shape === "dashboard" ? (
         <>
           <StatRowSkeleton />
+          {/* The unbilled-by-client module is a real table sitting directly
+              under the stat row, so the dashboard skeleton reserves a
+              table's height rather than a paragraph's. A panel that arrives
+              several rows taller than its placeholder pushes everything
+              below it down on hydration, which is the layout shift a
+              skeleton exists to prevent. Seven columns, matching that
+              module's own header row. */}
+          <Card>
+            <TableSkeleton columns={7} rows={3} />
+          </Card>
           <Card>
             <PanelSkeleton lines={5} />
           </Card>
