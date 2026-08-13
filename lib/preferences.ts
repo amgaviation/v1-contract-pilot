@@ -15,10 +15,16 @@ import {
   type NavLayout,
 } from "@/lib/nav";
 import {
+  DEFAULT_PAYMENT_METHOD_CHOICE,
+  normalizePaymentMethodChoice,
+  type PaymentMethodChoice,
+} from "@/lib/stripe/payment-methods";
+import {
   DEFAULT_MESSAGE_TEMPLATES,
   normalizeMessageTemplates,
   type MessageTemplates,
 } from "@/lib/message-templates";
+
 
 /**
  * PER-TENANT PREFERENCES — the one place they are read, defaulted,
@@ -62,16 +68,34 @@ import {
 type PreferencesInsert = Database["pilot"]["Tables"]["account_preferences"]["Insert"];
 type PreferencesUpdate = Database["pilot"]["Tables"]["account_preferences"]["Update"];
 
+/**
+ * WHAT AN INVOICE'S PAYMENT LINK OFFERS BY DEFAULT.
+ *
+ * An account-level default that every new link is generated with, and that
+ * the invoice screen may override for one invoice — the same "account
+ * defaults prefill, the screen decides" idiom as day rates and payment
+ * terms. It is a preference and not a column for exactly the reason
+ * 20260813000000's header gives: nothing in the database computes on it.
+ *
+ * The VALUE is validated by lib/stripe/payment-methods.ts, which is also
+ * what the link generator and the Settings panel read — one enumerated
+ * list, one resolver, no second opinion about what "ach" means.
+ */
+export type PaymentPreferences = { methods: PaymentMethodChoice };
+
 export type Preferences = {
   theme: ThemeSlots;
   nav: NavLayout;
+  payments: PaymentPreferences;
   templates: MessageTemplates;
+
 };
 
 export const DEFAULT_PREFERENCES: Preferences = {
   theme: DEFAULT_THEME_SLOTS,
   nav: DEFAULT_NAV_LAYOUT,
   templates: DEFAULT_MESSAGE_TEMPLATES,
+  payments: { methods: DEFAULT_PAYMENT_METHOD_CHOICE },
 };
 
 /**
@@ -86,6 +110,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
 const THEME_KEY = "theme";
 const NAV_KEY = "nav";
 const TEMPLATES_KEY = "templates";
+const PAYMENTS_KEY = "payments";
+
 
 /** Untrusted jsonb → known-good preferences. Total; never throws. */
 export function resolvePreferences(raw: unknown): Preferences {
@@ -97,8 +123,26 @@ export function resolvePreferences(raw: unknown): Preferences {
   return {
     theme: resolveThemeSlots(source[THEME_KEY]),
     nav: normalizeNavLayout(source[NAV_KEY]),
+    payments: resolvePaymentPreferences(source[PAYMENTS_KEY]),
     templates: normalizeMessageTemplates(source[TEMPLATES_KEY]),
+
   };
+}
+
+/**
+ * Total over `unknown`, like every other resolver here — and note that
+ * `payments` is ABSENT from every row written before this build, which is
+ * the ordinary case rather than the edge one. An absent key, a null, a
+ * string where an object belongs and an unrecognised method all resolve to
+ * the product's default, which is what an account that has never opened
+ * this control should get.
+ */
+function resolvePaymentPreferences(raw: unknown): PaymentPreferences {
+  const source =
+    typeof raw === "object" && raw !== null && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  return { methods: normalizePaymentMethodChoice(source.methods) };
 }
 
 /** Preferences → the props the app shell renders with. */
@@ -172,6 +216,7 @@ export async function loadResolvedTheme(accountId: string): Promise<ResolvedThem
 async function writePreferenceSection(
   accountId: string,
   patch: Partial<Preferences>
+
 ): Promise<{ error: string | null }> {
   const supabase = await createClient();
 
@@ -192,22 +237,27 @@ async function writePreferenceSection(
   const current = resolvePreferences(existing);
   const next: Preferences = { ...current, ...patch };
 
+
   // Re-resolved on the way out: the stored blob is always in the shape
   // this build's readers expect, never whatever a caller happened to hand
   // in.
   const resolved = resolvePreferences({
     [THEME_KEY]: next.theme,
     [NAV_KEY]: next.nav,
+    [PAYMENTS_KEY]: next.payments,
     [TEMPLATES_KEY]: next.templates,
+
   });
 
   const prefs = {
     [THEME_KEY]: resolved.theme,
     [NAV_KEY]: { order: [...resolved.nav.order], hidden: [...resolved.nav.hidden] },
+    [PAYMENTS_KEY]: resolved.payments,
     [TEMPLATES_KEY]: {
       invoice: resolved.templates.invoice,
       reminder: resolved.templates.reminder,
     },
+
   };
 
   /**
@@ -321,5 +371,23 @@ export async function saveMessageTemplates(
 ): Promise<{ error: string | null }> {
   return writePreferenceSection(accountId, {
     templates: normalizeMessageTemplates(templates),
+  });
+}
+
+/**
+ * The account's default for what a new payment link offers.
+ *
+ * Changes NOTHING about links already sent: a Payment Link's methods are
+ * fixed on Stripe when it is created, and this product does not update
+ * links in place. The panel that calls this says so, because "I turned card
+ * payments off" reading as "the link in my client's inbox stopped taking
+ * cards" would be a very expensive misunderstanding.
+ */
+export async function savePaymentMethods(
+  accountId: string,
+  methods: PaymentMethodChoice
+): Promise<{ error: string | null }> {
+  return writePreferenceSection(accountId, {
+    payments: { methods: normalizePaymentMethodChoice(methods) },
   });
 }

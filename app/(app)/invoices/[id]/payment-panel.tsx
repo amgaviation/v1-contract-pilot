@@ -3,6 +3,11 @@
 import { useActionState, useEffect, useState } from "react";
 import { Button, Callout, Card, Flex, Select, Separator, Text, TextField } from "@/components/ui";
 import { formatCents, formatDate } from "@/lib/format";
+import {
+  BANK_PAYMENT_FEE_NOTE,
+  PAYMENT_METHOD_CHOICES,
+  type PaymentMethodChoice,
+} from "@/lib/stripe/payment-methods";
 import { correctPayment, recordPayment, type InvoiceFormState } from "../actions";
 import {
   createInvoicePaymentLink,
@@ -37,22 +42,34 @@ export type PaymentRow = {
 };
 
 /**
- * One unresolved pilot.stripe_connect_events row — a Stripe payment that
- * arrived for this invoice and was deliberately NOT recorded.
+ * One unresolved pilot.stripe_connect_events row — something that happened
+ * to this invoice on Stripe and did NOT become a payment row.
  *
- * Two outcomes reach here (page.tsx's query says which and why):
- * 'needs_review', where it looked as though the payment had already been
- * entered by hand, and 'refused', where the invoice or the session could
- * not take it — a client paying a link that outlived a voided invoice,
- * most of all, which is real money sitting in the pilot's Stripe balance
- * against a dead document. Both render identically because the pilot's job
- * is identical: look, and decide. See markConnectNoticeReviewed for why
- * dismissing is the only action.
+ * FOUR outcomes reach here (page.tsx's query says which and why), and they
+ * fall into two groups that must not look alike:
+ *
+ *   MONEY ARRIVED AND WE DID NOT RECORD IT — 'needs_review' (it looked as
+ *   though the pilot had already entered it by hand) and 'refused' (the
+ *   invoice or the session could not take it: a client paying a link that
+ *   outlived a voided invoice, most of all, which is real money sitting in
+ *   the pilot's Stripe balance against a dead document). A human has to
+ *   look. Amber.
+ *
+ *   MONEY IS ON ITS WAY, OR NEVER CAME — 'payment_pending' (a bank debit
+ *   authorised and settling; nothing to do, and it takes itself off the
+ *   screen when it lands) and 'payment_failed' (the debit failed; the link
+ *   was spent at authorisation and needs replacing). The first of those is
+ *   INFORMATION, and dressing it as a warning would be the fastest way to
+ *   teach a pilot to ignore warnings.
+ *
+ * 20260813120000 added the last two.
  */
 export type ConnectNoticeRow = {
   id: string;
   connected_account_id: string;
   detail: string | null;
+  /** The stored outcome; null only for a row written before it was set. */
+  outcome?: string | null;
 };
 
 /**
@@ -211,6 +228,17 @@ const initialLinkState: CreateLinkState = { error: null };
  * recordPayment retires a link whenever a payment lands, so the mismatch
  * should be rare; it is surfaced anyway, because "rare" is not
  * "impossible" and the cost of missing it lands on someone else.
+ *
+ * A LINK'S PAYMENT METHODS ARE FIXED ONCE TOO, and this panel is careful
+ * about which tense it uses about them. The control below chooses what the
+ * NEXT link offers (prefilled from the account default in Settings); it
+ * says nothing about a link already generated, because this product does
+ * not store what an existing link offers and cannot ask Stripe for it
+ * without a round trip on every render. So the copy about an existing link
+ * names the AMOUNT — which is stored — and never the methods. "Send this
+ * link to your client to pay $4,500 by card" was that mistake in its
+ * earlier form: once a link can offer a bank debit, that sentence is a
+ * guess, and it is the client who would find out it was wrong.
  */
 function PayOnlinePanel({
   invoiceId,
@@ -218,14 +246,40 @@ function PayOnlinePanel({
   existingLinkUrl,
   existingLinkAmountCents,
   balanceDueCents,
+  defaultMethods,
+  bankPaymentSettling,
 }: {
   invoiceId: string;
   connected: boolean;
   existingLinkUrl: string | null;
   existingLinkAmountCents: number | null;
   balanceDueCents: number | null;
+  /** The account default from Settings — this control's starting value. */
+  defaultMethods: PaymentMethodChoice;
+  /**
+   * True while an unresolved 'payment_pending' notice sits on this invoice —
+   * a bank debit authorised and settling.
+   *
+   * WHICH MEANS THE STORED LINK IS ALREADY DEAD, and this panel must stop
+   * telling the pilot to send it. Stripe deactivates a link at the first
+   * COMPLETED Checkout Session (restrictions.completed_sessions.limit = 1),
+   * and for a bank payment that is mandate acceptance, days before the money
+   * lands. The pending path deliberately leaves the URL on the invoice —
+   * nothing has failed, and clearing it would erase the record of what the
+   * client is paying — so for those few business days the imperative "Send
+   * this link to your client to pay $4,500" is an instruction to send a URL
+   * that answers with Stripe's "no longer active" page. A pilot who follows
+   * it forwards a broken link to an AP desk while the blue notice above
+   * says nothing is wrong.
+   */
+  bankPaymentSettling: boolean;
 }) {
   const [state, formAction, pending] = useActionState(createInvoicePaymentLink, initialLinkState);
+  // Controlled, posted through a hidden input: React 19 resets an
+  // uncontrolled form on every action dispatch (see appearance-panel.tsx),
+  // and a method control that silently snapped back to the account default
+  // after a failed attempt would mint the wrong link on the second press.
+  const [methods, setMethods] = useState<PaymentMethodChoice>(defaultMethods);
   // Rendered from the server-refreshed props for THIS render, never from
   // state.url — that flag is set once by a successful creation and never
   // clears (useActionState state never clears), so after a LATER action on
@@ -251,7 +305,8 @@ function PayOnlinePanel({
   if (!connected) {
     return (
       <Text size="1" color="gray">
-        Connect Stripe from Settings to accept card payments online.
+        Connect Stripe from Settings to let clients pay online, by card or by
+        bank payment (ACH).
       </Text>
     );
   }
@@ -260,19 +315,52 @@ function PayOnlinePanel({
     <Flex direction="column" gap="2" align="start">
       {url ? (
         <Flex direction="column" gap="1" width="100%">
-          {!stale ? (
+          {bankPaymentSettling ? (
+            // NOT AN IMPERATIVE, because this link cannot be paid any more.
+            // The blue notice above this panel is where the pilot reads what
+            // is happening to the money; this sentence exists only to stop
+            // the URL below being read as something to send.
             <Text size="1" color="gray">
               {linkAmountCents !== null
-                ? `Send this link to your client to pay ${formatCents(linkAmountCents)} by card:`
-                : "Send this link to your client to pay by card:"}
+                ? `This link has been used — don't send it again. Your client authorised a bank payment of ${formatCents(linkAmountCents)} on it:`
+                : "This link has been used — don't send it again. Your client authorised a bank payment on it:"}
+            </Text>
+          ) : !stale ? (
+            <Text size="1" color="gray">
+              {linkAmountCents !== null
+                ? `Send this link to your client to pay ${formatCents(linkAmountCents)}:`
+                : "Send this link to your client:"}
             </Text>
           ) : null}
           <TextField.Root readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
-          <Text size="1" color="gray">
-            It can only be paid once — Stripe switches it off after the first
-            payment goes through. Generating a new link switches this one off
-            too.
-          </Text>
+          {/* THE SECOND SENTENCE IS THE ACH ONE, and it is here rather than
+              in a tooltip because it is the single most surprising thing
+              about a bank payment: the link is spent at AUTHORISATION, days
+              before the money lands. A pilot who does not know that reads
+              "used up" as "paid" and marks the invoice off.
+
+              While a debit is actually settling, that fact is not a caveat
+              any more — it is the state of this link — so it is said in the
+              past tense and the "generate a new one" offer below is framed
+              as a SEPARATE payment rather than a retry. */}
+          {bankPaymentSettling ? (
+            <Text size="1" color="gray">
+              Stripe switched it off when your client authorised the debit: a
+              bank payment (ACH) counts as gone through at authorisation, a few
+              business days before the money actually lands. It is kept here so
+              you can see what they were sent. Only generate a new link if you
+              need a second, separate payment on this invoice — if this debit
+              fails, this app clears the dead link and tells you to replace it.
+            </Text>
+          ) : (
+            <Text size="1" color="gray">
+              It can only be paid once — Stripe switches it off after the first
+              payment goes through. A bank payment (ACH) counts as gone through the
+              moment your client authorises it, which is a few business days before
+              the money actually lands. Generating a new link switches this one off
+              too.
+            </Text>
+          )}
         </Flex>
       ) : null}
       {stale && balanceDueCents !== null ? (
@@ -286,9 +374,36 @@ function PayOnlinePanel({
       ) : null}
       <form action={formAction}>
         <input type="hidden" name="invoice_id" value={invoiceId} />
-        <Button type="submit" variant="outline" disabled={pending}>
-          {pending ? "Creating…" : url ? "Generate a new link" : "Generate payment link"}
-        </Button>
+        <input type="hidden" name="methods" value={methods} />
+        <Flex direction="column" gap="2" align="start">
+          {/* PER-INVOICE, PREFILLED FROM THE ACCOUNT DEFAULT. The same
+              "account defaults prefill, the screen decides" idiom as day
+              rates and payment terms — a pilot who takes cards on small
+              invoices and insists on ACH for a five-figure one should not
+              have to go to Settings and back. */}
+          <Text as="label" size="1" color="gray" id="link-methods-label">
+            What this link accepts
+          </Text>
+          <Select.Root
+            value={methods}
+            onValueChange={(value) => setMethods(value as PaymentMethodChoice)}
+          >
+            <Select.Trigger aria-labelledby="link-methods-label" />
+            <Select.Content>
+              {PAYMENT_METHOD_CHOICES.map((option) => (
+                <Select.Item key={option.value} value={option.value}>
+                  {option.label}
+                </Select.Item>
+              ))}
+            </Select.Content>
+          </Select.Root>
+          <Text size="1" color="gray">
+            {BANK_PAYMENT_FEE_NOTE}
+          </Text>
+          <Button type="submit" variant="outline" disabled={pending}>
+            {pending ? "Creating…" : url ? "Generate a new link" : "Generate payment link"}
+          </Button>
+        </Flex>
       </form>
       <Flex direction="column" gap="2" role="alert" aria-live="polite">
         {state.error ? (
@@ -299,6 +414,15 @@ function PayOnlinePanel({
         {state.warning ? (
           <Callout.Root color="amber" size="1">
             <Callout.Text>{state.warning}</Callout.Text>
+          </Callout.Root>
+        ) : null}
+        {/* SEPARATE FROM `warning`, because they are separate facts about
+            separate links: `warning` is "the OLD link may still be live",
+            this is "the NEW one couldn't be given the bank option you
+            asked for". Both can be true at once. */}
+        {state.methodNotice ? (
+          <Callout.Root color="amber" size="1">
+            <Callout.Text>{state.methodNotice}</Callout.Text>
           </Callout.Root>
         ) : null}
       </Flex>
@@ -330,19 +454,54 @@ const initialState: InvoiceFormState = { error: null };
 const initialReviewState: ReviewNoticeState = { error: null };
 
 /**
- * A Stripe payment that arrived for this invoice and was NOT recorded.
+ * What a notice says when its stored `detail` is null.
  *
- * This is the visible half of the double-record guard. The webhook can
- * tell that money arrived; it cannot tell whether the row already sitting
- * on this invoice is that same money entered by hand or a genuinely
- * separate payment — and guessing wrong either credits a client twice or
- * hides a payment. So it declines, writes down what it saw, and this
- * renders that sentence where the pilot is already standing.
+ * ONE FALLBACK FOR FOUR OUTCOMES IS A LIE FOR TWO OF THEM. The webhook
+ * always writes a detail today, so this is convention rather than a
+ * guarantee — but the single sentence it used to carry ("A payment arrived
+ * through this invoice's payment link and was not recorded automatically")
+ * is the exact inversion of what a pending or a failed row means. A debit
+ * that is still settling has not arrived, and a debit that failed never
+ * will; telling a pilot money arrived in either case is the one mistake
+ * this whole feature exists to prevent, and it is not worth leaving one
+ * trimmed column or one future write-path away.
+ */
+function fallbackDetail(outcome: string | null | undefined): string {
+  switch (outcome) {
+    case "payment_pending":
+      return "A bank payment (ACH) was started on this invoice and has not settled yet — no money has arrived, nothing has been recorded, and the balance is unchanged. There is nothing to do but wait.";
+    case "payment_failed":
+      return "A payment started on this invoice failed, so no money ever arrived and nothing was recorded. That payment link was used up when your client authorised it — generate a new one if they still want to pay online.";
+    default:
+      return "A payment arrived through this invoice's payment link and was not recorded automatically. Check Stripe before recording it yourself.";
+  }
+}
+
+/**
+ * Something that happened on Stripe for this invoice and did NOT become a
+ * payment row.
  *
- * Amber rather than red: nothing is broken and no money was lost. The
- * only action is "I've checked" — there is deliberately no "record it
- * anyway" button here, because the ordinary payment form is right below
- * and is the honest way to add a payment the pilot has decided is real.
+ * For 'needs_review' and 'refused' this is the visible half of the
+ * double-record guard: the webhook can tell that money arrived, but not
+ * whether the row already sitting on this invoice is that same money
+ * entered by hand or a genuinely separate payment — and guessing wrong
+ * either credits a client twice or hides a payment. So it declines, writes
+ * down what it saw, and this renders that sentence where the pilot is
+ * already standing. There is deliberately no "record it anyway" button:
+ * the ordinary payment form is right below and is the honest way to add a
+ * payment the pilot has decided is real.
+ *
+ * For 'payment_pending' this is not a warning at all — a bank debit has
+ * been authorised and is settling, the invoice is untouched, and the only
+ * correct action is none. It is blue rather than amber for exactly that
+ * reason, and its button says "Hide this" rather than "I've checked this",
+ * because there is nothing to check.
+ *
+ * WHY A PENDING NOTICE IS DISMISSIBLE AT ALL, given that the webhook
+ * supersedes it automatically when the payment settles or fails: that
+ * supersede is a best-effort write (see supersedePendingNotice — it must
+ * not 500 a handler that has just recorded money). If it ever fails, this
+ * button is the only way the notice ever leaves the screen.
  */
 function ConnectNotice({
   invoiceId,
@@ -356,12 +515,12 @@ function ConnectNotice({
     initialReviewState
   );
 
+  const isPending = notice.outcome === "payment_pending";
+  const color = isPending ? "blue" : "amber";
+
   return (
-    <Callout.Root color="amber" size="1" mb="3">
-      <Callout.Text>
-        {notice.detail ??
-          "A payment arrived through this invoice's payment link and was not recorded automatically. Check Stripe before recording it yourself."}
-      </Callout.Text>
+    <Callout.Root color={color} size="1" mb="3">
+      <Callout.Text>{notice.detail ?? fallbackDetail(notice.outcome)}</Callout.Text>
       <form action={formAction}>
         <input type="hidden" name="invoice_id" value={invoiceId} />
         <input type="hidden" name="event_id" value={notice.id} />
@@ -371,8 +530,8 @@ function ConnectNotice({
           value={notice.connected_account_id}
         />
         <Flex align="center" gap="2" mt="2">
-          <Button type="submit" size="1" variant="soft" color="amber" disabled={pending}>
-            {pending ? "Dismissing…" : "I’ve checked this"}
+          <Button type="submit" size="1" variant="soft" color={color} disabled={pending}>
+            {pending ? "Hiding…" : isPending ? "Hide this" : "I’ve checked this"}
           </Button>
           {state.error ? (
             <Text size="1" color="red">
@@ -413,6 +572,7 @@ export default function PaymentPanel({
   existingPaymentLinkAmountCents,
   balanceDueCents,
   connectNotices = [],
+  defaultPaymentMethods,
 }: {
   invoiceId: string;
   status: "draft" | "sent" | "partial" | "paid" | "void";
@@ -439,6 +599,13 @@ export default function PaymentPanel({
    * invoice could not take it at all.
    */
   connectNotices?: ConnectNoticeRow[];
+  /**
+   * The account's Settings default for what a new payment link offers,
+   * prefilling the per-invoice control. Server-resolved (lib/preferences.ts
+   * is total over the stored blob), so this is always a value this build
+   * recognises even for an account whose row predates the preference.
+   */
+  defaultPaymentMethods: PaymentMethodChoice;
 }) {
   const [state, formAction, pending] = useActionState(recordPayment, initialState);
   // H5: a rejected payment used to blank amount/notes/date entirely — it
@@ -465,6 +632,14 @@ export default function PaymentPanel({
   // the answer is already on this screen.
   const corrected = new Set(
     payments.map((p) => p.reverses_payment_id).filter((id): id is string => Boolean(id))
+  );
+  // A bank debit authorised on this invoice and not yet settled or failed.
+  // Read from the notices rather than from the invoice row, because the
+  // invoice row has nothing to say about it by design: a pending debit moves
+  // no balance, no status and no payment row. See PayOnlinePanel's own prop
+  // comment for what it changes and why it has to.
+  const bankPaymentSettling = connectNotices.some(
+    (notice) => notice.outcome === "payment_pending"
   );
 
   return (
@@ -568,6 +743,8 @@ export default function PaymentPanel({
             existingLinkUrl={existingPaymentLinkUrl}
             existingLinkAmountCents={existingPaymentLinkAmountCents}
             balanceDueCents={balanceDueCents}
+            defaultMethods={defaultPaymentMethods}
+            bankPaymentSettling={bankPaymentSettling}
           />
           <Separator size="4" my="3" />
         </>

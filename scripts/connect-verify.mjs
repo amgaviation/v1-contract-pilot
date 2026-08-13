@@ -693,7 +693,8 @@ reset role;
 --     them, and dismissible on the same terms as a 'needs_review' one.
 --
 --     This is the database half of the invoice screen's query, which reads
---     outcome in ('needs_review','refused'). The sentence a refusal carries
+--     outcome in ('needs_review','refused','payment_pending','payment_failed')
+--     as of 20260813120000. The sentence a refusal carries
 --     is often the most urgent one this handler ever writes — "the client
 --     paid $4,500 through a link that should have been deactivated, refund
 --     them" — and it went for a while to the events ledger and a platform
@@ -720,7 +721,8 @@ begin
   -- dismissed a moment ago, so this must find exactly the refused one.
   select count(*) into n from pilot.stripe_connect_events
     where invoice_id = '00000000-0000-0000-0000-00000000d1e4'
-      and outcome in ('needs_review', 'refused') and reviewed_at is null;
+      and outcome in ('needs_review', 'refused', 'payment_pending', 'payment_failed')
+      and reviewed_at is null;
   if n <> 1 then
     raise exception 'CONNECT-7f FAILURE: the invoice screen''s query returns % unresolved prompt(s) — a refused payment is not reaching the pilot', n;
   end if;
@@ -732,6 +734,76 @@ begin
     raise exception 'CONNECT-7f FAILURE: the pilot could not dismiss a refused-payment prompt (% rows)', n;
   end if;
   raise notice 'PASS (CONNECT-7f): a refused payment on this tenant''s invoice is readable by them and dismissible, exactly like a needs_review one';
+end $$;
+reset role;
+
+-- 7g  the two ASYNC outcomes (20260813120000) are accepted by the CHECK,
+--     reach the pilot through the same query, and are dismissible.
+--
+--     WHY THIS IS A REAL-POSTGRES ASSERTION AND NOT A UNIT TEST. The
+--     vocabulary lives in a CHECK constraint, and that migration DROPS the
+--     original inline check by looking it up in pg_constraint rather than
+--     by its generated name. If that lookup ever misses, the ADD still
+--     succeeds and the table keeps TWO checks — the older one refusing
+--     exactly these two values — and the webhook then 500s on every
+--     pending ACH delivery while Stripe retries for three days. Nothing in
+--     the TypeScript can see that; this insert can.
+set local role service_role;
+insert into pilot.stripe_connect_events
+  (id, connected_account_id, type, stripe_created_at, object_id, payment_intent_id,
+   livemode, account_id, invoice_id, outcome, detail, processed_at)
+  values
+    ('evt_connect_verify_pending', 'acct_connect_verify', 'checkout.session.completed', now(),
+     'cs_connect_verify_3', 'pi_connect_verify_3', false, '${A}',
+     '00000000-0000-0000-0000-00000000d1e4', 'payment_pending',
+     'bank payment (ACH) initiated — not paid yet', now()),
+    ('evt_connect_verify_failed', 'acct_connect_verify', 'checkout.session.async_payment_failed', now(),
+     'cs_connect_verify_4', 'pi_connect_verify_4', false, '${A}',
+     '00000000-0000-0000-0000-00000000d1e4', 'payment_failed',
+     'the bank payment failed — generate a new link', now());
+
+do $$
+begin
+  begin
+    insert into pilot.stripe_connect_events
+      (id, connected_account_id, type, stripe_created_at, livemode, outcome)
+      values ('evt_connect_verify_bogus', 'acct_connect_verify', 'checkout.session.completed',
+              now(), false, 'settled_probably');
+    raise exception 'CONNECT-7g FAILURE: the outcome vocabulary accepts anything at all';
+  exception when check_violation then
+    raise notice 'PASS (CONNECT-7g, sqlstate confirmed 23514): the outcome CHECK still refuses a value outside the list';
+  end;
+end $$;
+reset role;
+
+set local role authenticated;
+select set_config('request.jwt.claims', json_build_object('sub', '${UA}', 'role', 'authenticated')::text, true);
+do $$
+declare
+  n integer;
+begin
+  -- Both async rows must reach the invoice screen. A pending five-figure
+  -- debit that nobody can see is how a pilot chases a client who has
+  -- already paid, or hand-records money the settlement event then records
+  -- again.
+  select count(*) into n from pilot.stripe_connect_events
+    where invoice_id = '00000000-0000-0000-0000-00000000d1e4'
+      and outcome in ('needs_review', 'refused', 'payment_pending', 'payment_failed')
+      and reviewed_at is null;
+  if n <> 2 then
+    raise exception 'CONNECT-7g FAILURE: the invoice screen sees % of the 2 async prompts', n;
+  end if;
+  -- reviewed_at is still the only column they may write, and it is what
+  -- the webhook itself stamps to supersede a pending notice once the
+  -- payment settles or fails.
+  update pilot.stripe_connect_events set reviewed_at = now()
+    where id in ('evt_connect_verify_pending', 'evt_connect_verify_failed')
+      and connected_account_id = 'acct_connect_verify' and account_id = '${A}';
+  get diagnostics n = row_count;
+  if n <> 2 then
+    raise exception 'CONNECT-7g FAILURE: the pilot could not dismiss the async prompts (% rows)', n;
+  end if;
+  raise notice 'PASS (CONNECT-7g): a pending and a failed bank payment both reach the pilot and are dismissible';
 end $$;
 reset role;
 

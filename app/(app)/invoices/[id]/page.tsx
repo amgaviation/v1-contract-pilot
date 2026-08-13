@@ -131,10 +131,19 @@ export default async function InvoicePage({
       .select("token, revoked_at, first_viewed_at, last_viewed_at")
       .eq("invoice_id", id)
       .maybeSingle(),
-    // Stripe payments for this invoice that the Connect webhook deliberately
-    // did NOT record (20260813100000). Almost always zero rows.
+    // What the Connect webhook saw for this invoice and did NOT turn into a
+    // payment row (20260813100000, 20260813120000). Almost always zero rows.
     //
-    // BOTH OUTCOMES, not just 'needs_review'. They differ in why the money
+    // FOUR OUTCOMES, and `outcome` is SELECTED as well as filtered on,
+    // because the panel renders two of them differently: 'payment_pending'
+    // is a bank debit on its way — information, in blue, with nothing for
+    // the pilot to do — while the other three are amber and want a human.
+    // Selecting the column is what lets the panel tell them apart; without
+    // it, "your client's money lands Thursday" would render as a warning
+    // beside "a client paid a voided invoice, refund them", and a pilot who
+    // learns that warnings here are routine will miss the one that is not.
+    //
+    // BOTH OF THE ORIGINAL OUTCOMES, not just 'needs_review'. They differ in why the money
     // was not recorded — 'needs_review' means it looked like money already
     // entered by hand, 'refused' means the invoice or the session could not
     // take it (a client paying a link that outlived a voided invoice; a
@@ -158,9 +167,9 @@ export default async function InvoicePage({
     // account carry a null account_id and are visible to nobody.
     supabase
       .from("stripe_connect_events")
-      .select("id, connected_account_id, detail")
+      .select("id, connected_account_id, detail, outcome")
       .eq("invoice_id", id)
-      .in("outcome", ["needs_review", "refused"])
+      .in("outcome", ["needs_review", "refused", "payment_pending", "payment_failed"])
       .is("reviewed_at", null)
       .order("stripe_created_at", { ascending: false }),
   ]);
@@ -188,6 +197,12 @@ export default async function InvoicePage({
   })[];
   const share = (shareData ?? null) as ShareRow;
   const connectNotices = (connectNoticeData ?? []) as ConnectNoticeRow[];
+
+  // The account's default for what a new payment link offers. Total over
+  // the stored blob (lib/preferences.ts), so an account that has never
+  // touched the control — every account, until today — gets the product's
+  // own default rather than an empty control.
+  const preferences = await loadPreferences(account.id);
 
   // The client this invoice actually bills, for the send controls. Read off
   // the list already fetched rather than issuing a sixth query.
@@ -640,6 +655,7 @@ export default async function InvoicePage({
             }
             balanceDueCents={totals?.balance_due_cents ?? null}
             connectNotices={connectNotices}
+            defaultPaymentMethods={preferences.payments.methods}
           />
         </Flex>
       </Grid>

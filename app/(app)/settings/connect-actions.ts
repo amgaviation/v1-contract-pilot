@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { friendlyDbError } from "@/lib/db-errors";
 import { buildConnectAuthorizeUrl, deauthorizeConnectAccount } from "@/lib/stripe/connect";
+import { savePaymentMethods } from "@/lib/preferences";
+import { isPaymentMethodChoice } from "@/lib/stripe/payment-methods";
 
 /**
  * Server actions for Stripe Connect (Standard) onboarding/disconnect.
@@ -166,4 +168,50 @@ export async function disconnectStripeConnect(
   revalidatePath("/settings");
   revalidatePath("/invoices");
   return { error: null, warning };
+}
+
+export type PaymentMethodsState = { error: string | null; saved?: boolean };
+
+/**
+ * The account's default for what a new payment link offers: card, bank
+ * payment (ACH), or both.
+ *
+ * REFUSES AN UNRECOGNISED VALUE rather than defaulting it, the same rule
+ * saveAppearance applies: a stored blob may legitimately predate this build
+ * and is resolved on read, but a FORM POST naming a method this build does
+ * not know is a bug or a probe, and answering "saved!" while storing
+ * something else is worse than saying no.
+ *
+ * Owner-gated for the message, like every other settings action — the RLS
+ * policy on account_preferences is "any member of the account", so the
+ * database boundary is the policy and this is the product decision that how
+ * an account collects money is the owner's.
+ *
+ * CHANGES NO LINK THAT ALREADY EXISTS. A Payment Link's methods are fixed
+ * on Stripe at creation; this only decides what the NEXT one is minted
+ * with. The panel says so, because the opposite reading ("I have just
+ * turned cards off everywhere") would be a costly thing to believe.
+ */
+export async function savePaymentMethodChoice(
+  _prevState: PaymentMethodsState,
+  formData: FormData
+): Promise<PaymentMethodsState> {
+  const { account, role } = await requireAccount("/settings");
+  if (role !== "owner") {
+    return { error: "Only the account owner can change how this account gets paid." };
+  }
+
+  const posted = formData.get("methods");
+  if (!isPaymentMethodChoice(posted)) {
+    return { error: "Pick one of the payment options shown." };
+  }
+
+  const { error } = await savePaymentMethods(account.id, posted);
+  if (error) return { error };
+
+  const { revalidatePath } = await import("next/cache");
+  revalidatePath("/settings");
+  // Every invoice detail screen prefills its per-invoice control from this.
+  revalidatePath("/invoices/[id]", "page");
+  return { error: null, saved: true };
 }
