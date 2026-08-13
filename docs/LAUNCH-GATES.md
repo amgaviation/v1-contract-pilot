@@ -272,13 +272,26 @@ easiest to leave undone because nothing visibly breaks without it. It is the sig
 delivery. Register it in the Stripe dashboard, in the same mode as the platform key, pointed at
 `/api/stripe/connect-webhook`, with **"Listen to events on connected accounts"** selected (the
 non-default choice; a direct charge on a pilot's own account is only delivered on that scope)
-and subscribed to `checkout.session.completed` **and**
-`checkout.session.async_payment_succeeded`. Until it is set, the route answers 503 to every
+and subscribed to **three** event types — `checkout.session.completed`,
+`checkout.session.async_payment_succeeded` and `checkout.session.async_payment_failed`
+(`CONNECT_ENDPOINT_EVENT_TYPES` in `lib/stripe/connect-payments.ts` is the authority; this
+list is a copy of it). Until the secret is set, the route answers 503 to every
 delivery before touching Stripe or the database, and a client's payment is not recorded on the
 invoice — the pilot has to enter it by hand from their Stripe dashboard, which is exactly the
 behaviour that existed before 2026-08-13 and is not a fault, just an unfinished switch.
 
-Subscribe to **those two event types only**. Refunds and disputes (`charge.refunded`,
+**Why all three, and what breaks with two.** A payment link can offer a bank payment (ACH)
+as well as a card, and a bank debit settles ASYNCHRONOUSLY: `checkout.session.completed`
+fires when the client accepts the mandate, with `payment_status` still `unpaid` and the money
+not yet moved, and one of the other two follows a few business days later. Register only the
+first and no ACH payment is ever recorded at all. Register only the first two and a **failed**
+debit is invisible: the invoice keeps showing "bank payment initiated — settles in a few
+business days" for money that is never coming, and the payment link (which Stripe deactivates
+at mandate acceptance, because it is restricted to one completed session) is never replaced,
+so the client has no way to try again. This is the one registration mistake whose symptom
+looks like nothing being wrong.
+
+Subscribe to **those three event types only**. Refunds and disputes (`charge.refunded`,
 `charge.dispute.*`) are deliberately out of scope for automatic recording, and this is the
 place that has to say so before launch rather than after a pilot discovers it: when a pilot
 refunds a client in their own Stripe dashboard — including the refund this product itself asks
@@ -290,6 +303,34 @@ payment-intent unique index to make an auto-reversal safe to retry) is in the he
 `lib/stripe/connect-payments.ts`. This is a documented decision, not an oversight — but it is
 a gap in the same books-drift direction the auto-recording feature was built to close, so it
 is written down where the launch checklist will meet it.
+
+ACH widens that gap slightly and the honest thing is to say by how much. A bank debit that
+**settles** can still be reversed afterwards: Stripe allows a personal-account holder to
+dispute an ACH debit for up to 60 days (about two business days for a business account), and
+in rare cases Stripe receives a bank failure after the PaymentIntent has already reached
+`succeeded`. Both arrive as `charge.dispute.*` — the same unsubscribed path as a card
+chargeback — so the invoice goes on reading Paid until the pilot corrects it by hand. A
+`checkout.session.async_payment_failed` is a different and smaller thing: money that never
+arrived, handled automatically, with nothing to reverse.
+
+**Apply `supabase/migrations/20260813120000_connect_async_payments.sql` BEFORE deploying the
+build that writes the two new outcomes**, not after it. That migration widens one CHECK
+constraint on `pilot.stripe_connect_events` so `outcome` may also be `'payment_pending'` or
+`'payment_failed'`; it is purely additive, so applying it early against the previous build
+changes nothing observable. Applying it late does not fail the same way: until it lands, every
+unsettled or failed ACH delivery hits the old constraint, Postgres raises `23514`, the Connect
+route answers 500, and Stripe retries that delivery for up to three days. Nothing is
+mis-recorded in that window — card payments and settled ACH payments write outcomes the old
+constraint already allowed, so money keeps landing on the right invoices — but every bank debit
+in flight sits in a retry loop and no pilot sees a pending or failed notice. `npm run
+connect:verify` checks the constraint's shape and is the fastest way to confirm the migration is
+in before the deploy goes out.
+
+**Before enabling ACH for a pilot**, check that `us_bank_account_ach_payments` is `active` on
+their connected account. The product reads this itself and degrades honestly — a link is
+created card-only with a sentence saying why, rather than failing — but a pilot who signed up
+for lower fees and silently gets card-only links has not got what they came for. The Settings
+→ Business panel shows the current state.
 
 A pilot can be paying us on live platform billing while still connecting a test-mode Connect
 account, or the reverse. Neither is visible from the other's dashboard. Check both.

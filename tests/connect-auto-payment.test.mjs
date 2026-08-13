@@ -2,13 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 const {
+  ASYNC_FAILURE_EVENT_TYPE,
   AUTO_PAYMENT_EVENT_TYPES,
+  CONNECT_ENDPOINT_EVENT_TYPES,
   MANUAL_MATCH_WINDOW_DAYS,
   daysBetweenIsoDates,
   formatCentsPlain,
   isoDateFromUnixSeconds,
   manualMatchFloorCents,
   nextInvoiceStatus,
+  offersBankDebit,
   paymentMethodFromSession,
   readConnectPaymentEvent,
   resolveAutoPayment,
@@ -609,6 +612,239 @@ test("status advances exactly as the manual path advances it", () => {
   assert.equal(nextInvoiceStatus("void", 0), null);
   // A failed totals read must never be read as "balance zero, mark it paid".
   assert.equal(nextInvoiceStatus("sent", null), null);
+});
+
+// ---------------------------------------------------------------------------
+// ASYNC SETTLEMENT — the whole game once a link offers a bank debit (ACH)
+//
+// An ACH debit has THREE endings, not two. The client accepts the mandate
+// and `checkout.session.completed` arrives with payment_status 'unpaid' —
+// no money has moved, and typically will not for about four business days.
+// Then exactly one of `async_payment_succeeded` (it settled: this is the
+// payment) or `async_payment_failed` (the bank refused it: there is no
+// money and there never was).
+//
+// The failure this whole group exists to prevent is a five-figure invoice
+// reading Paid on the strength of a mandate the client's bank later
+// declines. The gate is `payment_status === 'paid'` and it is pinned in
+// both directions below: a pending debit must NEVER become a claim, and a
+// settled one must.
+// ---------------------------------------------------------------------------
+
+/** The bank-debit shape of the same fixture: link offered card AND bank. */
+function achEvent(overrides = {}, sessionOverrides = {}) {
+  return event(overrides, {
+    paymentMethodTypes: ["card", "us_bank_account"],
+    ...sessionOverrides,
+  });
+}
+
+test("the endpoint listens to three types; only two can become money", () => {
+  // TWO SEPARATE CONSTANTS ON PURPOSE. The wide one is what an operator
+  // registers in the Stripe dashboard; the narrow one is what may put a row
+  // in invoice_payments. Collapsing them would make a FAILED payment
+  // eligible to become a claim, which is the one thing it must never be.
+  assert.deepEqual([...CONNECT_ENDPOINT_EVENT_TYPES], [
+    "checkout.session.completed",
+    "checkout.session.async_payment_succeeded",
+    "checkout.session.async_payment_failed",
+  ]);
+  assert.equal(ASYNC_FAILURE_EVENT_TYPE, "checkout.session.async_payment_failed");
+  assert.ok(!AUTO_PAYMENT_EVENT_TYPES.includes(ASYNC_FAILURE_EVENT_TYPE));
+});
+
+test("INITIATED: an authorised bank debit is surfaced without being recorded", () => {
+  const read = readConnectPaymentEvent(achEvent({}, { paymentStatus: "unpaid" }));
+  // Still 'ignored' — the kind answers exactly one question ("does this put
+  // a row on the ledger?") and the answer is still no.
+  assert.equal(read.kind, "ignored");
+  assert.equal(read.async.state, "initiated");
+  assert.equal(read.async.sessionId, "cs_1");
+  assert.equal(read.async.paymentLinkId, "plink_1");
+  assert.equal(read.async.amountCents, 450000);
+  // ...but now attributable, which is what lets the route write a row the
+  // tenant can actually see (a null account_id is invisible under RLS).
+  assert.deepEqual(read.declared, {
+    declaredAccountId: ACCOUNT_ID,
+    declaredInvoiceId: INVOICE_ID,
+  });
+  // The sentence has three jobs: money is coming, it has NOT arrived, and
+  // there is nothing to do. The third matters most — the natural reaction
+  // to "pending" is to chase the client or type it in by hand, and both of
+  // those cost somebody money.
+  assert.match(read.detail, /not paid yet/);
+  assert.match(read.detail, /business days/);
+  assert.match(read.detail, /\$4,500\.00/);
+  assert.match(read.detail, /nothing to chase/);
+});
+
+test("INITIATED: a card-only link is never described as a bank payment", () => {
+  // payment_method_types is what was OFFERED. A link that never offered a
+  // bank debit cannot be waiting on one, and "your client's bank transfer
+  // is on its way" would be an invented fact.
+  const read = readConnectPaymentEvent(event({}, { paymentStatus: "unpaid" }));
+  assert.equal(read.kind, "ignored");
+  assert.equal(read.async.state, "initiated");
+  assert.match(read.detail, /not paid yet/);
+  assert.doesNotMatch(read.detail, /ACH/);
+  assert.equal(offersBankDebit(["card", "link"]), false);
+  assert.equal(offersBankDebit(["card", "us_bank_account"]), true);
+  assert.equal(offersBankDebit(null), false);
+});
+
+test("INITIATED: an unattributable pending debit stays a plain log line", () => {
+  // Nowhere to show it: a row with a null account_id is invisible to every
+  // tenant, so a notice would be written for a reader who does not exist.
+  const read = readConnectPaymentEvent(
+    achEvent({}, { paymentStatus: "unpaid", metadata: { invoice_number: "2026-0007" } })
+  );
+  assert.equal(read.kind, "ignored");
+  assert.equal(read.async, undefined);
+  assert.equal(read.declared, undefined);
+  assert.match(read.detail, /not paid yet/);
+});
+
+test("INITIATED → SUCCEEDED: settlement is the event that records the money", () => {
+  const claim = claimFrom(
+    achEvent({ eventType: "checkout.session.async_payment_succeeded" }, { paymentStatus: "paid" })
+  );
+  const decision = resolveAutoPayment({ claim, account, invoice: sentInvoice, ledger: [] });
+  assert.equal(decision.kind, "record");
+  assert.equal(decision.insert.amount_cents, 450000);
+  assert.equal(decision.insert.source, "stripe_link");
+  // THE DOCUMENTED TRADEOFF, pinned so it is a decision and not a
+  // surprise: a link offering BOTH card and bank makes payment_method_types
+  // ambiguous, so `method` is 'other' rather than a guess. Reading the real
+  // instrument means retrieving the PaymentIntent's charge — a second
+  // Stripe round trip inside a webhook, for a label.
+  assert.equal(decision.insert.method, "other");
+  // A bank-only link has no ambiguity and does get the right label.
+  const bankOnly = claimFrom(
+    event(
+      { eventType: "checkout.session.async_payment_succeeded" },
+      { paymentMethodTypes: ["us_bank_account"] }
+    )
+  );
+  assert.equal(bankOnly.method, "ach");
+});
+
+test("INITIATED → FAILED: nothing is recorded and the link is called spent", () => {
+  const read = readConnectPaymentEvent(
+    achEvent({ eventType: ASYNC_FAILURE_EVENT_TYPE }, { paymentStatus: "unpaid" })
+  );
+  assert.equal(read.kind, "ignored");
+  assert.equal(read.async.state, "failed");
+  assert.equal(read.async.paymentLinkId, "plink_1");
+  assert.deepEqual(read.declared, {
+    declaredAccountId: ACCOUNT_ID,
+    declaredInvoiceId: INVOICE_ID,
+  });
+  // Says the money never came, and names the one action there is. Stripe
+  // deactivates the link when the SESSION completes — at mandate
+  // acceptance, days before this event — so "ask them to try again" without
+  // "generate a new link" sends a client back to a dead URL.
+  assert.match(read.detail, /FAILED/);
+  assert.match(read.detail, /no money arrived/);
+  assert.match(read.detail, /balance is unchanged/);
+  assert.match(read.detail, /generate a new one/);
+  // No reason is invented. The failure reason lives on the PaymentIntent
+  // and fetching it is a second round trip inside a webhook for a sentence.
+  assert.doesNotMatch(read.detail, /insufficient/i);
+});
+
+test("FAILED is not 'refused' — 'refused' means money arrived and we declined it", () => {
+  // The distinction is the whole reason 20260813120000 adds outcomes rather
+  // than reusing one. A 'refused' row tells a pilot to go check their
+  // Stripe balance and possibly refund a client; a failed debit means there
+  // is nothing in the balance to check.
+  const failed = readConnectPaymentEvent(
+    achEvent({ eventType: ASYNC_FAILURE_EVENT_TYPE }, { paymentStatus: "unpaid" })
+  );
+  assert.notEqual(failed.kind, "refused");
+  assert.notEqual(failed.kind, "claim");
+});
+
+test("FAILED: metadata that names no usable invoice raises nothing at all", () => {
+  for (const metadata of [
+    {},
+    { invoice_number: "2026-0007" },
+    { invoice_id: "'; drop--", account_id: ACCOUNT_ID },
+  ]) {
+    const read = readConnectPaymentEvent(
+      achEvent({ eventType: ASYNC_FAILURE_EVENT_TYPE }, { paymentStatus: "unpaid", metadata })
+    );
+    // 'ignored' and NOT 'refused': no money moved, so there is nothing to
+    // tell anyone about, and a uuid this handler will never send to
+    // Postgres is not an error worth a row on somebody's invoice.
+    assert.equal(read.kind, "ignored");
+    assert.equal(read.async, undefined);
+  }
+});
+
+test("REPLAY: reading the same async delivery twice gives the same answer", () => {
+  // The read layer holds no state, which is what makes Stripe's three days
+  // of retries safe here: a redelivered pending or failed event produces an
+  // identical row, and the route's insert-first idempotency skips it once
+  // the first attempt finished.
+  for (const built of [
+    achEvent({}, { paymentStatus: "unpaid" }),
+    achEvent({ eventType: ASYNC_FAILURE_EVENT_TYPE }, { paymentStatus: "unpaid" }),
+  ]) {
+    assert.deepEqual(readConnectPaymentEvent(built), readConnectPaymentEvent(built));
+  }
+});
+
+test("REPLAY: a redelivered settlement never credits the client twice", () => {
+  // The events ledger alone cannot cover this — a row with a NULL
+  // processed_at is deliberately retryable — so the PaymentIntent check is
+  // what stands between an ACH retry and a second credit.
+  const claim = claimFrom(
+    achEvent({ eventType: "checkout.session.async_payment_succeeded" })
+  );
+  const decision = resolveAutoPayment({
+    claim,
+    account,
+    invoice: { ...sentInvoice, status: "paid" },
+    ledger: [
+      {
+        id: "pay_ach",
+        amount_cents: 450000,
+        paid_on: "2026-08-13",
+        source: "stripe_link",
+        stripe_payment_intent_id: "pi_1",
+        reverses_payment_id: null,
+      },
+    ],
+  });
+  // 'duplicate', not 'needs_review': an invoice this handler itself settled
+  // must not then nag the pilot about the payment that settled it.
+  assert.equal(decision.kind, "duplicate");
+});
+
+test("a pending debit can never reach the ledger, whatever else is true", () => {
+  // The belt-and-braces sweep. No combination of invoice state or ledger
+  // contents turns an unpaid session into a claim, because the read never
+  // hands one over — resolveAutoPayment is not even reachable.
+  for (const status of ["sent", "partial", "paid", "draft", "void"]) {
+    const read = readConnectPaymentEvent(achEvent({}, { paymentStatus: "unpaid" }));
+    assert.notEqual(read.kind, "claim", `status ${status}`);
+    assert.equal(read.claim, undefined);
+  }
+});
+
+test("a pending debit in another currency states no dollar figure", () => {
+  // formatCentsPlain would happily render 450,000 yen as "$4,500.00", and
+  // this sentence goes on the pilot's screen. Drop the figure rather than
+  // invent one. (The paid path REFUSES a non-USD session outright — the
+  // ledger has no currency column — which is a stronger answer available
+  // only once the money is real.)
+  const read = readConnectPaymentEvent(
+    achEvent({}, { paymentStatus: "unpaid", currency: "gbp" })
+  );
+  assert.equal(read.kind, "ignored");
+  assert.equal(read.async.amountCents, null);
+  assert.doesNotMatch(read.detail, /\$/);
+  assert.match(read.detail, /not paid yet/);
 });
 
 // ---------------------------------------------------------------------------

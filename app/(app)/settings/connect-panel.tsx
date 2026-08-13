@@ -12,14 +12,20 @@ const initialState: DisconnectState = { error: null };
  * (submit state, a confirm before disconnect); the account's connection
  * state itself is server-rendered data, passed in as props.
  *
- * PAYMENT-LINK-ONLY MODEL: connecting Stripe here lets an invoice's
- * detail screen generate a Stripe-hosted Payment Link for a specific
- * client to pay. There is no automatic "we detect the payment and mark
- * the invoice paid" step — the pilot sees the payment land in their own
- * Stripe Dashboard (this platform is never in the funds path to see it
- * either) and records it the same way as a cheque or wire, from the
- * Payments panel on the invoice. See payment-panel.tsx's header comment
- * for the full reasoning.
+ * PAYMENT-LINK MODEL: connecting Stripe here lets an invoice's detail
+ * screen generate a Stripe-hosted Payment Link for a specific client to
+ * pay — by card, by bank payment (ACH), or both, per the panel beside this
+ * one. The payment is then recorded on the invoice automatically when the
+ * money actually settles (app/api/stripe/connect-webhook/route.ts).
+ *
+ * THE PARAGRAPH THAT USED TO BE HERE SAID THE OPPOSITE, and it was true
+ * when it was written: "there is no automatic 'we detect the payment and
+ * mark the invoice paid' step — the pilot records it the same way as a
+ * cheque or wire." That gap was closed by
+ * supabase/migrations/20260813100000_connect_auto_payments.sql, and a
+ * comment describing a manual step the software now performs is worse than
+ * no comment — it tells the next reader the pilot must do something they
+ * must not do twice. See payment-panel.tsx's header for the full picture.
  */
 export default function ConnectPanel({
   canEdit,
@@ -40,10 +46,11 @@ export default function ConnectPanel({
         <Flex direction="column" gap="1">
           <Heading size="4">Get paid online</Heading>
           <Text size="2" color="gray">
-            Connect your own Stripe account so clients can pay an invoice by card
-            online. You&rsquo;re the merchant of record — payments settle straight
-            to your own Stripe balance. This platform never sees your Stripe
-            keys, never holds your funds, and never takes a cut.
+            Connect your own Stripe account so clients can pay an invoice online,
+            by card or by bank payment (ACH). You&rsquo;re the merchant of record —
+            payments settle straight to your own Stripe balance. This platform
+            never sees your Stripe keys, never holds your funds, and never takes
+            a cut.
           </Text>
         </Flex>
 
@@ -68,7 +75,7 @@ export default function ConnectPanel({
                 action={formAction}
                 onSubmit={(e) => {
                   const ok = window.confirm(
-                    "Disconnect Stripe? You won't be able to generate new payment links, and \"Pay online\" will disappear from your invoices. A link already sent to a client keeps working on your own Stripe account until you deactivate it yourself from your Stripe Dashboard."
+                    "Disconnect Stripe? You won't be able to generate new payment links, and \"Pay online\" will disappear from your invoices. A link already sent to a client keeps working on your own Stripe account until you deactivate it yourself from your Stripe Dashboard — including a bank payment (ACH) already authorised and still settling, which will land in your Stripe balance without being recorded here."
                   );
                   if (!ok) e.preventDefault();
                 }}

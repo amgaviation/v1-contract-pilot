@@ -8,6 +8,7 @@ import {
   nextInvoiceStatus,
   readConnectPaymentEvent,
   resolveAutoPayment,
+  type AsyncSettlement,
   type ConnectSessionEvent,
   type DeclaredScope,
   type LedgerRow,
@@ -62,10 +63,25 @@ import {
  *                                by RLS, which for a money-bearing refusal
  *                                is the same as never having written it.
  *
+ * ASYNCHRONOUS PAYMENTS ARE VISIBLE WITHOUT BEING RECORDED. A bank debit
+ * (ACH) completes its Checkout Session at mandate acceptance, days before
+ * the money moves, and can still fail. The gate that stops it being
+ * recorded early lives in the pure layer and always has; what this route
+ * adds is the two outcomes that make the wait honest —
+ * 'payment_pending' while it settles and 'payment_failed' when it does
+ * not (20260813120000). Neither writes a pilot.invoice_payments row,
+ * neither moves the invoice's status, and the pending one is superseded
+ * automatically when its own settlement or failure arrives. If that
+ * distinction ever blurs, this feature has become a way to mark invoices
+ * paid with money that does not exist.
+ *
  * MONEY GOING BACK OUT IS NOT HANDLED HERE, and that is a decision rather
  * than an omission. Refunds and disputes (charge.refunded,
  * charge.dispute.*) are deliberately NOT subscribed to (.env.example lists
- * the two event types to register) and are NOT acted on: a pilot who
+ * the event types to register — CONNECT_ENDPOINT_EVENT_TYPES, and note
+ * that an ACH debit which SETTLES can still be disputed for up to 60 days
+ * afterwards, which arrives on that same unsubscribed path) and are NOT
+ * acted on: a pilot who
  * refunds a client in their Stripe dashboard corrects the payment on the
  * invoice themselves. See lib/stripe/connect-payments.ts's header for the
  * argument — reversing money automatically is a larger claim than
@@ -92,6 +108,26 @@ type EventsInsert = {
   payment_intent_id: string | null;
   livemode: boolean;
 };
+
+/**
+ * Outcomes that mean "this Checkout Session has had its final answer".
+ *
+ * Used in one place only — the out-of-order guard in resolveAsyncSettlement
+ * — and the two omissions are the point. 'ignored' is NOT here: it is what
+ * an unrelated checkout on the pilot's own Stripe account gets, and what
+ * this very guard returns, so treating it as an answer would make the check
+ * self-satisfying. 'payment_pending' is NOT here either: it is the question,
+ * not the answer, and a redelivery of the event that raised it must still be
+ * allowed to re-raise it (finish() writes the outcome and processed_at
+ * together, so a pending row only exists where its own delivery completed).
+ */
+const SESSION_ANSWERED_OUTCOMES = [
+  "recorded",
+  "duplicate",
+  "needs_review",
+  "refused",
+  "payment_failed",
+] as const;
 
 type EventsPatch = {
   account_id?: string | null;
@@ -288,8 +324,57 @@ export async function POST(request: NextRequest) {
       // that did happen. Both are recorded and answered 200 — retrying
       // either would produce the same answer three days running.
       const scope = await scopeForDeclared(supabase, account, read.declared ?? null);
+
+      // THE ASYNC LIFECYCLE. An ACH debit that has been authorised but not
+      // settled, or one that failed. Neither writes a payment row — the
+      // read already decided that, and this branch cannot change it — but
+      // both have to reach the pilot's invoice screen, which means an
+      // outcome that screen queries for and a resolved invoice_id (a row
+      // with a null account_id is invisible to every tenant under RLS, and
+      // a pending notice nobody can see is the same as no notice).
+      //
+      // Gated on the invoice resolving to THIS tenant, not merely on the
+      // metadata claiming it: scopeForDeclared returns a null invoice_id
+      // for a link whose metadata names a stranger's invoice, and such a
+      // delivery falls through to the plain 'ignored' below rather than
+      // hanging a notice on somebody else's screen.
+      if (read.kind === "ignored" && read.async && scope.account_id && scope.invoice_id) {
+        const resolved = await resolveAsyncSettlement({
+          supabase,
+          eventId: event.id,
+          connectedAccountId,
+          accountId: scope.account_id,
+          invoiceId: scope.invoice_id,
+          settlement: read.async,
+          detail: read.detail,
+        });
+        if (resolved.outcome === "payment_failed") {
+          console.error(
+            `Connect event ${event.id}: asynchronous payment failed on invoice ${scope.invoice_id} (session ${read.async.sessionId}).`
+          );
+        }
+        await finish({ ...scope, outcome: resolved.outcome, detail: resolved.detail });
+        return NextResponse.json({ received: true, outcome: resolved.outcome });
+      }
+
       if (read.kind === "refused") {
         console.error(`Connect event ${event.id} refused: ${read.detail}`);
+        // A STAGE-ONE REFUSAL IS ALSO AN ANSWER TO A PENDING NOTICE. The
+        // settlement of a debit this invoice already advertises as "on its
+        // way" can be refused before it ever becomes a claim — Stripe sent
+        // no payment_intent, or the session settled in another currency —
+        // and the pilot then reads "nothing to do, it lands automatically"
+        // beside "check your Stripe balance and record it by hand" about
+        // the same money, with only the second one true. Same supersede as
+        // the claim path below, and it never throws.
+        if (account && session?.id) {
+          await supersedePendingNotice({
+            supabase,
+            connectedAccountId,
+            accountId: account.id,
+            sessionId: session.id,
+          });
+        }
       }
       await finish({ ...scope, outcome: read.kind, detail: read.detail });
       return NextResponse.json({ received: true, outcome: read.kind });
@@ -329,6 +414,41 @@ export async function POST(request: NextRequest) {
       account_id: account?.id ?? null,
       invoice_id: invoice && account && invoice.account_id === account.id ? invoice.id : null,
     };
+
+    // THE PENDING NOTICE IS SUPERSEDED BY ITS OWN ANSWER, WHATEVER THAT
+    // ANSWER TURNS OUT TO BE — which is why this sits ABOVE the branching
+    // rather than beside the recording. If this session was an ACH debit, an
+    // earlier delivery wrote "bank payment initiated … marked paid
+    // automatically when it settles … nothing to do and nothing to chase"
+    // onto this invoice. That sentence is answered by the settlement
+    // arriving, not by the settlement being RECORDED: a debit that settles
+    // and is then refused (the invoice was voided while it was in flight) or
+    // held for review (the pilot typed it in by hand on Wednesday) has had
+    // its answer just as much as one that lands on the ledger, and leaving
+    // the blue notice up means a pilot reads "nothing to do, it resolves
+    // itself" directly beside "money arrived and was not recorded — look at
+    // this", indefinitely, about the same money. The promise the pending
+    // notice makes is that it takes ITSELF off the screen; every terminal
+    // resolution of the session has to keep it.
+    //
+    // Runs on the 'duplicate' path too: a redelivery of the settlement is
+    // exactly when a previous attempt may have died between the payment
+    // insert and this stamp.
+    //
+    // Guarded on `account` alone. The pending row was written with
+    // account_id = this account (a row with a null account_id is invisible
+    // under RLS and is never written for a pending notice), and the update
+    // is keyed on connected account + account + session id, so it cannot
+    // reach another tenant's row whatever the invoice lookup did. Never
+    // throws — see supersedePendingNotice.
+    if (account) {
+      await supersedePendingNotice({
+        supabase,
+        connectedAccountId,
+        accountId: account.id,
+        sessionId: claim.sessionId,
+      });
+    }
 
     if (decision.kind === "refused") {
       // logDetail when the decision has one: the precise which-case
@@ -430,6 +550,215 @@ async function insertPayment(supabase: ServiceClient, payload: PaymentInsert): P
     return false;
   }
   throw new Error(`invoice_payments.insert: ${error.message}`);
+}
+
+/**
+ * What to write for an asynchronous payment that has been AUTHORISED but
+ * not settled, or that has FAILED. Never inserts, updates or deletes a
+ * pilot.invoice_payments row — this whole function is about what a pilot
+ * is shown, and the read layer has already established that no money moved.
+ *
+ * Three jobs, in this order:
+ *
+ *   1. PENDING, BUT ALREADY ANSWERED. Stripe does not guarantee delivery
+ *      order, so a first delivery of `completed` can arrive AFTER the
+ *      settlement event it precedes (a retry of the former after the latter
+ *      has been processed). Writing a pending notice then would leave
+ *      "settles in a few business days" sitting permanently on an invoice
+ *      whose debit has already succeeded — or already FAILED — and it can
+ *      never be superseded, because the event that would supersede it has
+ *      been and gone. Two cheap reads close that: the ledger for a payment
+ *      that already settled, and this session's own earlier deliveries for
+ *      any other terminal answer.
+ *   2. FAILED: retire the spent link, so the invoice screen stops offering
+ *      a URL that can no longer take a payment and starts offering to
+ *      generate a new one.
+ *   3. Either way, supersede an earlier pending notice for the same
+ *      Checkout Session.
+ */
+async function resolveAsyncSettlement(params: {
+  supabase: ServiceClient;
+  /** This delivery's own event id, so check #1 cannot match its own row. */
+  eventId: string;
+  connectedAccountId: string;
+  accountId: string;
+  invoiceId: string;
+  settlement: AsyncSettlement;
+  detail: string;
+}): Promise<{
+  outcome: "payment_pending" | "payment_failed" | "needs_review" | "ignored";
+  detail: string;
+}> {
+  const { supabase, settlement } = params;
+
+  const { data: invoiceData, error: invoiceError } = await supabase
+    .from("invoices")
+    .select("status, stripe_payment_link_id")
+    .eq("id", params.invoiceId)
+    .eq("account_id", params.accountId)
+    .maybeSingle();
+  if (invoiceError) throw new Error(`invoices.select(async): ${invoiceError.message}`);
+  const invoice = (invoiceData ?? null) as {
+    status: string;
+    stripe_payment_link_id: string | null;
+  } | null;
+  const deadInvoice = invoice?.status === "void" || invoice?.status === "draft";
+
+  if (settlement.state === "initiated") {
+    if (settlement.paymentIntentId) {
+      const { data, error } = await supabase
+        .from("invoice_payments")
+        .select("id")
+        .eq("account_id", params.accountId)
+        .eq("invoice_id", params.invoiceId)
+        .eq("stripe_payment_intent_id", settlement.paymentIntentId)
+        .maybeSingle();
+      // A FAILED READ MUST NOT BECOME "not recorded yet". Throwing gets a
+      // Stripe retry, which is free here — nothing has been written.
+      if (error) throw new Error(`invoice_payments.select(async pending): ${error.message}`);
+      if (data) {
+        return {
+          outcome: "ignored",
+          detail: `Session ${settlement.sessionId} reported an authorised payment that has already settled and been recorded on this invoice. Nothing to show.`,
+        };
+      }
+    }
+
+    // THE SAME HOLE, ON THE SIDE WHERE NO MONEY EVER MOVED. The ledger read
+    // above closes "completed arrives after the debit settled and was
+    // recorded". It cannot close "completed arrives after the debit FAILED",
+    // because a failure leaves no invoice_payments row to find — nor
+    // "completed arrives after the settlement was refused or held for
+    // review", where the money arrived and deliberately did not reach the
+    // ledger. In every one of those the question this session asked has
+    // already been answered, the answering event will not be delivered
+    // again, and writing "not paid yet … marked paid automatically when it
+    // settles" now would park that promise on the invoice permanently,
+    // beside the amber notice that contradicts it. The pending notice's
+    // whole claim is that it clears itself; one that is born after its own
+    // answer never can.
+    //
+    // Keyed (connected account, session id) — the pair
+    // stripe_connect_events_object_idx serves and the only handle these
+    // deliveries share — and excluding THIS event's own row, which is still
+    // unprocessed at this point but would otherwise match on a redelivery.
+    const { data: answered, error: answeredError } = await supabase
+      .from("stripe_connect_events")
+      .select("type, outcome")
+      .eq("connected_account_id", params.connectedAccountId)
+      .eq("object_id", settlement.sessionId)
+      .neq("id", params.eventId)
+      .in("outcome", [...SESSION_ANSWERED_OUTCOMES])
+      .not("processed_at", "is", null)
+      .limit(1);
+    // A FAILED READ MUST NOT BECOME "not answered yet", for the same reason
+    // as the ledger read above: the direction it fails in writes a promise.
+    // Throwing gets a Stripe retry, and nothing has been written.
+    if (answeredError) {
+      throw new Error(`stripe_connect_events.select(async pending): ${answeredError.message}`);
+    }
+    const prior = ((answered ?? []) as { type: string; outcome: string }[])[0];
+    if (prior) {
+      return {
+        outcome: "ignored",
+        detail: `Session ${settlement.sessionId} reported an authorised payment, but this session has already been resolved by ${prior.type} (${prior.outcome}) — that answer arrived first and stands. No pending notice was raised.`,
+      };
+    }
+
+    // THE PENDING SENTENCE PROMISES SOMETHING THIS INVOICE CANNOT KEEP.
+    // Its last clause is "this invoice is marked paid automatically when it
+    // settles" — true for a sent or partly-paid invoice, and false for a
+    // void or draft one, where resolveAutoPayment will refuse the money
+    // when it arrives and tell the pilot to refund it. Reachable because
+    // voiding an invoice can only ASK Stripe to deactivate its link, and
+    // 20260809040000's header is explicit that the request can fail,
+    // leaving a payable link on the pilot's own account.
+    //
+    // So it is raised as 'needs_review' instead: amber, and a sentence
+    // saying what is actually about to happen. A client's money is about
+    // to land against a cancelled document, and four days' warning is
+    // worth considerably more than the notice after the fact.
+    if (deadInvoice) {
+      const amount =
+        settlement.amountCents === null ? "a bank payment" : formatCentsPlain(settlement.amountCents);
+      return {
+        outcome: "needs_review",
+        detail: `A client has authorised ${amount} for this invoice through a payment link that should have been deactivated, and it is due to settle in a few business days. This invoice is ${invoice?.status ?? "not payable"}, so the money will NOT be recorded against it when it lands — it will simply arrive in your Stripe balance. Refund it in Stripe once it settles, or reissue the invoice.`,
+      };
+    }
+
+    return { outcome: "payment_pending", detail: params.detail };
+  }
+
+  await supersedePendingNotice({
+    supabase,
+    connectedAccountId: params.connectedAccountId,
+    accountId: params.accountId,
+    sessionId: settlement.sessionId,
+  });
+
+  // RETIRE THE SPENT LINK, but only if it is still the one this invoice
+  // stores. A newer link may have been generated while the debit was in
+  // flight — the pilot got impatient, or corrected a payment — and clearing
+  // THAT one would take a live, payable URL off the invoice because an
+  // older debit failed.
+  let detail = params.detail;
+  if (settlement.paymentLinkId) {
+    const storedLinkId = invoice?.stripe_payment_link_id ?? null;
+    if (storedLinkId && storedLinkId === settlement.paymentLinkId) {
+      // Stripe should already have deactivated it at session completion
+      // (restrictions.completed_sessions.limit = 1), so this call is
+      // belt-and-braces rather than the load-bearing part — but "that link
+      // has been used up" is a sentence this product is about to put in
+      // front of a pilot, and making it true costs one idempotent call.
+      const note = await retirePaymentLink({
+        supabase,
+        accountId: params.accountId,
+        connectAccountId: params.connectedAccountId,
+        invoiceId: params.invoiceId,
+        paymentLinkId: settlement.paymentLinkId,
+      });
+      if (note) detail = `${detail} ${note}`;
+    }
+  }
+
+  return { outcome: "payment_failed", detail };
+}
+
+/**
+ * Takes an earlier "bank payment initiated" notice off the invoice screen,
+ * now that the same Checkout Session's real answer has arrived.
+ *
+ * Matched on (connected account, Checkout Session id) — object_id is where
+ * the cs_... is stored, and it is the only handle the pending row and its
+ * resolution share. Scoped to account_id as well, so this can only ever
+ * touch a row already attributed to the tenant this delivery concerns.
+ *
+ * NEVER THROWS. A failure here leaves a stale-but-harmless informational
+ * notice that the pilot can dismiss themselves, and turning that into a 500
+ * would re-run a handler that has just recorded money in order to retry a
+ * banner. The wrong trade: log it and move on.
+ */
+async function supersedePendingNotice(params: {
+  supabase: ServiceClient;
+  connectedAccountId: string;
+  accountId: string;
+  sessionId: string;
+}): Promise<void> {
+  if (!params.sessionId) return;
+  const { error } = await params.supabase
+    .from("stripe_connect_events")
+    .update({ reviewed_at: new Date().toISOString() } as never)
+    .eq("connected_account_id", params.connectedAccountId)
+    .eq("account_id", params.accountId)
+    .eq("object_id", params.sessionId)
+    .eq("outcome", "payment_pending")
+    .is("reviewed_at", null);
+  if (error) {
+    console.error(
+      `[db] stripe_connect_events.update(supersede pending ${params.sessionId}): ${error.message}`
+    );
+  }
 }
 
 /**

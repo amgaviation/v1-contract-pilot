@@ -17,11 +17,37 @@
  * Link's metadata is typed by whoever owns the connected Stripe account
  * and is therefore attacker-controlled input.
  *
+ * THE ASYNC LIFECYCLE, because it is the whole game once a link offers a
+ * bank debit (lib/stripe/payment-methods.ts). A card payment has one
+ * ending: `checkout.session.completed` arrives with payment_status 'paid'
+ * and the money is there. An ACH debit has three:
+ *
+ *   completed (payment_status 'unpaid')  the client accepted the mandate.
+ *                                        NO MONEY HAS MOVED. Typically ~4
+ *                                        business days to find out — longer
+ *                                        if the client's bank needs
+ *                                        microdeposit verification first.
+ *   ...then exactly one of:
+ *   async_payment_succeeded              settled. This is the payment.
+ *   async_payment_failed                 the bank refused it. There is no
+ *                                        money and there never was.
+ *
+ * The `payment_status !== 'paid'` gate below is what makes the first of
+ * those safe, and it predates ACH being offered at all. What it did NOT do
+ * was tell anyone: an authorised-but-unsettled debit and a failed one both
+ * landed as 'ignored' and vanished. A pilot watching an invoice say nothing
+ * for four days chases a client who has already paid, or types the payment
+ * in by hand — and then the settlement event records it again. So both
+ * states are now carried out of here (see AsyncSettlement) for the route to
+ * surface, WITHOUT either one becoming a claim: 'ignored' still means
+ * "nothing went on the ledger", and that is still true of every path here
+ * except a genuinely settled session.
+ *
  * WHAT THIS MODULE DELIBERATELY DOES NOT DO: money going back out.
  * `charge.refunded`, `charge.dispute.created` and every other
  * refund/chargeback event are OUT OF SCOPE for automatic recording, and
  * the Connect endpoint is documented (.env.example, docs/LAUNCH-GATES.md)
- * as subscribing only to the two checkout.session.* types above. A pilot
+ * as subscribing to CONNECT_ENDPOINT_EVENT_TYPES and nothing else. A pilot
  * who refunds a client in their Stripe dashboard — including the refund
  * the void-invoice refusal below tells them to make — must correct the
  * payment on the invoice themselves (`correctPayment`), because reversing
@@ -42,10 +68,51 @@
  * follows when it settles. Subscribing to both and gating on
  * payment_status is the documented shape; subscribing to `completed`
  * alone would record ACH payments that can still fail.
+ *
+ * THIS LIST IS "WHAT CAN PUT MONEY ON THE LEDGER", not "what this endpoint
+ * receives" — see CONNECT_ENDPOINT_EVENT_TYPES below for the second, wider
+ * list. The two are deliberately separate constants: adding the failure
+ * event to THIS one would make a failure eligible to become a payment
+ * claim, which is the one thing it must never be.
  */
 export const AUTO_PAYMENT_EVENT_TYPES = [
   "checkout.session.completed",
   "checkout.session.async_payment_succeeded",
+] as const;
+
+/**
+ * The event that means "the bank said no".
+ *
+ * A DELAYED-NOTIFICATION METHOD HAS THREE ENDINGS, NOT TWO, and until this
+ * was added the third one was invisible. A client accepts an ACH mandate;
+ * `completed` arrives unpaid; then EITHER `async_payment_succeeded` (the
+ * money moved — the claim path above) OR this, which means the debit failed
+ * and no money exists. The pilot's screen has to stop saying a bank payment
+ * is on its way, and the link — already spent at mandate acceptance, by the
+ * single-use restriction — has to be replaced before the client can try
+ * again. None of that happens on its own.
+ */
+export const ASYNC_FAILURE_EVENT_TYPE = "checkout.session.async_payment_failed";
+
+/**
+ * Every type the Connect endpoint should be SUBSCRIBED to in the Stripe
+ * dashboard. Exported because .env.example and docs/LAUNCH-GATES.md tell an
+ * operator to register exactly these, and a list in prose drifts from a
+ * list in code.
+ *
+ * Still not `charge.refunded` and still not `charge.dispute.*`: money going
+ * back out remains out of scope (see this module's header). Note that an
+ * ACH debit which SUCCEEDS can still come back as a dispute for up to 60
+ * days afterwards — Stripe's own ACH documentation says so, with reasons
+ * like `insufficient_funds` — and that arrives as a dispute event, on the
+ * same deliberately-unsubscribed path as a card chargeback. A pilot corrects
+ * it with the invoice screen's "Correct" control, exactly as they would a
+ * refund. Adding failure handling here does NOT quietly widen that rule:
+ * `async_payment_failed` is money that never arrived, not money leaving.
+ */
+export const CONNECT_ENDPOINT_EVENT_TYPES = [
+  ...AUTO_PAYMENT_EVENT_TYPES,
+  ASYNC_FAILURE_EVENT_TYPE,
 ] as const;
 
 /**
@@ -154,8 +221,43 @@ export type PaymentMethod = "ach" | "check" | "wire" | "card" | "cash" | "other"
  */
 export type DeclaredScope = { declaredAccountId: string; declaredInvoiceId: string };
 
+/**
+ * A delivery that moves no money but changes what the pilot should be
+ * looking at: a bank debit that has been AUTHORISED but not settled, or one
+ * that has FAILED.
+ *
+ * WHY THIS RIDES ON `kind: "ignored"` RATHER THAN BEING ITS OWN KIND. The
+ * kinds of this union answer exactly one question — "does this delivery put
+ * a row in pilot.invoice_payments?" — and for both of these the answer is a
+ * flat no, today and after any redelivery. A fourth kind would put that
+ * question's answer in two places and invite a future branch to treat
+ * "pending" as a weak yes, which is the single failure this whole feature
+ * exists to prevent. tests/connect-auto-payment.test.mjs pins the unpaid
+ * session at 'ignored' for the same reason.
+ *
+ * So: 'ignored' still means "nothing was recorded", and this optional field
+ * carries the SEPARATE fact that somebody should be shown something. The
+ * route decides what to write; nothing here touches money.
+ *
+ * Present only when the metadata named a well-formed invoice — an
+ * unattributable pending debit has nowhere to be shown (a row with a null
+ * account_id is invisible to every tenant under this table's RLS), so it
+ * stays a plain 'ignored'.
+ */
+export type AsyncSettlement = {
+  /** 'initiated' — authorised, not settled. 'failed' — the bank refused it. */
+  state: "initiated" | "failed";
+  sessionId: string;
+  /** For matching against the invoice's stored link before retiring it. */
+  paymentLinkId: string | null;
+  paymentIntentId: string | null;
+  /** Null when Stripe sent no positive USD amount to state honestly. */
+  amountCents: number | null;
+  declared: DeclaredScope;
+};
+
 export type ReadResult =
-  | { kind: "ignored"; detail: string; declared?: DeclaredScope }
+  | { kind: "ignored"; detail: string; declared?: DeclaredScope; async?: AsyncSettlement }
   | { kind: "refused"; detail: string; declared?: DeclaredScope }
   | { kind: "claim"; claim: PaymentClaim };
 
@@ -206,6 +308,23 @@ export function paymentMethodFromSession(
   return only;
 }
 
+/**
+ * Did this session OFFER a bank debit?
+ *
+ * Used only to choose which sentence a pending or failed delivery gets. It
+ * is not evidence of what the client actually used — `payment_method_types`
+ * is the offer, as paymentMethodFromSession's header explains at length —
+ * but a session that never offered a bank debit cannot be waiting on one,
+ * and telling a pilot "your client's bank transfer is on its way" about a
+ * card-only link would be inventing a fact. When the offer included a bank
+ * debit AND the session completed unpaid, ACH is the only thing it can be:
+ * a card payment is 'paid' the moment `completed` fires.
+ */
+export function offersBankDebit(types: readonly string[] | null | undefined): boolean {
+  if (!types) return false;
+  return types.some((type) => methodForPaymentMethodType(type) === "ach");
+}
+
 function methodForPaymentMethodType(type: string): PaymentMethod {
   switch (type) {
     case "card":
@@ -228,7 +347,11 @@ function methodForPaymentMethodType(type: string): PaymentMethod {
  * days of retries and hides the events that do matter.
  */
 export function readConnectPaymentEvent(event: ConnectSessionEvent): ReadResult {
-  if (!(AUTO_PAYMENT_EVENT_TYPES as readonly string[]).includes(event.eventType)) {
+  // The WIDER list: a failed asynchronous payment is acted on (it changes
+  // what the invoice screen says and retires a spent link) without ever
+  // being eligible to become a claim. AUTO_PAYMENT_EVENT_TYPES stays the
+  // narrow "can become money" list and is checked again below.
+  if (!(CONNECT_ENDPOINT_EVENT_TYPES as readonly string[]).includes(event.eventType)) {
     return { kind: "ignored", detail: `${event.eventType} is not an event this endpoint acts on.` };
   }
 
@@ -246,21 +369,112 @@ export function readConnectPaymentEvent(event: ConnectSessionEvent): ReadResult 
 
   const session = event.session;
 
-  // The async gate. For a card payment this is already 'paid' on
-  // `completed`; for ACH it is 'unpaid' until async_payment_succeeded.
-  if (session.paymentStatus !== "paid") {
-    return {
-      kind: "ignored",
-      detail: `Session ${session.id} is not paid yet (payment_status=${
-        session.paymentStatus ?? "null"
-      }). Waiting for checkout.session.async_payment_succeeded.`,
-    };
-  }
-
   const metadata = session.metadata ?? {};
   const declaredInvoiceId = (metadata.invoice_id ?? "").trim();
   const declaredAccountId = (metadata.account_id ?? "").trim();
   const declaredInvoiceNumber = (metadata.invoice_number ?? "").trim() || null;
+
+  /**
+   * The invoice this delivery can be ATTRIBUTED to, or null.
+   *
+   * Exactly the two tests the paid path applies further down (both ids
+   * present, both well-formed uuids), hoisted here because the two async
+   * branches below need the same answer for a different purpose: not "may
+   * this become a payment" but "is there a screen this can be shown on".
+   * Hoisting rather than duplicating means a change to what counts as
+   * attributable cannot apply to one path and not the other.
+   */
+  const attributable: DeclaredScope | null =
+    declaredInvoiceId &&
+    declaredAccountId &&
+    UUID_RE.test(declaredInvoiceId) &&
+    UUID_RE.test(declaredAccountId)
+      ? { declaredAccountId, declaredInvoiceId }
+      : null;
+
+  // A USABLE AMOUNT TO SAY OUT LOUD. Only a positive amount in USD gets
+  // formatted with a dollar sign — formatCentsPlain would happily render
+  // 4,500,000 yen as "$45,000.00", and these sentences go on the pilot's
+  // screen. Anything else drops the figure rather than inventing one.
+  const statedAmountCents =
+    session.amountTotal !== null &&
+    session.amountTotal > 0 &&
+    (session.currency ?? "usd").toLowerCase() === "usd"
+      ? session.amountTotal
+      : null;
+
+  // THE BANK SAID NO. Checked before the payment_status gate because a
+  // failed async payment is also 'unpaid' and would otherwise be read as
+  // one still in flight — the invoice screen would go on promising money
+  // that is never coming.
+  if (event.eventType === ASYNC_FAILURE_EVENT_TYPE) {
+    if (!attributable) {
+      return {
+        kind: "ignored",
+        detail: `Session ${session.id} reported a failed asynchronous payment, but carries no invoice metadata this product can attribute it to. No money moved and nothing was recorded.`,
+      };
+    }
+    return {
+      kind: "ignored",
+      declared: attributable,
+      detail: failedPaymentDetail(statedAmountCents, offersBankDebit(session.paymentMethodTypes)),
+      async: {
+        state: "failed",
+        sessionId: session.id,
+        paymentLinkId: session.paymentLinkId,
+        paymentIntentId: session.paymentIntentId,
+        amountCents: statedAmountCents,
+        declared: attributable,
+      },
+    };
+  }
+
+  // The async gate. For a card payment this is already 'paid' on
+  // `completed`; for ACH it is 'unpaid' until async_payment_succeeded.
+  //
+  // STILL 'ignored', STILL NO ROW, and that has not changed — what has
+  // changed is that the delivery no longer disappears. A five-figure bank
+  // debit authorised on Monday and settling on Thursday used to leave the
+  // pilot looking at an invoice that said nothing at all for three days,
+  // which is exactly how a client gets chased for money they have already
+  // sent, or how the same payment gets typed in by hand and then recorded
+  // again when it settles.
+  if (session.paymentStatus !== "paid") {
+    if (!attributable) {
+      return {
+        kind: "ignored",
+        detail: `Session ${session.id} is not paid yet (payment_status=${
+          session.paymentStatus ?? "null"
+        }). Waiting for checkout.session.async_payment_succeeded.`,
+      };
+    }
+    return {
+      kind: "ignored",
+      declared: attributable,
+      detail: pendingPaymentDetail(statedAmountCents, offersBankDebit(session.paymentMethodTypes)),
+      async: {
+        state: "initiated",
+        sessionId: session.id,
+        paymentLinkId: session.paymentLinkId,
+        paymentIntentId: session.paymentIntentId,
+        amountCents: statedAmountCents,
+        declared: attributable,
+      },
+    };
+  }
+
+  // FROM HERE ON, THIS DELIVERY IS ELIGIBLE TO BECOME MONEY — so the
+  // narrow list is checked, not the wide one. Every type in
+  // CONNECT_ENDPOINT_EVENT_TYPES that is not in AUTO_PAYMENT_EVENT_TYPES
+  // has already returned above; this guard exists so that ADDING a type to
+  // the endpoint's subscription list in future cannot silently give it a
+  // path to the ledger by forgetting a branch.
+  if (!(AUTO_PAYMENT_EVENT_TYPES as readonly string[]).includes(event.eventType)) {
+    return {
+      kind: "ignored",
+      detail: `${event.eventType} is subscribed to but has no handling that could record a payment.`,
+    };
+  }
 
   // BACKWARD COMPATIBILITY, and the reason old links do not break. Every
   // payment link minted before this feature carried only invoice_number,
@@ -355,6 +569,59 @@ export function readConnectPaymentEvent(event: ConnectSessionEvent): ReadResult 
       method: paymentMethodFromSession(session.paymentMethodTypes),
     },
   };
+}
+
+/**
+ * THE SENTENCE A PILOT READS WHILE A BANK DEBIT IS IN FLIGHT.
+ *
+ * Written for the invoice screen, not for a log — this one is surfaced. It
+ * has three jobs and gets all three wrong if it is casual about any of
+ * them: say that money is coming, say that it has NOT arrived, and say that
+ * the pilot has nothing to do. The third is the one that matters most in
+ * practice, because the natural reaction to "a payment is pending" is
+ * either to chase the client or to type it in by hand, and both of those
+ * are ways this feature costs somebody money.
+ *
+ * The phrase "not paid yet" is load-bearing in both branches: it is the
+ * plainest possible statement of the fact, and the test suite pins it.
+ */
+function pendingPaymentDetail(amountCents: number | null, bank: boolean): string {
+  const amount = amountCents === null ? "" : ` of ${formatCentsPlain(amountCents)}`;
+  if (bank) {
+    return (
+      `Bank payment (ACH) initiated${amount} — not paid yet. Your client has authorised the debit; ` +
+      `ACH takes a few business days to settle, and this invoice is marked paid automatically when it does. ` +
+      `Nothing has been recorded and the balance is unchanged, so there is nothing to do and nothing to chase.`
+    );
+  }
+  return (
+    `A payment${amount} was started on this invoice but is not paid yet — the money has not moved. ` +
+    `It is recorded automatically if Stripe confirms it settled, and nothing is recorded until then.`
+  );
+}
+
+/**
+ * THE SENTENCE WHEN THE BANK REFUSES IT.
+ *
+ * The pilot has something to do here, which is why this one names the
+ * action. The payment link is spent — Stripe deactivates it when the
+ * Checkout Session COMPLETES, which for a bank debit is at mandate
+ * acceptance, days before this event — so "ask them to try again" without
+ * "generate a new link" would send a client back to a dead URL.
+ *
+ * NO REASON IS GIVEN, because none is known here: the failure reason lives
+ * on the PaymentIntent, and fetching it would be a second Stripe round trip
+ * inside a webhook for a sentence. "Their bank didn't complete it" is what
+ * this delivery actually says; guessing "insufficient funds" would not be.
+ */
+function failedPaymentDetail(amountCents: number | null, bank: boolean): string {
+  const amount = amountCents === null ? "" : ` ${formatCentsPlain(amountCents)}`;
+  const what = bank ? `bank payment (ACH)` : `payment`;
+  return (
+    `The ${what}${amount} started on this invoice FAILED — the client's bank did not complete it, ` +
+    `so no money arrived and nothing was recorded. The balance is unchanged. ` +
+    `That payment link has been used up, so generate a new one if they still want to pay online.`
+  );
 }
 
 /** The tenant the CONNECTED ACCOUNT resolves to. Never built from metadata. */

@@ -14,6 +14,11 @@ import {
   normalizeNavLayout,
   type NavLayout,
 } from "@/lib/nav";
+import {
+  DEFAULT_PAYMENT_METHOD_CHOICE,
+  normalizePaymentMethodChoice,
+  type PaymentMethodChoice,
+} from "@/lib/stripe/payment-methods";
 
 /**
  * PER-TENANT PREFERENCES — the one place they are read, defaulted,
@@ -57,23 +62,43 @@ import {
 type PreferencesInsert = Database["pilot"]["Tables"]["account_preferences"]["Insert"];
 type PreferencesUpdate = Database["pilot"]["Tables"]["account_preferences"]["Update"];
 
+/**
+ * WHAT AN INVOICE'S PAYMENT LINK OFFERS BY DEFAULT.
+ *
+ * An account-level default that every new link is generated with, and that
+ * the invoice screen may override for one invoice — the same "account
+ * defaults prefill, the screen decides" idiom as day rates and payment
+ * terms. It is a preference and not a column for exactly the reason
+ * 20260813000000's header gives: nothing in the database computes on it.
+ *
+ * The VALUE is validated by lib/stripe/payment-methods.ts, which is also
+ * what the link generator and the Settings panel read — one enumerated
+ * list, one resolver, no second opinion about what "ach" means.
+ */
+export type PaymentPreferences = { methods: PaymentMethodChoice };
+
 export type Preferences = {
   theme: ThemeSlots;
   nav: NavLayout;
+  payments: PaymentPreferences;
 };
 
 export const DEFAULT_PREFERENCES: Preferences = {
   theme: DEFAULT_THEME_SLOTS,
   nav: DEFAULT_NAV_LAYOUT,
+  payments: { methods: DEFAULT_PAYMENT_METHOD_CHOICE },
 };
 
 /**
- * The stored shape. Two top-level keys, each owned by the module that
- * validates it. New preferences are added as new keys here and nowhere
+ * The stored shape. One top-level key per concern, each owned by the module
+ * that validates it. New preferences are added as new keys here and nowhere
  * else — that is the whole point of the jsonb column.
  */
 const THEME_KEY = "theme";
 const NAV_KEY = "nav";
+const PAYMENTS_KEY = "payments";
+
+type PreferenceSection = typeof THEME_KEY | typeof NAV_KEY | typeof PAYMENTS_KEY;
 
 /** Untrusted jsonb → known-good preferences. Total; never throws. */
 export function resolvePreferences(raw: unknown): Preferences {
@@ -85,7 +110,24 @@ export function resolvePreferences(raw: unknown): Preferences {
   return {
     theme: resolveThemeSlots(source[THEME_KEY]),
     nav: normalizeNavLayout(source[NAV_KEY]),
+    payments: resolvePaymentPreferences(source[PAYMENTS_KEY]),
   };
+}
+
+/**
+ * Total over `unknown`, like every other resolver here — and note that
+ * `payments` is ABSENT from every row written before this build, which is
+ * the ordinary case rather than the edge one. An absent key, a null, a
+ * string where an object belongs and an unrecognised method all resolve to
+ * the product's default, which is what an account that has never opened
+ * this control should get.
+ */
+function resolvePaymentPreferences(raw: unknown): PaymentPreferences {
+  const source =
+    typeof raw === "object" && raw !== null && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  return { methods: normalizePaymentMethodChoice(source.methods) };
 }
 
 /** Preferences → the props the app shell renders with. */
@@ -151,8 +193,8 @@ export async function loadResolvedTheme(accountId: string): Promise<ResolvedThem
  */
 async function writePreferenceSection(
   accountId: string,
-  section: typeof THEME_KEY | typeof NAV_KEY,
-  value: ThemeSlots | NavLayout
+  section: PreferenceSection,
+  value: ThemeSlots | NavLayout | PaymentPreferences
 ): Promise<{ error: string | null }> {
   const supabase = await createClient();
 
@@ -174,7 +216,9 @@ async function writePreferenceSection(
   const next: Preferences =
     section === THEME_KEY
       ? { ...current, theme: value as ThemeSlots }
-      : { ...current, nav: value as NavLayout };
+      : section === NAV_KEY
+        ? { ...current, nav: value as NavLayout }
+        : { ...current, payments: value as PaymentPreferences };
 
   // Re-resolved on the way out: the stored blob is always in the shape
   // this build's readers expect, never whatever a caller happened to hand
@@ -182,11 +226,13 @@ async function writePreferenceSection(
   const resolved = resolvePreferences({
     [THEME_KEY]: next.theme,
     [NAV_KEY]: next.nav,
+    [PAYMENTS_KEY]: next.payments,
   });
 
   const prefs = {
     [THEME_KEY]: resolved.theme,
     [NAV_KEY]: { order: [...resolved.nav.order], hidden: [...resolved.nav.hidden] },
+    [PAYMENTS_KEY]: resolved.payments,
   };
 
   /**
@@ -285,4 +331,22 @@ export async function saveNavLayout(
   layout: NavLayout
 ): Promise<{ error: string | null }> {
   return writePreferenceSection(accountId, NAV_KEY, normalizeNavLayout(layout));
+}
+
+/**
+ * The account's default for what a new payment link offers.
+ *
+ * Changes NOTHING about links already sent: a Payment Link's methods are
+ * fixed on Stripe when it is created, and this product does not update
+ * links in place. The panel that calls this says so, because "I turned card
+ * payments off" reading as "the link in my client's inbox stopped taking
+ * cards" would be a very expensive misunderstanding.
+ */
+export async function savePaymentMethods(
+  accountId: string,
+  methods: PaymentMethodChoice
+): Promise<{ error: string | null }> {
+  return writePreferenceSection(accountId, PAYMENTS_KEY, {
+    methods: normalizePaymentMethodChoice(methods),
+  });
 }

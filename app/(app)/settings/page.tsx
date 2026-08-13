@@ -14,6 +14,7 @@ import LogoPanel from "./logo-panel";
 import SettingsTabs from "./settings-tabs";
 import DayTypesPanel from "./day-types-panel";
 import ConnectPanel from "./connect-panel";
+import PaymentMethodsPanel from "./payment-methods-panel";
 import MileageRatesPanel from "./mileage-rates-panel";
 import AppearancePanel from "./appearance-panel";
 import LayoutPanel from "./layout-panel";
@@ -23,6 +24,8 @@ import { loadPreferences } from "@/lib/preferences";
 import { loadCustomOptionsResult } from "@/lib/custom-options-read";
 import { applyNavLayout, visibleNavSections } from "@/lib/nav";
 import { isCurrencyEngineEnabled } from "@/lib/currency/gate";
+import { readAchCapability } from "@/lib/stripe/connect";
+import type { AchCapability } from "@/lib/stripe/payment-methods";
 
 type DayTypeRow = Database["pilot"]["Tables"]["day_types"]["Row"];
 type MileageRateRow = Database["pilot"]["Tables"]["mileage_rates"]["Row"];
@@ -177,6 +180,25 @@ export default async function SettingsPage({
   // does not, and it returns at the end of the list when the engine is
   // switched on.
   const preferences = await loadPreferences(account.id);
+
+  /**
+   * WHETHER THE PILOT'S OWN STRIPE ACCOUNT MAY TAKE BANK PAYMENTS.
+   *
+   * One Stripe round trip on this render, and only when an account is
+   * connected. It is deliberately NOT skipped when the stored preference is
+   * card-only: the panel below lets the pilot switch to a bank option
+   * client-side, and a control that offers ACH while the page holds no idea
+   * whether ACH works would answer "we couldn't check" to a question it
+   * simply never asked.
+   *
+   * readAchCapability never throws — a Stripe outage resolves to 'unknown',
+   * the panel says so, and nothing else on this page is affected. A
+   * settings screen must not go down because a capability lookup did.
+   */
+  const achCapability: AchCapability = account.connect_account_id
+    ? await readAchCapability(account.connect_account_id)
+    : "unknown";
+
   const { rows: customOptions, error: customOptionsError } =
     await loadCustomOptionsResult();
   const navSections = applyNavLayout(visibleNavSections(isCurrencyEngineEnabled()), {
@@ -243,6 +265,16 @@ export default async function SettingsPage({
                 warning={warning}
                 justConnected={connected === "1"}
               />
+              {/* Only with an account to mint links on. The choice is
+                  meaningless otherwise, and a live control that changes
+                  nothing is how a settings screen starts lying. */}
+              {account.connect_account_id ? (
+                <PaymentMethodsPanel
+                  methods={preferences.payments.methods}
+                  achCapability={achCapability}
+                  canEdit={canEdit}
+                />
+              ) : null}
               <Card>
                 <Flex direction="column" gap="2" p="1">
                   <Text weight="bold" size="4">
