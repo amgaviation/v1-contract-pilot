@@ -13,8 +13,11 @@ import type { Database } from "@/lib/supabase/database.types";
  * no live database to test it against). Until that exists, the only
  * control is: read this comment before you import this function.
  *
- * It exists for exactly TWO entry points, and that list IS the control —
- * adding a third is a security decision, not a refactor.
+ * It exists for exactly THREE entry points, and that list IS the control —
+ * adding a fourth is a security decision, not a refactor. (It said TWO until
+ * 20260813130000 added the scheduled reminder pass, which is written up as
+ * entry point 3 below with the argument for why it earns its place. Adding
+ * one is meant to feel like this: a paragraph, not a line.)
  *
  *   1. THE STRIPE WEBHOOK that provisions a new tenant on checkout
  *      completion (Phase 2 — app/api/stripe/webhook/route.ts and
@@ -35,8 +38,37 @@ import type { Database } from "@/lib/supabase/database.types";
  *      storage object whose path that function returned and whose tenant
  *      prefix is re-checked before the download.
  *
+ *   3. THE DAILY DUE-REMINDER PASS (app/api/reminders/run/route.ts and
+ *      lib/reminders/run.ts), because a scheduled run has no session to
+ *      authenticate as — the same reason as entry point 1, arriving from a
+ *      cron runner instead of from Stripe.
+ *
+ *      THIS ONE IS A GENUINE WIDENING AND IS RECORDED AS SUCH. It is the
+ *      first entry point that reads a tenant's ordinary business data —
+ *      clients, invoices, share stamps — which the paragraph below otherwise
+ *      forbids outright. What makes it acceptable rather than an exception
+ *      that swallows the rule:
+ *        * it is reachable through ONE route, which refuses every request
+ *          with no CRON_SECRET configured (503) or the wrong one (401)
+ *          before this client is ever constructed;
+ *        * it performs one fixed operation — decide whether a reminder is
+ *          due, send it, record the outcome — with NO caller-supplied
+ *          account id, invoice id or filter anywhere in it. There is no
+ *          input by which it could be pointed at a chosen tenant;
+ *        * the SAME code runs from the Settings button under the pilot's own
+ *          session client with RLS fully in force — lib/reminders/run.ts
+ *          takes the client as a parameter precisely so that is possible —
+ *          so the privileged client buys the absence of a session and
+ *          nothing else;
+ *        * nothing it reads leaves the account it belongs to: the one
+ *          outbound message goes to that account's own client, composed from
+ *          that account's own invoice, replying to that account's own owner.
+ *      A future change wanting this client for a report, a backfill or a
+ *      support lookup is a NEW decision, not an extension of this one.
+ *
  * It must never be imported into a Client Component, never used to read or
- * write tenant business data on a pilot's behalf, and never become a
+ * write tenant business data on a pilot's behalf outside the narrow, fixed
+ * operation described in entry point 3, and never become a
  * general-purpose "admin" escape hatch — there is no support tooling in
  * this product that reads across tenants by design. Entry point 2 does not
  * soften that: it reads one BLOB, for one invoice, for a bearer the
