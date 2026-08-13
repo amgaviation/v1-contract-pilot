@@ -18,9 +18,26 @@ import { requireAccount } from "@/lib/supabase/account";
 import { formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import EmptyState from "@/components/ui/empty-state";
+import { loadPreferences } from "@/lib/preferences";
+import {
+  describeLogbookFilter,
+  logbookFilterFromSearchParams,
+  logbookFilterHref,
+  logbookFilterIsEmpty,
+  MAX_TYPE_LABEL,
+} from "@/lib/logbook-views";
 import PageShell from "../page-shell";
-import { logbookFrom, type LogbookEntryRow, type LogbookSource } from "./db";
-import type { TimeByTypeRow } from "./aircraft/db";
+import {
+  logbookFrom,
+  logbookRpc,
+  type LogbookEntryRow,
+  type LogbookFilterArgs,
+  type LogbookFilteredTotalsRow,
+  type LogbookSource,
+} from "./db";
+import type { AircraftRow, TimeByTypeRow } from "./aircraft/db";
+import SavedViews, { type TailOption } from "./saved-views";
+import { deleteLogbookViewAction, saveLogbookViewAction } from "./views-actions";
 
 export const metadata = { title: "Logbook" };
 
@@ -64,33 +81,76 @@ const PAGE_SIZE = 200;
  */
 const TYPE_ROW_LIMIT = 12;
 
+/** Aircraft offered in the filter's picker. A fleet is dozens at most. */
+const FLEET_PICKER_LIMIT = 500;
+
+/** Type labels offered in the filter's picker. Deliberately larger than
+ *  the summary panel's TYPE_ROW_LIMIT: a picker that silently omitted the
+ *  type a pilot wanted to filter by would be worse than a long list. */
+const TYPE_PICKER_LIMIT = 200;
+
 export default async function LogbookPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    tail?: string;
+    type?: string;
+    role?: string;
+    from?: string;
+    to?: string;
+  }>;
 }) {
   const { account } = await requireAccount("/logbook");
-  const { page: pageParam } = await searchParams;
-  const parsed = Number(pageParam ?? "1");
+  const params = await searchParams;
+  const parsed = Number(params.page ?? "1");
   const page = Number.isInteger(parsed) && parsed >= 1 ? parsed : 1;
   const from = (page - 1) * PAGE_SIZE;
+
+  // THE URL IS THE FILTER. Resolved through the same total function the
+  // stored views go through (lib/logbook-views.ts), so a hand-edited link
+  // and a saved view behave identically and neither can express a filter
+  // the query layer cannot run. An unrecognised facet is DROPPED, which
+  // widens the result set — a logbook screen must fail toward showing more
+  // of the pilot's record, never less.
+  const filter = logbookFilterFromSearchParams(params);
+  const filtered = !logbookFilterIsEmpty(filter);
+  const filterArgs: LogbookFilterArgs = {
+    p_account_id: account.id,
+    p_tail_key: filter.tailKey,
+    p_type_label: filter.typeLabel,
+    p_role: filter.role,
+    p_from: filter.dateFrom,
+    p_to: filter.dateTo,
+  };
 
   const supabase = await createClient();
   const [
     { data, error, count },
     { data: totalsData, error: totalsError },
     { data: byTypeData, error: byTypeError },
+    { data: fleetData, error: fleetError },
+    preferences,
   ] = await Promise.all([
-    logbookFrom(supabase, "logbook_entries")
-      .select("*", { count: "exact" })
+    // ONE READ PATH, FILTERED OR NOT. The all-null argument set means "no
+    // facet is filtered", so this is the whole logbook when nothing is
+    // selected — which is what makes the unfiltered totals below agree
+    // with pilot.logbook_totals by construction rather than by
+    // coincidence. See 20260813110000_pilot_history.sql.
+    logbookRpc(supabase, "logbook_filtered", filterArgs, { count: "exact" })
       .order("entry_date", { ascending: false })
+      // A unique tiebreak, so a page boundary between two entries on the
+      // same date is deterministic rather than duplicating one row and
+      // dropping another between requests.
+      .order("id", { ascending: false })
       .range(from, from + PAGE_SIZE - 1),
-    // TOTALS COME FROM THE DATABASE, over every entry the pilot owns.
+    // TOTALS COME FROM THE DATABASE, over every entry the filter admits.
     // Summing the page would make total time — the number an employer
     // and an underwriter ask for — a function of pagination. A career
     // pilot with 8,000 entries used to see a figure computed from the
-    // most recent 1,000.
-    logbookFrom(supabase, "logbook_totals").select("*").maybeSingle(),
+    // most recent 1,000, and a filtered view narrow enough to feel small
+    // is exactly where that mistake would look plausible.
+    logbookRpc(supabase, "logbook_filtered_totals", filterArgs).maybeSingle(),
     // Time in type, from the same database rollup for the same reason.
     // See supabase/migrations/20260810110000_aircraft_registry.sql: it
     // matches the entry's free-text ident to the aircraft registry on a
@@ -101,26 +161,46 @@ export default async function LogbookPage({
     // future two-account membership would produce two rows with the same
     // type_label, a duplicate React key, and two half-totals presented as
     // if they were the whole career.
+    // Fetched one past the summary panel's limit, AND far enough for the
+    // filter's own picker — the panel still shows TYPE_ROW_LIMIT rows and
+    // says so, but a picker that omitted a type would leave a pilot unable
+    // to ask a question about hours they can see on the same screen.
     logbookFrom(supabase, "logbook_time_by_type")
       .select("*")
       .eq("account_id", account?.id ?? "")
       .order("total_time", { ascending: false })
       .order("type_label", { ascending: true })
-      .limit(TYPE_ROW_LIMIT + 1),
+      .limit(TYPE_PICKER_LIMIT),
+    // The fleet, for the filter's aircraft picker. Archived airframes are
+    // INCLUDED and marked: retiring an aeroplane takes it out of the
+    // pickers for new work, it does not unfly the hours, and a pilot
+    // asking "how much time did I have in the one I gave back" is exactly
+    // the question a saved view is for.
+    logbookFrom(supabase, "aircraft")
+      .select("tail_number, tail_key, archived_at")
+      .eq("account_id", account?.id ?? "")
+      .order("tail_number", { ascending: true })
+      .limit(FLEET_PICKER_LIMIT),
+    loadPreferences(account.id),
   ]);
 
   const entries = (data ?? []) as LogbookEntryRow[];
-  const totalCount = count ?? entries.length;
+  const totalsRow = totalsData as LogbookFilteredTotalsRow | null;
+  // The RPC's own entry_count is preferred over the response's Content-Range
+  // count: both are computed over the same filtered set, but the RPC's is
+  // the figure the totals beside it were summed from, so the two can never
+  // caption a page the other disagrees with. `count` is the fallback for a
+  // failed totals read, and the page length is the last resort.
+  const totalCount =
+    totalsRow !== null ? Number(totalsRow.entry_count) : (count ?? entries.length);
   const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-  const totalsRow = totalsData as {
-    entry_count: number;
-    total_time: number;
-    pic_time: number;
-    night_time: number;
-    instrument_time: number;
-    landings: number;
-    simulator_time: number;
-  } | null;
+
+  const filterLabel = describeLogbookFilter(
+    filter,
+    ((fleetData ?? []) as Pick<AircraftRow, "tail_number" | "tail_key">[]).find(
+      (row) => row.tail_key === filter.tailKey
+    )?.tail_number
+  );
 
   // A failed totals read is NOT zero hours. Falling back to the page's own
   // sum would be worse than showing nothing — it would look authoritative
@@ -161,6 +241,31 @@ export default async function LogbookPage({
   // a report; the prompt to build a fleet is the useful thing there.
   const hasTypeBreakdown = byType.some((row) => row.label !== "Unspecified");
 
+  const tailOptions: TailOption[] = (
+    (fleetData ?? []) as Pick<AircraftRow, "tail_number" | "tail_key" | "archived_at">[]
+  ).map((row) => ({
+    tailKey: row.tail_key,
+    tailNumber: row.tail_number,
+    archived: row.archived_at !== null,
+  }));
+  // Every type the pilot HAS hours in, not just the twelve the panel shows.
+  // "Unspecified" is excluded from the picker: it is a bucket, not a type,
+  // and a filter for it would ask a question ("show me the entries I never
+  // labelled") that the aircraft screen answers far better.
+  //
+  // AND NOTHING THE RESOLVER WOULD REFUSE. logbook_entries.aircraft_type is
+  // unconstrained text, so an imported logbook can carry a label longer
+  // than resolveLogbookFilter accepts (MAX_TYPE_LABEL). Offering one would
+  // mean the pilot picks a type, clicks "Show these entries", and gets the
+  // whole logbook under career totals with the picker back on "Any type"
+  // and nothing said — the question silently un-asked. Better the option is
+  // absent than present and inert.
+  const typeLabels = byTypeRows
+    .map((row) => row.type_label)
+    .filter(
+      (label) => label !== "Unspecified" && label.trim().length <= MAX_TYPE_LABEL
+    );
+
   return (
     <PageShell
       title="Logbook"
@@ -168,8 +273,8 @@ export default async function LogbookPage({
         error
           ? "Couldn't load your logbook."
           : `${totalCount} entr${totalCount === 1 ? "y" : "ies"}${
-              pageCount > 1 ? ` · page ${page} of ${pageCount}` : ""
-            }`
+              filtered ? ` matching ${filterLabel}` : ""
+            }${pageCount > 1 ? ` · page ${page} of ${pageCount}` : ""}`
       }
       action={
         <>
@@ -208,16 +313,60 @@ export default async function LogbookPage({
         </Callout.Root>
       ) : (
         <Flex direction="column" gap="4">
+          <SavedViews
+            views={preferences.logbookViews}
+            activeFilter={filter}
+            tails={tailOptions}
+            typeLabels={typeLabels}
+            saveAction={saveLogbookViewAction}
+            deleteAction={deleteLogbookViewAction}
+          />
+
+          {/* A FAILED FLEET READ IS NOT AN EMPTY FLEET. Every other read on
+              this screen says so when it fails; this one used to render as
+              an aircraft picker with nothing in it and — with a tail filter
+              active — a caption showing the normalised key instead of the
+              registration, which reads exactly like an aeroplane that was
+              deleted. */}
+          {fleetError ? (
+            <Callout.Root color="amber">
+              <Callout.Icon>
+                <ExclamationTriangleIcon />
+              </Callout.Icon>
+              <Callout.Text>
+                Your aircraft couldn&rsquo;t be loaded, so the Aircraft
+                picker above is empty and a tail filter shows as its plain
+                key. Nothing has been removed from your fleet — reload to
+                try again.
+              </Callout.Text>
+            </Callout.Root>
+          ) : null}
+
           {totalsError ? (
             <Callout.Root color="amber">
               <Callout.Icon>
                 <ExclamationTriangleIcon />
               </Callout.Icon>
               <Callout.Text>
-                Your career totals couldn&rsquo;t be loaded, so they aren&rsquo;t
-                shown — the entries below are still complete and correct.
+                {filtered
+                  ? "The totals for this view couldn't be loaded, so they aren't shown — the entries below are still complete and correct."
+                  : "Your career totals couldn't be loaded, so they aren't shown — the entries below are still complete and correct."}
               </Callout.Text>
             </Callout.Root>
+          ) : null}
+
+          {/* SAYS WHAT THE FIGURES BELOW ARE A TOTAL OF. A filtered set of
+              stat cards that looks exactly like the career cards is the one
+              way this feature could put a wrong number in front of a pilot
+              about to fill in a form — the caption is what makes the two
+              impossible to confuse. Totals only; nothing on this screen
+              draws a conclusion from them. */}
+          {filtered ? (
+            <Text size="2" color="gray">
+              {`Totals below cover ${filterLabel} — ${totalCount} entr${
+                totalCount === 1 ? "y" : "ies"
+              }, not your whole logbook.`}
+            </Text>
           ) : null}
 
           <Grid columns={{ initial: "2", md: "6" }} gap="3">
@@ -245,7 +394,13 @@ export default async function LogbookPage({
             ))}
           </Grid>
 
-          {entries.length > 0 ? (
+          {/* HIDDEN WHILE A FILTER IS ON. This panel is account-global —
+              pilot.logbook_time_by_type takes no arguments — so leaving it
+              up beside filtered stat cards would put two differently-scoped
+              sets of hours on one screen with nothing but a caption
+              between them. The pilot-history report is where the full
+              breakdown belongs anyway. */}
+          {entries.length > 0 && !filtered ? (
             <Card>
               <Flex direction="column" gap="3" p="1">
                 <Flex justify="between" align="center" gap="3" wrap="wrap">
@@ -255,7 +410,13 @@ export default async function LogbookPage({
                     </Heading>
                     <Text size="2" color="gray">
                       What an insurance pilot-history form asks for, and what a chief
-                      pilot asks on the phone.
+                      pilot asks on the phone.{" "}
+                      <Link asChild>
+                        <NextLink href="/reports/pilot-history">
+                          See your full pilot history
+                        </NextLink>
+                      </Link>
+                      .
                     </Text>
                   </Flex>
                   <Button asChild variant="outline">
@@ -362,7 +523,25 @@ export default async function LogbookPage({
           ) : null}
 
           <Card>
-            {entries.length === 0 && totalCount > 0 ? (
+            {entries.length === 0 && totalCount === 0 && filtered ? (
+              // Empty because of WHAT YOU ASKED FOR, which is a third
+              // distinct state alongside "past the last page" and "no
+              // entries at all". Telling a pilot with 8,000 entries "No
+              // logbook entries yet" because they filtered to a tail they
+              // have not flown would be the same class of false claim as
+              // saying it after a failed read.
+              <EmptyState
+                as="h2"
+                title="No entries match this view"
+                action={
+                  <Button asChild>
+                    <NextLink href="/logbook">Show every entry</NextLink>
+                  </Button>
+                }
+              >
+                {`Nothing in your logbook matches ${filterLabel}. Your other entries are still there — this view just doesn't include any of them.`}
+              </EmptyState>
+            ) : entries.length === 0 && totalCount > 0 ? (
               // Empty because of WHERE YOU ARE, not because there is
               // nothing on file: ?page= is past the last page. Telling a
               // pilot with 8,000 entries "No logbook entries yet" here is
@@ -374,13 +553,15 @@ export default async function LogbookPage({
                 title="Nothing on this page"
                 action={
                   <Button asChild>
-                    <NextLink href="/logbook">Back to the first page</NextLink>
+                    <NextLink href={logbookFilterHref(filter)}>
+                      Back to the first page
+                    </NextLink>
                   </Button>
                 }
               >
-                {`You have ${totalCount} entr${
-                  totalCount === 1 ? "y" : "ies"
-                } on file — page ${page} is past the last one, which is page ${pageCount}.`}
+                {`${
+                  filtered ? `${totalCount} entr${totalCount === 1 ? "y" : "ies"} match this view` : `You have ${totalCount} entr${totalCount === 1 ? "y" : "ies"} on file`
+                } — page ${page} is past the last one, which is page ${pageCount}.`}
               </EmptyState>
             ) : entries.length === 0 ? (
               <EmptyState
@@ -497,8 +678,15 @@ export default async function LogbookPage({
               button behaves. */}
           {pageCount > 1 ? (
             <Flex justify="between" align="center" gap="3" wrap="wrap">
+              {/* THE FILTER TRAVELS WITH THE PAGE. Built through the same
+                  pure helper the saved views and the picker use, so
+                  paginating a view cannot silently drop back to the whole
+                  logbook — which would show a pilot rows they did not ask
+                  for under a caption saying otherwise. */}
               <Button asChild variant="soft" disabled={page <= 1}>
-                <NextLink href={page <= 2 ? "/logbook" : `/logbook?page=${page - 1}`}>
+                <NextLink
+                  href={logbookFilterHref(filter, page <= 2 ? undefined : page - 1)}
+                >
                   Newer
                 </NextLink>
               </Button>
@@ -506,7 +694,9 @@ export default async function LogbookPage({
                 {`Showing ${from + 1}–${Math.min(from + PAGE_SIZE, totalCount)} of ${totalCount}`}
               </Text>
               <Button asChild variant="soft" disabled={page >= pageCount}>
-                <NextLink href={`/logbook?page=${Math.min(page + 1, pageCount)}`}>
+                <NextLink
+                  href={logbookFilterHref(filter, Math.min(page + 1, pageCount))}
+                >
                   Older
                 </NextLink>
               </Button>

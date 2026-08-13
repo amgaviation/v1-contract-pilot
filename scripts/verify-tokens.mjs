@@ -77,7 +77,7 @@ const SCAN_DIRS = ["app", "components", "lib"];
  * it is a value the theme cannot reach at all, which is worse, because no
  * amount of re-theming will ever move it.
  *
- * Only four files may spell a visual value out:
+ * Only five files may spell a visual value out:
  *
  *   app/globals.css     the V1 mark's brand-identity constants. The
  *                       wordmark is literal black and the bug literal
@@ -99,12 +99,25 @@ const SCAN_DIRS = ["app", "components", "lib"];
  *                       still come from pdf-palette, which is the part
  *                       that actually matters; sizes and weights are
  *                       necessarily literal in a PDF.
+ *   lib/pilot-history-pdf.tsx
+ *                       the second react-pdf document — the pilot-history
+ *                       report an airman hands to an underwriter or a
+ *                       chief pilot. Identical reasoning to
+ *                       lib/invoice-pdf.tsx, and it is LISTED rather than
+ *                       the exemption being widened to a `lib/*-pdf.tsx`
+ *                       glob: a pattern would silently exempt the next
+ *                       file somebody happens to name that way, which is
+ *                       exactly the drift this list exists to keep
+ *                       deliberate. Its colours come from pdf-palette
+ *                       too; only StyleSheet.create()'s sizes and weights
+ *                       need the exemption.
  */
 const EXEMPT_FILES = new Set([
   join(ROOT, "app", "globals.css"),
   join(ROOT, "lib", "brand.ts"),
   join(ROOT, "lib", "pdf-palette.ts"),
   join(ROOT, "lib", "invoice-pdf.tsx"),
+  join(ROOT, "lib", "pilot-history-pdf.tsx"),
 ]);
 const EXEMPT_DIRS = [];
 
@@ -595,5 +608,5 @@ if (violations.length > 0) {
 }
 
 console.log(
-  "tokens:verify passed — no visual values hardcoded outside the four documented files."
+  `tokens:verify passed — no visual values hardcoded outside the ${EXEMPT_FILES.size} documented files.`
 );
