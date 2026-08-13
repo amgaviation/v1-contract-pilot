@@ -204,6 +204,11 @@ npm run tenancy:verify        two-tenant isolation — the gate on everything
 npm run billing:verify        trial, webhook idempotency, out-of-order events
 npm run trip:verify           trip → invoice line, expense, logbook DRAFT
 npm run customisation:verify  day types, rate cards, and the money regression
+npm run reminders:verify      the scheduler's database guarantees: a rung is
+                              consumed once and only once, a ledger row cannot
+                              claim more than happened, and reminders_suppressed
+                              is the ONLY column scheduled reminders unfroze on
+                              an issued invoice (38 assertions, local Postgres)
 ```
 
 The verify scripts drive real authenticated Supabase clients rather than the

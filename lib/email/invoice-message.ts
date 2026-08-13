@@ -277,6 +277,51 @@ export type InvoiceMessageInput = {
 
 export type InvoiceMessage = { subject: string; text: string };
 
+/**
+ * WHAT THIS PRODUCT KNOWS ABOUT WHETHER THE CLIENT HAS SEEN THE INVOICE, and
+ * it is less than it sounds.
+ *
+ * pilot.invoice_shares.first_viewed_at/last_viewed_at mean exactly one thing,
+ * and their own migration (20260812200000) is emphatic about it: "this share
+ * link was FETCHED while valid." Mail scanners and link-preview bots issue
+ * GETs; Outlook SafeLinks is indistinguishable from a CFO. So a stamp is a
+ * fact about a LINK, never about a person, and the wording below is written
+ * to that limit — "the link was opened", never "you read it", never "we can
+ * see you've seen this". A reminder that claims knowledge of somebody's
+ * reading habits is both wrong and insulting, in a message whose entire job
+ * is to stay easy to reply to.
+ *
+ * `no_link` is the ORDINARY case, not an edge one: a reminder carries the PDF
+ * as an attachment and most invoices never had a share link minted at all
+ * (email and link travel separately — see lib/invoice-share-receipts.ts's
+ * header). It produces no sentence, because there is nothing to say.
+ */
+export type ReminderLinkActivity =
+  | { kind: "no_link" }
+  | { kind: "never_opened" }
+  | { kind: "opened"; firstViewedAt: string };
+
+export type ReminderMessageInput = InvoiceMessageInput & {
+  daysOverdue: number;
+  /**
+   * How the shared link has behaved. Absent is treated as `no_link`, so every
+   * existing caller renders byte-identically.
+   */
+  linkActivity?: ReminderLinkActivity;
+  /**
+   * The agreed late-fee sentence, ALREADY resolved by the caller from the
+   * client's own opt-in (lib/reminders/policy.ts's lateFeeReminderSentence,
+   * which returns null unless the pilot switched the note on AND has a figure
+   * on file). Passed in rather than computed here for the same reason
+   * `paymentUrl` is: this module states facts, it does not decide policy.
+   *
+   * It is placed with the closing courtesy, not with the amount — a fee that
+   * appears next to the balance reads as part of it, and the balance is
+   * whatever pilot.invoice_totals says and nothing else.
+   */
+  lateFeeNote?: string | null;
+};
+
 function reference(invoiceNumber: string | null): string {
   return invoiceNumber ? `Invoice ${invoiceNumber}` : "Invoice";
 }
@@ -396,7 +441,7 @@ export function buildInvoiceMessage(input: InvoiceMessageInput): InvoiceMessage 
  * agreed with their client.
  */
 export function buildReminderMessage(
-  input: InvoiceMessageInput & { daysOverdue: number }
+  input: ReminderMessageInput
 ): InvoiceMessage {
   const ref = reference(input.invoiceNumber);
   const greetingName = input.contactName?.trim() || input.clientName;
@@ -447,6 +492,29 @@ export function buildReminderMessage(
     );
   }
 
+  // WHAT THE LINK DID, stated as narrowly as the stamp permits — see
+  // ReminderLinkActivity. Sits directly under the opening line because it is
+  // the reason this particular follow-up is worded the way it is, and above
+  // the pilot's own note so their words are the last thing before the
+  // payment link.
+  const activity = input.linkActivity ?? { kind: "no_link" as const };
+  if (activity.kind === "never_opened") {
+    lines.push("");
+    lines.push(
+      "The copy I shared by link hasn't been opened yet, so in case it didn't reach you, it is attached here as well."
+    );
+  } else if (activity.kind === "opened") {
+    // "was opened", never "you opened it" or "you've seen it": the stamp
+    // records a fetch of a URL. It cannot distinguish a person from a mail
+    // scanner, and the copy must not pretend otherwise.
+    lines.push("");
+    lines.push(
+      `The copy I shared by link was opened on ${formatDate(
+        activity.firstViewedAt
+      )}, so I want to be sure it has reached the right desk.`
+    );
+  }
+
   if (input.customMessage?.trim()) {
     lines.push("");
     lines.push(input.customMessage.trim());
@@ -456,6 +524,14 @@ export function buildReminderMessage(
     lines.push("");
     lines.push("You can pay online here:");
     lines.push(input.paymentUrl);
+  }
+
+  // The agreed fee, when the pilot has opted this client in. Deliberately
+  // here — beneath the payment link, beside the courtesy — and not near the
+  // amount: it states what was agreed, and it is not part of what is owed.
+  if (input.lateFeeNote?.trim()) {
+    lines.push("");
+    lines.push(input.lateFeeNote.trim());
   }
 
   lines.push("");

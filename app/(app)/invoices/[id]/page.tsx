@@ -16,6 +16,23 @@ import PdfDownload from "./pdf-download";
 import StatusActions from "./status-actions";
 import PaymentPanel, { type PaymentRow } from "./payment-panel";
 import SharePanel, { type ShareRow } from "./share-panel";
+import ReminderPanel, {
+  type LateFeeView,
+  type ReminderRungView,
+} from "./reminder-panel";
+import {
+  decideReminder,
+  describeHold,
+  describeLateFeePolicy,
+  describeRung,
+  normalizeLateFeePolicy,
+  normalizeReminderPolicy,
+  quoteLateFee,
+  reminderPolicyIsEmpty,
+  rungsFor,
+  toCalendarDate,
+  MANUAL_RULE_KEY,
+} from "@/lib/reminders/policy";
 
 export const metadata = { title: "Invoice" };
 
@@ -33,6 +50,7 @@ type InvoiceRow = {
   stripe_payment_link_url: string | null;
   stripe_payment_link_livemode: boolean | null;
   stripe_payment_link_amount_cents: number | null;
+  reminders_suppressed: boolean;
 };
 
 type TotalsRow = {
@@ -233,6 +251,196 @@ export default async function InvoicePage({
   const hasInvoiceTemplate =
     (await loadPreferences(account.id)).templates.invoice !== null;
 
+  // ---------------------------------------------------------------------
+  // THE REMINDER LADDER AND THE AGREED LATE FEE, both computed here from the
+  // SAME pure functions the scheduled run uses (lib/reminders/policy.ts).
+  //
+  // Derived at render, stored nowhere — the rule this schema has held since
+  // Phase 5 refused to store an "overdue" flag. What IS stored is only what
+  // actually happened: the rows in pilot.invoice_reminder_sends.
+  //
+  // Only for an invoice the run itself would act on. A draft is not chased, a
+  // paid one is settled and a void one is not owed, so showing a ladder for
+  // any of them would describe something that cannot happen.
+  // ---------------------------------------------------------------------
+  const chaseable = invoice.status === "sent" || invoice.status === "partial";
+  let reminderView: {
+    scheduleIsEmpty: boolean;
+    rungs: ReminderRungView[];
+    nextUp: string | null;
+    hold: string | null;
+    lateFee: LateFeeView;
+    manualSends: string[];
+  } | null = null;
+
+  if (chaseable) {
+    const [
+      { data: policyData },
+      { data: sendData },
+      { data: feeData },
+    ] = await Promise.all([
+      supabase
+        .from("clients")
+        .select(
+          "reminder_before_due, reminder_on_due, reminder_after_due, late_fee_flat_cents, late_fee_bps_per_month, late_fee_grace_days"
+        )
+        .eq("id", invoice.client_id)
+        .eq("account_id", account.id)
+        .maybeSingle(),
+      supabase
+        .from("invoice_reminder_sends")
+        .select("rule_key, outcome, detail, created_at")
+        .eq("account_id", account.id)
+        .eq("invoice_id", id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("invoice_late_fees")
+        // `basis` rides along for the quote: a flat fee already raised blocks
+        // a later rate fee outright (quoteLateFee's header says why).
+        .select("id, fee_invoice_id, amount_cents, basis, months_accrued, created_at")
+        .eq("account_id", account.id)
+        .eq("source_invoice_id", id)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    const policyRow = policyData as {
+      reminder_before_due: number[] | null;
+      reminder_on_due: boolean | null;
+      reminder_after_due: number[] | null;
+      late_fee_flat_cents: number | null;
+      late_fee_bps_per_month: number | null;
+      late_fee_grace_days: number | null;
+    } | null;
+
+    const policy = normalizeReminderPolicy({
+      beforeDue: policyRow?.reminder_before_due,
+      onDue: policyRow?.reminder_on_due,
+      afterDue: policyRow?.reminder_after_due,
+    });
+
+    const sends = (sendData ?? []) as {
+      rule_key: string;
+      outcome: "sent" | "failed" | "skipped";
+      detail: string | null;
+      created_at: string;
+    }[];
+    const byRule = new Map(
+      sends.filter((row) => row.rule_key !== MANUAL_RULE_KEY).map((row) => [row.rule_key, row])
+    );
+
+    const today = toCalendarDate(new Date());
+    const decision = decideReminder({
+      policy,
+      dueOn: invoice.due_on,
+      today,
+      consumed: [...byRule.keys()],
+      // Only a send that actually went out starts a quiet period — a skipped
+      // rung and a refused send both reached nobody. Same rule as the run
+      // itself applies (lib/reminders/run.ts), so this screen and the
+      // scheduler cannot disagree about why nothing is going out.
+      lastReminderAt:
+        sends.find((row) => row.outcome === "sent")?.created_at ?? null,
+      // A REVOKED LINK'S STAMPS DESCRIBE A PAGE THE CLIENT CAN NO LONGER OPEN,
+      // so they are no information — the same rule the run applies, and it has
+      // to be the same one or this panel's premise fails in the direction that
+      // costs something: the screen would say "the client opened the link in
+      // the last couple of days, so the next reminder waits" while tonight's
+      // pass, reading a revoked share as never viewed, sends it. Being told
+      // nothing would go out and then having mail reach a client is the one
+      // disagreement worth guarding against.
+      lastViewedAt: share && !share.revoked_at ? share.last_viewed_at : null,
+      suppressed: invoice.reminders_suppressed === true,
+    });
+
+    const rungs: ReminderRungView[] = rungsFor(policy, invoice.due_on).map((rung) => {
+      const row = byRule.get(rung.key);
+      return {
+        key: rung.key,
+        label: describeRung(rung),
+        when: formatDate(rung.onDate),
+        state: row ? row.outcome : "upcoming",
+        detail: row?.detail ?? null,
+        at: row ? formatDate(row.created_at) : null,
+      };
+    });
+
+    // The next thing that will happen, said as a date rather than as a state.
+    const nextRung = rungsFor(policy, invoice.due_on).find(
+      (rung) => !byRule.has(rung.key) && rung.onDate > today
+    );
+
+    const fees = (feeData ?? []) as {
+      id: string;
+      fee_invoice_id: string;
+      amount_cents: number;
+      basis: string;
+      months_accrued: number | null;
+      created_at: string;
+    }[];
+    let feeNumbers = new Map<string, string | null>();
+    if (fees.length > 0) {
+      const { data: feeInvoiceData } = await supabase
+        .from("invoices")
+        .select("id, invoice_number")
+        .eq("account_id", account.id)
+        .in(
+          "id",
+          fees.map((fee) => fee.fee_invoice_id)
+        );
+      feeNumbers = new Map(
+        ((feeInvoiceData ?? []) as { id: string; invoice_number: string | null }[]).map(
+          (row) => [row.id, row.invoice_number]
+        )
+      );
+    }
+
+    const lateFeePolicy = normalizeLateFeePolicy({
+      flatCents: policyRow?.late_fee_flat_cents,
+      bpsPerMonth: policyRow?.late_fee_bps_per_month,
+      graceDays: policyRow?.late_fee_grace_days ?? 0,
+    });
+    const quote = quoteLateFee({
+      policy: lateFeePolicy,
+      balanceDueCents: totals?.balance_due_cents ?? 0,
+      dueOn: invoice.due_on,
+      today,
+      monthsAlreadyBilled: fees.reduce(
+        (sum, fee) => sum + (fee.months_accrued ?? 0),
+        0
+      ),
+      anyFeeAlreadyRaised: fees.length > 0,
+      flatFeeAlreadyRaised: fees.some((fee) => fee.basis === "flat"),
+    });
+
+    reminderView = {
+      scheduleIsEmpty: reminderPolicyIsEmpty(policy),
+      rungs,
+      nextUp: nextRung
+        ? `Next: ${describeRung(nextRung).toLowerCase()}, on ${formatDate(nextRung.onDate)}.`
+        : null,
+      // A hold that is merely "nothing is due yet" is not worth a sentence —
+      // the ladder above already shows that.
+      hold:
+        decision.action === "hold" && decision.reason !== "nothing_due"
+          ? describeHold(decision.reason)
+          : null,
+      lateFee: {
+        policy: describeLateFeePolicy(lateFeePolicy),
+        quote: quote ? `${formatCents(quote.amountCents)} — ${quote.explanation}` : null,
+        raised: fees.map((fee) => ({
+          id: fee.fee_invoice_id,
+          number: feeNumbers.get(fee.fee_invoice_id) ?? null,
+          amount: formatCents(fee.amount_cents),
+          when: formatDate(fee.created_at),
+        })),
+      },
+      manualSends: sends
+        .filter((row) => row.rule_key === MANUAL_RULE_KEY && row.outcome === "sent")
+        .slice(0, 3)
+        .map((row) => formatDate(row.created_at)),
+    };
+  }
+
   const badge = STATUS_BADGE[invoice.status] ?? STATUS_FALLBACK;
 
   return (
@@ -324,8 +532,38 @@ export default async function InvoicePage({
             clientName={billedClient?.name ?? "this client"}
             receiptCount={receiptCount}
             hasInvoiceTemplate={hasInvoiceTemplate}
+            // THE TWO FACTS THE RUN ITSELF CHECKS, kept apart rather than
+            // and-ed into one boolean: "this client has no schedule" and "you
+            // paused this invoice" are claims at different scopes, and
+            // collapsing them made the screen tell a pilot that nothing goes
+            // out automatically FOR THE CLIENT when they had merely paused one
+            // disputed invoice — while every other invoice for that client
+            // stayed on the ladder. See StatusActions' own prop comment.
+            automaticChase={
+              reminderView === null || reminderView.scheduleIsEmpty
+                ? "none"
+                : invoice.reminders_suppressed === true
+                  ? "paused"
+                  : "live"
+            }
             hasDueDate={invoice.due_on !== null}
           />
+          {reminderView ? (
+            <ReminderPanel
+              invoiceId={invoice.id}
+              clientId={invoice.client_id}
+              clientName={billedClient?.name ?? "this client"}
+              suppressed={invoice.reminders_suppressed === true}
+              scheduleIsEmpty={reminderView.scheduleIsEmpty}
+              rungs={reminderView.rungs}
+              nextUp={reminderView.nextUp}
+              hold={reminderView.hold}
+              canEmail={emailIsConfigured()}
+              clientHasEmail={Boolean(billedClient?.contact_email)}
+              lateFee={reminderView.lateFee}
+              manualSends={reminderView.manualSends}
+            />
+          ) : null}
           {/* Matches pilot.invoice_share_create's own status gate
               (sent/partial/paid only) — never offered on a draft, so the
               button is never shown where the database would refuse it. */}
