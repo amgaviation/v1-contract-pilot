@@ -15,6 +15,7 @@ import SettingsTabs from "./settings-tabs";
 import DayTypesPanel from "./day-types-panel";
 import ConnectPanel from "./connect-panel";
 import MileageRatesPanel from "./mileage-rates-panel";
+import MessageTemplatesPanel from "./message-templates-panel";
 import AppearancePanel from "./appearance-panel";
 import LayoutPanel from "./layout-panel";
 import CategoriesPanel from "./categories-panel";
@@ -284,6 +285,19 @@ export default async function SettingsPage({
           ) : (
             <MileageRatesPanel rates={mileageRates} canEdit={canEdit} />
           )
+        }
+        // loadPreferences is total, so `templates` is always a well-formed
+        // pair — {null, null} for the ordinary account that has never opened
+        // this tab, which the panel renders as two empty boxes showing the
+        // built-in wording. There is no failed-read card here, and that is
+        // the same call the appearance and layout panels make: a preferences
+        // read that fails yields the product's own defaults, and defaults
+        // are exactly what an unsaved template already means.
+        messages={
+          <MessageTemplatesPanel
+            templates={preferences.templates}
+            canEdit={canEdit}
+          />
         }
         appearance={<AppearancePanel slots={preferences.theme} canEdit={canEdit} />}
         layout={

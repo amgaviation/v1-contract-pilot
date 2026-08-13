@@ -20,6 +20,7 @@ const TAB_KEYS = [
   "business",
   "day-types",
   "mileage",
+  "messages",
   "appearance",
   "layout",
   "categories",
@@ -62,6 +63,7 @@ export default function SettingsTabs({
   business,
   dayTypes,
   mileage,
+  messages,
   appearance,
   layout,
   categories,
@@ -71,6 +73,7 @@ export default function SettingsTabs({
   business: ReactNode;
   dayTypes: ReactNode;
   mileage: ReactNode;
+  messages: ReactNode;
   appearance: ReactNode;
   layout: ReactNode;
   categories: ReactNode;
@@ -94,6 +97,7 @@ export default function SettingsTabs({
     { key: "business", label: "Your business", content: business },
     { key: "day-types", label: "Day types", content: dayTypes },
     { key: "mileage", label: "Mileage", content: mileage },
+    { key: "messages", label: "Message wording", content: messages },
     { key: "appearance", label: "Appearance", content: appearance },
     { key: "layout", label: "Layout", content: layout },
     { key: "categories", label: "Categories", content: categories },

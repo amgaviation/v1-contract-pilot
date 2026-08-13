@@ -8,6 +8,7 @@ import { isLiveMode } from "@/lib/stripe/server";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import { emailIsConfigured } from "@/lib/email/send";
+import { loadPreferences } from "@/lib/preferences";
 import PageShell from "../../page-shell";
 import HeaderForm, { type ClientOption } from "./header-form";
 import LinesEditor, { type LineRow, type RebillableExpense } from "./lines-editor";
@@ -209,6 +210,29 @@ export default async function InvoicePage({
     receiptCount = ((receiptRows ?? []) as { id: string }[]).length;
   }
 
+  // WHICH OPENING LINE THIS SEND WILL ACTUALLY USE — enough of it for the
+  // send dialog to stop promising the wrong one. The dialog used to say
+  // "your saved wording" unconditionally, which is a claim about something
+  // that does not exist for an account that never opened Settings, and one
+  // that a saved template can silently break: applyTemplate declines a
+  // template naming {{due_date}} on an invoice that has none, and the
+  // built-in copy goes out instead with nothing to say so.
+  //
+  // Only the two facts the dialog's copy branches on are passed down, NOT
+  // the template text and NOT a re-resolution of the message: emailInvoice
+  // resolves the real thing at send time (deliberately — see its comment
+  // about a template edited in another tab), and a second resolver here
+  // would be free to drift from it. A boolean cannot drift; it can only be
+  // stale by the width of one page load, which is what the dialog's own
+  // "unless" wording already allows for.
+  //
+  // loadPreferences is total — a missing row (the ordinary state) and a
+  // failed read both resolve to no template, i.e. the built-in wording,
+  // which is the same thing the send path falls back to. So the worst case
+  // is that the dialog under-promises, never that it over-promises.
+  const hasInvoiceTemplate =
+    (await loadPreferences(account.id)).templates.invoice !== null;
+
   const badge = STATUS_BADGE[invoice.status] ?? STATUS_FALLBACK;
 
   return (
@@ -299,11 +323,23 @@ export default async function InvoicePage({
             clientEmail={billedClient?.contact_email ?? null}
             clientName={billedClient?.name ?? "this client"}
             receiptCount={receiptCount}
+            hasInvoiceTemplate={hasInvoiceTemplate}
+            hasDueDate={invoice.due_on !== null}
           />
           {/* Matches pilot.invoice_share_create's own status gate
               (sent/partial/paid only) — never offered on a draft, so the
               button is never shown where the database would refuse it. */}
-          {!draft ? <SharePanel invoiceId={invoice.id} share={share} /> : null}
+          {!draft ? (
+            // receiptCount is the SAME count StatusActions and the download
+            // button take, and the same set pilot.invoice_share_receipts
+            // resolves for this invoice's token — so what the panel tells
+            // the pilot the link will show cannot drift from what it shows.
+            <SharePanel
+              invoiceId={invoice.id}
+              share={share}
+              receiptCount={receiptCount}
+            />
+          ) : null}
           <PaymentPanel
             invoiceId={invoice.id}
             status={invoice.status}

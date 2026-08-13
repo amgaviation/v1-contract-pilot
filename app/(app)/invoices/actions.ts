@@ -15,7 +15,9 @@ import {
   buildInvoiceMessage,
   buildReminderMessage,
   daysOverdue,
+  MAX_CUSTOM_MESSAGE_CHARS,
 } from "@/lib/email/invoice-message";
+import { loadPreferences } from "@/lib/preferences";
 import { categoryLabel } from "./labels";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -1553,7 +1555,16 @@ export async function sendInvoice(
    * default; the send dialog's checkbox (status-actions.tsx) is what
    * turns it off. Ignored for manual_download, which attaches nothing.
    */
-  includeReceipts: boolean = true
+  includeReceipts: boolean = true,
+  /**
+   * What the pilot typed in this send's dialog, for this client, once. It
+   * rides ALONGSIDE the account's saved template rather than replacing it
+   * (lib/email/invoice-message.ts places the two in different blocks), so
+   * a pilot who has set standing wording does not lose it by adding a note
+   * about one trip. Bounded and trimmed below; empty means send exactly
+   * what would have been sent before this parameter existed.
+   */
+  customMessage: string | null = null
 ): Promise<{ error: string | null }> {
   // Validated the same way updateInvoiceHeader validates its id — an
   // unvalidated string reaches Postgres as a malformed uuid, which
@@ -1561,6 +1572,20 @@ export async function sendInvoice(
   if (!UUID_RE.test(id)) return { error: "That invoice no longer exists." };
 
   const { user, account } = await requireAccount(`/invoices/${id}`);
+
+  // CHECKED BEFORE THE STATUS TRANSITION, not after. A server action is a
+  // public endpoint and the dialog's maxLength is a courtesy, not a
+  // control — but the ORDERING is the part that matters: the transition
+  // below mints the permanent invoice number and cannot be undone, so
+  // refusing an over-long note afterwards would leave the invoice issued
+  // with the pilot's words silently dropped and no way back.
+  const note = customMessage?.trim() ?? "";
+  if (note.length > MAX_CUSTOM_MESSAGE_CHARS) {
+    return {
+      error: `That message is longer than ${MAX_CUSTOM_MESSAGE_CHARS} characters. Nothing was sent and the invoice is still a draft — shorten it and try again.`,
+    };
+  }
+
   const supabase = await createClient();
 
   const payload: InvoiceUpdate = {
@@ -1585,7 +1610,15 @@ export async function sendInvoice(
   if (deliveryMethod === "platform_email") {
     // Numbered and dated by the transition above, so the attachment now
     // matches the record exactly.
-    const sent = await emailInvoice(supabase, account.id, id, "invoice", user.email, includeReceipts);
+    const sent = await emailInvoice(
+      supabase,
+      account.id,
+      id,
+      "invoice",
+      user.email,
+      includeReceipts,
+      note === "" ? null : note
+    );
     if (!sent.ok) {
       return {
         error: `The invoice is now issued and numbered, but the email didn't go out — ${sent.error} Download the PDF and send it yourself; don't try to issue it again.`,
@@ -1607,11 +1640,21 @@ export async function sendInvoice(
  * not agreed with their client would do them real damage.
  */
 export async function sendInvoiceReminder(
-  id: string
+  id: string,
+  /** Same per-send note as sendInvoice's — see that parameter's own comment. */
+  customMessage: string | null = null
 ): Promise<{ error: string | null }> {
   if (!UUID_RE.test(id)) return { error: "That invoice no longer exists." };
 
   const { user, account } = await requireAccount(`/invoices/${id}`);
+
+  const note = customMessage?.trim() ?? "";
+  if (note.length > MAX_CUSTOM_MESSAGE_CHARS) {
+    return {
+      error: `That message is longer than ${MAX_CUSTOM_MESSAGE_CHARS} characters. Nothing was sent — shorten it and try again.`,
+    };
+  }
+
   const supabase = await createClient();
 
   // STATUS IS RE-READ HERE, not trusted from the screen that offered the
@@ -1646,7 +1689,35 @@ export async function sendInvoiceReminder(
     return { error: `No reminder sent. ${why} Reload the page to see where it stands.` };
   }
 
-  const sent = await emailInvoice(supabase, account.id, id, "reminder", user.email);
+  const sent = await emailInvoice(
+    supabase,
+    account.id,
+    id,
+    "reminder",
+    user.email,
+    // Receipts default ON everywhere else and a reminder keeps that
+    // default; passed explicitly only because the note is positional after
+    // it.
+    //
+    // NOT NECESSARILY "the same document the client already has", which is
+    // what this comment claimed before and is false in two ordinary cases.
+    // sendInvoice's receipts checkbox is a PER-SEND choice stored nowhere,
+    // so an invoice first emailed with it UNticked gets a reminder carrying
+    // the very receipt pages the pilot left out; and a manual_download
+    // invoice was never emailed by this product at all, so there is no
+    // "again" to appeal to. Rather than have the reminder guess at a
+    // decision it cannot read, the reminder dialog now states plainly that
+    // the full PDF goes with receipts included (status-actions.tsx), so the
+    // pilot decides with that in front of them.
+    //
+    // Remembering the original choice is the better fix and is a schema
+    // change — a column on pilot.invoices written at the draft->sent
+    // transition, which is an owner-gated migration in this repo. It would
+    // settle the same question for the client share link, whose half of
+    // this is carried by share-panel.tsx.
+    true,
+    note === "" ? null : note
+  );
   if (!sent.ok) return { error: sent.error };
 
   revalidatePath(`/invoices/${id}`);
@@ -1687,7 +1758,12 @@ async function emailInvoice(
    * reminder path keeps the same default as every other surface; only
    * sendInvoice's dialog checkbox ever passes false.
    */
-  includeReceipts: boolean = true
+  includeReceipts: boolean = true,
+  /**
+   * The pilot's per-send note, already trimmed and length-checked by the
+   * caller. null on every path that does not offer the box.
+   */
+  customMessage: string | null = null
 ): Promise<{ ok: true; note: string } | { ok: false; error: string }> {
   if (!emailIsConfigured()) {
     return {
@@ -1769,6 +1845,24 @@ async function emailInvoice(
       ? invoice.stripe_payment_link_url
       : null;
 
+  // THE ACCOUNT'S SAVED WORDING, read at SEND time rather than carried in
+  // from the screen that offered the button. Two reasons, and the second is
+  // the load-bearing one: the reminder path has no dialog that could carry
+  // it at all, and a template edited in another tab between render and
+  // click must not send yesterday's sentence.
+  //
+  // loadPreferences is total — a missing row (the ordinary state) and a
+  // failed read both resolve to the product's own defaults, which for this
+  // section means "no template", i.e. exactly the built-in copy. So a
+  // preferences outage costs a pilot their custom opening line and never
+  // costs them the send. That is the right way round: the invoice going out
+  // matters more than the sentence it opens with.
+  const preferences = await loadPreferences(accountId);
+  const template =
+    kind === "reminder"
+      ? preferences.templates.reminder
+      : preferences.templates.invoice;
+
   const shared = {
     accountName: doc.accountName,
     clientName: client.name,
@@ -1785,6 +1879,8 @@ async function emailInvoice(
     // rode along as an on-request caption page. See
     // InvoiceMessageInput.receiptCount.
     receiptCount: doc.receiptCount,
+    template,
+    customMessage,
   };
 
   const message =
