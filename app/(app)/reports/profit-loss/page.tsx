@@ -21,7 +21,8 @@ import { requireAccount } from "@/lib/supabase/account";
 import { formatCents } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import PageShell from "../../page-shell";
-import { CATEGORY_LABEL, currentTaxYear } from "../year-end/db";
+import { currentTaxYear } from "../year-end/db";
+import { loadOptionLabels } from "@/lib/custom-options-read";
 import { loadProfitLossReport, resolvePLPeriod, type Comparison } from "./queries";
 
 export const metadata = { title: "Profit & loss" };
@@ -114,6 +115,11 @@ export default async function ProfitLossReportPage({
 
   const supabase = await createClient();
   const report = await loadProfitLossReport(supabase, account.id, period);
+  // The tenant's own category names, so a rename reaches the reports as
+  // well as the expenses list. Retired categories are included: a report
+  // is history, and a category a pilot has since retired still has spend
+  // filed under it.
+  const categoryLabels = await loadOptionLabels("expense_category");
 
   const netProfitCents = report.incomeComparison.currentCents - report.expensesComparison.currentCents;
 
@@ -339,7 +345,7 @@ export default async function ProfitLossReportPage({
                 <Table.Body>
                   {report.expensesByCategory.map((c) => (
                     <Table.Row key={c.category}>
-                      <Table.RowHeaderCell>{CATEGORY_LABEL[c.category] ?? c.category}</Table.RowHeaderCell>
+                      <Table.RowHeaderCell>{categoryLabels[c.category] ?? c.category}</Table.RowHeaderCell>
                       <Table.Cell justify="end">
                         <Text className="tnum">{c.count}</Text>
                       </Table.Cell>

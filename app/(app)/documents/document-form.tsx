@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import NextLink from "next/link";
 import { Button, Card, Flex, Grid, Heading, Select, Text, TextArea, TextField } from "@/components/ui";
-import { DOCUMENT_KINDS } from "./kinds";
+import type { OptionChoice } from "@/lib/custom-options";
 import { useFileSurvivesReset } from "@/components/use-file-survives-reset";
 import type { DocumentFormState } from "./actions";
 
@@ -33,6 +33,7 @@ const initialState: DocumentFormState = { error: null };
 export default function DocumentForm({
   action,
   clients,
+  kinds,
   values = {},
   submitLabel,
 }: {
@@ -41,6 +42,15 @@ export default function DocumentForm({
     formData: FormData
   ) => Promise<DocumentFormState>;
   clients: ClientOption[];
+  /**
+   * The tenant's own document-kind vocabulary — their labels, their
+   * order, retired kinds already dropped. Read server-side by the page
+   * (lib/custom-options-read.ts) and passed in, rather than imported
+   * here: this is a client component, and the options table can only be
+   * read on the server. REQUIRED rather than optional, so a new screen
+   * rendering this form cannot silently fall back to the stock list.
+   */
+  kinds: readonly OptionChoice[];
   values?: DocumentFormValues;
   submitLabel: string;
 }) {
@@ -95,7 +105,7 @@ export default function DocumentForm({
               <Select.Root value={kind} onValueChange={setKind}>
                 <Select.Trigger aria-labelledby="kind-label" />
                 <Select.Content>
-                  {DOCUMENT_KINDS.map((option) => (
+                  {kinds.map((option) => (
                     <Select.Item key={option.value} value={option.value}>
                       {option.label}
                     </Select.Item>

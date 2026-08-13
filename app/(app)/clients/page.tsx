@@ -5,8 +5,6 @@ import {
   Button,
   Callout,
   Card,
-  Flex,
-  Heading,
   Link as RadixLink,
   Table,
   Text,
@@ -19,6 +17,7 @@ import { requireAccount } from "@/lib/supabase/account";
 import { formatCents } from "@/lib/format";
 import type { Database } from "@/lib/supabase/database.types";
 import { friendlyDbError } from "@/lib/db-errors";
+import EmptyState from "@/components/ui/empty-state";
 import PageShell from "../page-shell";
 
 type ClientRow = Database["pilot"]["Tables"]["clients"]["Row"];
@@ -97,16 +96,17 @@ export default async function ClientsPage() {
             <Callout.Text>{friendlyDbError(error, "clients.select")}</Callout.Text>
           </Callout.Root>
         ) : clients.length === 0 ? (
-          <Flex direction="column" align="center" gap="3" py="6" px="3">
-            <Heading as="h3" size="4">No clients yet</Heading>
-            <Text size="2" color="gray" align="center">
-              Add the owner, operator, or management company you fly for.
-              Trips and invoices both hang off a client.
-            </Text>
-            <Button asChild>
-              <NextLink href="/clients/new">Add your first client</NextLink>
-            </Button>
-          </Flex>
+          <EmptyState
+            title="No clients yet"
+            action={
+              <Button asChild>
+                <NextLink href="/clients/new">Add your first client</NextLink>
+              </Button>
+            }
+          >
+            Add the owner, operator, or management company you fly for. Trips
+            and invoices both hang off a client.
+          </EmptyState>
         ) : (
           <Table.Root>
             <Table.Header>

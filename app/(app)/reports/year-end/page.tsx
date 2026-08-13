@@ -21,7 +21,8 @@ import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import PageShell from "../../page-shell";
-import { CATEGORY_LABEL, currentTaxYear } from "./db";
+import { currentTaxYear } from "./db";
+import { loadOptionLabels } from "@/lib/custom-options-read";
 import { loadYearEndReport } from "./queries";
 import { loadTravelLog } from "./travel-log-queries";
 import TaxFormEditor from "./tax-form-editor";
@@ -58,9 +59,13 @@ export default async function YearEndReportPage({
       : current;
 
   const supabase = await createClient();
-  const [report, travelLog] = await Promise.all([
+  // The tenant's own category names, retired ones included — this is a
+  // history report, so a category that is no longer offered still has a
+  // year of spend filed under it.
+  const [report, travelLog, categoryLabels] = await Promise.all([
     loadYearEndReport(supabase, account.id, year),
     loadTravelLog(supabase, account.id, year),
+    loadOptionLabels("expense_category"),
   ]);
 
   return (
@@ -249,7 +254,7 @@ export default async function YearEndReportPage({
                     {report.deductibleByCategory.map((c) => (
                       <Table.Row key={c.category}>
                         <Table.RowHeaderCell>
-                          {CATEGORY_LABEL[c.category] ?? c.category}
+                          {categoryLabels[c.category] ?? c.category}
                         </Table.RowHeaderCell>
                         <Table.Cell justify="end">
                           <Text className="tnum">{c.count}</Text>
@@ -333,7 +338,7 @@ export default async function YearEndReportPage({
                         </Table.RowHeaderCell>
                         <Table.Cell>
                           <Text color="gray">
-                            {CATEGORY_LABEL[r.category] ?? r.category}
+                            {categoryLabels[r.category] ?? r.category}
                           </Text>
                         </Table.Cell>
                         <Table.Cell>
@@ -453,7 +458,7 @@ export default async function YearEndReportPage({
                         </Table.RowHeaderCell>
                         <Table.Cell>
                           <Text color="gray">
-                            {CATEGORY_LABEL[e.category] ?? e.category}
+                            {categoryLabels[e.category] ?? e.category}
                           </Text>
                         </Table.Cell>
                         <Table.Cell>

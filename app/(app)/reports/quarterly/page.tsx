@@ -21,7 +21,8 @@ import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import PageShell from "../../page-shell";
-import { CATEGORY_LABEL, currentTaxYear } from "../year-end/db";
+import { currentTaxYear } from "../year-end/db";
+import { loadOptionLabels } from "@/lib/custom-options-read";
 import { loadQuarterlyReport } from "./queries";
 
 export const metadata = { title: "Quarterly estimated tax" };
@@ -77,6 +78,11 @@ export default async function QuarterlyReportPage({
 
   const supabase = await createClient();
   const report = await loadQuarterlyReport(supabase, account.id, year);
+  // The tenant's own category names, so a rename reaches the reports as
+  // well as the expenses list. Retired categories are included: a report
+  // is history, and a category a pilot has since retired still has spend
+  // filed under it.
+  const categoryLabels = await loadOptionLabels("expense_category");
 
   return (
     <PageShell
@@ -435,7 +441,7 @@ export default async function QuarterlyReportPage({
                           </Table.RowHeaderCell>
                           <Table.Cell>
                             <Text color="gray">
-                              {CATEGORY_LABEL[e.category] ?? e.category}
+                              {categoryLabels[e.category] ?? e.category}
                             </Text>
                           </Table.Cell>
                           <Table.Cell>

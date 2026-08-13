@@ -113,6 +113,196 @@ export function visibleNavSections(currencyEnabled: boolean): readonly NavItem[]
 }
 
 /**
+ * ===========================================================================
+ * THE TENANT'S NAV LAYOUT — Phase 9 Layer 2, the layout half.
+ *
+ * A pilot who never files an estimate and never touches Accounting should
+ * be able to put those two out of the way, and put Trips at the top. That
+ * is the whole feature. What it is emphatically NOT is a permission
+ * system, and the distinction is the most important thing in this block:
+ *
+ *   HIDING A SECTION HIDES THE NAV ENTRY. IT DOES NOT CLOSE THE ROUTE.
+ *
+ * /estimates still resolves, still renders, still writes; a bookmark, a
+ * deep link from an invoice, and a link inside another screen all keep
+ * working. Nothing below is consulted by any gate — the route-level gates
+ * are requireAccount (lib/supabase/account.ts), requireEntitlement
+ * (lib/supabase/entitlements.ts) and the currency flag, none of which
+ * reads a preference. robots.txt likewise derives its disallow list from
+ * NAV_SECTIONS above, not from the layout, so a hidden section is still
+ * disallowed to crawlers. tests/nav-layout.test.mjs asserts all of that,
+ * because a "hidden" that quietly became "forbidden" would be a security
+ * story invented by a display preference.
+ *
+ * Currency's flag stays upstream and unaffected: the layout applies to
+ * whatever visibleNavSections(flag) already returned, so a tenant layout
+ * can neither resurrect a flag-gated section nor be lost when the flag is
+ * later switched on (the stored order still names /currency and comes back
+ * into force with it).
+ * ===========================================================================
+ */
+export type NavLayout = {
+  /**
+   * Section hrefs, most-wanted first. Anything not named keeps its place
+   * relative to the other unnamed sections and follows them — so adding a
+   * new section to NAV_SECTIONS never needs a stored layout to be
+   * rewritten, and never makes one wrong.
+   */
+  order: readonly string[];
+  /** Section hrefs to leave out of the rail and the phone strip. */
+  hidden: readonly string[];
+};
+
+export const DEFAULT_NAV_LAYOUT: NavLayout = { order: [], hidden: [] };
+
+/**
+ * A generous bound on a stored list. NAV_SECTIONS has eleven entries; a
+ * stored array longer than this is not a layout, it is either corruption
+ * or someone probing the 16 KB prefs ceiling, and truncating it costs a
+ * pilot nothing.
+ */
+const MAX_NAV_LAYOUT_ENTRIES = 64;
+
+function knownSectionHrefs(): ReadonlySet<string> {
+  return new Set(NAV_SECTIONS.map((item) => item.href));
+}
+
+/**
+ * Untrusted jsonb → a layout every function here can trust.
+ *
+ * Total, like every other resolver in this product's preference path: a
+ * string, a number, null, an array of arrays, or an object whose `order`
+ * is a boolean all resolve to DEFAULT_NAV_LAYOUT rather than throwing.
+ * Three things are dropped rather than honoured:
+ *
+ *   - hrefs that are not sections (a stale entry from a section that was
+ *     renamed or removed, or an invented one). A stale href in a stored
+ *     layout is the expected steady state after any nav change, not an
+ *     error, so it is ignored silently.
+ *   - duplicates, which would otherwise let one section claim two ranks.
+ *   - /settings, in EITHER list. Settings is not one of NAV_SECTIONS at
+ *     all — the rail renders it separately, below its own separator,
+ *     precisely because it is where a pilot changes how the rest behaves
+ *     rather than another place to file work. So it is not a section to
+ *     order, and it is not a section to hide: no stored blob, however it
+ *     got there, can take away the way back to this screen. That falls
+ *     out of the known-sections filter rather than needing a special
+ *     case, which is why there isn't one.
+ */
+export function normalizeNavLayout(raw: unknown): NavLayout {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return DEFAULT_NAV_LAYOUT;
+  }
+
+  const known = knownSectionHrefs();
+  const source = raw as Record<string, unknown>;
+
+  const clean = (value: unknown): string[] => {
+    if (!Array.isArray(value)) return [];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const entry of value) {
+      if (out.length >= MAX_NAV_LAYOUT_ENTRIES) break;
+      if (typeof entry !== "string") continue;
+      if (!known.has(entry)) continue;
+      if (seen.has(entry)) continue;
+      seen.add(entry);
+      out.push(entry);
+    }
+    return out;
+  };
+
+  return {
+    order: clean(source.order),
+    hidden: clean(source.hidden),
+  };
+}
+
+/**
+ * The pure function the shell calls: a tenant's order and hidden set,
+ * applied on top of whatever visibleNavSections(currencyEnabled) returned.
+ *
+ * ORDER IS STABLE. Sections named in `order` come first, in that order;
+ * everything else follows in its NAV_SECTIONS order, unshuffled. That is a
+ * rank-and-stable-sort, not a rebuild of the list, which is what makes the
+ * two properties this needs both true at once: a layout stored before a
+ * new section existed still applies cleanly, and the new section lands in
+ * a sensible place instead of a random one.
+ *
+ * The group headers the rail draws (OPS / BUSINESS / RECORDS) are computed
+ * by walking the returned list and rendering a header wherever the group
+ * changes. A reordered list can therefore break their meaning, and the
+ * rail must not simply print what falls out — see navGroupsAreContiguous
+ * below, which is the predicate it gates on.
+ */
+export function applyNavLayout(
+  sections: readonly NavItem[],
+  layout: NavLayout
+): readonly NavItem[] {
+  const hidden = new Set(layout.hidden);
+  // Belt and braces over normalizeNavLayout: a caller that hand-built a
+  // NavLayout (a test, a future import path) still cannot hide Settings.
+  hidden.delete(NAV_SETTINGS.href);
+
+  const rank = new Map<string, number>();
+  layout.order.forEach((href, index) => {
+    if (!rank.has(href)) rank.set(href, index);
+  });
+
+  return sections
+    .filter((item) => !hidden.has(item.href))
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      const rankA = rank.get(a.item.href) ?? Number.POSITIVE_INFINITY;
+      const rankB = rank.get(b.item.href) ?? Number.POSITIVE_INFINITY;
+      // The explicit index tiebreak is what makes this a STABLE sort
+      // regardless of the engine's own sort stability guarantees.
+      return rankA === rankB ? a.index - b.index : rankA - rankB;
+    })
+    .map(({ item }) => item);
+}
+
+/**
+ * Whether every group in this list is still ONE CONTIGUOUS RUN — i.e.
+ * whether group headers still mean anything for it.
+ *
+ * The rail draws a header wherever the group changes walking the list.
+ * That is correct for the default order, in which each group is a single
+ * run, and it silently stops being correct the moment a tenant interleaves
+ * two groups: a pilot who moves Invoices to the top gets "BUSINESS /
+ * Invoices / OPS / Overview / Trips / Logbook / BUSINESS / Estimates …",
+ * with BUSINESS printed twice and a four-step gap injected mid-list. Two
+ * more moves and nearly every item carries a header, at which point the
+ * headers convey no grouping at all — a striped rail that is strictly
+ * worse than an ungrouped one.
+ *
+ * So the rail asks this first and falls back to a FLAT list when the
+ * answer is no. Not "the tenant set an order", deliberately: hiding
+ * sections, or reordering WITHIN a group, or promoting a whole group,
+ * all keep the runs intact and keep their headers. Only an arrangement
+ * that has actually broken the grouping loses them, which is both the
+ * honest rendering and the one the pilot's own arrangement asked for.
+ */
+export function navGroupsAreContiguous(sections: readonly NavItem[]): boolean {
+  const seen = new Set<string>();
+  let previous: string | undefined;
+
+  for (const item of sections) {
+    const group = item.group;
+    if (group === previous) continue;
+    if (group !== undefined) {
+      // A group we have already closed out and are now re-entering: its
+      // items are no longer one run.
+      if (seen.has(group)) return false;
+      seen.add(group);
+    }
+    previous = group;
+  }
+
+  return true;
+}
+
+/**
  * Whether a nav item should render as the current section.
  *
  * Overview moved from "/" to "/overview" when the public landing page took

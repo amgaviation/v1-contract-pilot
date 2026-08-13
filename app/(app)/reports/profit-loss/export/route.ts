@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
-import { CATEGORY_LABEL } from "../../year-end/db";
+import { loadOptionLabels } from "@/lib/custom-options-read";
 import { loadProfitLossReport, type PLPeriod, type PLPeriodKind } from "../queries";
 import { csvRow } from "@/lib/csv";
 
@@ -78,6 +78,9 @@ export async function GET(request: NextRequest) {
 
   const supabase = await createClient();
   const report = await loadProfitLossReport(supabase, account.id, period);
+  // Same labels the screen shows — a CSV that disagreed with the report
+  // it was exported from would be its own bug.
+  const categoryLabels = await loadOptionLabels("expense_category");
 
   if (report.error) {
     console.error("[profit-loss export] report load failed", report.error);
@@ -136,7 +139,7 @@ export async function GET(request: NextRequest) {
 
   rows.push(csvRow(["Expenses by category", "Receipts", "Amount"]));
   for (const c of report.expensesByCategory) {
-    rows.push(csvRow([CATEGORY_LABEL[c.category] ?? c.category, c.count, centsToDollarsString(c.totalCents)]));
+    rows.push(csvRow([categoryLabels[c.category] ?? c.category, c.count, centsToDollarsString(c.totalCents)]));
   }
   rows.push(
     csvRow([

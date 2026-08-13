@@ -1,4 +1,5 @@
 import type { createClient } from "@/lib/supabase/server";
+import { BUILTIN_OPTIONS } from "@/lib/custom-options";
 import { parseCalendarDate } from "@/lib/format";
 
 /**
@@ -98,25 +99,21 @@ export function currentTaxYear(): number {
   return new Date().getUTCFullYear();
 }
 
-export const CATEGORY_LABEL: Record<string, string> = {
-  airline: "Airline",
-  hotel: "Hotel",
-  rental_car: "Rental car",
-  rideshare: "Rideshare",
-  fuel: "Fuel",
-  meals: "Meals",
-  parking: "Parking",
-  other: "Other",
-  // The self-funded side. These used to fall through to the raw key, and
-  // before the categories existed at all they were filed as "other" — so
-  // the largest line on the report a pilot hands their accountant could
-  // literally read "Other". Recurrent training alone is commonly a
-  // freelance pilot's biggest annual deduction.
-  training: "Training / recurrent",
-  medical: "Medical exam",
-  insurance: "Insurance (own)",
-  charts: "Charts / EFB subscription",
-  equipment: "Equipment",
-  uniform: "Uniform",
-  dues: "Dues / publications",
-};
+/**
+ * The STOCK category labels — now derived from the one vocabulary
+ * (lib/custom-options.ts's BUILTIN_OPTIONS) rather than retyped here, so
+ * this map cannot fall behind the CHECK constraint again. It did once:
+ * the self-funded categories fell through to the raw key, and before they
+ * existed at all they were filed as "other", so the largest line on the
+ * report a pilot hands their accountant could literally read "Other".
+ * Recurrent training alone is commonly a freelance pilot's biggest annual
+ * deduction.
+ *
+ * This stays the FALLBACK. The report screens and their exports resolve
+ * labels through lib/custom-options-read.ts, so a tenant who renamed a
+ * category sees their own word on the P&L, the quarterly and the
+ * year-end pack as well as on the expenses list.
+ */
+export const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(
+  BUILTIN_OPTIONS.expense_category.map((option) => [option.value, option.label])
+);

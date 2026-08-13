@@ -3,6 +3,7 @@ import PageShell from "../../page-shell";
 import ExpenseForm from "../expense-form";
 import { createExpense } from "../actions";
 import { loadTripOptions } from "../trip-options";
+import { loadOptionChoices } from "@/lib/custom-options-read";
 
 export const metadata = { title: "Add expense" };
 
@@ -15,6 +16,10 @@ export default async function NewExpensePage({
   const { trip: tripParam } = await searchParams;
 
   const { trips, error } = await loadTripOptions();
+  // The tenant's own category list. Never empty — choicesFor falls back
+  // to the stock vocabulary if the options table can't be read, so a
+  // settings-table blip can't stop a receipt being filed.
+  const categories = await loadOptionChoices("expense_category");
   // A failed query would otherwise render an empty trip picker, which
   // reads as "you have no trips" and pushes the pilot into leaving the
   // receipt unfiled.
@@ -37,6 +42,7 @@ export default async function NewExpensePage({
       <ExpenseForm
         action={createExpense}
         trips={trips}
+        categories={categories}
         values={preselectedTripId ? { trip_id: preselectedTripId } : {}}
         submitLabel="Save expense"
       />

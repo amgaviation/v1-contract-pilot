@@ -6,6 +6,7 @@ import { Box, Button, Callout, Card, Flex, Grid, Text, TextField, Select, TextAr
 import { centsToInput } from "@/lib/format";
 import { matchTrip } from "@/lib/receipt-ocr/match-trip";
 import ReceiptScan, { type ScanOutcome } from "./receipt-scan";
+import type { OptionChoice } from "@/lib/custom-options";
 import type { ExpenseFormState } from "./actions";
 
 export type ExpenseFormValues = {
@@ -31,26 +32,6 @@ export type TripOption = {
   endsOn: string;
 };
 
-/** Ported verbatim from the schema's vocabulary; labels are the pilot's. */
-const CATEGORIES = [
-  { value: "airline", label: "Airline" },
-  { value: "hotel", label: "Hotel" },
-  { value: "rental_car", label: "Rental car" },
-  { value: "rideshare", label: "Rideshare" },
-  { value: "fuel", label: "Fuel" },
-  { value: "meals", label: "Meals" },
-  { value: "parking", label: "Parking" },
-  { value: "other", label: "Other" },
-  // Travel above; below, the costs a freelance pilot carries themselves.
-  { value: "training", label: "Training / recurrent" },
-  { value: "medical", label: "Medical exam" },
-  { value: "insurance", label: "Insurance (own)" },
-  { value: "charts", label: "Charts / EFB subscription" },
-  { value: "equipment", label: "Equipment" },
-  { value: "uniform", label: "Uniform" },
-  { value: "dues", label: "Dues / publications" },
-];
-
 const TREATMENTS = [
   { value: "unassigned", label: "Decide later" },
   { value: "rebill", label: "Rebill to the client" },
@@ -71,6 +52,7 @@ type ScanConflict = { field: "incurred_on" | "vendor" | "amount"; label: string;
 export default function ExpenseForm({
   action,
   trips,
+  categories,
   values = {},
   submitLabel,
 }: {
@@ -79,6 +61,15 @@ export default function ExpenseForm({
     formData: FormData
   ) => Promise<ExpenseFormState>;
   trips: TripOption[];
+  /**
+   * The tenant's own expense-category vocabulary — their labels, their
+   * order, retired categories already dropped. Read server-side by the
+   * page (lib/custom-options-read.ts) and passed in: this is a client
+   * component and the options table is only readable on the server.
+   * REQUIRED, not optional, so a new screen rendering this form cannot
+   * quietly fall back to the stock list.
+   */
+  categories: readonly OptionChoice[];
   values?: ExpenseFormValues;
   submitLabel: string;
 }) {
@@ -352,7 +343,7 @@ export default function ExpenseForm({
             >
               <Select.Trigger aria-labelledby="category-label" />
               <Select.Content>
-                {CATEGORIES.map((option) => (
+                {categories.map((option) => (
                   <Select.Item key={option.value} value={option.value}>
                     {option.label}
                   </Select.Item>

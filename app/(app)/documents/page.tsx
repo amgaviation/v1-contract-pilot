@@ -5,7 +5,6 @@ import {
   Callout,
   Card,
   Flex,
-  Heading,
   Link as RadixLink,
   Table,
   Text,
@@ -17,8 +16,9 @@ import { requireAccount } from "@/lib/supabase/account";
 import { formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import type { Database } from "@/lib/supabase/database.types";
+import EmptyState from "@/components/ui/empty-state";
 import PageShell from "../page-shell";
-import { DOCUMENT_KIND_LABEL } from "./kinds";
+import { loadOptionLabels } from "@/lib/custom-options-read";
 import { EXPIRY_LADDER_BADGE, EXPIRY_NO_DATE_BADGE } from "./expiry-badge";
 
 export const metadata = { title: "Documents" };
@@ -53,15 +53,22 @@ export default async function DocumentsPage() {
   // .eq("account_id", ...) here is defence in depth, not the boundary —
   // RLS (security_invoker on the view, scoped by the underlying table's
   // policies) is what actually restricts the rows.
-  const [{ data: documentData, error }, { data: expirationData, error: expirationError }] =
-    await Promise.all([
-      supabase.from("documents").select("*"),
-      supabase
-        .from("expirations")
-        .select("*")
-        .eq("account_id", account.id)
-        .eq("source_table", "document"),
-    ]);
+  // kindLabels resolves EVERY stored kind, retired ones included — this
+  // is a history screen, and a document filed under a kind the pilot has
+  // since retired must still render under its name rather than its key.
+  const [
+    { data: documentData, error },
+    { data: expirationData, error: expirationError },
+    kindLabels,
+  ] = await Promise.all([
+    supabase.from("documents").select("*"),
+    supabase
+      .from("expirations")
+      .select("*")
+      .eq("account_id", account.id)
+      .eq("source_table", "document"),
+    loadOptionLabels("document_kind"),
+  ]);
 
   const documents = (documentData ?? []) as DocumentRow[];
   const expirationByDocId = new Map(
@@ -116,16 +123,17 @@ export default async function DocumentsPage() {
       ) : (
         <Card>
           {sorted.length === 0 ? (
-            <Flex direction="column" align="center" gap="3" py="6">
-              <Heading as="h3" size="4">No documents yet</Heading>
-              <Text size="2" color="gray" align="center">
-                Medicals, flight reviews, passports, certificates, insurance and W-9s — anything
-                with a date that matters.
-              </Text>
-              <Button asChild mt="2">
-                <NextLink href="/documents/new">Add your first document</NextLink>
-              </Button>
-            </Flex>
+            <EmptyState
+              title="No documents yet"
+              action={
+                <Button asChild>
+                  <NextLink href="/documents/new">Add your first document</NextLink>
+                </Button>
+              }
+            >
+              Medicals, flight reviews, passports, certificates, insurance and
+              W-9s — anything with a date that matters.
+            </EmptyState>
           ) : (
             <Table.Root variant="ghost">
               <Table.Header>
@@ -152,7 +160,7 @@ export default async function DocumentsPage() {
                       </Table.RowHeaderCell>
                       <Table.Cell>
                         <Text size="2" color="gray">
-                          {DOCUMENT_KIND_LABEL[doc.kind] ?? "Other"}
+                          {kindLabels[doc.kind] ?? "Other"}
                         </Text>
                       </Table.Cell>
                       <Table.Cell>

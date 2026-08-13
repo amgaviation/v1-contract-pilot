@@ -1,3 +1,5 @@
+import { BUILTIN_OPTIONS } from "@/lib/custom-options";
+
 /**
  * The kind vocabulary, ported verbatim from the `pilot.documents` check
  * constraint, plus the labels the pilot sees.
@@ -41,17 +43,21 @@
  * 2026-08-05, 2026-08-07 — see supabase/migrations/
  * 20260807140000_approach_conditions.sql for the full reading and a note
  * on this fetch's quoting limits.
+ *
+ * PHASE 9 LAYER 3 MOVED THE LIST, NOT THE REASONING. The eight values and
+ * their stock labels now live once, in lib/custom-options.ts's
+ * BUILTIN_OPTIONS.document_kind, beside the two other vocabularies a
+ * tenant may rename — so the seeded taxonomy, the fallback used when the
+ * options table cannot be read, and this file cannot drift apart. Every
+ * paragraph above still governs WHY each kind is here and why none of
+ * them computes an expiry from an issue date.
+ *
+ * These are the STOCK labels, and they stay the fallback: the screens
+ * that have an account in hand resolve labels through
+ * lib/custom-options-read.ts instead, so a tenant who renamed one sees
+ * their own word on the picker, the list and the document screen.
  */
-export const DOCUMENT_KINDS = [
-  { value: "medical", label: "Medical certificate" },
-  { value: "flight_review", label: "Flight review" },
-  { value: "pic_proficiency_check", label: "PIC proficiency check (61.58)" },
-  { value: "passport", label: "Passport" },
-  { value: "certificate", label: "Certificate" },
-  { value: "insurance", label: "Insurance" },
-  { value: "w9", label: "W-9" },
-  { value: "other", label: "Other" },
-] as const;
+export const DOCUMENT_KINDS = BUILTIN_OPTIONS.document_kind;
 
 export const DOCUMENT_KIND_LABEL: Record<string, string> = Object.fromEntries(
   DOCUMENT_KINDS.map((k) => [k.value, k.label])
