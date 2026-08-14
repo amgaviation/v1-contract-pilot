@@ -175,7 +175,7 @@ export default function FleetPanel({
             </Text>
             <Text size="2" color="gray" align="center">
               Add the airframes you fly and your logbook starts answering &ldquo;how much
-              time do you have in type?&rdquo; — the question every insurance
+              time do you have in type?&rdquo; That&rsquo;s the question every insurance
               pilot-history form and every chief pilot asks.
             </Text>
           </Flex>
@@ -302,7 +302,7 @@ export default function FleetPanel({
                   <Text size="1" color="gray">
                     {`${editing.entryCount} logbook entr${
                       editing.entryCount === 1 ? "y" : "ies"
-                    } are matched to this airframe. Correcting the registration re-matches them — there's no separate cleanup to do.`}
+                    } are matched to this airframe. Correcting the registration re-matches them; there's no separate cleanup to do.`}
                   </Text>
                 </Flex>
               </Card>

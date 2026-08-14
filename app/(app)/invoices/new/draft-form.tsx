@@ -265,7 +265,7 @@ export default function DraftForm({
                                   : `${trip.travel_day_count} × ${formatCents(
                                       trip.travel_day_rate_cents
                                     )}`
-                                : "—"}
+                                : "N/A"}
                             </Text>
                           )}
                         </Table.Cell>
@@ -273,7 +273,7 @@ export default function DraftForm({
                           <Text color="gray" className="tnum">
                             {trip.rebillable_expense_cents > 0
                               ? formatCents(trip.rebillable_expense_cents)
-                              : "—"}
+                              : "N/A"}
                           </Text>
                         </Table.Cell>
                         <Table.Cell justify="end">

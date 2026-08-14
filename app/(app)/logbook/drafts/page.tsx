@@ -270,7 +270,7 @@ export default async function LogbookDraftsPage() {
           <Callout.Text>
             {`Showing drafts for your ${TRIP_LIMIT} most recently completed
               trips. Older completed trips aren't checked for drafts on
-              this screen — they're still in your account, but an
+              this screen. They're still in your account, but an
               unconfirmed leg on one of them won't show up here.`}
           </Callout.Text>
         </Callout.Root>
@@ -280,7 +280,7 @@ export default async function LogbookDraftsPage() {
           <Callout.Text>
             {`Checked your ${LEG_LIMIT} most recently flown legs on these
               trips for unconfirmed ones. Older legs aren't checked by this
-              screen — they're still in your account, but this list can't
+              screen. They're still in your account, but this list can't
               reach that far back.`}
           </Callout.Text>
         </Callout.Root>
