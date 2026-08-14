@@ -8,6 +8,13 @@ import { loadFleetOptions } from "@/lib/fleet";
 import { loadOptionChoices } from "@/lib/custom-options-read";
 import { formatCents, formatDate, formatDateRange } from "@/lib/format";
 import { tripDayQuantity, tripValueCents } from "@/lib/trip-value";
+import {
+  computeTripSettlement,
+  type TripSettlement,
+  type TripSettlementInvoiceRow,
+  type TripSettlementLineRow,
+  type TripSettlementPaymentRow,
+} from "@/lib/trip-settlement";
 import PageShell from "../../page-shell";
 import TripForm, { type ClientOption, type TripFormValues } from "../trip-form";
 import LegEditor, { type LegRow } from "../leg-editor";
@@ -19,6 +26,7 @@ import DayGrid, {
 import { updateTrip } from "../actions";
 import DeleteTripButton from "./delete-trip-button";
 import MarkFlownButton from "../mark-flown-button";
+import SettlementPanel from "./settlement-panel";
 
 export const metadata = { title: "Trip" };
 
@@ -47,6 +55,7 @@ export default async function TripPage({
     { data: tripDayData, error: tripDayError },
     { data: clientRateData, error: clientRateError },
     { data: committedOn, error: committedError },
+    { data: tripLineData, error: tripLineError },
     tripKinds,
   ] = await Promise.all([
     supabase.from("trips").select("*").eq("id", id).maybeSingle(),
@@ -98,6 +107,17 @@ export default async function TripPage({
       p_account_id: account.id,
       p_trip_id: id,
     } as never),
+    // Settlement panel (roadmap #5): every invoice_lines row directly tied
+    // to this trip, any line_type — lib/trip-settlement.ts prices the
+    // flight_day/travel_day subset and flags the rest as "other charges"
+    // on the same invoice. Rebill lines are deliberately excluded: they
+    // resolve their trip through expense_id, not trip_id (see
+    // pilot.trip_pl's own comment on that), and this panel's scope is day
+    // money only.
+    supabase
+      .from("invoice_lines")
+      .select("invoice_id, line_type, amount_cents")
+      .eq("trip_id", id),
     loadOptionChoices("trip_kind"),
   ]);
 
@@ -194,6 +214,57 @@ export default async function TripPage({
   const fleet = await loadFleetOptions();
   const billableByDayType = new Map(dayTypes.map((t) => [t.id, t.billable]));
   const value = tripValueCents(trip, tripDays, billableByDayType);
+
+  // Settlement panel (roadmap #5 remainder): expected vs invoiced vs paid.
+  // tripLineData was read in the first Promise.all above (query comment
+  // there explains the trip_id-only scope); the invoices/payments it
+  // references are read here, second, because which ids to ask for is not
+  // known until the lines come back — the same dependent-read shape
+  // invoices/[id]/page.tsx uses for its late fees' source invoices.
+  const tripLines = (tripLineData ?? []) as TripSettlementLineRow[];
+  const tripInvoiceIds = [...new Set(tripLines.map((l) => l.invoice_id))];
+
+  let settlement: TripSettlement | null = null;
+  // A failed read here is never rendered as a healthy $0.00 — see
+  // settlement-panel.tsx's own loadError prop, matching the moneyError
+  // pattern on the invoice detail screen.
+  let settlementLoadError: string | null = null;
+
+  if (tripLineError) {
+    settlementLoadError = `Couldn't load this trip's invoice lines: ${tripLineError.message}`;
+  } else {
+    let settlementInvoices: TripSettlementInvoiceRow[] = [];
+    let settlementPayments: TripSettlementPaymentRow[] = [];
+    if (tripInvoiceIds.length > 0) {
+      const [
+        { data: invoiceRows, error: invoiceRowsError },
+        { data: paymentRows, error: paymentRowsError },
+      ] = await Promise.all([
+        supabase.from("invoices").select("id, status, invoice_number").in("id", tripInvoiceIds),
+        supabase
+          .from("invoice_payments")
+          .select("invoice_id, amount_cents")
+          .in("invoice_id", tripInvoiceIds),
+      ]);
+      const settlementError = invoiceRowsError ?? paymentRowsError;
+      if (settlementError) {
+        settlementLoadError = `Couldn't load this trip's invoice or payment records: ${settlementError.message}`;
+      } else {
+        settlementInvoices = (invoiceRows ?? []) as TripSettlementInvoiceRow[];
+        settlementPayments = (paymentRows ?? []) as TripSettlementPaymentRow[];
+      }
+    }
+    if (!settlementLoadError) {
+      settlement = computeTripSettlement({
+        trip,
+        dayRows: tripDays,
+        billableByDayType,
+        lines: tripLines,
+        invoices: settlementInvoices,
+        payments: settlementPayments,
+      });
+    }
+  }
 
   // P2: once the day grid has rows, it is what bills — and it must also be
   // what this headline COUNTS, not just what it prices. Printing a value
@@ -413,6 +484,10 @@ export default async function TripPage({
               }}
             />
           </Card>
+        </Box>
+
+        <Box gridColumn={{ lg: "span 12" }}>
+          <SettlementPanel settlement={settlement} loadError={settlementLoadError} />
         </Box>
       </Grid>
     </PageShell>

@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { parseDollarsToCents } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+import { sendEstimateEmail } from "@/lib/email/send-estimate";
+import { MAX_CUSTOM_MESSAGE_CHARS } from "@/lib/email/invoice-message";
 import type { Database } from "@/lib/supabase/database.types";
 import {
   ESTIMATE_LINE_TYPES,
@@ -752,5 +754,55 @@ export async function deleteEstimateLine(
   if (count === 0) return { error: "That line is no longer on this estimate." };
 
   revalidatePath(`/estimates/${estimateId}`);
+  return { error: null };
+}
+
+// ---------------------------------------------------------------------------
+// Emailing the estimate itself — the client-facing send, distinct from
+// markEstimateSent (which only records that the pilot quoted the client some
+// other way). Mirrors sendInvoiceReminder's shape: it never touches status,
+// so it works on sent, accepted and declined estimates alike — but it
+// refuses a draft, which has no permanent number and is not a document a
+// client should ever hold.
+// ---------------------------------------------------------------------------
+export async function sendEstimate(
+  id: string,
+  /** The pilot's per-send note. Bounded and trimmed here; null/empty means
+   *  the standard message alone goes out. */
+  customMessage: string | null = null
+): Promise<{ error: string | null }> {
+  if (!UUID_RE.test(id)) return { error: "That estimate no longer exists." };
+
+  const { user, account } = await requireEntitlement("estimates", `/estimates/${id}`);
+
+  // Checked before anything else so an over-long note refuses cleanly with
+  // nothing sent — same ordering argument as sendInvoice's.
+  const note = customMessage?.trim() ?? "";
+  if (note.length > MAX_CUSTOM_MESSAGE_CHARS) {
+    return {
+      error: `That message is longer than ${MAX_CUSTOM_MESSAGE_CHARS} characters. Nothing was sent — shorten it and try again.`,
+    };
+  }
+
+  const supabase = await createClient();
+
+  const { data: row, error: readError } = await supabase
+    .from("estimates")
+    .select("status")
+    .eq("id", id)
+    .eq("account_id", account.id)
+    .maybeSingle();
+  if (readError) return { error: estimateDbError(readError, "estimates.send_email") };
+  if (!row) return { error: "That estimate no longer exists." };
+  if ((row as { status: string }).status === "draft") {
+    return {
+      error: "This estimate is still a draft. Send it (which assigns its number) before emailing it.",
+    };
+  }
+
+  const sent = await sendEstimateEmail(supabase, account.id, id, user.email, note === "" ? null : note);
+  if (!sent.ok) return { error: sent.error };
+
+  revalidatePath(`/estimates/${id}`);
   return { error: null };
 }

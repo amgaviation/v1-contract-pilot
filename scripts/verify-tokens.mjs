@@ -145,6 +145,8 @@ const EXEMPT_FILES = new Set([
   join(ROOT, "lib", "pdf-palette.ts"),
   join(ROOT, "lib", "invoice-pdf.tsx"),
   join(ROOT, "lib", "pilot-history-pdf.tsx"),
+  join(ROOT, "lib", "estimate-pdf.tsx"),
+  join(ROOT, "lib", "reimbursables-packet-pdf.tsx"),
 ]);
 const EXEMPT_DIRS = [];
 

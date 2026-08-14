@@ -11,6 +11,14 @@ const {
   reconciliationTotals,
 } = await import("../app/(app)/accounting/ledger-lib.ts");
 
+const {
+  GENERAL_LEDGER_HEADER,
+  generalLedgerRowValues,
+  assembleGeneralLedger,
+  sourceReference,
+  centsToDollarsString,
+} = await import("../lib/accounting-export.ts");
+
 /**
  * The accounting assembly layer. All fixtures synthetic. The database
  * guarantees (RLS, debits=credits, idempotent posting) live in
@@ -205,4 +213,153 @@ test("reconciliationTotals: a zero net difference with dangling lines is NOT rec
   const halfCleared = reconciliationTotals([10000, -5000], [10000, -5000], 2, 1);
   assert.equal(halfCleared.differenceCents, 0);
   assert.equal(halfCleared.reconciled, false);
+});
+
+// ---------------------------------------------------------------------------
+// General ledger CSV export (lib/accounting-export.ts).
+// ---------------------------------------------------------------------------
+
+function entry(overrides) {
+  return {
+    id: "e1",
+    entry_date: "2026-01-15",
+    memo: "Test entry",
+    source_type: "manual",
+    source_id: null,
+    created_at: "2026-01-15T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function line(overrides) {
+  return {
+    id: "l1",
+    entry_id: "e1",
+    chart_account_id: "c1",
+    side: "debit",
+    amount_cents: 1000,
+    line_no: 0,
+    ...overrides,
+  };
+}
+
+test("generalLedgerRowValues emits one column per header, in order", () => {
+  const row = generalLedgerRowValues({
+    entryId: "e1",
+    entryDate: "2026-01-15",
+    memo: "Owner draw",
+    accountCode: "owner_draws",
+    accountName: "Owner draws",
+    side: "debit",
+    amountCents: 50000,
+    sourceReference: "Manual entry",
+  });
+  assert.equal(row.length, GENERAL_LEDGER_HEADER.length);
+  assert.deepEqual(row, [
+    "2026-01-15",
+    "owner_draws",
+    "Owner draws",
+    "Owner draw",
+    "500.00",
+    "",
+    "Manual entry",
+    "e1",
+  ]);
+});
+
+test("generalLedgerRowValues puts the amount on ONLY the line's own side", () => {
+  // A CPA-shaped GL never writes "0.00" on the unused side — that would
+  // read as a real (zero) posting rather than "this side isn't used".
+  const debitRow = generalLedgerRowValues({
+    entryId: "e1",
+    entryDate: "2026-01-15",
+    memo: "m",
+    accountCode: null,
+    accountName: "Cash & bank",
+    side: "debit",
+    amountCents: 100,
+    sourceReference: "Manual entry",
+  });
+  assert.equal(debitRow[4], "1.00"); // Debit
+  assert.equal(debitRow[5], ""); // Credit
+
+  const creditRow = generalLedgerRowValues({
+    entryId: "e1",
+    entryDate: "2026-01-15",
+    memo: "m",
+    accountCode: null,
+    accountName: "Cash & bank",
+    side: "credit",
+    amountCents: 100,
+    sourceReference: "Manual entry",
+  });
+  assert.equal(creditRow[4], ""); // Debit
+  assert.equal(creditRow[5], "1.00"); // Credit
+});
+
+test("sourceReference: manual has no id, derived entries carry the source row's id", () => {
+  assert.equal(sourceReference("manual", null), "Manual entry");
+  assert.equal(
+    sourceReference("invoice_issued", "inv-123"),
+    "Invoice issued — inv-123"
+  );
+  // An unrecognized source type still produces something rather than
+  // throwing — same "fall back to the raw value" posture as the other
+  // export label maps in this product.
+  assert.equal(sourceReference("something_new", "x"), "something_new — x");
+});
+
+test("centsToDollarsString: integer cents, never float drift", () => {
+  assert.equal(centsToDollarsString(0), "0.00");
+  assert.equal(centsToDollarsString(815), "8.15");
+  assert.equal(centsToDollarsString(100000), "1000.00");
+});
+
+test("assembleGeneralLedger: balanced pairs land adjacent, in book order", () => {
+  const chartById = new Map([
+    ["bank", { id: "bank", name: "Cash & bank", system_key: "bank" }],
+    ["ar", { id: "ar", name: "Accounts receivable", system_key: "accounts_receivable" }],
+    ["draws", { id: "draws", name: "Owner draws", system_key: "owner_draws" }],
+  ]);
+  const entries = [
+    entry({ id: "e2", entry_date: "2026-01-20", created_at: "2026-01-20T00:00:00Z" }),
+    entry({ id: "e1", entry_date: "2026-01-10", created_at: "2026-01-10T00:00:00Z" }),
+  ];
+  const lines = [
+    // e2's lines inserted out of line_no order, and before e1's in the
+    // input array, so a naive pass-through would misorder both facts.
+    line({ id: "l3", entry_id: "e2", chart_account_id: "draws", side: "debit", line_no: 1 }),
+    line({ id: "l4", entry_id: "e2", chart_account_id: "bank", side: "credit", line_no: 0 }),
+    line({ id: "l1", entry_id: "e1", chart_account_id: "bank", side: "debit", line_no: 0 }),
+    line({ id: "l2", entry_id: "e1", chart_account_id: "ar", side: "credit", line_no: 1 }),
+  ];
+
+  const rows = assembleGeneralLedger(entries, lines, chartById);
+
+  assert.deepEqual(
+    rows.map((r) => r.entryId + "/" + r.side),
+    ["e1/debit", "e1/credit", "e2/credit", "e2/debit"]
+  );
+  // Within e2, line_no order (0 then 1) wins even though the raw `lines`
+  // array had them reversed.
+  assert.deepEqual(
+    rows.filter((r) => r.entryId === "e2").map((r) => r.accountName),
+    ["Cash & bank", "Owner draws"]
+  );
+});
+
+test("assembleGeneralLedger: an unresolved chart account reads 'Unknown account', never blank", () => {
+  const rows = assembleGeneralLedger(
+    [entry({})],
+    [line({ chart_account_id: "missing" })],
+    new Map()
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].accountName, "Unknown account");
+  assert.equal(rows[0].accountCode, null);
+});
+
+test("assembleGeneralLedger: a line whose entry can't be found is dropped, not guessed at", () => {
+  const rows = assembleGeneralLedger([], [line({ entry_id: "ghost" })], new Map());
+  assert.equal(rows.length, 0);
 });
