@@ -306,11 +306,20 @@ out.push(`.i-heading {
   margin: 0;
   font-family: var(--font-display);
   font-weight: var(--weight-semibold);
-  letter-spacing: var(--track-tight);
   color: var(--ink);
 }`);
+// TRACKING TRAVELS WITH SIZE, NOT WITH ROLE.
+//
+// .i-heading used to carry a single --track-tight, which meant a 36px page
+// title and a 13px card title were spaced identically — too loose on the
+// first, slightly too tight on the second. Tracking belongs beside the
+// size it corrects, so it is emitted here with font-size and line-height
+// and every consumer of a size step gets the right value without pairing
+// two classes by hand. See --track-1…7 in tokens.css for the ramp.
 TEXT_SIZE.forEach((s) => {
-  out.push(`.i-t${s} { font-size: var(--text-${s}); line-height: var(--lh-${s}); }`);
+  out.push(
+    `.i-t${s} { font-size: var(--text-${s}); line-height: var(--lh-${s}); letter-spacing: var(--track-${s}); }`
+  );
 });
 out.push(`
 /* The small uppercase label: column heads, eyebrows, group headers. Caps at
@@ -405,7 +414,19 @@ out.push(`
   text-decoration: none;
   transition: background-color var(--dur-fast) var(--ease),
               border-color var(--dur-fast) var(--ease),
-              color var(--dur-fast) var(--ease);
+              color var(--dur-fast) var(--ease),
+              transform var(--dur-instant) var(--ease);
+}
+/* PRESS FEEDBACK, ON POINTER-DOWN.
+   Every state this system had before this rule was a :hover state, and a
+   touch device has no hover — so a pilot tapping Save on a phone got no
+   acknowledgement at all between the tap and the server answering. The
+   press has to be felt when the finger lands, not when the work finishes.
+   Scale rather than a colour shift because it survives every variant
+   below (primary, outline, quiet, danger) without four more rules, and
+   because it reads on a dark ground where a background darken does not. */
+.i-btn:active:not(:disabled):not([aria-disabled="true"]) {
+  transform: scale(var(--press-scale));
 }
 .i-btn:disabled, .i-btn[aria-disabled="true"] {
   cursor: not-allowed;
@@ -621,8 +642,51 @@ out.push(`
   box-shadow: var(--shadow-overlay);
   max-width: min(92vw, 480px);
   width: 100%;
+
+  /* MATERIALISING, NOT BLINKING INTO EXISTENCE.
+     A dialog that is absent on one frame and complete on the next reads as
+     a rendering fault, and these dialogs guard destructive actions — the
+     one place the interface should feel deliberate. It arrives scaled
+     slightly down and a few pixels low, so it resolves toward the reader.
+
+     allow-discrete on 'display' and 'overlay' is what makes this work on
+     a native <dialog>: both are discrete properties, and without it the
+     element leaves the top layer on the first frame of the exit and the
+     close is not animated at all. @starting-style below supplies the
+     entry's "from" — an element entering the top layer has no previous
+     computed style to transition out of otherwise. */
+  opacity: 0;
+  transform: scale(var(--overlay-scale-from)) translateY(var(--overlay-rise-from));
+  transition:
+    opacity var(--dur-base) var(--ease),
+    transform var(--dur-base) var(--ease),
+    display var(--dur-base) var(--ease) allow-discrete,
+    overlay var(--dur-base) var(--ease) allow-discrete;
 }
-.i-dialog::backdrop { background: var(--scrim); }
+.i-dialog[open] {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+@starting-style {
+  .i-dialog[open] {
+    opacity: 0;
+    transform: scale(var(--overlay-scale-from)) translateY(var(--overlay-rise-from));
+  }
+}
+/* The scrim fades with the surface rather than snapping, so the background
+   dims as the dialog arrives instead of a frame before it. */
+.i-dialog::backdrop {
+  background: var(--scrim);
+  opacity: 0;
+  transition:
+    opacity var(--dur-base) var(--ease),
+    display var(--dur-base) var(--ease) allow-discrete,
+    overlay var(--dur-base) var(--ease) allow-discrete;
+}
+.i-dialog[open]::backdrop { opacity: 1; }
+@starting-style {
+  .i-dialog[open]::backdrop { opacity: 0; }
+}
 .i-dialog-head { padding: var(--space-4) var(--space-4) 0; }
 .i-dialog-body { padding: var(--space-3) var(--space-4); color: var(--ink-2); font-size: var(--text-2); line-height: var(--lh-3); }
 .i-dialog-foot {
@@ -662,7 +726,69 @@ out.push(`
   margin-block-end: calc(var(--hairline) * -1);
 }
 .i-tab:hover { color: var(--ink); }
+/* Same pointer-down argument as .i-btn:active — a tab strip is the primary
+   navigation on a phone, where nothing hovers. Opacity rather than scale:
+   a tab sits in a row of tabs on a shared baseline, and scaling one of
+   them shifts it against its neighbours. */
+.i-tab:active { opacity: 0.6; }
 .i-tab[aria-selected="true"] { color: var(--ink); border-block-end-color: var(--ink); }
+
+/* === CHROME =========================================================
+   Floating chrome: the phone top bar and the desktop header, which content
+   scrolls UNDER. Deliberately NOT the nav rail — a full-height structural
+   region stays opaque. Apple's rule, and the reason it matters here: a
+   heavy material separates structure, a light one floats over content, and
+   two light translucent surfaces stacked on each other stop being legible.
+
+   .i-chrome replaces a solid paper background plus a 1px bottom hairline.
+   The hairline asserted a boundary that is not real — the content genuinely
+   continues underneath — so it is replaced by .i-chrome-edge below, a short
+   fade that says "this keeps going" and keeps text from colliding with the
+   bar as it passes. */
+.i-chrome {
+  background: var(--chrome-veil);
+  backdrop-filter: var(--chrome-blur);
+  -webkit-backdrop-filter: var(--chrome-blur);
+}
+/* The fade sits immediately BELOW the bar, outside it, so it never tints
+   the bar's own contents. Non-interactive by construction: it lies over
+   scrolling content and must not eat a tap meant for a link under it. */
+.i-chrome-edge { position: relative; }
+.i-chrome-edge::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 100%;
+  height: var(--space-3);
+  background: var(--chrome-edge);
+  pointer-events: none;
+}
+
+/* TRANSLUCENCY IS A PREFERENCE, NOT A GIVEN.
+   prefers-reduced-transparency is a legibility request — often from someone
+   who finds text over a moving, blurred background genuinely hard to read.
+   The answer is a solid bar, not a slightly less blurry one: drop the blur
+   entirely and go opaque. The edge fade goes too, since with an opaque bar
+   there is nothing showing through for it to soften. */
+@media (prefers-reduced-transparency: reduce) {
+  .i-chrome {
+    background: var(--paper);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .i-chrome-edge::after { display: none; }
+}
+/* Same for a raised-contrast request: a translucent ground cannot hold a
+   guaranteed contrast ratio against whatever happens to scroll under it. */
+@media (prefers-contrast: more) {
+  .i-chrome {
+    background: var(--paper);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-block-end: var(--hairline) solid var(--edge);
+  }
+  .i-chrome-edge::after { display: none; }
+}
 
 /* === SEPARATOR ====================================================== */
 .i-sep { border: none; background: var(--hair); }

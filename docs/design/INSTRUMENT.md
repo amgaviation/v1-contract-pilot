@@ -170,6 +170,75 @@ previous system's owner rejected it), not 6+ (reads consumer-soft). 3px on a
 token exists for overlays that genuinely float above the page — dialog,
 dropdown, toast — where the shadow communicates layer, not decoration.
 
+### Motion: acknowledge, don't perform
+
+This system had motion tokens (`--dur-instant/fast/base`, `--ease`) from the
+start and almost no rules using them, which meant every motion decision was
+made at a call site with nothing to check it against. The doctrine, written
+down:
+
+**Motion here does one job: tell the user their input landed.** It is never
+decoration, never a reveal, never a thing you notice. A pilot on a ramp
+between legs is trying to finish a task, and an interface that performs at
+them is an interface that wastes their time. When in doubt, do not animate.
+
+The four rules that follow from that:
+
+1. **Acknowledge on pointer-DOWN, not on completion.** This is the one piece
+   of feedback that has to exist, because the system's other states are all
+   `:hover` and a touch device has no hover. A control must respond when the
+   finger lands, not when the server answers — `.i-btn:active` scales to
+   `--press-scale`, `.i-tab:active` dims. New interactive components get a
+   pressed state or they are not finished.
+
+2. **Under 200ms, always.** Every duration token is `--dur-instant` (80ms),
+   `--dur-fast` (120ms) or `--dur-base` (180ms). There is no slower step and
+   adding one needs an argument. Feedback that outlasts the gesture stops
+   being feedback.
+
+3. **Animate `transform` and `opacity` only.** They are the two properties
+   the compositor can animate without laying the page out again. Animating
+   `height`, `width` or `top` on a screen that also holds a 40-row day grid
+   drops frames on exactly the hardware pilots use.
+
+4. **Arriving surfaces materialise; they do not blink.** Anything entering
+   the top layer — today that is `.i-dialog` — fades and scales from
+   `--overlay-scale-from`, with its scrim fading in step. A dialog that is
+   absent on one frame and complete on the next reads as a rendering fault,
+   and these dialogs guard destructive actions.
+
+**Reduced motion is three assignments, not a sweep.** Every transition in
+the system reads the duration tokens, so `prefers-reduced-motion` takes all
+three to zero in `tokens.css` and the whole product goes still. Note what
+is *not* removed: the press scale survives, because the preference guards
+against vestibular disturbance from large sustained movement, not against a
+3% scale on the thing under your finger — and removing it would leave a
+touch user with no acknowledgement at all. It simply becomes instant.
+
+### Materials: translucent chrome, opaque structure
+
+Chrome that content scrolls **under** — the phone top bar, the desktop
+header, the marketing header — is a translucent blurred material
+(`.i-chrome`: `--chrome-veil` + `--chrome-blur`) with a short fade below it
+(`.i-chrome-edge`: `--chrome-edge`) instead of a 1px rule. The rule asserted
+a boundary that is not real, since the content genuinely continues beneath
+the bar.
+
+Chrome that **is** structure — the nav rail — stays opaque. A heavy material
+separates regions; a light one floats over content. Two light translucent
+surfaces stacked on each other stop being legible, which is the failure this
+distinction exists to prevent.
+
+Both classes fall back to a solid bar under `prefers-reduced-transparency`
+(a legibility request deserves an opaque answer, not a less blurry one) and
+under `prefers-contrast: more` (a translucent ground cannot promise a
+contrast ratio against whatever scrolls beneath it).
+
+This replaces the earlier blanket ban on `backdrop-filter`. The ban existed
+because a blur spelled out at a call site is exactly the kind of value that
+drifts; the material living in tokens answers that without giving up the
+effect.
+
 ---
 
 ## Density is a tenant setting, and it is real
