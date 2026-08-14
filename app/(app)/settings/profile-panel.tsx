@@ -126,7 +126,7 @@ export default function ProfilePanel({
               <Callout.Text>
                 {`An email change to ${pendingEmail} is waiting for confirmation${
                   pendingEmailSentAt ? ` (requested ${pendingEmailSentAt})` : ""
-                }. It is NOT in effect yet — keep signing in with ${
+                }. It is NOT in effect yet. Keep signing in with ${
                   email ?? "your current address"
                 } until you've opened the link we sent. Starting a new change below replaces this one.`}
               </Callout.Text>
@@ -145,7 +145,7 @@ export default function ProfilePanel({
               </Text>
               <Text size="2" color="gray">
                 We send a confirmation link to the new address. The change takes effect
-                when you open it — not when you press this button. Until then your old
+                when you open it, not when you press this button. Until then your old
                 address is still the one that signs you in.
               </Text>
             </Flex>

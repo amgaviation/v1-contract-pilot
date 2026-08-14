@@ -404,7 +404,7 @@ export default async function TripPage({
                 </NextLink>
               </Button>
               <Text size="1" color="gray">
-                Opens a new invoice for this client — the fee is a
+                Opens a new invoice for this client. The fee is a
                 hand-typed line, never computed automatically.
               </Text>
             </Flex>
@@ -415,7 +415,7 @@ export default async function TripPage({
         <Card mb="4">
           <Text size="2" color="gray">
             This trip is billed on {billedOn}. Its dates and amounts are
-            frozen here — correcting them would leave the trip and that
+            frozen here. Correcting them would leave the trip and that
             invoice disagreeing about what was flown. Remove it from the
             invoice first.
           </Text>
@@ -425,8 +425,8 @@ export default async function TripPage({
         // gap S: advisory only, never a block — this trip already saved.
         <Callout.Root color="amber" mb="4">
           <Callout.Text>
-            This trip&rsquo;s dates overlap another trip on your calendar —
-            check you haven&rsquo;t double-booked or double-entered it.
+            This trip&rsquo;s dates overlap another trip on your calendar.
+            Check you haven&rsquo;t double-booked or double-entered it.
           </Callout.Text>
         </Callout.Root>
       ) : null}
@@ -461,7 +461,7 @@ export default async function TripPage({
           <Card size="3">
             <Heading as="h2" size="4">Day grid</Heading>
             <Text as="p" size="2" color="gray" mb="3">
-              One row per calendar day of the trip — this is what feeds
+              One row per calendar day of the trip. This is what feeds
               invoicing and per diem, and once it has rows it is what
               sets the headline value above, not the flight/travel
               totals below.

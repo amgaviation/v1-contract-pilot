@@ -240,7 +240,7 @@ export default function TransactionRow({
                       onClick={() => setAcknowledgedDuplicate(true)}
                       disabled={pending}
                     >
-                      It&rsquo;s a different charge, record it anyway
+                      It&rsquo;s a different charge: record it anyway
                     </Button>
                     <Button type="button" variant="soft" onClick={handleIgnore} disabled={pending}>
                       Dismiss as a duplicate

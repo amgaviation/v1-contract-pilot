@@ -201,7 +201,7 @@ export async function changeEmail(
     error: null,
     notice:
       `Confirmation sent to ${email}. Your sign-in address does NOT change until that link is ` +
-      `opened — keep signing in with ${user.email} until it is. If your project also confirms ` +
+      `opened. Keep signing in with ${user.email} until it is. If your project also confirms ` +
       `from the current address, you'll get a second link there and both must be opened.`,
     values: echo,
   };

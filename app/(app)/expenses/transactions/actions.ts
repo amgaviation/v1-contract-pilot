@@ -109,7 +109,7 @@ export async function confirmTransaction(formData: FormData): Promise<ConfirmTra
     return { error: "That transaction has already been reviewed." };
   }
   if (row.amount_cents >= 0) {
-    return { error: "This transaction is a deposit or refund, not an expense, mark it dismissed instead." };
+    return { error: "This transaction is a deposit or refund, not an expense. Mark it dismissed instead." };
   }
 
   // ONE CALL, ONE TRANSACTION (20260810040000).

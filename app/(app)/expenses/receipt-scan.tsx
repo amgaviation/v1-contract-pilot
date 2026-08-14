@@ -275,7 +275,7 @@ export default function ReceiptScan({
 
       {fileName && !scannable ? (
         <Text as="div" size="1" color="gray" mt="3">
-          {`${fileName} will be attached. PDFs are stored as-is, type the amounts below.`}
+          {`${fileName} will be attached. PDFs are stored as-is. Type the amounts below.`}
         </Text>
       ) : null}
 
@@ -338,5 +338,5 @@ function describe(extraction: ReceiptExtraction): string {
   if (extraction.gallons !== null) extras.push(`${extraction.gallons} gal`);
   if (extraction.airportIdents.length > 0) extras.push(extraction.airportIdents.join(", "));
 
-  return `Read ${list}${extras.length > 0 ? `, also saw ${extras.join(" · ")}.` : "."}`;
+  return `Read ${list}${extras.length > 0 ? `. Also saw ${extras.join(" · ")}.` : "."}`;
 }
