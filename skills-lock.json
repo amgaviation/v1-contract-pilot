@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "skills": {
+    "architecture-reviewer": {
+      "source": "Mathews-Tom/armory",
+      "sourceType": "github",
+      "skillPath": "skills/architecture-reviewer/SKILL.md",
+      "computedHash": "828f857a61d94b788c6396cae86ee4adbbbb070cdff02a513d2ee6e8ef151d75"
+    },
+    "code-refiner": {
+      "source": "Mathews-Tom/armory",
+      "sourceType": "github",
+      "skillPath": "skills/code-refiner/SKILL.md",
+      "computedHash": "9fb17dd1e34280c103115f219a11aeed50fb76c5ca1ac0ee194fb71e15016c73"
+    },
+    "debug-investigator": {
+      "source": "Mathews-Tom/armory",
+      "sourceType": "github",
+      "skillPath": "skills/debug-investigator/SKILL.md",
+      "computedHash": "ac518036473b8012e7790874c603f664e71def6cac3a5fbe43c5eacafd1da529"
+    },
+    "dependency-audit": {
+      "source": "Mathews-Tom/armory",
+      "sourceType": "github",
+      "skillPath": "skills/dependency-audit/SKILL.md",
+      "computedHash": "7a9f3022c815739acbddaa8181c68ff50ee7a84f5e5e2d17bb8c4f6536a8e6ef"
+    },
+    "env-validator": {
+      "source": "Mathews-Tom/armory",
+      "sourceType": "github",
+      "skillPath": "skills/env-validator/SKILL.md",
+      "computedHash": "c04d7b1dae5770ce92528ca234cf4f4254e4ceb59ddc11a52d3d4bb19323f794"
+    },
+    "migration-risk-analyzer": {
+      "source": "Mathews-Tom/armory",
+      "sourceType": "github",
+      "skillPath": "skills/migration-risk-analyzer/SKILL.md",
+      "computedHash": "868549c4734683eeb70738f9f3a71fd5c584e578dedc5040b61523a75288ea93"
+    },
+    "pr-review": {
+      "source": "Mathews-Tom/armory",
+      "sourceType": "github",
+      "skillPath": "skills/pr-review/SKILL.md",
+      "computedHash": "7caf87fcfcc96bdf604fd40993c4d990111be81ee56b94c4c0e8e5a945908159"
+    },
+    "pre-landing-review": {
+      "source": "Mathews-Tom/armory",
+      "sourceType": "github",
+      "skillPath": "skills/pre-landing-review/SKILL.md",
+      "computedHash": "db862552e1c0940da4473d758f4656cf04ce2a725d1663d2cfe3b00638f49aed"
+    },
+    "repo-sentinel": {
+      "source": "Mathews-Tom/armory",
+      "sourceType": "github",
+      "skillPath": "skills/repo-sentinel/SKILL.md",
+      "computedHash": "19c6c3d2575ab647f86335080690e14dc75abfc078487a43769d8da2f143d24d"
+    },
+    "sql-optimizer": {
+      "source": "Mathews-Tom/armory",
+      "sourceType": "github",
+      "skillPath": "skills/sql-optimizer/SKILL.md",
+      "computedHash": "37c6ca9721e7fe4ab708df74aefec395af1370d8985db5926db9e7143da70a52"
+    },
+    "test-harness": {
+      "source": "Mathews-Tom/armory",
+      "sourceType": "github",
+      "skillPath": "skills/test-harness/SKILL.md",
+      "computedHash": "bb29e667b0532d84065bfe29d1427e41b22d3dfebffc17ce20f24bc1dfb8f5be"
+    },
+    "ux-expert": {
+      "source": "Mathews-Tom/armory",
+      "sourceType": "github",
+      "skillPath": "skills/ux-expert/SKILL.md",
+      "computedHash": "a5152b7ef1c3a21ee5b45efe37dd14b1b66d292d534fbc85e22cfe71280a19e4"
+    }
+  }
+}
