@@ -1155,7 +1155,7 @@ export async function createInvoiceDraft(
           // Names the month explicitly — an aircraft owner's AP
           // department sees ONE line for a STATED month, backed by a
           // stated worked-vs-guaranteed day count, not one line per trip.
-          description: `Monthly guarantee, ${monthLabel}, ${formatMinDays(
+          description: `Monthly guarantee: ${monthLabel}, ${formatMinDays(
             minDays
           )}-day minimum, ${formatMinDays(worked)} ${
             worked === 1 ? "day" : "days"
@@ -1676,7 +1676,7 @@ export async function sendInvoice(
     );
     if (!sent.ok) {
       return {
-        error: `The invoice is now issued and numbered, but the email didn't go out, ${sent.error} Download the PDF and send it yourself; don't try to issue it again.`,
+        error: `The invoice is now issued and numbered, but the email didn't go out. ${sent.error} Download the PDF and send it yourself; don't try to issue it again.`,
       };
     }
   }
@@ -1706,7 +1706,7 @@ export async function sendInvoiceReminder(
   const note = customMessage?.trim() ?? "";
   if (note.length > MAX_CUSTOM_MESSAGE_CHARS) {
     return {
-      error: `That message is longer than ${MAX_CUSTOM_MESSAGE_CHARS} characters. Nothing was sent, shorten it and try again.`,
+      error: `That message is longer than ${MAX_CUSTOM_MESSAGE_CHARS} characters. Nothing was sent. Shorten it and try again.`,
     };
   }
 
@@ -2237,7 +2237,7 @@ export async function recordPayment(
   if (invoiceReadError) {
     return {
       error:
-        "The payment was recorded, but the invoice's status couldn't be updated, reopen it and check whether it still shows as awaiting payment.",
+        "The payment was recorded, but the invoice's status couldn't be updated. Reopen it and check whether it still shows as awaiting payment.",
       saved: true,
     };
   }
@@ -2256,7 +2256,7 @@ export async function recordPayment(
     if (totalsReadError) {
       return {
         error:
-          "The payment was recorded, but the invoice's status couldn't be updated, reopen it and check whether it still shows as awaiting payment.",
+          "The payment was recorded, but the invoice's status couldn't be updated. Reopen it and check whether it still shows as awaiting payment.",
         saved: true,
       };
     }
@@ -2379,7 +2379,7 @@ async function retirePaymentLink(params: {
     // landed — but the row still points at a link this app can no longer
     // manage, so the pilot needs telling, not just a server log.
     console.error(`[db] invoices.update(clear payment_link) ${error.message}`);
-    return `${notice} This invoice's own record of that link also failed to clear, reload the page before trusting what it shows.`;
+    return `${notice} This invoice's own record of that link also failed to clear. Reload the page before trusting what it shows.`;
   }
 
   if (count === 0) {
@@ -2392,7 +2392,7 @@ async function retirePaymentLink(params: {
     console.error(
       `[db] invoices.update(clear payment_link) matched 0 rows for invoice ${params.invoiceId}`
     );
-    return `${notice} This invoice's own record of that link couldn't be updated, reload the page before trusting what it shows.`;
+    return `${notice} This invoice's own record of that link couldn't be updated. Reload the page before trusting what it shows.`;
   }
 
   return notice;

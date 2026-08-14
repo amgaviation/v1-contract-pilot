@@ -250,7 +250,7 @@ export default async function InvoicesPage({
       title="Invoices"
       subtitle={
         firstError
-          ? "Some figures below couldn't load, see the notice."
+          ? "Some figures below couldn't load. See the notice."
           : `${invoices.length} invoice${invoices.length === 1 ? "" : "s"}${
               overdueCount ? ` · ${overdueCount} past due` : ""
             }`
@@ -286,7 +286,7 @@ export default async function InvoicesPage({
             <RadixLink asChild>
               <NextLink href="/invoices/recurring">Review the queue</NextLink>
             </RadixLink>
-           .
+            .
           </Callout.Text>
         </Callout.Root>
       ) : null}

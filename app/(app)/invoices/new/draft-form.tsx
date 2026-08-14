@@ -158,7 +158,7 @@ export default function DraftForm({
             </Select.Root>
             <Text size="1" color="gray">
               {clients.length === 0
-                ? "No active clients yet, add one before drafting an invoice."
+                ? "No active clients yet. Add one before you can draft an invoice."
                 : "Who this invoice bills"}
             </Text>
           </Flex>
@@ -174,7 +174,7 @@ export default function DraftForm({
               onChange={(e) => setTaxRate(e.target.value)}
             />
             <Text size="1" color="gray">
-              State sales/service tax, if any
+              State sales or service tax, if any
             </Text>
           </Flex>
         </Grid>
@@ -199,7 +199,7 @@ export default function DraftForm({
             ) : trips.length === 0 ? (
               <Text size="2" color="gray">
                 {unmarkedTripCount > 0
-                  ? `No trips are marked flown for this client yet, ${unmarkedTripCount} ${
+                  ? `No trips are marked flown for this client yet. ${unmarkedTripCount} ${
                       unmarkedTripCount === 1 ? "is" : "are"
                     } still Scheduled. Open the trip and press "Mark flown" to bill it.`
                   : unmarkedTripCountFailed

@@ -366,7 +366,7 @@ export default function LogbookEntryForm({
                 defaultValue={initial("view_limiting_pilot_name")}
               />
               <Text size="1" color="gray">
-                14 CFR 61.51(b)(1)(v) — name the safety pilot if 91.109 required one for this flight.
+                Name the safety pilot if 91.109 required one for this flight. (14 CFR 61.51(b)(1)(v))
               </Text>
             </LabeledField>
           ) : null}
@@ -380,7 +380,7 @@ export default function LogbookEntryForm({
               label="Day takeoffs"
               step="1"
               defaultValue={initial("day_takeoffs", "0")}
-              hint="61.57(a): every aircraft carrying persons, or certificated for more than 1 pilot crewmember, not day-only"
+              hint="Required for any aircraft carrying persons, or certificated for more than 1 pilot crewmember. Not day-only. (61.57(a))"
             />
             <LabeledNumber
               name="day_landings_full_stop"
@@ -399,14 +399,14 @@ export default function LogbookEntryForm({
               label="Night takeoffs"
               step="1"
               defaultValue={initial("night_takeoffs", "0")}
-              hint="61.57(b): 1 hr after sunset – 1 hr before sunrise (not the same window as Night time above)"
+              hint="1 hour after sunset to 1 hour before sunrise. Not the same window as Night time above. (61.57(b))"
             />
             <LabeledNumber
               name="night_landings_full_stop"
               label="Night full-stop"
               step="1"
               defaultValue={initial("night_landings_full_stop", "0")}
-              hint="61.57(b): 1 hr after sunset – 1 hr before sunrise (not the same window as Night time above)"
+              hint="1 hour after sunset to 1 hour before sunrise. Not the same window as Night time above. (61.57(b))"
             />
             <LabeledNumber
               name="night_landings_touch_go"
@@ -461,7 +461,7 @@ export default function LogbookEntryForm({
                 value={approachCondition === NONE ? "" : approachCondition}
               />
               <Text size="1" color="gray">
-                61.57(c)(1): actual instrument conditions or a view-limiting device — a different question from
+                Actual instrument conditions or a view-limiting device (61.57(c)(1)). A different question from
                 approach TYPE above. Leave unknown rather than guessing.
               </Text>
             </Flex>

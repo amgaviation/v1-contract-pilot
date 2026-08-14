@@ -299,7 +299,7 @@ export default async function PilotHistoryReportPage() {
                in turbine/retractable/multi time, none of which is time in
                one registration. Naming the wrong instrument beside a figure
                is the kind of error a professional reader spots instantly. */
-            caption={`Per registered airframe, the figure an owner, or their insurer, asks for a specific aeroplane. ${
+            caption={`The figure an owner, or their insurer, asks for on one specific airframe. ${
               data.registeredAircraftCount === 0
                 ? "You have no aircraft on file yet."
                 : `${data.registeredAircraftCount} aircraft on file.`

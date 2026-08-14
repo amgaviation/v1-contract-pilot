@@ -90,7 +90,7 @@ export default function CurrencyCard({ result }: { result: CurrencyResult }) {
               <Text key={entry.entryId} size="1" as="div">
                 <Link asChild size="1">
                   <NextLink href={`/logbook/${entry.entryId}`}>
-                    {`${formatCurrencyDate(entry.entryDate) ?? entry.entryDate} — ${countedEntrySummary(entry)}`}
+                    {`${formatCurrencyDate(entry.entryDate) ?? entry.entryDate}: ${countedEntrySummary(entry)}`}
                   </NextLink>
                 </Link>
               </Text>
@@ -123,7 +123,7 @@ export default function CurrencyCard({ result }: { result: CurrencyResult }) {
           <Link size="1" href={described.citation.url} target="_blank" rel="noopener noreferrer">
             {described.citation.section}
           </Link>
-          {` — built from the eCFR text at issue date ${
+          {`. Built from the eCFR text at issue date ${
             formatCurrencyDate(described.citation.issueDate) ?? described.citation.issueDate
           }, retrieved ${
             formatCurrencyDate(described.citation.retrievedOn) ?? described.citation.retrievedOn

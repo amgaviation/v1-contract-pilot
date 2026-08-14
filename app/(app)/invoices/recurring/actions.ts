@@ -432,7 +432,7 @@ export async function generateRecurringInvoice(
   }
   const schedule = scheduleData as ScheduleRow | null;
   if (!schedule) return { error: "That schedule couldn't be found." };
-  if (!schedule.active) return { error: "This schedule is paused, resume it to create an invoice." };
+  if (!schedule.active) return { error: "This schedule is paused. Resume it to create an invoice." };
 
   // Recompute the schedule's own due set server-side and require the
   // requested period to be a member of it — never trust a submitted

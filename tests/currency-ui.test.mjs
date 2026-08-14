@@ -82,7 +82,10 @@ test("card titles cover the five currency types and honour the vocabulary rules"
     // (docs/CURRENCY-SPEC.md §2.2) is conflating logged night time with
     // the 61.57(b)(1) window. The card subtitle must carry both facts.
     const { subtitle } = CURRENCY_CARD_TITLES.passenger_night;
-    assert.match(subtitle, /full stop/i);
+    // Hyphen or space: "full-stop takeoffs and landings" hyphenates
+    // correctly as a compound adjective, and the copy is free to. What
+    // must not disappear is the phrase itself.
+    assert.match(subtitle, /full[-\s]stop/i);
     assert.match(subtitle, /1 hour after sunset/i);
   });
 

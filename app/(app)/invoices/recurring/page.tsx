@@ -81,7 +81,7 @@ export default async function RecurringInvoicesPage() {
       title="Recurring invoices"
       subtitle={
         firstError
-          ? "Some figures below couldn't load, see the notice."
+          ? "Some figures below couldn't load. See the notice."
           : `${schedules.length} schedule${schedules.length === 1 ? "" : "s"}`
       }
     >

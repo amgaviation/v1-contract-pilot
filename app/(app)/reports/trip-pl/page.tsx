@@ -318,7 +318,7 @@ export default async function TripProfitabilityPage({
                 </Text>
                 <Text size="2" color="gray" className="tnum">
                   {report.totals.marginPerDayCents === null
-                    ? "per day"
+                    ? "n/a (no billable days)"
                     : `${formatCents(report.totals.marginPerDayCents)} per day · ${formatDayQuantity(report.totals.dayQuantity)} days`}
                 </Text>
               </Flex>
