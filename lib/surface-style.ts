@@ -42,17 +42,17 @@ export const NAVY_INK_MUTED = {
 } as const;
 
 /**
- * The section-band ground — the SAME gray-2 token the app shell paints its
- * canvas with (docs/design/REBUILD-BRIEF.md §6: marketing sections alternate
- * the page ground with gray-2 bands so the public site and the product read
- * as one canvas/panel system). Surface Cards sit on it as white panels,
- * exactly as they do inside the app.
+ * The section-band ground — the SAME canvas token the app shell paints its
+ * ground with (docs/design/INSTRUMENT.md: marketing sections alternate the
+ * page ground with canvas bands so the public site and the product read as
+ * one canvas/panel system). Surface Cards sit on it as paper panels, exactly
+ * as they do inside the app.
  */
 export const GRAY_BAND = {
-  background: "var(--gray-2)",
+  background: "var(--canvas)",
 } as const;
 
 /** The hairline used where two same-ground sections meet. */
 export const HAIRLINE_TOP = {
-  borderTop: "1px solid var(--gray-a5)",
+  borderTop: "1px solid var(--hair)",
 } as const;

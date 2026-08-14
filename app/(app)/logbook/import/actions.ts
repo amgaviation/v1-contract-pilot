@@ -324,7 +324,11 @@ type ImportRowInsert = ImportEntryInsert & { trip_id: null; trip_leg_id: null };
  */
 function validateRow(values: LogbookEntryFlightFields): string | null {
   if (!isDateString(values.entry_date)) return "invalid entry_date";
-  if (!isTenth(values.total_time, 999)) return "invalid total_time";
+  // 999.9, not 999: matches numeric(4,1) and apply-mapping.ts's own bound
+  // (its comment records that 999 rejected a perfectly legal 999.9 the
+  // column can hold) — a parsed 999.9 row must not pass preview only to
+  // fail here at confirm with a generic "invalid total_time".
+  if (!isTenth(values.total_time, 999.9)) return "invalid total_time";
   // A wholly-simulator entry may carry no role — an FFS/FTD/ATD session
   // has no pilot in command, because there is no aircraft. Mirrors
   // logbook_entries_role_required_unless_simulator (20260810020000)
@@ -350,7 +354,7 @@ function validateRow(values: LogbookEntryFlightFields): string | null {
   ];
   for (const key of optionalTimes) {
     const v = values[key];
-    if (v !== null && !isTenth(v, 999)) return `invalid ${key}`;
+    if (v !== null && !isTenth(v, 999.9)) return `invalid ${key}`;
   }
   // Cross-field time sanity, mirroring the CHECK constraints added by
   // 20260807100000_logbook_import_integrity.sql — each of these is a

@@ -158,7 +158,16 @@ export default function LogbookEntryForm({
   // which meant opening an imported simulator session and saving an
   // unrelated correction silently rewrote its role to PIC in a legal
   // record. Caught in review before it shipped.
-  const [role, setRole] = useState(() => initialSelect("role"));
+  //
+  // On a fresh /logbook/new (no values.id — there is no stored row yet),
+  // NONE is the wrong seed too: initialSelect("role") turns the absent
+  // value into NONE, which matches Select.Item's NONE option and made
+  // Radix render its label ("No role — simulator session") as if it were
+  // already chosen — the product's most-used capture screen opening with
+  // the role field apparently answered. Seed "" instead so nothing is
+  // preselected; NONE stays the seed only when editing an existing row
+  // that is genuinely roleless (a wholly-simulator entry).
+  const [role, setRole] = useState(() => (values.id ? initialSelect("role") : initial("role", "")));
   const [simulatorDeviceType, setSimulatorDeviceType] = useState(() => initialSelect("simulator_device_type"));
   const [approachType, setApproachType] = useState(() => initialSelect("approach_type"));
   const [approachCondition, setApproachCondition] = useState(() => initialSelect("approach_condition"));
@@ -265,7 +274,7 @@ export default function LogbookEntryForm({
               Role
             </Text>
             <Select.Root value={role} onValueChange={setRole}>
-              <Select.Trigger id={roleId} aria-label="Role" />
+              <Select.Trigger id={roleId} aria-label="Role" placeholder="Choose a role" />
               <Select.Content>
                 {ROLES.map((option) => (
                   <Select.Item key={option.value} value={option.value}>

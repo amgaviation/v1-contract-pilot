@@ -65,7 +65,7 @@ test("the four windows are exactly 135.267's, ending today", () => {
   assert.deepEqual(
     windows.map((w) => [w.key, w.from, w.to]),
     [
-      ["trailing24h", "2026-08-11", "2026-08-12"],
+      ["trailing24h", "2026-08-10", "2026-08-12"],
       ["quarter", "2026-07-01", "2026-08-12"],
       ["twoQuarters", "2026-04-01", "2026-08-12"],
       ["year", "2026-01-01", "2026-08-12"],
@@ -80,6 +80,19 @@ test("the four windows are exactly 135.267's, ending today", () => {
 
 test("windows refuse a malformed date instead of computing nonsense", () => {
   assert.throws(() => flightTimeWindows("garbage"));
+});
+
+test("the trailing window is three calendar days, not two, so it can't miss local-date flying inside the last 24 hours", () => {
+  // Regression for the P1: a pilot who logs LOCAL dates (not UTC) can fly
+  // within the preceding 24 clock hours on a date one earlier than
+  // yesterday-UTC — e.g. now = Aug 14 01:00Z (Aug 13 15:00 HST), a flight
+  // flown Aug 12 16:00-18:00 HST is 21 clock-hours ago but dates Aug 12,
+  // which a two-day UTC window (Aug 13-14) would have excluded.
+  const windows = flightTimeWindows("2026-08-14");
+  const trailing = windows.find((w) => w.key === "trailing24h");
+  assert.equal(trailing.from, "2026-08-12");
+  assert.equal(trailing.to, "2026-08-14");
+  assert.equal(trailing.label, "Last three calendar days");
 });
 
 // ---------------------------------------------------------------------------

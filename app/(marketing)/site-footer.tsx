@@ -48,43 +48,55 @@ const COLUMNS: { heading: string; links: { href: string; label: string }[] }[] =
 
 export default function SiteFooter() {
   return (
+    // asChild -> <footer>: the public surface's landmarks stop at <main>
+    // without this (and site-header.tsx's matching <header>) — the
+    // authenticated shell already uses header/nav/main/aside landmarks
+    // throughout, and this is the screen a screen-reader user meets first.
     <Box
+      asChild
       style={{
-        borderTop: "1px solid var(--gray-a5)",
+        borderTop: "1px solid var(--edge)",
         ...GRAY_BAND,
       }}
     >
-      <Container size="4" px="4">
-        <Flex direction="column" gap="5" py="6">
-          <Grid columns={{ initial: "1", sm: "4" }} gap="5">
-            <Flex direction="column" gap="2" align="start">
-              <img src="/brand/navy.svg" alt="" height={16} width={28} />
-              <Text size="1" color="gray">
-                {BRAND.tagline}
-              </Text>
-            </Flex>
-
-            {COLUMNS.map((column) => (
-              <Flex key={column.heading} direction="column" gap="2">
-                <Text size="1" weight="medium" color="gray">
-                  {column.heading.toUpperCase()}
-                </Text>
-                {column.links.map((link) => (
-                  <Text asChild key={link.href} size="1" color="gray">
-                    <NextLink href={link.href}>{link.label}</NextLink>
+      <footer>
+        <Container size="4" px="4">
+          <Flex direction="column" gap="5" py="6">
+            {/* asChild -> <nav aria-label>: these are the footer's actual
+                navigation links, distinct from the brand/tagline column
+                beside them, which is not. */}
+            <Grid asChild columns={{ initial: "1", sm: "4" }} gap="5">
+              <nav aria-label="Footer">
+                <Flex direction="column" gap="2" align="start">
+                  <img src="/brand/navy.svg" alt="" height={16} width={28} />
+                  <Text size="1" color="gray">
+                    {BRAND.tagline}
                   </Text>
+                </Flex>
+
+                {COLUMNS.map((column) => (
+                  <Flex key={column.heading} direction="column" gap="2">
+                    <Text size="1" weight="medium" color="gray">
+                      {column.heading.toUpperCase()}
+                    </Text>
+                    {column.links.map((link) => (
+                      <Text asChild key={link.href} size="1" color="gray">
+                        <NextLink href={link.href}>{link.label}</NextLink>
+                      </Text>
+                    ))}
+                  </Flex>
                 ))}
-              </Flex>
-            ))}
-          </Grid>
+              </nav>
+            </Grid>
 
-          <Separator size="4" />
+            <Separator size="4" />
 
-          <Text size="1" color="gray">
-            {BRAND.attribution}
-          </Text>
-        </Flex>
-      </Container>
+            <Text size="1" color="gray">
+              {BRAND.attribution}
+            </Text>
+          </Flex>
+        </Container>
+      </footer>
     </Box>
   );
 }

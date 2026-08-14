@@ -154,7 +154,7 @@ export default function LayoutPanel({
                   gap="3"
                   wrap="wrap"
                   py="1"
-                  style={{ borderBottom: "1px solid var(--gray-a3)" }}
+                  style={{ borderBottom: "1px solid var(--hair)" }}
                 >
                   <Flex direction="column" gap="1">
                     <Text size="2" weight="medium">

@@ -19,6 +19,12 @@ type Supa = Awaited<ReturnType<typeof createClient>>;
 // than ship a partial total" behaviour off these flags were dead code.
 const PAYMENTS_LIMIT = 1000;
 const EXPENSES_LIMIT = 1000;
+// The void-invoice lookup below is scoped to exactly the invoices these
+// payments reference (a de-duplicated set of at most PAYMENTS_LIMIT ids,
+// one per payment, already capped), so this bound reuses PAYMENTS_LIMIT —
+// same reasoning as app/(app)/reports/profit-loss/queries.ts's identical
+// INVOICE_LOOKUP_LIMIT.
+const INVOICE_LOOKUP_LIMIT = PAYMENTS_LIMIT;
 // Mileage — this report used to have no query against mileage_entries at
 // all, so the pilot's standard-mileage deduction appeared nowhere on this
 // screen. Now queried and shown as an informational line per period (see
@@ -125,7 +131,6 @@ export async function loadQuarterlyReport(
   const [
     { data: paymentData, error: paymentsError },
     { data: deductData, error: deductError },
-    { data: invoiceData, error: invoiceError },
     { data: rebillData, error: rebillError },
     { data: unassignedData, error: unassignedError },
     { data: mileageData, error: mileageError },
@@ -156,12 +161,6 @@ export async function loadQuarterlyReport(
       .lte("incurred_on", yearEnd)
       .order("incurred_on", { ascending: true })
       .limit(EXPENSES_LIMIT),
-    // Invoices, so a payment against a VOIDED one can be excluded below.
-    supabase
-      .from("invoices")
-      .select("id, status")
-      .eq("account_id", accountId)
-      .limit(PAYMENTS_LIMIT),
     // REBILLED expenses. These are not deductions in the Schedule C sense
     // — the client reimbursed them — but the reimbursement is already
     // inside incomeCents above, because a payment pays the whole invoice
@@ -213,6 +212,42 @@ export async function loadQuarterlyReport(
       .eq("account_id", accountId),
   ]);
 
+  const payments = (paymentData ?? []) as {
+    id: string;
+    paid_on: string;
+    amount_cents: number;
+    invoice_id: string;
+  }[];
+  const paymentsRowCapped = payments.length === PAYMENTS_LIMIT;
+
+  // Invoices, so a payment against a VOIDED one can be excluded below —
+  // scoped to exactly the invoices these (already-capped) payments
+  // reference, matching year-end/profit-loss's identical fix, rather than
+  // the whole-account, unordered, uncapped-relative-to-anything read this
+  // used to be. That old read had no ORDER BY, no status filter, and a
+  // .limit() tied to nothing — once an account passed 1000 lifetime
+  // invoices the returned subset was server-arbitrary, a voided invoice
+  // could fall outside it, and its payments then counted as income with
+  // no on-screen warning. A voided $10,825 invoice once told a pilot to
+  // set aside $3,247.50 for a quarter in which they collected nothing.
+  const invoiceIds = [...new Set(payments.map((p) => p.invoice_id))];
+  const { data: invoiceData, error: invoiceError } = invoiceIds.length
+    ? await supabase
+        .from("invoices")
+        .select("id, status")
+        .eq("account_id", accountId)
+        .in("id", invoiceIds)
+        .limit(INVOICE_LOOKUP_LIMIT)
+    : { data: [] as { id: string; status: string }[], error: null };
+  const invoiceRows = (invoiceData ?? []) as { id: string; status: string }[];
+  // Same truncation discipline as every list query in this file — folded
+  // into paymentsTruncated below (not a separate flag) so both the page
+  // banner and the export refusal that key off paymentsTruncated already
+  // cover this lookup too.
+  const invoiceLookupTruncated =
+    invoiceIds.length > 0 && invoiceRows.length === INVOICE_LOOKUP_LIMIT;
+  const paymentsTruncated = paymentsRowCapped || invoiceLookupTruncated;
+
   const firstError =
     paymentsError?.message ??
     deductError?.message ??
@@ -229,25 +264,14 @@ export async function loadQuarterlyReport(
     mileageRateError?.message ??
     null;
 
-  const payments = (paymentData ?? []) as {
-    id: string;
-    paid_on: string;
-    amount_cents: number;
-    invoice_id: string;
-  }[];
-  const paymentsTruncated = payments.length === PAYMENTS_LIMIT;
-
   // A payment against a VOIDED invoice is not income. sent -> partial ->
   // void is a legal transition and invoice_payments rows are never
   // deleted, so such a payment sits in that table forever. The dashboard
   // KPI, /reports/profit-loss and /reports/year-end all already filter it
   // — this report did not, and it is the one wired to the "set aside this
-  // much for the IRS" figure. A voided $10,825 invoice told a pilot to set
-  // aside $3,247.50 for a quarter in which they collected nothing.
+  // much for the IRS" figure.
   const voidInvoiceIds = new Set(
-    ((invoiceData ?? []) as { id: string; status: string }[])
-      .filter((i) => i.status === "void")
-      .map((i) => i.id)
+    invoiceRows.filter((i) => i.status === "void").map((i) => i.id)
   );
   const livePayments = payments.filter((p) => !voidInvoiceIds.has(p.invoice_id));
 

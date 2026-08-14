@@ -186,3 +186,41 @@ export async function ignoreTransaction(formData: FormData): Promise<IgnoreTrans
   revalidatePath("/expenses");
   return { error: null };
 }
+
+export type UnignoreTransactionResult = { error: string | null };
+
+/**
+ * Puts a dismissed row back in the review queue. A mis-tap on Dismiss (one
+ * click, no confirm) used to be permanent — nothing anywhere listed
+ * 'ignored' rows, and re-importing the statement couldn't resurrect one
+ * either, since its fingerprint row already existed and dedup collided on
+ * it. 20260810050000's grant already permits authenticated UPDATE of
+ * review_state, so this needs no schema change: the conditional
+ * `.eq("review_state", "ignored")` is the same claim-style guard
+ * ignoreTransaction uses, just run in reverse.
+ *
+ * Scoped to 'ignored' only — a 'reviewed' row with expense_id null (the
+ * expense it became was since deleted) has category/treatment already SET,
+ * and neither column is grantable to `authenticated` any more
+ * (20260810050000), so there is no direct-UPDATE path back to 'unreviewed'
+ * for that state. It is shown, not un-doable, from this action.
+ */
+export async function unignoreTransaction(formData: FormData): Promise<UnignoreTransactionResult> {
+  const { account } = await requireEntitlement("bank_import", "/expenses/transactions");
+  const id = String(formData.get("id") ?? "");
+  if (!UUID_RE.test(id)) return { error: "That transaction isn't recognized." };
+
+  const supabase = await createClient();
+  const result = await supabase
+    .from("bank_transactions")
+    .update({ review_state: "unreviewed" } as never, { count: "exact" })
+    .eq("id", id)
+    .eq("account_id", account.id)
+    .eq("review_state", "ignored");
+  if (result.error) return { error: friendlyDbError(result.error, "bank_transactions.unignore") };
+  if (result.count !== 1) return { error: "That transaction isn't dismissed any more." };
+
+  revalidatePath("/expenses/transactions");
+  revalidatePath("/expenses");
+  return { error: null };
+}

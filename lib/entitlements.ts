@@ -318,7 +318,12 @@ export const FEATURES: Record<FeatureId, FeatureDef> = {
     label:
       "Accounting — chart of accounts, ledger, reconciliation, balance sheet & cash flow",
     minTier: "business",
-    routePatterns: ["/accounting"],
+    // The balance-sheet and cash-flow reports (plus their CSV exports)
+    // live under /reports/*, not /accounting — they are gated today only
+    // by their own inline requireEntitlement('accounting', …) calls, but
+    // featureForPath is documented as THE one route→feature map (the seam
+    // any future path-based enforcement reads), so it must claim them too.
+    routePatterns: ["/accounting", "/reports/balance-sheet", "/reports/cash-flow"],
   },
   multi_seat: {
     // Placeholder: pilot.account_members already carries owner/member/

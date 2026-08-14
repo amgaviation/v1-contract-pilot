@@ -15,6 +15,7 @@
     "customisation:verify": "node scripts/customisation-verify.mjs",
     "connect:verify": "node scripts/connect-verify.mjs",
     "invoice-share-verify": "node scripts/invoice-share-verify.mjs",
+    "packet-share-verify": "node scripts/packet-share-verify.mjs",
     "bank-import:verify": "node --experimental-strip-types scripts/bank-import-verify.mjs",
     "foreflight-import:verify": "node scripts/foreflight-import-verify.mjs",
     "test:unit": "node --test --experimental-strip-types --import ./scripts/lib/ts-extensionless-loader.mjs \"tests/*.test.mjs\"",
@@ -31,7 +32,8 @@
     "layout:verify": "node scripts/layout-verify.mjs",
     "design:css": "node scripts/generate-design-css.mjs",
     "design:css:check": "node scripts/generate-design-css.mjs --check",
-    "seam:audit": "node scripts/seam-audit.mjs"
+    "seam:audit": "node scripts/seam-audit.mjs",
+    "verify:all": "set -eu; pg_isready -h 127.0.0.1 -p 55432 -U postgres >/dev/null 2>&1 || { echo 'verify:all requires a local Postgres on 55432 (POSTGRES_HOST_AUTH_METHOD=trust) -- see the database job in .github/workflows/ci.yml for the exact shape.' >&2; exit 1; }; psql -X -q -v ON_ERROR_STOP=1 postgresql://postgres@127.0.0.1:55432/postgres -c 'drop database if exists v1verify'; psql -X -q -v ON_ERROR_STOP=1 postgresql://postgres@127.0.0.1:55432/postgres -c 'create database v1verify'; U=postgresql://postgres@127.0.0.1:55432/v1verify; psql -X -q -v ON_ERROR_STOP=1 \"$U\" -f scripts/lib/verify-bootstrap.sql; for m in supabase/migrations/*.sql; do psql -X -q -v ON_ERROR_STOP=1 \"$U\" -f \"$m\"; done; DATABASE_URL=\"$U\" node scripts/tenancy-verify.mjs; DATABASE_URL=\"$U\" node scripts/connect-verify.mjs; DATABASE_URL=\"$U\" node scripts/invoice-share-verify.mjs; DATABASE_URL=\"$U\" node scripts/packet-share-verify.mjs; DATABASE_URL=\"$U\" node --experimental-strip-types scripts/bank-import-verify.mjs; AIRCRAFT_VERIFY_BOOTSTRAP=scripts/lib/verify-bootstrap.sql npm run aircraft:verify; PAYMENT_REVERSAL_VERIFY_BOOTSTRAP=scripts/lib/verify-bootstrap.sql npm run payment-reversal:verify; ESTIMATES_VERIFY_BOOTSTRAP=scripts/lib/verify-bootstrap.sql npm run estimates:verify; LOGBOOK_VERIFY_BOOTSTRAP=scripts/lib/verify-bootstrap.sql npm run logbook:verify; CURRENCY_VERIFY_BOOTSTRAP=scripts/lib/verify-bootstrap.sql npm run currency:verify; ACCOUNTING_VERIFY_BOOTSTRAP=scripts/lib/verify-bootstrap.sql npm run accounting:verify; REMINDERS_VERIFY_BOOTSTRAP=scripts/lib/verify-bootstrap.sql npm run reminders:verify; echo 'verify:all passed.'"
   },
   "dependencies": {
     "@radix-ui/colors": "^3.0.0",

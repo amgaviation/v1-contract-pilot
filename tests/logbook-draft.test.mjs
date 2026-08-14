@@ -83,6 +83,45 @@ test("a leg holding only the legacy combined instrument total still refuses to g
   assert.equal(d.instrument_simulated_time, null);
 });
 
+test("a leg with a recorded full-stop split gets no false 'not recorded' remark", () => {
+  // P1 regression: the note used to fire whenever day_landings > 0,
+  // regardless of whether the leg had recorded the split — a leg with
+  // day_landings=2, day_landings_full_stop=1 confirmed into an entry with
+  // fs=1/tg=1 while asserting in remarks that the split "was not
+  // recorded," a false statement about the very facts on the same record.
+  const split = { ...LEG, day_landings: 2, day_landings_full_stop: 1 };
+  const d = draftPayloadForLeg(TRIP, split, "PIC");
+  assert.equal(d.day_landings_full_stop, 1);
+  assert.equal(d.day_landings_touch_go, 1);
+  assert.equal(d.remarks, null);
+});
+
+test("a leg with no full-stop count recorded gets an honest derived-touch-and-go remark", () => {
+  const unsplit = {
+    ...LEG,
+    day_landings: 2,
+    day_landings_full_stop: 0,
+    instrument_actual_hours: null,
+    instrument_simulated_hours: null,
+    instrument_hours: null,
+  };
+  const d = draftPayloadForLeg(TRIP, unsplit, "PIC");
+  assert.equal(d.day_landings_touch_go, 2);
+  assert.match(d.remarks ?? "", /2 day landings carried as touch-and-go because no full-stop count was recorded/);
+});
+
+test("the instrument remark is suppressed once actual/simulated are recorded on the leg, even alongside a legacy combined total", () => {
+  const both = { ...LEG, instrument_hours: 1.0, instrument_actual_hours: 0.4, instrument_simulated_hours: 0.6 };
+  const d = draftPayloadForLeg(TRIP, both, "PIC");
+  assert.doesNotMatch(d.remarks ?? "", /instrument hours/);
+});
+
+test("the instrument remark still fires for a leg with only the legacy combined total", () => {
+  const legacyOnly = { ...LEG, instrument_hours: 1.0, instrument_actual_hours: null, instrument_simulated_hours: null };
+  const d = draftPayloadForLeg(TRIP, legacyOnly, "PIC");
+  assert.match(d.remarks ?? "", /1 instrument hours on the trip leg \(actual vs simulated not recorded\)/);
+});
+
 test("a blank field is still a blank field, not a zero the pilot never stated", () => {
   const sparse = {
     ...LEG,

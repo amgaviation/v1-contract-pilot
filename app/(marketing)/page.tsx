@@ -164,7 +164,7 @@ const SPEC: readonly SpecGroup[] = [
         features: ["expenses"],
       },
       {
-        text: "Certificate, medical, flight review and insurance expiry dates, shareable with a client as a link",
+        text: "Certificates on file; medical, flight review, passport and insurance dates tracked, shareable with a client as a link",
         features: ["documents"],
       },
       {
@@ -393,7 +393,7 @@ export default async function LandingPage() {
             <Flex direction="column" gap={{ initial: "4", md: "0" }}>
             {/* The source record. Its own ground, because the three cards
                 below come off it. */}
-            <Card size="3" style={{ background: "var(--accent-2)" }}>
+            <Card size="3" style={{ background: "var(--signal-soft)" }}>
               <Flex direction="column" gap="2">
                 <Text size="1" weight="medium" color="indigo">
                   YOU TYPE — THE TRIP

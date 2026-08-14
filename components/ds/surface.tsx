@@ -92,11 +92,15 @@ Button.displayName = "Button";
 export const ButtonLink = React.forwardRef<
   HTMLAnchorElement,
   WithLayout<"a", { variant?: ButtonVariant; size?: ControlSize; href: string }>
->(function ButtonLink({ variant = "outline", size = "2", className, ...rest }, ref) {
+>(function ButtonLink({ variant = "outline", size = "2", className, style, ...others }, ref) {
+  // Same fix as Badge above: without splitLayoutProps a layout prop leaked
+  // onto the DOM as an invalid attribute instead of becoming a style.
+  const [layout, rest] = splitLayoutProps(others as Record<string, unknown>);
   return (
     <a
       ref={ref}
       className={cx("i-btn", `i-btn-${variant}`, `i-btn-${size}`, className)}
+      style={layoutStyle(layout, style)}
       {...(rest as React.AnchorHTMLAttributes<HTMLAnchorElement>)}
     />
   );
@@ -192,9 +196,20 @@ export function FieldError({ children }: { children: React.ReactNode }) {
 export const Badge = React.forwardRef<
   HTMLSpanElement,
   WithLayout<"span", { tone?: Tone }>
->(function Badge({ tone = "default", className, children, ...rest }, ref) {
+>(function Badge({ tone = "default", className, style, children, ...others }, ref) {
+  // Without splitLayoutProps, a layout prop like `ml="1"` fell into `rest`
+  // and was spread straight onto the DOM as an invalid `ml` attribute
+  // (React warning) with no margin applied — Button and Note already ran
+  // every prop through this split; Badge was the one surface primitive
+  // that did not.
+  const [layout, rest] = splitLayoutProps(others as Record<string, unknown>);
   return (
-    <span ref={ref} className={cx("i-badge", `i-badge-${tone}`, className)} {...rest}>
+    <span
+      ref={ref}
+      className={cx("i-badge", `i-badge-${tone}`, className)}
+      style={layoutStyle(layout, style)}
+      {...rest}
+    >
       {children}
     </span>
   );

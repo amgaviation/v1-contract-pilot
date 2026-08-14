@@ -120,14 +120,24 @@ export default function AppearancePanel({
                     <Text as="label" size="2" key={slot.value}>
                       <Flex gap="2" align="center">
                         <RadioGroup.Item value={slot.value} />
+                        {/* The swatch resolves --signal per-slot rather than
+                            from the account's CURRENT accent: it stamps its
+                            own data-accent (and the previewed appearance, so
+                            a dark-mode preview picks the lifted dark hue) so
+                            the compound selectors in app/design/tokens.css
+                            §3b match on this element rather than being
+                            inherited from the ancestor's real, unrelated
+                            accent. */}
                         <Box
                           aria-hidden="true"
+                          data-accent={slot.value}
+                          data-appearance={appearance}
                           width="16px"
                           height="16px"
                           style={{
                             background: slot.swatch,
-                            borderRadius: "var(--radius-1)",
-                            border: "1px solid var(--gray-a5)",
+                            borderRadius: "var(--radius)",
+                            border: "1px solid var(--edge)",
                           }}
                         />
                         {slot.label}
@@ -212,8 +222,8 @@ export default function AppearancePanel({
                 <Box
                   p="4"
                   style={{
-                    borderRadius: "var(--radius-3)",
-                    border: "1px solid var(--gray-a5)",
+                    borderRadius: "var(--radius)",
+                    border: "1px solid var(--edge)",
                   }}
                 >
                   <Card>

@@ -13,10 +13,12 @@ import {
 
 /**
  * The section rail — the product's one dark surface. The dark ground
- * itself is painted by the nested <Theme appearance="dark"> in
- * app/(app)/layout.tsx; everything in this file resolves against the
- * dark scale automatically (gray/default Text, --accent-a3 fills,
- * hairlines) because tokens are the only values used.
+ * itself is painted by the `data-appearance="dark"` Box app-shell.tsx
+ * wraps this component in; everything in this file resolves against the
+ * dark palette automatically (gray/default Text, --signal-soft fills,
+ * hairlines) because tokens are the only values used — see
+ * app/design/tokens.css §8 for the mechanism (a plain attribute selector,
+ * not a component).
  *
  * A client component for exactly one reason — `usePathname`, to mark the
  * current section. Everything else on the authenticated surface stays a
@@ -29,12 +31,12 @@ import {
  *
  * H9: renders two visual shapes — a vertical rail for `sm` and up, and a
  * horizontally-scrolling strip below it. Both are always in the DOM;
- * app/(app)/layout.tsx toggles which is visible with a CSS `display`
- * breakpoint rather than mounting/unmounting one of them, so navigating
- * between pages never changes which nodes exist and never shifts layout.
+ * app-shell.tsx toggles which is visible with a CSS `display` breakpoint
+ * rather than mounting/unmounting one of them, so navigating between
+ * pages never changes which nodes exist and never shifts layout.
  *
  * Rail links carry a CONSTANT 2px left border (transparent when idle,
- * --accent-9 when current) so activation never shifts layout — the one
+ * --signal when current) so activation never shifts layout — the one
  * restrained instrument gesture on the dark ground: a course-bar edge,
  * not a glow. The strip omits the left border (it reads wrong on a
  * horizontal strip) and uses the fill + highContrast alone.
@@ -54,11 +56,11 @@ function RailLink({ item, pathname }: { item: NavItem; pathname: string }) {
         px="3"
         py="2"
         style={{
-          borderRadius: "var(--radius-2)",
+          borderRadius: "var(--radius)",
           borderLeft: current
-            ? "2px solid var(--accent-9)"
+            ? "2px solid var(--signal)"
             : "2px solid transparent",
-          background: current ? "var(--accent-a3)" : undefined,
+          background: current ? "var(--signal-soft)" : undefined,
         }}
       >
         <Text
@@ -97,8 +99,8 @@ const StripLink = React.forwardRef<
         px="3"
         py="2"
         style={{
-          borderRadius: "var(--radius-2)",
-          background: current ? "var(--accent-a3)" : undefined,
+          borderRadius: "var(--radius)",
+          background: current ? "var(--signal-soft)" : undefined,
           whiteSpace: "nowrap",
         }}
       >

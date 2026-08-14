@@ -32,8 +32,8 @@ export default function SkipLink() {
         top: focused ? "8px" : "-40px",
         left: "8px",
         zIndex: 1000,
-        background: "var(--accent-9)",
-        borderRadius: "var(--radius-2)",
+        background: "var(--signal)",
+        borderRadius: "var(--radius)",
         transition: "top 0.15s ease-in-out",
       }}
     >
@@ -43,7 +43,7 @@ export default function SkipLink() {
         onBlur={() => setFocused(false)}
         style={{ textDecoration: "none" }}
       >
-        <Text size="2" weight="medium" style={{ color: "var(--accent-contrast)" }}>
+        <Text size="2" weight="medium" style={{ color: "var(--signal-ink)" }}>
           Skip to content
         </Text>
       </a>

@@ -16,9 +16,11 @@ import {
   TextField,
 } from "@/components/ui";
 import { formatCents, formatDate } from "@/lib/format";
-import { parseCsv } from "@/lib/bank-import/csv";
+import { parseCsv, type CsvRecord } from "@/lib/bank-import/csv";
 import { applyCsvMapping, suggestColumnMapping } from "@/lib/bank-import/apply-mapping";
 import { parseOfx } from "@/lib/bank-import/ofx";
+import { parseStatementDate } from "@/lib/bank-import/date";
+import { parseBankAmount } from "@/lib/bank-import/amount";
 import type { BankParseResult, ColumnMapping, CsvColumnKey } from "@/lib/bank-import/types";
 import {
   confirmBankImport,
@@ -90,8 +92,29 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
   const [fileError, setFileError] = useState<string | null>(null);
   const [detectedFormat, setDetectedFormat] = useState<"csv" | "ofx" | "qfx" | null>(null);
 
-  const [headerRow, setHeaderRow] = useState<string[]>([]);
-  const [dataRecords, setDataRecords] = useState<{ fields: string[]; raw: string }[]>([]);
+  // The CSV's records, unsplit — headerRow/dataRecords below are DERIVED
+  // from this plus firstRowIsData, so toggling "first row is data, not
+  // headers" (see the toggle's own comment) never needs to re-read the
+  // file.
+  const [csvRecords, setCsvRecords] = useState<CsvRecord[]>([]);
+  // True when record 1 is a transaction, not column labels — several
+  // major banks (Wells Fargo's checking/card CSV export is the canonical
+  // example) export with no header row at all. Auto-guessed in handleFile,
+  // and overridable via the checkbox in step 3.
+  const [firstRowIsData, setFirstRowIsData] = useState(false);
+  const headerRow = useMemo(
+    () =>
+      csvRecords.length === 0
+        ? []
+        : firstRowIsData
+          ? csvRecords[0]!.fields.map((_, i) => `Column ${i + 1}`)
+          : csvRecords[0]!.fields,
+    [csvRecords, firstRowIsData]
+  );
+  const dataRecords = useMemo(
+    () => (firstRowIsData ? csvRecords : csvRecords.slice(1)),
+    [csvRecords, firstRowIsData]
+  );
   const [mapping, setMapping] = useState<ColumnMapping>([]);
 
   // Held only for OFX/QFX. CSV survives an account switch because its
@@ -142,8 +165,8 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
     if (lower.endsWith(".ofx") || lower.endsWith(".qfx")) {
       const fmt = lower.endsWith(".qfx") ? "qfx" : "ofx";
       setDetectedFormat(fmt);
-      setHeaderRow([]);
-      setDataRecords([]);
+      setCsvRecords([]);
+      setFirstRowIsData(false);
       setOfxText(text);
       if (selectedAccount) runOfx(text, fmt);
       return;
@@ -160,10 +183,35 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
       setFileError("That file has no rows.");
       return;
     }
-    const [header, ...rest] = parsed;
-    setHeaderRow(header!.fields);
-    setDataRecords(rest);
-    setMapping(suggestColumnMapping(header!.fields));
+    setCsvRecords(parsed);
+
+    // AUTO-DETECT A HEADERLESS FILE (fixed after review). Several major
+    // banks (Wells Fargo's checking/card CSV export is the canonical
+    // example) export with NO header row — record 1 is already a
+    // transaction. Unconditionally treating it as headers silently ate
+    // that transaction: its values became the column LABELS in step 3,
+    // "Parse N rows" reported one fewer row than the file actually holds,
+    // and nothing said so.
+    //
+    // suggestColumnMapping already returns an all-undefined mapping when a
+    // row's cells don't match any known header name — that alone isn't
+    // proof (a bank really might use unfamiliar header text), but combined
+    // with the first cell parsing as a calendar date AND some other cell
+    // parsing as a bank amount, the row is doing what a TRANSACTION does,
+    // not what a header does. The checkbox in step 3 overrides this either
+    // way.
+    const first = parsed[0]!.fields;
+    const headerGuess = suggestColumnMapping(first);
+    const looksHeaderless =
+      headerGuess.every((m) => m === undefined) &&
+      first.some((cell) => parseStatementDate(cell.trim()) !== null) &&
+      first.some((cell) => parseBankAmount(cell.trim()) !== undefined);
+    setFirstRowIsData(looksHeaderless);
+    setMapping(
+      looksHeaderless
+        ? suggestColumnMapping(first.map((_, i) => `Column ${i + 1}`))
+        : headerGuess
+    );
   };
 
   const runOfx = (text: string, fmt: "ofx" | "qfx") => {
@@ -227,6 +275,24 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
       next[idx] = key === "ignore" ? undefined : key;
       return next;
     });
+  };
+
+  /**
+   * The pilot's own answer to "is that first row a transaction or column
+   * labels?" — overrides handleFile's guess either way. Column count never
+   * changes, only what fills row 1, so the mapping is re-suggested against
+   * whichever text now stands in for headers (real header names when
+   * unchecked, generic "Column N" labels — which suggestColumnMapping
+   * cannot match to anything — when checked, forcing an explicit pick per
+   * column exactly as a headerless file requires).
+   */
+  const toggleFirstRowIsData = (value: boolean) => {
+    setFirstRowIsData(value);
+    if (csvRecords.length === 0) return;
+    const fields = csvRecords[0]!.fields;
+    setMapping(
+      suggestColumnMapping(value ? fields.map((_, i) => `Column ${i + 1}`) : fields)
+    );
   };
 
   const includedRows = useMemo(
@@ -365,6 +431,25 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
             <Text size="2" color="gray">
               We guessed based on the header names — check them, especially Amount vs. Debit/Credit.
             </Text>
+            <Text as="label" size="2">
+              <Flex gap="2" align="center">
+                <Checkbox
+                  checked={firstRowIsData}
+                  onCheckedChange={(checked) => toggleFirstRowIsData(checked === true)}
+                />
+                The first row above is a transaction, not column headers — some
+                banks (Wells Fargo among them) export CSVs with no header row at all.
+              </Flex>
+            </Text>
+            {firstRowIsData ? (
+              <Callout.Root color="amber" size="1">
+                <Callout.Text>
+                  Every row below — including the first — is treated as a
+                  transaction. There&rsquo;s no header text to guess column names
+                  from, so map each one by hand.
+                </Callout.Text>
+              </Callout.Root>
+            ) : null}
             <Table.Root variant="surface">
               <Table.Header>
                 <Table.Row>
@@ -640,6 +725,50 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                         {d.sourceRow ? ` — ${Object.values(d.sourceRow).slice(0, 3).join(" · ")}` : ""}
                       </Text>
                     ))}
+                </Callout.Text>
+              </Callout.Root>
+            ) : null}
+
+            {/* CROSS-FORMAT REMATCH. Same statement range imported once as
+                CSV and later as OFX/QFX (or the reverse) hashes to a
+                DIFFERENT fingerprint — OFX builds "NAME — MEMO" where a CSV
+                export carries the bank's own single description column —
+                so the exact-match dedup above lets it straight through with
+                no warning. These rows WERE imported (unlike the in-file
+                skip above, nothing was dropped); this only flags that an
+                existing transaction on this account already matches the
+                same amount within a few days, in case it's the same charge
+                under different text. */}
+            {confirmResult &&
+            confirmResultAccountId === bankAccountId &&
+            !confirmResult.partial &&
+            (confirmResult.possibleRematches?.length ?? 0) > 0 ? (
+              <Callout.Root color="amber">
+                <Callout.Text>
+                  <Text as="div" weight="medium" mb="1">
+                    {confirmResult.possibleRematches!.length} imported transaction
+                    {confirmResult.possibleRematches!.length === 1 ? "" : "s"} match
+                    {confirmResult.possibleRematches!.length === 1 ? "es" : ""} an amount already on
+                    file for this account within a few days, under different text.
+                  </Text>
+                  <Text as="div" size="1" mb="1">
+                    A likely cause is re-importing the same statement range in a
+                    different format (CSV, then later OFX/QFX) — the file&rsquo;s
+                    wording differs enough that we can&rsquo;t tell it&rsquo;s the same
+                    charge automatically. Check the review queue for a real
+                    duplicate before confirming either one as an expense.
+                  </Text>
+                  {confirmResult.possibleRematches!.slice(0, 10).map((r) => (
+                    <Text as="div" size="1" key={`rematch-${r.rowNumber}`}>
+                      Row {r.rowNumber}
+                      {r.sourceRow ? ` — ${Object.values(r.sourceRow).slice(0, 3).join(" · ")}` : ""}
+                    </Text>
+                  ))}
+                  {confirmResult.possibleRematches!.length > 10 ? (
+                    <Text as="div" size="1" mt="1">
+                      Showing the first 10 of {confirmResult.possibleRematches!.length}.
+                    </Text>
+                  ) : null}
                 </Callout.Text>
               </Callout.Root>
             ) : null}

@@ -21,8 +21,8 @@ import {
   Text as DsText,
   VisuallyHidden as DsVisuallyHidden,
 } from "@/components/ds/type";
-import { cx } from "@/lib/ds/props";
-import type { Tone } from "@/lib/ds/scales";
+import { cx, type Responsive } from "@/lib/ds/props";
+import type { Space, Tone } from "@/lib/ds/scales";
 
 /**
  * THE MIGRATION SEAM.
@@ -90,8 +90,17 @@ type Step = "1" | "2" | "3" | "4" | "5" | "6" | "7";
 
 /** Radix put margin props on every component, so the seam has to take them
  *  everywhere too. They pass straight through to the INSTRUMENT primitive,
- *  which understands a scale position or a breakpoint object. */
-type Spacing = string | Record<string, string>;
+ *  which understands a scale position or a breakpoint object.
+ *
+ *  Typed to the actual Space scale (plus "auto", for `mt="auto"`-style
+ *  pinning) rather than bare `string` — an untyped seam let `py="9"` (off
+ *  the 0-8 scale) compile, emit a var(--i-py-…) reference nothing declares,
+ *  and resolve to no padding at all (app/(auth)/loading.tsx,
+ *  app/(marketing)/loading.tsx: a spinner sitting flush at the viewport
+ *  top). lib/ds/props.ts's own claim that "p="17" is a compile error" only
+ *  holds for files importing components/ds directly; the ~89 files still on
+ *  this seam need the same scale enforced here. */
+type Spacing = Responsive<Space | "auto">;
 type SpacingProps = {
   m?: Spacing; mt?: Spacing; mb?: Spacing; ml?: Spacing; mr?: Spacing;
   mx?: Spacing; my?: Spacing;
@@ -265,9 +274,37 @@ export const VisuallyHidden = DsVisuallyHidden;
 export const Card = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement> & SpacingProps & { size?: string; variant?: string; asChild?: boolean }
->(function Card({ size: _size, variant: _variant, children, ...rest }, ref) {
+>(function Card({ size: _size, variant: _variant, asChild, className, style, children, ...rest }, ref) {
+  // asChild was declared in the prop type but never handled: the flag fell
+  // through to Panel's own rest spread and onto the DOM as an invalid
+  // `asChild` attribute, and the child rendered INSIDE the panel body
+  // instead of the panel becoming the child — on
+  // `<Card asChild><NextLink>…</NextLink></Card>`, only the text inside the
+  // body padding was clickable; the border and padding around it were dead
+  // space. Panel itself always renders a real <div>, so asChild is handled
+  // here by skipping Panel's own header/body wrapper structure (this Card
+  // has never taken title/aside) and merging its two classes directly onto
+  // the single child, same as the "i-panel i-panel-body" combination Panel
+  // would otherwise apply across two nested elements.
+  if (asChild) {
+    if (!React.isValidElement(children)) {
+      throw new Error(
+        `<Card asChild> needs exactly one element child; received ` +
+          `${Array.isArray(children) ? `${children.length} children` : typeof children}.`
+      );
+    }
+    const child = children as React.ReactElement<{
+      className?: string;
+      style?: React.CSSProperties;
+    }>;
+    return React.cloneElement(child, {
+      ...(rest as object),
+      className: cx("i-panel", "i-panel-body", className, child.props.className),
+      style: { ...(style as object), ...(child.props.style as object) },
+    } as never);
+  }
   return (
-    <Panel ref={ref} {...(rest as Record<string, never>)}>
+    <Panel ref={ref} className={className} style={style} {...(rest as Record<string, never>)}>
       {children}
     </Panel>
   );

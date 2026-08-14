@@ -66,13 +66,21 @@
  *    (simulator sessions excluded — a box is not flight time; the same
  *    greatest(total - simulator, 0) arithmetic as pilot.logbook_totals).
  *    Again conservative: the reg's own basis can only be lower.
- * 3. THE TRAILING-24-HOUR FIGURE COVERS TWO CALENDAR DATES. Entries carry
+ * 3. THE TRAILING-24-HOUR FIGURE COVERS THREE CALENDAR DATES. Entries carry
  *    a date, not off/on times, so a clock-exact rolling window (the
  *    house rule for rolling windows is timestamps, docs/CURRENCY-SPEC
- *    §rolling) cannot be computed from them. Rather than fake one, the
- *    figure totals the last two calendar dates (UTC) — a superset of
- *    every 24-hour window ending now, so it can only over-cover. Stated
- *    on-page in exactly those terms.
+ *    §rolling) cannot be computed from them. pilot.logbook_entries.entry_date
+ *    is a plain pilot-typed date with no timezone convention enforced, and
+ *    US pilots overwhelmingly log LOCAL dates (UTC-5 to UTC-10) rather
+ *    than UTC ones. A two-calendar-day UTC window (today and yesterday)
+ *    is only a superset of every 24-hour window ending now if entry_date
+ *    is itself a UTC date — for a pilot logging local dates, the UTC
+ *    rollover (14:00-19:00 local, depending on offset) can put last
+ *    night's flying, still inside the preceding 24 clock hours, on a date
+ *    before that window's from-bound. Widening to the last THREE calendar
+ *    dates (UTC) covers every 24-hour window ending now under any
+ *    entry-date convention within +/-12h of UTC, so it can only
+ *    over-cover, never miss flying. Stated on-page in exactly those terms.
  *
  * ---- HONEST DEGRADATION --------------------------------------------------
  * A logbook that starts mid-window cannot verify that window's total: the
@@ -165,9 +173,13 @@ export function flightTimeWindows(today: string): FlightTimeWindow[] {
   return [
     {
       key: "trailing24h",
-      from: previousDayIso(today),
+      // Two days back, not one — see the header's point 3. A pilot who
+      // logs local dates can put flying from inside the preceding 24
+      // clock hours on a date one earlier than a UTC-only two-date window
+      // would catch.
+      from: previousDayIso(previousDayIso(today)),
       to: today,
-      label: "Last two calendar days",
+      label: "Last three calendar days",
       citation: "135.267(b) — any 24 consecutive hours",
     },
     {

@@ -236,6 +236,7 @@ export type ReminderHoldReason =
   | "no_due_date"
   | "no_policy"
   | "recent_reminder"
+  | "recent_send"
   | "recently_viewed"
   | "nothing_due";
 
@@ -270,6 +271,19 @@ export type ReminderInput = {
    * never delivered, which is the scheduler talking itself out of its own job.
    */
   lastReminderAt: string | null;
+  /**
+   * invoices.sent_at — when the invoice ITSELF went out, ISO instant or null.
+   *
+   * The original invoice email is not a row in invoice_reminder_sends (it
+   * isn't a reminder), so without this a client whose payment terms are no
+   * longer than their largest before-due rung — net-7 with the 7-day rung,
+   * net-14 with 14 — has that rung already ripe on the day the invoice is
+   * sent: a courtesy note about a bill due in N days would land hours after
+   * the bill itself. Folded into the same quiet period as lastReminderAt,
+   * for the same reason QUIET_PERIOD_DAYS exists at all — one business,
+   * two messages, in one day, about one invoice.
+   */
+  sentAt: string | null;
   /** invoice_shares.last_viewed_at, ISO instant or null. */
   lastViewedAt: string | null;
   /** invoices.reminders_suppressed. */
@@ -339,6 +353,15 @@ export function decideReminder(input: ReminderInput): ReminderDecision {
   if (sinceReminder !== null && sinceReminder < QUIET_PERIOD_DAYS) {
     return { action: "hold", reason: "recent_reminder" };
   }
+  // The invoice's own send starts the same quiet period a reminder would —
+  // see ReminderInput.sentAt. Checked separately from sinceReminder (rather
+  // than folded into lastReminderAt upstream) because the two are different
+  // facts with different callers: this one is always present the moment an
+  // invoice is sent, well before any reminder has a chance to be.
+  const sinceSent = input.sentAt ? daysSinceInstant(input.sentAt, input.today) : null;
+  if (sinceSent !== null && sinceSent < QUIET_PERIOD_DAYS) {
+    return { action: "hold", reason: "recent_send" };
+  }
   const sinceViewed = input.lastViewedAt
     ? daysSinceInstant(input.lastViewedAt, input.today)
     : null;
@@ -379,6 +402,8 @@ export function describeHold(reason: ReminderHoldReason): string {
       return "This client has no reminder schedule set.";
     case "recent_reminder":
       return `A reminder went out in the last ${QUIET_PERIOD_DAYS} days, so the next one waits.`;
+    case "recent_send":
+      return `The invoice itself went out in the last ${QUIET_PERIOD_DAYS} days, so the first reminder waits.`;
     case "recently_viewed":
       return "The client opened the invoice link in the last couple of days, so the next reminder waits.";
     case "nothing_due":

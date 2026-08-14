@@ -21,6 +21,7 @@ const { FEATURES, PLAN_TIERS, marketingMatrix } = await import(
 );
 
 const { CURRENCY_PATH, visibleNavSections } = await import("../lib/nav.ts");
+const { parseDollarsToCents } = await import("../lib/format.ts");
 
 /**
  * The public pricing page's view-model over lib/entitlements.ts. These
@@ -186,4 +187,28 @@ test("tier order and price copy match docs/PRICING.md §3.2", () => {
     dollars(BUSINESS_MINIMUM_ANNUAL),
     dollars(TIER_PRICE_COPY.business.annual) * TIER_PRICE_COPY.business.seatMinimum
   );
+});
+
+test("TIER_PRICE_COPY parses to the cents the price-drift guard checks against", () => {
+  // lib/stripe/price-drift.ts compares these SAME strings (parsed the SAME
+  // way, via lib/format.ts's parseDollarsToCents) against live Stripe
+  // Price.unit_amount. scripts/billing-verify.mjs additionally hardcodes
+  // this exact cents table (it cannot import a .ts module — see that
+  // script's price-drift section) — if this test ever fails because
+  // TIER_PRICE_COPY changed, billing-verify.mjs's duplicate copy must
+  // change with it, or the drift guard itself goes stale.
+  const expectedCents = {
+    solo: { monthly: 2900, annual: 29000 },
+    pro: { monthly: 4900, annual: 49000 },
+    business: { monthly: 3900, annual: 39000 },
+  };
+  for (const tier of TIER_ORDER) {
+    for (const interval of ["monthly", "annual"]) {
+      assert.equal(
+        parseDollarsToCents(TIER_PRICE_COPY[tier][interval]),
+        expectedCents[tier][interval],
+        `${tier}/${interval} cents mismatch — update scripts/billing-verify.mjs's duplicate table too`
+      );
+    }
+  }
 });

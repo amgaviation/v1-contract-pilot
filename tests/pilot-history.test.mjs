@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 const {
   lastTwelveCalendarMonths,
+  lastNinetyCalendarDays,
   allTimeWindow,
   aircraftHours,
   totalInstrument,
@@ -132,8 +133,34 @@ test("the window is inclusive at BOTH edges, to the day", () => {
   assert.equal(data.allTime.hours.total, 7.0);
 });
 
+test("the last-90-days window is 90 calendar days inclusive of today", () => {
+  const window = lastNinetyCalendarDays("2026-08-13");
+  // 2026-08-13 minus 89 days = 2026-05-16 — 90 days total, today included.
+  assert.equal(window.from, "2026-05-16");
+  assert.equal(window.to, "2026-08-13");
+  assert.equal(window.key, "last-90-days");
+});
+
+test("the 90-day window crosses a year boundary without a special case", () => {
+  assert.equal(lastNinetyCalendarDays("2026-01-15").from, "2025-10-18");
+});
+
+test("the 90-day figure threads through computePilotHistoryReport and is inclusive at both edges", () => {
+  const onOpeningDay = entry({ entry_date: "2026-05-16", total_time: 1.0 });
+  const dayBefore = entry({ entry_date: "2026-05-15", total_time: 4.0 });
+  const today = entry({ entry_date: "2026-08-13", total_time: 2.0 });
+
+  const data = report([dayBefore, onOpeningDay, today]);
+  assert.equal(data.ok, true);
+  // The day before the 90-day window opens is excluded; the opening day
+  // and today are both included.
+  assert.equal(data.lastNinetyDays.hours.total, 3.0);
+  assert.equal(data.lastNinetyDays.window.key, "last-90-days");
+});
+
 test("a malformed clock read throws rather than producing a nonsense window", () => {
   assert.throws(() => lastTwelveCalendarMonths("13-08-2026"));
+  assert.throws(() => lastNinetyCalendarDays("13-08-2026"));
   assert.throws(() => allTimeWindow(""));
 });
 

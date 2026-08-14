@@ -63,6 +63,10 @@ const STATUSES = [
   { value: "in_progress", label: "In progress" },
   { value: "completed", label: "Completed" },
   { value: "canceled", label: "Canceled" },
+  // 20260814094000: a tentative hold — blocks the calendar without being
+  // confirmed work. Deliberately excluded from every revenue path the same
+  // way 'canceled' is; promote it to Scheduled once the job is confirmed.
+  { value: "hold", label: "Hold (tentative)" },
 ];
 
 /** 20260807070000_trip_day_units_away_cancel.sql — who the cancellation
@@ -257,6 +261,19 @@ export default function TripForm({
   const [cancellationNoticeFrom, setCancellationNoticeFrom] = useState(() =>
     initial("cancellation_notice_from", "")
   );
+  // formatCancelledAt renders canceled_at (a timestamptz) in the DEVICE'S
+  // local zone, which the server cannot know at render time — Vercel's SSR
+  // pass runs in UTC. Computing it during render would make the server's
+  // markup disagree with the client's on hydration, and for however many
+  // hours UTC and the pilot's zone disagree, a page load before hydration
+  // finishes would flash the wrong time. Deferred to a client-only effect
+  // instead: both the SSR pass and React's first client render show no
+  // time (matching each other exactly, so nothing to reconcile), and the
+  // real local time fills in immediately after mount.
+  const [canceledLabel, setCanceledLabel] = useState<string | null>(null);
+  useEffect(() => {
+    setCanceledLabel(values.canceled_at ? formatCancelledAt(values.canceled_at) : null);
+  }, [values.canceled_at]);
   useEffect(() => {
     if (submitted?.trip_kind !== undefined) setTripKind(String(submitted.trip_kind || "contract_pilot"));
     if (submitted?.status !== undefined) setStatus(String(submitted.status || "scheduled"));
@@ -410,7 +427,7 @@ export default function TripForm({
             <input type="hidden" name="status" value={status} />
             {values.canceled_at ? (
               <Text size="1" color="gray">
-                Canceled {formatCancelledAt(values.canceled_at)}
+                Canceled{canceledLabel ? ` ${canceledLabel}` : ""}
               </Text>
             ) : null}
           </Flex>
@@ -648,6 +665,17 @@ export default function TripForm({
             </Callout.Root>
           ) : null}
         </Flex>
+        {/* gap S: overlapping-trip warning — NEVER a hard block, since
+            split-duty and same-day positioning work are real. Only shown
+            alongside a successful save: this is a heads-up about the
+            calendar, not a reason to withhold the write. */}
+        {state.saved && state.overlapWarning ? (
+          <Flex mt="2">
+            <Callout.Root color="amber" size="1">
+              <Callout.Text>{state.overlapWarning}</Callout.Text>
+            </Callout.Root>
+          </Flex>
+        ) : null}
 
         <Flex mt="4" gap="3">
           <Button

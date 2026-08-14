@@ -116,8 +116,13 @@ export default async function ReconcilePage({
   }
 
   const bankAccounts = bankAccountsResult.rows;
+  // Tightened to real months only (01-12) — /^\d{4}-\d{2}$/ let a
+  // hand-edited ?month=2026-13 through, monthBoundsOf then built the
+  // impossible string "2026-13-01", and the .gte() below failed in
+  // Postgres with a date-parse error instead of falling back to the
+  // current month like every other malformed param in this route group.
   const month =
-    sp.month && /^\d{4}-\d{2}$/.test(sp.month) ? sp.month : todayIso().slice(0, 7);
+    sp.month && /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.month) ? sp.month : todayIso().slice(0, 7);
 
   if (bankAccounts.length === 0) {
     return (

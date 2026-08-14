@@ -1,6 +1,7 @@
 import NextLink from "next/link";
 import {
   Box,
+  Button,
   Callout,
   Card,
   Flex,
@@ -38,10 +39,24 @@ export default async function FlightTimeReportPage() {
   const supabase = await createClient();
   const report = await loadFlightTimeReport(supabase, account.id, windows);
 
+  // Only offered once there are figures to hand someone — an empty logbook
+  // has nothing this report can honestly export, matching the "no
+  // figures, never a page of 0.0s" rule the screen itself follows.
+  const canExport = report.data && report.data.ok;
+
   return (
     <PageShell
       title="Flight time"
       subtitle="Cross-operator totals · 14 CFR 135.267"
+      action={
+        canExport ? (
+          <Button asChild variant="outline" size="2">
+            <a href="/reports/flight-time/export" download>
+              Download CSV
+            </a>
+          </Button>
+        ) : undefined
+      }
     >
       {/* LOAD-BEARING, deliberately first — the same placement as the
           year-end report's framing callout: what this page is and is not,
@@ -196,15 +211,15 @@ export default async function FlightTimeReportPage() {
               </Text>
               <Text as="p" size="2" color="gray">
                 <Text as="span" size="2" weight="medium">
-                  The two-calendar-day row stands in for the 24-hour
+                  The three-calendar-day row stands in for the 24-hour
                   window.
                 </Text>{" "}
                 Logbook entries carry a date, not off/on times, so a
                 clock-exact 24-consecutive-hour total can&rsquo;t be
-                computed from them. The first row totals your last two
+                computed from them. The first row totals your last three
                 calendar days instead — a span that contains every 24-hour
-                window ending now, so it can only over-cover, never miss
-                flying.
+                window ending now no matter which timezone you log dates
+                in, so it can only over-cover, never miss flying.
               </Text>
               <Text as="p" size="2" color="gray">
                 <Text as="span" size="2" weight="medium">

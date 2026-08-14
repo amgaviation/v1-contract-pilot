@@ -300,28 +300,55 @@ export default async function OverviewPage() {
     // with a partial payment already applied) — 'draft' has nothing billed
     // yet and 'paid'/'void' owe nothing, per invoices_protect_issued's own
     // state machine.
+    // .limit(AGGREGATE_LIMIT): "Awaiting payment" (awaitingCents below) sums
+    // this read directly — an unbounded read here is the exact silent-
+    // truncation risk the clients/expenses/payments reads above already
+    // guard against, just missed when this query was written.
     supabase
       .from("invoices")
       .select("id, client_id, invoice_number, due_on")
-      .in("status", ["sent", "partial"]),
-    supabase.from("invoices_overdue").select("invoice_id, due_on, days_overdue"),
+      .in("status", ["sent", "partial"])
+      .limit(AGGREGATE_LIMIT),
+    supabase
+      .from("invoices_overdue")
+      .select("invoice_id, due_on, days_overdue")
+      .limit(AGGREGATE_LIMIT),
     supabase
       .from("invoice_payments")
       .select("invoice_id, amount_cents, paid_on")
       .gte("paid_on", yearStart)
       .limit(AGGREGATE_LIMIT),
-    // Document expiries ONLY — medical, flight review, passport. The
-    // currency engine (day/night/instrument recency computed from logbook
-    // legs) is Phase 7 and is deliberately not built here: it ships behind
-    // a flag only after an owner spec review and counsel sign-off on its
-    // own disclaimer. Filtering item_kind keeps this panel honest about
-    // what pilot.expirations actually gives it for the OTHER document
-    // kinds it also carries (certificate, insurance, w9, other).
+    // Document expiries — medical, flight review, passport, insurance and
+    // the 61.58 PIC proficiency check. The currency engine (day/night/
+    // instrument recency computed from logbook legs) is Phase 7 and is
+    // deliberately not built here: it ships behind a flag only after an
+    // owner spec review and counsel sign-off on its own disclaimer.
+    // Filtering item_kind keeps this panel honest about what
+    // pilot.expirations actually gives it for the OTHER document kinds it
+    // also carries (certificate, w9, other) — a certificate never expires
+    // (see documents/kinds.ts) and w9/other carry no expiry date at all.
+    // insurance and pic_proficiency_check belong here for the same reason
+    // medical/flight_review/passport do: a lapsed one is a harder stop for
+    // a working contract pilot than a passport, and both are the same
+    // pilot-typed, no-computed-verdict shape as the three kinds already
+    // shown.
     supabase
       .from("expirations")
       .select("source_id, item_kind, item_label, expires_on, days_remaining, ladder_stage")
-      .in("item_kind", ["medical", "flight_review", "passport"])
-      .order("expires_on", { ascending: true }),
+      .in("item_kind", [
+        "medical",
+        "flight_review",
+        "passport",
+        "insurance",
+        "pic_proficiency_check",
+      ])
+      .order("expires_on", { ascending: true })
+      // AGGREGATE_LIMIT here too: this panel already slices to
+      // EXPIRATIONS_LIMIT for display, but a silent API truncation would
+      // happen upstream of that slice — a pilot with a very large document
+      // history could have a near-due row fall out of the read entirely,
+      // not just off the visible list.
+      .limit(AGGREGATE_LIMIT),
     // Operator qualifications — 135.293/135.297/135.299 checks and the
     // status-only rows, all unioned into pilot.expirations with
     // source_table='operator_qualification' (20260807060000). Filtered by
@@ -347,7 +374,11 @@ export default async function OverviewPage() {
     // including 'void' (partial -> void is a legal transition). "Paid this
     // year" must filter those out itself rather than trusting the raw
     // ledger, or a voided invoice's old payment counts as money collected.
-    supabase.from("invoices").select("id").eq("status", "void"),
+    // .limit(AGGREGATE_LIMIT): a silently truncated read here would drop
+    // some void ids from voidInvoiceIds below, letting a stale voided
+    // invoice's payment count TOWARD "Paid this year" — the wrong
+    // direction for a KPI whose whole job is excluding it.
+    supabase.from("invoices").select("id").eq("status", "void").limit(AGGREGATE_LIMIT),
     // Trips logged but never marked flown. "Ready to invoice" below stays
     // strictly completed trips — widening THAT query would put unflown
     // work in front of a pilot as billable. This count only feeds the
@@ -409,18 +440,25 @@ export default async function OverviewPage() {
     created_at: string;
   }[];
   const unmarkedTripCount = unmarkedTripsRes.count ?? 0;
-  const voidInvoiceIds = new Set(
-    ((voidInvoicesRes.data ?? []) as { id: string }[]).map((i) => i.id)
-  );
+  const voidInvoiceRows = (voidInvoicesRes.data ?? []) as { id: string }[];
+  const voidInvoiceIds = new Set(voidInvoiceRows.map((i) => i.id));
 
   // Hitting the limit exactly is the only client-visible signal that a
   // read was truncated (the Data API returns 200, not an error) — a
   // pilot with 1,400 expenses must see a caveat, not a deductible total
-  // silently summed from an arbitrary 1,000 of them.
+  // silently summed from an arbitrary 1,000 of them. liveInvoices/overdue/
+  // voidInvoiceRows/expirations added to this list alongside
+  // clients/expenses/payments — same risk, same guard, just missed when
+  // those four reads were first written (each carries its own
+  // .limit(AGGREGATE_LIMIT) comment above explaining what it feeds).
   const truncatedAggregates = [
     { context: "clients", hit: clients.length === AGGREGATE_LIMIT },
     { context: "expenses", hit: expenses.length === AGGREGATE_LIMIT },
     { context: "payments", hit: payments.length === AGGREGATE_LIMIT },
+    { context: "awaiting payment", hit: liveInvoices.length === AGGREGATE_LIMIT },
+    { context: "overdue invoices", hit: overdue.length === AGGREGATE_LIMIT },
+    { context: "paid this year", hit: voidInvoiceRows.length === AGGREGATE_LIMIT },
+    { context: "document expirations", hit: expirations.length === AGGREGATE_LIMIT },
   ]
     .filter((t) => t.hit)
     .map((t) => t.context);
@@ -1608,7 +1646,8 @@ export default async function OverviewPage() {
             Document expirations
           </Text>
           <Text size="2" color="gray">
-            Medical, flight review, and passport dates from your documents
+            Medical, flight review, passport, insurance and PIC proficiency
+            check (61.58) dates from your documents
           </Text>
         </Flex>
 

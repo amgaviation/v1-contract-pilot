@@ -54,6 +54,7 @@ const SUGGEST_ALIASES: Record<string, string> = {
   simulator: "simulator_time",
   sim: "simulator_time",
   simulatortype: "simulator_device_type",
+  daytakeoffs: "day_takeoffs",
   daylandingsfullstop: "day_landings_full_stop",
   daylandingstouchandgo: "day_landings_touch_go",
   nighttakeoffs: "night_takeoffs",

@@ -15,7 +15,10 @@ export type DraftCardLeg = {
   block_hours: number | null;
   night_hours: number | null;
   instrument_hours: number | null;
+  instrument_actual_hours: number | null;
+  instrument_simulated_hours: number | null;
   day_landings: number;
+  day_landings_full_stop: number | null;
   night_takeoffs: number;
   night_landings_full_stop: number;
   night_landings_touch_go: number;
@@ -114,7 +117,6 @@ export default function TripDraftCard({
           <Table.Body>
             {legs.map((leg) => {
               const totalTime = Number(leg.block_hours ?? 0);
-              const instrumentHours = Number(leg.instrument_hours ?? 0);
               // HIGH 5: draftPayloadForLeg deliberately leaves
               // instrument_actual_time and day_landings_full/touch_go
               // null/0 rather than guess a classification trip_legs never
@@ -127,6 +129,20 @@ export default function TripDraftCard({
               // simulated instrument; full-stop vs touch-and-go day
               // landings) isn't in that number — never print a zero for a
               // fact the draft is refusing to assert.
+              //
+              // Since 20260810080000 the leg editor can capture the
+              // actual/simulated instrument split and the full-stop count
+              // directly, and draftPayloadForLeg maps those straight
+              // across when present — so the "*" (and the confirmed
+              // entry's real numbers) must follow whichever the leg
+              // actually recorded, not always the legacy combined fields.
+              const instrumentSplitRecorded =
+                leg.instrument_actual_hours != null || leg.instrument_simulated_hours != null;
+              const instrumentHours = instrumentSplitRecorded
+                ? Number(leg.instrument_actual_hours ?? 0) + Number(leg.instrument_simulated_hours ?? 0)
+                : Number(leg.instrument_hours ?? 0);
+              const instrumentUnsplit = !instrumentSplitRecorded && instrumentHours > 0;
+              const dayLandingsSplitMissing = !(leg.day_landings_full_stop ?? 0) && leg.day_landings > 0;
               const landingsTotal =
                 Number(leg.day_landings) +
                 Number(leg.night_landings_full_stop) +
@@ -157,13 +173,13 @@ export default function TripDraftCard({
                   <Table.Cell justify="end">
                     <Text size="2" color="gray" className="tnum">
                       {instrumentHours.toFixed(1)}
-                      {instrumentHours > 0 ? "*" : ""}
+                      {instrumentUnsplit ? "*" : ""}
                     </Text>
                   </Table.Cell>
                   <Table.Cell justify="end">
                     <Text size="2" color="gray" className="tnum">
                       {landingsTotal}
-                      {leg.day_landings > 0 ? "*" : ""}
+                      {dayLandingsSplitMissing ? "*" : ""}
                     </Text>
                   </Table.Cell>
                   <Table.Cell justify="end">
@@ -190,10 +206,12 @@ export default function TripDraftCard({
         </Table.Root>
 
         <Text size="1" color="gray">
-          * instrument time and day landings come straight from the trip leg, but
-          actual-vs-simulated instrument and full-stop-vs-touch-and-go day
-          landings aren&rsquo;t recorded there — classify them on the logbook
-          entry after confirming.
+          * marks a leg that recorded only the older combined field —
+          instrument time as one total (not actual vs. simulated) or day
+          landings with no full-stop count. The confirmed entry carries that
+          the same way; classify it on the logbook entry after confirming.
+          Unmarked instrument and landing figures already carry the split
+          the leg itself recorded.
         </Text>
         <Text size="1" color="gray">
           These numbers come straight from the trip&rsquo;s legs. Fix a leg on

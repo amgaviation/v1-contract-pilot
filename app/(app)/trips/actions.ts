@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { DASHBOARD_PATH } from "@/lib/nav";
-import { parseDollarsToCents, parseTenth } from "@/lib/format";
+import { formatDateRange, parseDollarsToCents, parseTenth } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import type { Database } from "@/lib/supabase/database.types";
 import {
@@ -50,6 +50,13 @@ export type TripFormState = {
    * along on the same success state trip-form.tsx already renders.
    */
   daysRemoved?: number;
+  /**
+   * gap S: a non-blocking heads-up that this trip's dates intersect
+   * another live trip on the same calendar — never withholds the save.
+   * Set by findOverlappingTrip below; rendered by trip-form.tsx alongside
+   * the "saved" confirmation, never in place of it.
+   */
+  overlapWarning?: string | null;
 };
 /**
  * `values` echoes the submitted leg fields on a validation failure — same
@@ -81,7 +88,10 @@ const TRIP_KINDS = [
   "other",
 ] as const;
 
-const TRIP_STATUSES = ["scheduled", "in_progress", "completed", "canceled"] as const;
+// 20260814094000: 'hold' is a tentative, unconfirmed block on the
+// calendar — see that migration's header for why every revenue-facing
+// consumer of status already treats it as inert without needing changes.
+const TRIP_STATUSES = ["scheduled", "in_progress", "completed", "canceled", "hold"] as const;
 
 // 20260807130000. Always exactly one part for a trip — see
 // lib/operating-rule.ts's TripOperatingRule. 'part_91' is the fallback,
@@ -214,6 +224,47 @@ function billedTripMessage(committedOn: string, scope: "days" | "facts"): string
     : `This trip is billed on ${committedOn}. Remove it from that invoice before changing its dates, rates or status.`;
 }
 
+/**
+ * gap S: overlapping-trip warning (double-booking / double-entry guard).
+ * Nothing anywhere previously detected that a new or edited trip's date
+ * range intersects an existing one. Two real failure modes this catches:
+ * an accidental duplicate entry of the same job — which can then be
+ * double-invoiced from two "different" trips — and a genuine double-
+ * booking a solo pilot wants to see before accepting more work.
+ *
+ * NEVER A HARD BLOCK. Split-duty, same-day positioning legs and
+ * simultaneous ferry/owner work are real; a database-enforced exclusion
+ * constraint (or a rejected save here) would refuse a pilot's own honest
+ * calendar. This only ever informs — see TripFormState.overlapWarning and
+ * the redirect query param createTrip uses for its own success path.
+ *
+ * Canceled trips are excluded — a canceled trip no longer holds the date,
+ * the same reasoning clients/[id]/page.tsx's unbilled-trips filter now
+ * applies. Best-effort: a failed lookup here degrades to "no warning"
+ * rather than failing the trip save the warning rides along on — this is
+ * advisory, not the write that matters.
+ */
+async function findOverlappingTrip(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  accountId: string,
+  startsOn: string,
+  endsOn: string,
+  excludeId: string | null
+): Promise<{ starts_on: string; ends_on: string } | null> {
+  let query = supabase
+    .from("trips")
+    .select("starts_on, ends_on")
+    .eq("account_id", accountId)
+    .neq("status", "canceled")
+    .lte("starts_on", endsOn)
+    .gte("ends_on", startsOn)
+    .limit(1);
+  if (excludeId) query = query.neq("id", excludeId);
+  const { data, error } = await query.maybeSingle();
+  if (error || !data) return null;
+  return data as { starts_on: string; ends_on: string };
+}
+
 type ParsedTrip = { values: TripFields | null; error: string | null };
 
 function parseTripForm(formData: FormData): ParsedTrip {
@@ -228,6 +279,26 @@ function parseTripForm(formData: FormData): ParsedTrip {
   }
   if (endsOn < startsOn) {
     return { values: null, error: "The end date can't be before the start date." };
+  }
+
+  // A typo'd end-date YEAR (2026 -> 2062) still passes the check above and
+  // then renders a several-thousand-row day grid (enumerateDates has no
+  // cap of its own, and saveTripDays re-enumerates and diffs that same
+  // list on every save). Contract trips run days to weeks; nothing
+  // legitimate needs a range over a year. Catching the typo here, where it
+  // was made, matches this file's parseTenth-style philosophy elsewhere
+  // rather than letting it surface downstream as a frozen page.
+  const tripSpanDays =
+    Math.round(
+      (new Date(`${endsOn}T00:00:00Z`).getTime() -
+        new Date(`${startsOn}T00:00:00Z`).getTime()) /
+        86_400_000
+    ) + 1;
+  if (tripSpanDays > 370) {
+    return {
+      values: null,
+      error: `That's a ${tripSpanDays}-day trip — check the end date's year.`,
+    };
   }
 
   const clientId = optionalUuid(formData, "client_id");
@@ -289,7 +360,14 @@ function parseTripForm(formData: FormData): ParsedTrip {
     values: {
       client_id: clientId,
       trip_kind: oneOf(formData, "trip_kind", TRIP_KINDS, "contract_pilot"),
-      status: oneOf(formData, "status", TRIP_STATUSES, "scheduled"),
+      // `as TripFields["status"]`: same hand-authored-types-file cast as
+      // cancellation_notice_from below. lib/supabase/database.types.ts's
+      // status literal union predates 'hold' (20260814094000) and sits
+      // outside this fix's file allowlist — TRIP_STATUSES (validated just
+      // above, oneOf() only ever returns one of its own members) is the
+      // real, single-sourced vocabulary; this cast just gets a value TS
+      // hasn't been told about yet past a stale local type.
+      status: oneOf(formData, "status", TRIP_STATUSES, "scheduled") as TripFields["status"],
       starts_on: startsOn,
       ends_on: endsOn,
       aircraft_ident: optional(formData, "aircraft_ident"),
@@ -339,10 +417,22 @@ export async function createTrip(
     };
   }
 
+  const createdId = (data as { id: string }).id;
+  // gap S: advisory only — see findOverlappingTrip. A redirect carries no
+  // return value, so the warning rides along as a query param the trip
+  // page reads and renders as its own non-blocking callout.
+  const overlap = await findOverlappingTrip(
+    supabase,
+    account.id,
+    values.starts_on,
+    values.ends_on,
+    null
+  );
+
   revalidatePath("/trips");
   // Straight into the trip, because the next thing a pilot does is add
   // legs — a trip with no legs derives no logbook entry and no route.
-  redirect(`/trips/${(data as { id: string }).id}`);
+  redirect(`/trips/${createdId}${overlap ? "?overlap=1" : ""}`);
 }
 
 /**
@@ -484,11 +574,30 @@ export async function updateTrip(
     };
   }
 
+  // gap S: advisory only — see findOverlappingTrip.
+  const overlap = await findOverlappingTrip(
+    supabase,
+    account.id,
+    values.starts_on,
+    values.ends_on,
+    id
+  );
+
   revalidatePath("/trips");
   revalidatePath(`/trips/${id}`);
   // No redirect — the pilot stays on the trip to keep working on its
   // legs — so `saved` is what tells them anything happened at all.
-  return { error: null, saved: true, daysRemoved };
+  return {
+    error: null,
+    saved: true,
+    daysRemoved,
+    overlapWarning: overlap
+      ? `This trip's dates overlap another trip on your calendar (${formatDateRange(
+          overlap.starts_on,
+          overlap.ends_on
+        )}) — check you haven't double-booked or double-entered it.`
+      : null,
+  };
 }
 
 /**
@@ -570,6 +679,11 @@ export async function markTripCompleted(
 
 export async function deleteTrip(id: string): Promise<{ error: string | null }> {
   const { account } = await requireAccount("/trips");
+  // Every sibling write in this file (markTripCompleted, addLeg, updateLeg,
+  // deleteLeg, saveTripDays) shape-checks its id before it ever reaches
+  // PostgREST; this one didn't, so a malformed id surfaced as a raw,
+  // scrubbed 22P02 instead of the same sentence every other bad id gets.
+  if (!UUID_RE.test(id)) return { error: "That trip couldn't be found." };
 
   const supabase = await createClient();
   const { error } = await supabase
@@ -628,10 +742,32 @@ type ParsedLeg = { values: Omit<LegInsert, "account_id" | "trip_id"> | null; err
  * calls out are the same facts whether they're being typed for the first
  * time or corrected.
  */
-function parseLegForm(formData: FormData): ParsedLeg {
+function parseLegForm(
+  formData: FormData,
+  tripDates: { starts_on: string; ends_on: string }
+): ParsedLeg {
   const legDate = String(formData.get("leg_date") ?? "").trim();
   if (!legDate) return { values: null, error: "Give the leg a date." };
   if (!isDate(legDate)) return { values: null, error: "That leg date isn't valid." };
+
+  // trip_days got a dedicated trigger (trip_days_validate_within_trip) for
+  // exactly this reason — a fat-fingered date (wrong year via the date
+  // input is the common way) bills or logs a day that was never part of
+  // the job. Legs had no equivalent check anywhere: a mis-dated leg
+  // silently produces a wrong-dated logbook draft, sorts into the wrong
+  // place in the leg list, and can drop out of a date-bounded query (the
+  // CPA travel log) that trusts leg_date to fall inside the trip. Blocking
+  // here is defensible the same way the day grid's trigger is — a trip's
+  // own dates should already cover any positioning legs.
+  if (legDate < tripDates.starts_on || legDate > tripDates.ends_on) {
+    return {
+      values: null,
+      error: `This leg is dated outside the trip's ${formatDateRange(
+        tripDates.starts_on,
+        tripDates.ends_on
+      )} dates.`,
+    };
+  }
 
   // numeric(4,1) — see parseTenth on why one decimal place is checked
   // here rather than left to Postgres to round away.
@@ -743,13 +879,30 @@ export async function addLeg(
   if (!tripId || !UUID_RE.test(tripId)) return { error: "Missing trip id." };
 
   const { account } = await requireAccount(`/trips/${tripId}`);
+  const supabase = await createClient();
 
-  const { values, error: parseError } = parseLegForm(formData);
+  // Read fresh, never trusted from the form — same discipline saveTripDays
+  // applies to a trip's own dates, and needed here so parseLegForm can
+  // reject a leg dated outside them.
+  const { data: tripRow, error: tripReadError } = await supabase
+    .from("trips")
+    .select("starts_on, ends_on")
+    .eq("id", tripId)
+    .eq("account_id", account.id)
+    .maybeSingle();
+  if (tripReadError) {
+    return { error: friendlyDbError(tripReadError, "trips.select"), values: echoLeg(formData) };
+  }
+  if (!tripRow) return { error: "That trip no longer exists.", values: echoLeg(formData) };
+
+  const { values, error: parseError } = parseLegForm(
+    formData,
+    tripRow as { starts_on: string; ends_on: string }
+  );
   if (parseError || !values) {
     return { error: parseError ?? "Couldn't read that leg.", values: echoLeg(formData) };
   }
 
-  const supabase = await createClient();
   const payload: LegInsert = {
     account_id: account.id,
     // The composite FK (account_id, trip_id) → trips is what actually
@@ -795,13 +948,30 @@ export async function updateLeg(
   if (!tripId || !UUID_RE.test(tripId)) return { error: "Missing trip id." };
 
   const { account } = await requireAccount(`/trips/${tripId}`);
+  const supabase = await createClient();
 
-  const { values, error: parseError } = parseLegForm(formData);
+  // Same fresh, never-trusted-from-the-form read addLeg does — needed so
+  // an EDITED leg date is checked against the trip's actual range too, not
+  // just a newly added one.
+  const { data: tripRow, error: tripReadError } = await supabase
+    .from("trips")
+    .select("starts_on, ends_on")
+    .eq("id", tripId)
+    .eq("account_id", account.id)
+    .maybeSingle();
+  if (tripReadError) {
+    return { error: friendlyDbError(tripReadError, "trips.select"), values: echoLeg(formData) };
+  }
+  if (!tripRow) return { error: "That trip no longer exists.", values: echoLeg(formData) };
+
+  const { values, error: parseError } = parseLegForm(
+    formData,
+    tripRow as { starts_on: string; ends_on: string }
+  );
   if (parseError || !values) {
     return { error: parseError ?? "Couldn't read that leg.", values: echoLeg(formData) };
   }
 
-  const supabase = await createClient();
   const { error, count: rowCount } = await supabase
     .from("trip_legs")
     .update(values as never, { count: "exact" })

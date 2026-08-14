@@ -332,11 +332,13 @@ export function parseForeflight(text: string): ParseResult | { error: string } {
     // Simulator device type: [Numeric]FFS > 0 on THIS row is the
     // authoritative signal — it's a fact about this specific session, not
     // a generalization from the tail number. Falls back to the Aircraft
-    // Table's equipType == "ffs" (a simulator "tail") only when this row
-    // logs simulator time but the row itself doesn't say FFS — e.g. an
-    // export where FFS hours weren't itemized per flight. Neither branch
-    // is a guess: both read an actual recorded fact, just from two
-    // different places in the file.
+    // Table's equipType only when this row logs simulator time but the row
+    // itself doesn't say FFS — e.g. an export where FFS hours weren't
+    // itemized per flight. Neither branch is a guess: both read an actual
+    // recorded fact, just from two different places in the file. ForeFlight
+    // also records FTD/ATD/BATD/AATD equipment types (same evidence quality
+    // as the ffs case), so those fall back the same way rather than needing
+    // a manual per-row device pick even though the file states the class.
     const simulatorTimeRaw = simulatedFlightIdx === -1 ? "" : (record.fields[simulatedFlightIdx] ?? "").trim();
     const simulatorTimeValue = simulatorTimeRaw === "" ? 0 : Number(simulatorTimeRaw) || 0;
     const ffsRaw = ffsIdx === -1 ? "" : (record.fields[ffsIdx] ?? "").trim();
@@ -345,6 +347,10 @@ export function parseForeflight(text: string): ParseResult | { error: string } {
     if (simulatorTimeValue > 0) {
       if (ffsHours > 0) simulatorDeviceType = "ffs";
       else if (info?.equipType === "ffs") simulatorDeviceType = "ffs";
+      else if (info?.equipType === "ftd") simulatorDeviceType = "ftd";
+      else if (info?.equipType === "atd" || info?.equipType === "batd" || info?.equipType === "aatd") {
+        simulatorDeviceType = "atd";
+      }
     }
 
     record.fields.push(aircraftType, approachSum > 0 ? String(approachSum) : "", simulatorDeviceType);

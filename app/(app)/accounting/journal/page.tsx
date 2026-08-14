@@ -43,6 +43,7 @@ type ChartRow = {
   id: string;
   name: string;
   kind: ChartKind;
+  system_key: string | null;
   archived_at: string | null;
 };
 
@@ -103,7 +104,7 @@ export default async function JournalPage() {
       .limit(ENTRIES_LIMIT),
     supabase
       .from("accounts_chart")
-      .select("id, name, kind, archived_at")
+      .select("id, name, kind, system_key, archived_at")
       .eq("account_id", account.id)
       .limit(CHART_LIMIT),
   ]);
@@ -129,7 +130,12 @@ export default async function JournalPage() {
   const accountOptions: AccountOption[] = (chartResult.ok ? chartResult.rows : [])
     .filter((c) => c.archived_at === null)
     .sort((a, b) => a.name.localeCompare(b.name))
-    .map((c) => ({ id: c.id, name: c.name, kindLabel: KIND_LABEL[c.kind] }));
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      kindLabel: KIND_LABEL[c.kind],
+      systemKey: c.system_key,
+    }));
 
   const linesByEntry = new Map<string, LineRow[]>();
   for (const line of linesResult.ok ? linesResult.rows : []) {
@@ -163,9 +169,18 @@ export default async function JournalPage() {
       title="Journal"
       subtitle="Every ledger entry — derived from your records automatically, plus your own."
       action={
-        <Button asChild variant="soft" size="2">
-          <NextLink href="/accounting">Chart of accounts</NextLink>
-        </Button>
+        <Flex gap="2">
+          {/* Plain <a href download>, not a client-side link — it's a file
+              download, same pattern as /settings/export and /logbook. */}
+          <Button asChild variant="outline" size="2">
+            <a href="/accounting/journal/export" download>
+              Download CSV
+            </a>
+          </Button>
+          <Button asChild variant="soft" size="2">
+            <NextLink href="/accounting">Chart of accounts</NextLink>
+          </Button>
+        </Flex>
       }
     >
       {failed ? (

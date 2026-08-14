@@ -200,3 +200,33 @@ export function tripValueCents(
 function scalarHalfCents(rateCents: number, count: number): number {
   return Math.round((rateCents * Math.round(Number(count) * 10)) / 10);
 }
+
+/**
+ * "How many billable days does this trip's grid actually show" — the same
+ * question pilot.trip_pl's `day_quantity` column answers in SQL
+ * (`sum(td.quantity * td.units) filter (where dt.billable)`, rounded to
+ * 2dp), mirrored here so a screen with no server-side join available can
+ * still report the grid-derived count instead of the pre-grid scalar
+ * day_count/travel_day_count columns.
+ *
+ * Deliberately NOT grouped by (day_type_id, rate_cents) the way
+ * tripValueCents groups for money — a day count has no rate to key on, so
+ * every billable row's contribution is summed directly and rounded ONCE at
+ * the end, exactly as trip_pl's `round(days.day_quantity, 2)` does.
+ *
+ * Returns 0 for a trip with no rows (or none billable) rather than falling
+ * back to the scalars — the caller decides when to use the scalar count
+ * instead, the same has-rows branch tripValueCents' own callers apply.
+ */
+export function tripDayQuantity(
+  dayRows: TripDayValueRow[] | undefined,
+  billableByDayType: Map<string, boolean>
+): number {
+  if (!dayRows || dayRows.length === 0) return 0;
+  let thousandths = 0;
+  for (const row of dayRows) {
+    if (!billableByDayType.get(row.day_type_id)) continue;
+    thousandths += dayQuantityThousandths(row.quantity, row.units);
+  }
+  return roundThousandthsToHundredths(thousandths);
+}

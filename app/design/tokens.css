@@ -469,7 +469,13 @@
    --text-* does not. */
 [data-density="compact"] {
   --unit: 4px;
-  --control-1: 22px;
+  /* 24px, not 22px: WCAG 2.5.8's Target Size (Minimum) is 24x24, and
+     compact is DEFAULT_DENSITY (lib/theme-slots.ts) — every size="1"
+     Button and control in the product renders at this height for every
+     tenant who has not changed the setting, which is most of them. 22px
+     cleared nothing; 24px is still visibly the dense option next to
+     --control-2's 28px. */
+  --control-1: 24px;
   --control-2: 28px;
   --control-3: 34px;
   --row-height: 32px;

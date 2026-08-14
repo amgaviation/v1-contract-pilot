@@ -22,6 +22,14 @@ import { Button, Checkbox, Flex, Text } from "@/components/ui";
  * cannot fire — but controlled is still the house shape for Radix
  * checkboxes precisely so nobody has to re-derive that analysis when a
  * form later grows around one.
+ *
+ * REIMBURSABLES PACKET (roadmap #1's remainder): a second, plain download
+ * link, shown under the same gate as the receipts checkbox above — this
+ * invoice carries rebill lines whose expense has a receipt on file. It is
+ * NOT a toggle on the invoice PDF itself (that stays one document, priced
+ * and laid out for the client); it is a second, separate document
+ * (lib/reimbursables-packet-pdf.tsx) organized for an operator's AP desk —
+ * category totals, itemized detail, then the same receipts, full-page.
  */
 export default function PdfDownload({
   invoiceId,
@@ -50,11 +58,22 @@ export default function PdfDownload({
 
   return (
     <Flex direction="column" gap="1" align="end">
-      <Button asChild variant="outline">
-        <a href={href} target="_blank" rel="noopener noreferrer">
-          {label}
-        </a>
-      </Button>
+      <Flex gap="2">
+        <Button asChild variant="outline">
+          <a href={href} target="_blank" rel="noopener noreferrer">
+            {label}
+          </a>
+        </Button>
+        <Button asChild variant="outline">
+          <a
+            href={`/invoices/${invoiceId}/reimbursables-packet`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Reimbursables packet
+          </a>
+        </Button>
+      </Flex>
       <Text as="label" size="1" color="gray">
         <Flex gap="1" align="center">
           <Checkbox

@@ -444,7 +444,12 @@ export async function confirmLegDraft(
   role: LogbookRole
 ): Promise<{ error: string | null }> {
   if (!UUID_RE.test(tripLegId)) return { error: "That leg isn't valid." };
-  if (!isRole(role)) return { error: "Pick PIC or SIC before confirming." };
+  // Copy names the whole accepted vocabulary (isRole checks all four
+  // LogbookRole values), not just PIC/SIC — the drafts card itself only
+  // offers PIC/SIC today, but this validation is shared with any future
+  // caller (e.g. a DUAL_RECEIVED training trip), and the message must not
+  // claim a narrower set than the code actually accepts.
+  if (!isRole(role)) return { error: "Pick a role (PIC, SIC, Solo, or Dual received) before confirming." };
   const { account, user } = await requireAccount("/logbook/drafts");
 
   const supabase = await createClient();
@@ -523,7 +528,12 @@ export async function confirmTripDrafts(
   role: LogbookRole
 ): Promise<{ error: string | null }> {
   if (!UUID_RE.test(tripId)) return { error: "That trip isn't valid." };
-  if (!isRole(role)) return { error: "Pick PIC or SIC before confirming." };
+  // Copy names the whole accepted vocabulary (isRole checks all four
+  // LogbookRole values), not just PIC/SIC — the drafts card itself only
+  // offers PIC/SIC today, but this validation is shared with any future
+  // caller (e.g. a DUAL_RECEIVED training trip), and the message must not
+  // claim a narrower set than the code actually accepts.
+  if (!isRole(role)) return { error: "Pick a role (PIC, SIC, Solo, or Dual received) before confirming." };
   const { account, user } = await requireAccount("/logbook/drafts");
 
   const supabase = await createClient();

@@ -134,9 +134,34 @@ export function parseOfx(text: string, format: "ofx" | "qfx"): BankParseResult {
   // name, and tells the pilot what to do instead. A statement per account
   // is what every bank offers and what the import screen's one-account
   // model already assumes.
+  //
+  // EXCLUDING <ACCTID>s INSIDE A <STMTTRN> BLOCK (fixed after review). OFX
+  // permits a <BANKACCTTO><ACCTID>…</BANKACCTTO> aggregate INSIDE a single
+  // transaction record to describe a transfer's destination account — some
+  // banks emit it for inter-account transfers. That ACCTID names a SIBLING
+  // account, not a second statement in this file, but the naive scan above
+  // counted it exactly like a second <BANKACCTFROM>, so one transfer record
+  // in an otherwise genuinely single-account statement tripped the refusal
+  // outright with no override. Any <STMTTRN>...</STMTTRN> span (the parser
+  // already delimits these below) is where a <BANKACCTTO> can legally live,
+  // so an <ACCTID> found inside one is excluded from the count; a real
+  // second statement's <BANKACCTFROM><ACCTID> always sits OUTSIDE every
+  // <STMTTRN>, so the refusal still fires for a genuinely multi-account file
+  // (see the "different accounts" test fixture).
+  const stmttrnSpans: { start: number; end: number }[] = [];
+  {
+    const spanRe = /<STMTTRN>(?:(?!<STMTTRN>)[\s\S])*?<\/STMTTRN>/gi;
+    let spanMatch: RegExpExecArray | null;
+    while ((spanMatch = spanRe.exec(body))) {
+      stmttrnSpans.push({ start: spanMatch.index, end: spanMatch.index + spanMatch[0].length });
+    }
+  }
+  const insideStmttrn = (index: number) => stmttrnSpans.some((s) => index >= s.start && index < s.end);
+
   const accountIds = Array.from(
     new Set(
       Array.from(body.matchAll(/<ACCTID>([^<\r\n]*)/gi))
+        .filter((match) => !insideStmttrn(match.index ?? -1))
         .map((match) => (match[1] ?? "").trim())
         .filter((id) => id !== "")
     )
@@ -264,6 +289,15 @@ export function parseOfx(text: string, format: "ofx" | "qfx"): BankParseResult {
     const amountCents = parseBankAmount(trnamt, "decimal");
     if (amountCents === undefined) {
       reject(`TRNAMT isn't a recognized number: "${trnamt}".`);
+      return;
+    }
+    // Same refusal apply-mapping.ts's debit/credit shape has always had —
+    // a $0.00 line (a waived fee, "$0.00 interest charged") is real bank
+    // output but genuinely unstorable (amount_cents <> 0 is a DB CHECK),
+    // and belongs skipped by name rather than reaching the server as a
+    // row that aborts the whole import.
+    if (amountCents === 0) {
+      reject("TRNAMT is $0.00 — a zero-amount row has nothing to import.");
       return;
     }
 

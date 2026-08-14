@@ -12,6 +12,7 @@ import TransactionRow, {
   type TransactionRowData,
   type TripOption,
 } from "./transaction-row";
+import DismissedQueue, { type DismissedRow } from "./dismissed-queue";
 
 export const metadata = { title: "Review transactions" };
 
@@ -55,6 +56,7 @@ export default async function TransactionsPage() {
     { data: accountData, error: accountsError },
     { data: tripData, error: tripsError },
     categories,
+    { data: dismissedData },
   ] = await Promise.all([
     supabase
       .from("bank_transactions")
@@ -68,6 +70,19 @@ export default async function TransactionsPage() {
     // picked here becomes pilot.expenses.category, so the two lists must
     // not diverge.
     loadOptionChoices("expense_category"),
+    // Everything that left 'unreviewed' WITHOUT becoming a visible
+    // expense: dismissed rows (ignoreTransaction), and the schema's own
+    // "rare, visible" state — a reviewed row whose expense was since
+    // deleted (expense_id set null by the FK, category/treatment stay put).
+    // Neither was listed anywhere before this — a mis-tapped Dismiss was
+    // permanent, since re-importing the same statement collides on the
+    // fingerprint that's already there.
+    supabase
+      .from("bank_transactions")
+      .select("id, posted_on, description, amount_cents, review_state, expense_id")
+      .or("review_state.eq.ignored,and(review_state.eq.reviewed,expense_id.is.null)")
+      .order("posted_on", { ascending: false })
+      .limit(TXN_LIMIT),
   ]);
 
   if (error) {
@@ -192,6 +207,25 @@ export default async function TransactionsPage() {
     };
   });
 
+  const dismissedRows: DismissedRow[] = (
+    (dismissedData ?? []) as {
+      id: string;
+      posted_on: string;
+      description: string;
+      amount_cents: number;
+      review_state: string;
+      expense_id: string | null;
+    }[]
+  ).map(
+    (t): DismissedRow => ({
+      id: t.id,
+      posted_on: t.posted_on,
+      description: t.description,
+      amount_cents: t.amount_cents,
+      kind: t.review_state === "ignored" ? "ignored" : "orphaned",
+    })
+  );
+
   return (
     <PageShell
       title="Review imported transactions"
@@ -264,6 +298,8 @@ export default async function TransactionsPage() {
           ) : null}
         </Box>
       )}
+
+      <DismissedQueue rows={dismissedRows} />
     </PageShell>
   );
 }

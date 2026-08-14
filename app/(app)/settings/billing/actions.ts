@@ -12,6 +12,7 @@ import {
   seatsForTier,
   TIER_DISPLAY,
 } from "@/lib/entitlements";
+import { planChangeIsIncrease } from "@/lib/billing-state";
 
 /**
  * Plan changes for an EXISTING subscriber, per the platform-billing
@@ -107,14 +108,27 @@ export async function changePlan(
       // Business here and is corrected UP to 2 rather than no-op'd.)
       return { error: null };
     }
+
+    // A tier-rank increase, or a seat increase within Business, must
+    // collect the proration NOW, not sit as a pending invoice item until
+    // the NEXT invoice. On a monthly plan that is at most a month of
+    // float; on an ANNUAL plan the next invoice is the renewal — up to a
+    // year away — so a Solo-annual pilot upgrading to Business-annual on
+    // day one would otherwise get eleven-plus months of Business before
+    // paying the difference, and would pay NOTHING for it at all if they
+    // then set cancel_at_period_end before that renewal ever fires
+    // (canceling at period end ends the subscription without generating a
+    // further invoice, so a pending proration item is simply dropped).
+    // `always_invoice` creates the proration AND finalizes/attempts an
+    // invoice for it in this same call, so the difference is charged at
+    // confirmation — closing both the float and the never-collected case
+    // at once. A downgrade or a flat interval switch keeps the existing
+    // credit-at-next-invoice behavior, which has no such collection risk.
+    const isIncrease = planChangeIsIncrease(account.plan_tier, tier, currentQty, quantity);
+
     await stripe.subscriptions.update(subscriptionId, {
       items: [{ id: item.id, price: priceId, quantity }],
-      // Fair in both directions: an upgrade bills the difference for the
-      // remainder of the cycle, a downgrade credits it, on the next
-      // invoice. Stripe's default cycle anchoring is kept. Proration
-      // covers the seat delta too — moving 1→2 Business seats bills the
-      // second seat pro-rata for the rest of the cycle.
-      proration_behavior: "create_prorations",
+      proration_behavior: isIncrease ? "always_invoice" : "create_prorations",
     });
   } catch (err) {
     console.error(
@@ -132,6 +146,114 @@ export async function changePlan(
   // acknowledgement.
   revalidatePath("/settings/billing");
   redirect("/settings/billing?changed=1");
+}
+
+/**
+ * RESUBSCRIBE — the path back for an account whose subscription Stripe
+ * will no longer let anyone update.
+ *
+ * changePlan calls stripe.subscriptions.update() on the EXISTING
+ * subscription; Stripe hard-rejects that call once the subscription is
+ * `canceled` or `incomplete_expired` (there is no "un-cancel" for a fully
+ * canceled subscription — cancel_at_period_end only undoes a cancellation
+ * that hasn't taken effect YET, which is what setCancelAtPeriodEnd's
+ * "resume" is for). Yet every string this screen shows a lapsed account —
+ * statusDisplay's canceled/incomplete_expired meanings, the read-only
+ * banner — promises exactly this recovery is one click away. This action
+ * is that click: a NEW Checkout session for the SAME Stripe customer.
+ *
+ * `customer: account.stripe_customer_id` (never `customer_email`) is what
+ * makes this safe to run twice and safe against provisionAccountFromCheckout
+ * minting a second tenant: its lookup keys on stripe_customer_id and
+ * short-circuits to the existing account the moment the webhook's
+ * checkout.session.completed handler re-fetches the new subscription and
+ * calls it — same account row, new stripe_subscription_id, status flips
+ * off "canceled" the instant that event lands.
+ *
+ * No trial_period_days here on purpose: TRIAL_PERIOD_DAYS (decision #6) is
+ * the FIRST-subscription incentive; granting a fresh free trial every time
+ * a subscription is left to lapse and reopened would be a standing
+ * discount, not a reactivation.
+ */
+export async function resubscribe(
+  _prev: BillingActionState,
+  formData: FormData
+): Promise<BillingActionState> {
+  // allowReadOnly: this IS the resubscribe path a lapsed owner must reach.
+  const { account, role, user } = await requireAccount("/settings/billing", {
+    allowReadOnly: true,
+  });
+  if (role !== "owner") {
+    return { error: "Only the account owner can resubscribe." };
+  }
+
+  // Guard the path to the statuses it actually fixes. Every OTHER
+  // read-only status (past_due, unpaid, incomplete, paused) still has a
+  // live, updatable subscription — changePlan and the billing portal
+  // already cover those; routing them through a second Checkout session
+  // would create a second subscription for one customer instead of fixing
+  // the one that exists.
+  if (account.status !== "canceled" && account.status !== "incomplete_expired") {
+    return {
+      error:
+        "This account's subscription can still be updated directly — use Change plan or the billing portal below instead.",
+    };
+  }
+
+  const customerId = account.stripe_customer_id;
+  if (!customerId) {
+    return {
+      error: "This account isn't billed through Stripe, so it can't be resubscribed here. Get in touch.",
+    };
+  }
+
+  const tier = formData.get("tier");
+  const interval = formData.get("interval");
+  if (!isPlanTier(tier) || !isBillingInterval(interval)) {
+    return { error: "Pick a plan to resubscribe to." };
+  }
+
+  const priceId = priceIdFor(tier, interval);
+  if (!priceId) {
+    return { error: `${TIER_DISPLAY[tier].name} isn't available yet.` };
+  }
+
+  const origin = (await headers()).get("origin");
+  if (!origin) {
+    return { error: "Could not determine the return address. Try again." };
+  }
+
+  let url: string | null = null;
+  try {
+    const stripe = getStripe();
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: customerId,
+      // Ties the session back to the Supabase identity — provisioning's
+      // `existing` short-circuit still requires it (it throws without one),
+      // even though this checkout resolves to the SAME account.
+      client_reference_id: user.id,
+      line_items: [{ price: priceId, quantity: seatsForTier(tier) }],
+      payment_method_collection: "always",
+      metadata: { supabase_user_id: user.id, plan_tier: tier },
+      success_url: `${origin}/settings/billing?changed=1`,
+      cancel_url: `${origin}/settings/billing`,
+    });
+    url = session.url;
+  } catch (err) {
+    console.error(
+      "[stripe] resubscribe checkout session failed",
+      err instanceof Error ? err.message : String(err)
+    );
+    return {
+      error: "Couldn't start checkout. Try again, or get in touch if this keeps happening.",
+    };
+  }
+
+  if (!url) {
+    return { error: "Stripe did not return a checkout URL. Try again." };
+  }
+  redirect(url);
 }
 
 /**

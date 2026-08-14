@@ -256,3 +256,74 @@ test("a quoted comma survives the CSV tokeniser", () => {
   });
   assert.equal(r.valid[0].description, "STARBUCKS #1234, 5TH AVE");
 });
+
+test("a $0.00 row is a named rejection, not a value that reaches confirm", async (t) => {
+  // The DB CHECK is `amount_cents <> 0` — a zero-amount row is genuinely
+  // unstorable. Before this fix neither parser refused one by name (the
+  // signed-amount CSV shape and OFX both let it through as ordinary
+  // "valid"), so it reached app/(app)/expenses/import/actions.ts's
+  // validateRow, which used to abort the ENTIRE confirm — batch, source
+  // file, hundreds of good rows and all — for one waived-fee line.
+  await t.test("the signed-amount CSV shape", () => {
+    const [header, ...data] = parseCsv(
+      "Date,Description,Amount\n2026-03-04,HOTEL,-214.88\n2026-03-05,INTEREST WAIVED,0.00\n"
+    );
+    const r = applyCsvMapping({
+      headerRow: header.fields,
+      dataRecords: data,
+      mapping: suggestColumnMapping(header.fields),
+      accountKind: "checking",
+    });
+    assert.equal(r.valid.length, 1, "the good row still parses");
+    assert.equal(r.valid[0].amountCents, -21488);
+    assert.equal(r.rejected.length, 1);
+    assert.match(r.rejected[0].reason, /\$0\.00/);
+  });
+
+  await t.test("the debit/credit shape already refused this — unchanged", () => {
+    const csv = "Date,Description,Debit,Credit\n2026-03-04,FEE WAIVED,0.00,0.00\n";
+    const [header, ...data] = parseCsv(csv);
+    const r = applyCsvMapping({
+      headerRow: header.fields,
+      dataRecords: data,
+      mapping: suggestColumnMapping(header.fields),
+      accountKind: "checking",
+    });
+    assert.equal(r.valid.length, 0);
+    assert.match(r.rejected[0].reason, /nonzero/);
+  });
+
+  await t.test("OFX", () => {
+    const ofx =
+      "<STMTTRN><DTPOSTED>20260304<TRNAMT>-214.88<NAME>HOTEL</STMTTRN>" +
+      "<STMTTRN><DTPOSTED>20260305<TRNAMT>0.00<NAME>INTEREST WAIVED</STMTTRN>";
+    const r = parseOfx(ofx, "ofx");
+    assert.equal(r.valid.length, 1);
+    assert.equal(r.valid[0].amountCents, -21488);
+    assert.equal(r.rejected.length, 1);
+    assert.match(r.rejected[0].reason, /\$0\.00/);
+  });
+});
+
+test("a <BANKACCTTO> transfer destination inside one <STMTTRN> does not trip the multi-account refusal", () => {
+  // OFX permits <BANKACCTTO><ACCTID>…</BANKACCTTO> INSIDE a single
+  // transaction record to name a transfer's destination account — some
+  // banks emit it for inter-account transfers. That names a SIBLING
+  // account, not a second statement, so it must not count toward the
+  // "different accounts" refusal the way a genuine second
+  // <BANKACCTFROM><ACCTID> does (see the test below).
+  const ofx =
+    "<OFX><BANKMSGSRSV1>\n" +
+    "<STMTRS><BANKACCTFROM><ACCTID>111111111</BANKACCTFROM><BANKTRANLIST>\n" +
+    "<STMTTRN><DTPOSTED>20260315<TRNAMT>-50.00<NAME>TRANSFER" +
+    "<BANKACCTTO><ACCTID>222222222</BANKACCTTO></STMTTRN>\n" +
+    "<STMTTRN><DTPOSTED>20260316<TRNAMT>-10.00<NAME>COFFEE</STMTTRN>\n" +
+    "</BANKTRANLIST></STMTRS>\n" +
+    "</BANKMSGSRSV1></OFX>";
+  const r = parseOfx(ofx, "ofx");
+  assert.equal(r.valid.length, 2, "the statement is accepted, not refused outright");
+  assert.deepEqual(
+    r.valid.map((v) => v.amountCents),
+    [-5000, -1000]
+  );
+});

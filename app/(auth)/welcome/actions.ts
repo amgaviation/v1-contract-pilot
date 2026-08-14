@@ -121,8 +121,11 @@ export async function startCheckout(
       err instanceof Error ? err.message : String(err)
     );
     return {
-      error:
-        "Couldn't start checkout. Try again, or get in touch if this keeps happening.",
+      // No "get in touch" clause: the product has no support address or
+      // contact route anywhere (lib/entitlements.ts's priority_support
+      // comment), so the old copy pointed a visitor at maximum intent
+      // toward a channel that does not exist.
+      error: "Couldn't start checkout — please try again in a moment.",
     };
   }
 

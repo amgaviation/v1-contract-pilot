@@ -3,13 +3,24 @@ import { createClient } from "@/lib/supabase/server";
 import { loadFleetOptions } from "@/lib/fleet";
 import { loadOptionChoices } from "@/lib/custom-options-read";
 import PageShell from "../../page-shell";
-import TripForm, { type ClientOption } from "../trip-form";
+import TripForm, { type ClientOption, type TripFormValues } from "../trip-form";
 import { createTrip } from "../actions";
 
 export const metadata = { title: "New trip" };
 
-export default async function NewTripPage() {
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export default async function NewTripPage({
+  searchParams,
+}: {
+  // gap S: "Duplicate" on the trip page links here with ?clone=<id> — a
+  // recurring gig (same client, same tail, same rates, next week) is the
+  // norm for a contract pilot, and until now every trip was typed from
+  // scratch every time.
+  searchParams: Promise<{ clone?: string }>;
+}) {
   const { account } = await requireAccount("/trips/new");
+  const { clone } = await searchParams;
 
   const supabase = await createClient();
   // Archived clients are excluded from the picker but keep their existing
@@ -38,15 +49,58 @@ export default async function NewTripPage() {
     throw new Error(`Couldn't load your clients: ${error.message}`);
   }
 
+  // gap S (clone trip): client, kind, operating rule, tail, type and rates
+  // only — dates come back blank (this is a NEW trip, not a copy of the
+  // old one's calendar) and legs/day rows are never touched, because
+  // there is nothing here that reads or writes either table. A bad or
+  // another tenant's id (RLS returns no row either way) just falls back
+  // to a plain blank form rather than erroring — cloning is a convenience,
+  // not something worth failing the whole page over.
+  let cloneValues: TripFormValues | undefined;
+  if (clone && UUID_RE.test(clone)) {
+    const { data: sourceTrip } = await supabase
+      .from("trips")
+      .select(
+        "client_id, trip_kind, operating_rule, aircraft_ident, aircraft_type, day_rate_cents, travel_day_rate_cents"
+      )
+      .eq("id", clone)
+      .maybeSingle();
+    if (sourceTrip) {
+      const s = sourceTrip as {
+        client_id: string | null;
+        trip_kind: string | null;
+        operating_rule: string | null;
+        aircraft_ident: string | null;
+        aircraft_type: string | null;
+        day_rate_cents: number | null;
+        travel_day_rate_cents: number | null;
+      };
+      cloneValues = {
+        client_id: s.client_id,
+        trip_kind: s.trip_kind,
+        operating_rule: s.operating_rule,
+        aircraft_ident: s.aircraft_ident,
+        aircraft_type: s.aircraft_type,
+        day_rate_cents: s.day_rate_cents,
+        travel_day_rate_cents: s.travel_day_rate_cents,
+      };
+    }
+  }
+
   return (
     <PageShell
-      title="New trip"
-      subtitle="The job you flew. Legs, expenses, and the invoice all hang off it."
+      title={cloneValues ? "New trip (duplicated)" : "New trip"}
+      subtitle={
+        cloneValues
+          ? "Client, aircraft and rates carried over — pick new dates and add legs once it's saved."
+          : "The job you flew. Legs, expenses, and the invoice all hang off it."
+      }
     >
       <TripForm
         action={createTrip}
         clients={(data ?? []) as ClientOption[]}
         tripKinds={tripKinds}
+        values={cloneValues}
         submitLabel="Create trip"
         fleet={fleet}
         // The onboarding wizard's account-level rate defaults

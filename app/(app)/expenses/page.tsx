@@ -81,6 +81,7 @@ export default async function ExpensesPage() {
     { data: mileageData, error: mileageError },
     { data: mileageRateData, error: mileageRateError },
     categoryLabels,
+    { data: invoicedLinesData },
   ] = await Promise.all([
     supabase
       .from("expenses")
@@ -109,6 +110,14 @@ export default async function ExpensesPage() {
       .limit(MILEAGE_LIMIT),
     supabase.from("mileage_rates").select("tax_year, rate_cents_per_mile"),
     loadOptionLabels("expense_category"),
+    // Same "every already-referenced expense_id" read as
+    // invoices/[id]/page.tsx's rebillable-expense picker — invoice_lines
+    // carries `unique (account_id, expense_id)`, so an expense_id showing
+    // up here at all means it is already on an invoice, full stop, no
+    // status filter needed. A failed read degrades to "exclude nothing",
+    // which is the number this page already showed before this fix — not
+    // a new failure mode, just a missed improvement.
+    supabase.from("invoice_lines").select("expense_id").not("expense_id", "is", null),
   ]);
 
   const expenses = (expenseData ?? []) as ExpenseRow[];
@@ -153,8 +162,16 @@ export default async function ExpensesPage() {
   // currently losing in both directions. It sits above the ledger.
   const unassigned = expenses.filter((e) => e.treatment === "unassigned");
   const unassignedTotal = unassigned.reduce((sum, e) => sum + e.amount_cents, 0);
+  // "$X to rebill" has to mean outstanding, actionable money — not a
+  // standing figure that still counts a receipt already sitting on an
+  // invoice (drafted, sent, or paid). invoice_lines' unique
+  // (account_id, expense_id) makes that state knowable without a join:
+  // an expense_id present at all is already spoken for.
+  const invoicedExpenseIds = new Set(
+    ((invoicedLinesData ?? []) as { expense_id: string | null }[]).map((l) => l.expense_id)
+  );
   const rebillTotal = expenses
-    .filter((e) => e.treatment === "rebill")
+    .filter((e) => e.treatment === "rebill" && !invoicedExpenseIds.has(e.id))
     .reduce((sum, e) => sum + e.amount_cents, 0);
   const deductTotal = expenses
     .filter((e) => e.treatment === "deduct")

@@ -104,11 +104,37 @@ export async function POST(request: NextRequest) {
     } as never);
 
   if (insertError) {
-    const { data: prior } = await supabase
+    // 23505 IS THE ONLY ERROR THAT MEANS "SEEN BEFORE" (the Connect
+    // webhook's insertError block names this exact defect class). Any
+    // OTHER error — a statement timeout, a connection blip, pool
+    // exhaustion — must NOT fall through to the prior-row check: that
+    // check would find nothing, the handler would run with no ledger row
+    // in existence, and markProcessed below would then update zero rows
+    // and answer 200 to Stripe anyway. So: anything that is not a
+    // collision is a 500 and a Stripe retry.
+    if (insertError.code !== "23505") {
+      console.error(
+        `[db] stripe_events.insert(${event.id}) ${insertError.message} (code ${
+          insertError.code ?? "none"
+        }) — refusing to run the handler with no delivery row to mark.`
+      );
+      return NextResponse.json({ error: "Delivery ledger unavailable" }, { status: 500 });
+    }
+
+    const { data: prior, error: priorError } = await supabase
       .from("stripe_events")
       .select("processed_at")
       .eq("id", event.id)
       .maybeSingle();
+
+    if (priorError) {
+      // Not knowing whether the first attempt finished is not a licence
+      // to assume it did — same reasoning as the insert branch above.
+      console.error(
+        `[db] stripe_events.select(${event.id}) after a collision: ${priorError.message}`
+      );
+      return NextResponse.json({ error: "Delivery ledger unavailable" }, { status: 500 });
+    }
 
     if ((prior as { processed_at: string | null } | null)?.processed_at) {
       return NextResponse.json({ received: true, duplicate: true });
@@ -117,7 +143,8 @@ export async function POST(request: NextRequest) {
   }
 
   if (!HANDLED.has(event.type)) {
-    await markProcessed(event.id);
+    const failure = await markProcessedOrFailureResponse(event.id);
+    if (failure) return failure;
     return NextResponse.json({ received: true, handled: false });
   }
 
@@ -131,16 +158,44 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Handler failed" }, { status: 500 });
   }
 
-  await markProcessed(event.id);
+  const failure = await markProcessedOrFailureResponse(event.id);
+  if (failure) return failure;
   return NextResponse.json({ received: true });
 }
 
+/**
+ * Marks a delivery row finished. THROWS on a failed or zero-row update —
+ * it used to swallow both, so a failed UPDATE matched zero rows,
+ * PostgREST answered 200, and this route answered 200 to Stripe with no
+ * row ever marked finished: the event was never recorded, never marked,
+ * and (because we told Stripe it was fine) never redelivered either. The
+ * caller turns this into a 500, which is safe — every handler above is
+ * idempotent, so a redelivery costs nothing but time.
+ */
 async function markProcessed(eventId: string) {
   const supabase = createServiceClient();
-  await supabase
+  const { error, count } = await supabase
     .from("stripe_events")
-    .update({ processed_at: new Date().toISOString() } as never)
+    .update({ processed_at: new Date().toISOString() } as never, { count: "exact" })
     .eq("id", eventId);
+  if (error) {
+    throw new Error(`stripe_events.update(${eventId}): ${error.message}`);
+  }
+  if (count === 0) {
+    throw new Error(`stripe_events.update(${eventId}) matched 0 rows — not marked processed.`);
+  }
+}
+
+/** markProcessed, turned into a 500 JSON response on failure, or null on success. */
+async function markProcessedOrFailureResponse(eventId: string): Promise<NextResponse | null> {
+  try {
+    await markProcessed(eventId);
+    return null;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown error";
+    console.error(`markProcessed failed for ${eventId}: ${message}`);
+    return NextResponse.json({ error: "Could not record delivery" }, { status: 500 });
+  }
 }
 
 /** The Stripe object this event concerns, for the ordering check. */
@@ -209,18 +264,53 @@ async function handleEvent(event: Stripe.Event, objectId: string | null) {
         // the concurrent case (neither finished yet) safe.
         return;
       }
-      await syncSubscriptionState(subscription, event.created);
+      const applied = await syncSubscriptionState(subscription, event.created);
+      // `applied: false` means no account matched yet — normally because
+      // this event raced ahead of the checkout.session.completed that
+      // provisions the tenant (provisionAccountFromCheckout re-fetches the
+      // live subscription, so the pre-provisioning state this event
+      // carried is safely superseded once that lands). Throwing turns
+      // this into a 500 so STRIPE actually redelivers it, rather than the
+      // event being acked and dropped on the (usually false) assumption
+      // that it would be. Bounded to ~1 hour so a subscription that will
+      // NEVER match an account (a dashboard-created test object, an event
+      // for another Stripe account entirely) does not retry for the full
+      // 3-day window Stripe allows.
+      if (!applied) {
+        const ageSeconds = Date.now() / 1000 - event.created;
+        if (ageSeconds < 60 * 60) {
+          throw new Error(
+            `${event.type} (${event.id}): no account matched subscription ${subscription.id} / customer ${
+              typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id
+            } yet — retrying while the event is still recent.`
+          );
+        }
+        console.error(
+          `${event.type} (${event.id}): no account matched subscription ${subscription.id} after 1 hour — giving up on redelivery.`
+        );
+      }
       return;
     }
 
     case "invoice.payment_failed": {
+      // VERIFIED AGAINST THE INSTALLED SDK (stripe 22.4.0, API version
+      // 2026-07-29.dahlia — see lib/stripe/server.ts), same as
+      // billing-facts.ts's header: `Invoice.subscription` does not exist
+      // in this API version (it moved in Stripe API 2025-03-31.basil).
+      // The subscription id now lives at
+      // `invoice.parent.subscription_details.subscription`, which is
+      // `string | Stripe.Subscription | null` per
+      // node_modules/stripe/esm/resources/Invoices.d.ts. The legacy
+      // top-level field is kept as a fallback ONLY for a webhook endpoint
+      // still registered on an old API version in the Stripe dashboard,
+      // where the payload would still carry it.
       const invoice = event.data.object as Stripe.Invoice & {
         subscription?: string | Stripe.Subscription | null;
       };
-      const subId =
-        typeof invoice.subscription === "string"
-          ? invoice.subscription
-          : invoice.subscription?.id;
+      const parentSub = invoice.parent?.subscription_details?.subscription;
+      const legacySub = invoice.subscription;
+      const subRef = parentSub ?? legacySub;
+      const subId = typeof subRef === "string" ? subRef : subRef?.id;
       if (!subId) return;
       // Read the authoritative status rather than inferring "past_due"
       // ourselves — Stripe's dunning settings decide what a failed payment

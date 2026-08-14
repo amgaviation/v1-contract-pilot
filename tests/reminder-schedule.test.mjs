@@ -49,6 +49,7 @@ const BASE = {
   today: "2026-09-10",
   consumed: [],
   lastReminderAt: null,
+  sentAt: null,
   lastViewedAt: null,
   suppressed: false,
 };
@@ -318,6 +319,39 @@ test("a hold never costs a rung", async (t) => {
     assert.equal(d.action, "send");
   });
 
+  await t.test(
+    "a net-7 invoice's before_7 rung does not fire the day the invoice itself is sent",
+    () => {
+      // Regression: a client on net-7 terms (or net-14 with the 14-day rung,
+      // or net-15 with 14) has its largest before-due rung already ripe on
+      // day zero — dueOn minus 7 IS the send day when terms are exactly 7.
+      // Without sentAt in the quiet period, the pilot's client would get the
+      // invoice email and "a quick note that Invoice X is due..." in the
+      // same day from the same business.
+      const d = decideReminder({
+        ...BASE,
+        policy: { beforeDue: [7], onDue: false, afterDue: [] },
+        dueOn: "2026-09-17",
+        today: "2026-09-10",
+        sentAt: "2026-09-10T18:00:00Z",
+      });
+      assert.equal(d.action, "hold");
+      assert.equal(d.reason, "recent_send");
+    }
+  );
+
+  await t.test("and the before_7 rung sends once the quiet period has lapsed", () => {
+    const d = decideReminder({
+      ...BASE,
+      policy: { beforeDue: [7], onDue: false, afterDue: [] },
+      dueOn: "2026-09-17",
+      today: "2026-09-10",
+      sentAt: `2026-09-${10 - QUIET_PERIOD_DAYS}T18:00:00Z`,
+    });
+    assert.equal(d.action, "send");
+    assert.equal(d.rung.key, "before_7");
+  });
+
   await t.test("a link opened yesterday holds", () => {
     const d = decideReminder({
       ...BASE,
@@ -358,6 +392,7 @@ test("a hold never costs a rung", async (t) => {
       "no_due_date",
       "no_policy",
       "recent_reminder",
+      "recent_send",
       "recently_viewed",
       "nothing_due",
     ]) {

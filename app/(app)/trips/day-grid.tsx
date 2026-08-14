@@ -203,7 +203,7 @@ export default function DayGrid({
           dayTypeId: "",
           rate: "",
           notes: "",
-          quantity: "1",
+          quantity: "1.0",
           units: "1.00",
           away: false,
         };
@@ -286,7 +286,7 @@ export default function DayGrid({
           dayTypeId: "",
           rate: "",
           notes: "",
-          quantity: "1",
+          quantity: "1.0",
           units: "1.00",
           away: false,
         }),
@@ -366,7 +366,7 @@ export default function DayGrid({
                   dayTypeId: "",
                   rate: "",
                   notes: "",
-                  quantity: "1",
+                  quantity: "1.0",
                   units: "1.00",
                   away: false,
                 };

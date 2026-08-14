@@ -8,11 +8,12 @@ import {
   featuresAddedByTier,
   isEntitled,
   isFeatureId,
-  DOWNGRADE_NOTE,
 } from "@/lib/entitlements";
+import { isCurrencyEngineEnabled } from "@/lib/currency/gate";
 import { safeNextPath } from "@/lib/safe-next";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import PageShell from "../../../page-shell";
+import { visibleDowngradeNote } from "../downgrade-note";
 
 export const metadata = { title: "Upgrade" };
 
@@ -47,7 +48,13 @@ export default async function UpgradePage({
 
   const requiredTier = feature ? FEATURES[feature].minTier : "pro";
   const tierName = TIER_DISPLAY[requiredTier].name;
-  const added = featuresAddedByTier(requiredTier);
+  // Same display-honesty filter as settings/billing: the currency board
+  // does not exist anywhere in the app while CURRENCY_ENGINE_ENABLED is
+  // off, so it must not be advertised as an upgrade incentive either.
+  const currencyVisible = isCurrencyEngineEnabled();
+  const added = featuresAddedByTier(requiredTier).filter(
+    (id) => currencyVisible || id !== "currency"
+  );
 
   return (
     <PageShell
@@ -77,7 +84,7 @@ export default async function UpgradePage({
             ))}
           </Flex>
           <Text size="2" color="gray">
-            {DOWNGRADE_NOTE}
+            {visibleDowngradeNote()}
           </Text>
           <Flex gap="2" mt="1">
             <Button asChild>

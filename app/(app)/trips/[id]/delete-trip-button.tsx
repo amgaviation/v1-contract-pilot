@@ -52,7 +52,10 @@ export default function DeleteTripButton({
         <AlertDialog.Content maxWidth="420px">
           <AlertDialog.Title>Delete this trip?</AlertDialog.Title>
           <AlertDialog.Description size="2">
-            This deletes the trip and its legs. This can&rsquo;t be undone.
+            This deletes the trip, its legs and its day grid — the billing
+            record goes with it. Expenses filed against it stay in your
+            expense list but lose their trip link. This can&rsquo;t be
+            undone.
           </AlertDialog.Description>
           {error ? (
             <Box mt="2">

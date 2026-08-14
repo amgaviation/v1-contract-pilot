@@ -212,6 +212,16 @@ export type LogbookEntryRow = {
   // simulated-instrument flights; the app surfaces it as a prompt when
   // instrument_simulated_time > 0, not a hard requirement.
   view_limiting_pilot_name: string | null;
+  // Added by 20260811040000_currency_snapshots.sql for the currency
+  // engine's own missing-input gap — deliberately nullable, NOT `boolean`
+  // defaulting to false: NULL means unrecorded and must never be read as
+  // "no." See that migration's column comments for the full reg citations
+  // (61.57(a)(1)(i)/(b)(1)(i)/135.247(a) for sole_manipulator; the
+  // 61.57(b)(1)/135.247(a)(2) sunset-to-sunrise window, distinct from
+  // night_time's civil-twilight definition, for night_window_asserted).
+  // No capture UI writes either column yet.
+  sole_manipulator: boolean | null;
+  night_window_asserted: boolean | null;
   remarks: string | null;
   created_at: string;
   updated_at: string;
@@ -336,12 +346,25 @@ function buildDraftRemarks(leg: {
   day_landings_full_stop: number | null;
 }): string | null {
   const notes: string[] = [];
-  if (leg.day_landings) {
+  // The leg editor has captured the full-stop subset since 20260810080000
+  // and draftPayloadForLeg maps it straight across (full_stop=N,
+  // touch_go=remainder) — so this note is only true when the split is
+  // genuinely absent, i.e. the column reads its not-null default of 0
+  // while the leg recorded day landings at all. A leg that DID record the
+  // split (day_landings_full_stop > 0) must not be told its split "wasn't
+  // recorded" when it was.
+  if (!(leg.day_landings_full_stop ?? 0) && leg.day_landings) {
     notes.push(
-      `${leg.day_landings} day landing${leg.day_landings === 1 ? "" : "s"} on the trip leg (full-stop vs touch-and-go not recorded)`
+      `${leg.day_landings} day landing${leg.day_landings === 1 ? "" : "s"} carried as touch-and-go because no full-stop count was recorded on the leg`
     );
   }
-  if (leg.instrument_hours) {
+  // Same reasoning for instrument time: the leg now records actual vs.
+  // simulated directly (20260810080000) and draftPayloadForLeg maps those,
+  // never the legacy combined total — so this note only belongs on a leg
+  // that carries the legacy total with neither half of the split.
+  const instrumentSplitRecorded =
+    leg.instrument_actual_hours != null || leg.instrument_simulated_hours != null;
+  if (leg.instrument_hours && !instrumentSplitRecorded) {
     notes.push(
       `${leg.instrument_hours} instrument hours on the trip leg (actual vs simulated not recorded)`
     );

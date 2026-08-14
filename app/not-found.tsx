@@ -18,7 +18,7 @@ export default function NotFound() {
       justify="center"
       minHeight="100vh"
       p="4"
-      style={{ background: "var(--gray-2)" }}
+      style={{ background: "var(--canvas)" }}
     >
       <Card size="4" style={{ width: "100%", maxWidth: "30rem" }}>
         <Flex direction="column" align="center" gap="3" style={{ textAlign: "center" }}>

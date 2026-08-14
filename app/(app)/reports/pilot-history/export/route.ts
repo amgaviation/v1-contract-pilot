@@ -199,42 +199,52 @@ function breakdownRows(
 
 function summaryRows(
   allTime: PilotHistoryFigures,
-  recent: PilotHistoryFigures
+  recent: PilotHistoryFigures,
+  ninety: PilotHistoryFigures
 ): string[] {
   const a = allTime.hours;
   const r = recent.hours;
+  const n = ninety.hours;
   const rows: string[] = [];
 
   rows.push(csvRow(["Flight time"]));
-  rows.push(csvRow(["", "All time", `Last 12 months (${recent.window.label})`]));
-  const pairs: [string, string, string][] = [
-    ["Total time (aircraft)", hours(a.total), hours(r.total)],
-    ["PIC", hours(a.pic), hours(r.pic)],
-    ["SIC", hours(a.sic), hours(r.sic)],
-    ["Solo", hours(a.solo), hours(r.solo)],
-    ["Dual received", hours(a.dualReceived), hours(r.dualReceived)],
-    ["Instructor given", hours(a.instructorGiven), hours(r.instructorGiven)],
-    ["Cross country", hours(a.crossCountry), hours(r.crossCountry)],
-    ["Night", hours(a.night), hours(r.night)],
-    ["Instrument - actual", hours(a.instrumentActual), hours(r.instrumentActual)],
-    ["Instrument - simulated", hours(a.instrumentSimulated), hours(r.instrumentSimulated)],
-    ["Instrument - total", hours(totalInstrument(a)), hours(totalInstrument(r))],
+  rows.push(
+    csvRow([
+      "",
+      "All time",
+      `Last 12 months (${recent.window.label})`,
+      `Last 90 days (${ninety.window.from} to ${ninety.window.to})`,
+    ])
+  );
+  const pairs: [string, string, string, string][] = [
+    ["Total time (aircraft)", hours(a.total), hours(r.total), hours(n.total)],
+    ["PIC", hours(a.pic), hours(r.pic), hours(n.pic)],
+    ["SIC", hours(a.sic), hours(r.sic), hours(n.sic)],
+    ["Solo", hours(a.solo), hours(r.solo), hours(n.solo)],
+    ["Dual received", hours(a.dualReceived), hours(r.dualReceived), hours(n.dualReceived)],
+    ["Instructor given", hours(a.instructorGiven), hours(r.instructorGiven), hours(n.instructorGiven)],
+    ["Cross country", hours(a.crossCountry), hours(r.crossCountry), hours(n.crossCountry)],
+    ["Night", hours(a.night), hours(r.night), hours(n.night)],
+    ["Instrument - actual", hours(a.instrumentActual), hours(r.instrumentActual), hours(n.instrumentActual)],
+    ["Instrument - simulated", hours(a.instrumentSimulated), hours(r.instrumentSimulated), hours(n.instrumentSimulated)],
+    ["Instrument - total", hours(totalInstrument(a)), hours(totalInstrument(r)), hours(totalInstrument(n))],
     // Its own row, and captioned in the row label itself: this file is
     // opened without the page around it, and a simulator figure that could
     // be read as aircraft time is the single most consequential
     // misreading of a pilot-history form.
-    ["Simulator (not aircraft time)", hours(a.simulator), hours(r.simulator)],
-    ["Takeoffs", String(totalTakeoffs(a)), String(totalTakeoffs(r))],
-    ["Landings", String(totalLandings(a)), String(totalLandings(r))],
+    ["Simulator (not aircraft time)", hours(a.simulator), hours(r.simulator), hours(n.simulator)],
+    ["Takeoffs", String(totalTakeoffs(a)), String(totalTakeoffs(r)), String(totalTakeoffs(n))],
+    ["Landings", String(totalLandings(a)), String(totalLandings(r)), String(totalLandings(n))],
     [
       "Night landings",
       String(a.nightLandingsFullStop + a.nightLandingsTouchGo),
       String(r.nightLandingsFullStop + r.nightLandingsTouchGo),
+      String(n.nightLandingsFullStop + n.nightLandingsTouchGo),
     ],
-    ["Logbook entries", String(a.entryCount), String(r.entryCount)],
+    ["Logbook entries", String(a.entryCount), String(r.entryCount), String(n.entryCount)],
   ];
-  for (const [label, allValue, recentValue] of pairs) {
-    rows.push(csvRow([label, allValue, recentValue]));
+  for (const [label, allValue, recentValue, ninetyValue] of pairs) {
+    rows.push(csvRow([label, allValue, recentValue, ninetyValue]));
   }
 
   rows.push(csvRow([]));
@@ -456,7 +466,7 @@ export async function GET(request: NextRequest) {
   );
   rows.push(csvRow([]));
 
-  rows.push(...summaryRows(data.allTime, data.lastTwelveMonths));
+  rows.push(...summaryRows(data.allTime, data.lastTwelveMonths, data.lastNinetyDays));
 
   rows.push(csvRow([]));
   rows.push(csvRow(["Recorded dates (as entered by the airman; nothing derived)"]));

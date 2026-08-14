@@ -47,6 +47,19 @@ const isProductionDeployment = process.env.VERCEL_ENV === "production";
  * `url: "./"` resolves against metadataBase + the current pathname, so
  * each page's og:url is its own canonical URL, not a shared one.
  */
+// public/brand/og-image.png — the mark plus BRAND.tagline on the brand
+// kit's navy ground, rasterized once (see public/brand/og-image.svg's own
+// header) from the same source as public/brand/expanded.svg. No fake
+// screenshot, no AMG attribution (that stays confined to the footer/about
+// page per lib/brand.ts) — a link preview in a group text or a pilot forum
+// gets the mark and the one sentence, nothing else.
+const OG_IMAGE = {
+  url: "/brand/og-image.png",
+  width: 1200,
+  height: 630,
+  alt: `${BRAND.name} — ${BRAND.tagline}`,
+} as const;
+
 export const metadata: Metadata = {
   robots: { index: isProductionDeployment, follow: true },
   openGraph: {
@@ -54,9 +67,11 @@ export const metadata: Metadata = {
     siteName: BRAND.name,
     url: "./",
     locale: "en_US",
+    images: [OG_IMAGE],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
+    images: [OG_IMAGE.url],
   },
 };
 
@@ -66,7 +81,11 @@ export default function MarketingLayout({
   children: React.ReactNode;
 }) {
   return (
-    <Flex direction="column" minHeight="100vh">
+    // 100dvh, not 100vh: app-shell.tsx's own comment documents why (mobile
+    // URL-bar overhang creates phantom scroll on a fixed 100vh) — the same
+    // fix, here so the signed-out marketing surface stops carrying the
+    // defect the authenticated shell already fixed.
+    <Flex direction="column" minHeight="100dvh">
       <SiteHeader />
       <Flex flexGrow="1" direction="column" asChild>
         <main>{children}</main>

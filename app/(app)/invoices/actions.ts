@@ -15,6 +15,7 @@ import {
   dayQuantityThousandths,
   roundThousandthsToHundredths,
 } from "@/lib/trip-value";
+import { loadOptionLabels } from "@/lib/custom-options-read";
 import { categoryLabel } from "./labels";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -230,6 +231,18 @@ function linesDbError(
     error.message?.toLowerCase().includes("already billed on invoice")
   ) {
     return "One or more of these trips is already on another invoice (possibly a draft). Remove it from that invoice, or drop it from this one and choose a different trip.";
+  }
+  // invoice_lines' `unique (account_id, expense_id)` — an expense can sit
+  // on at most one invoice's lines, including a void one's (the constraint
+  // doesn't look at status). Voiding now clears a void invoice's own
+  // lines, but this still catches a stale rebillable list (another tab, a
+  // race with another send) or a pre-fix void invoice that still carries
+  // the expense on its lines.
+  if (
+    error?.code === "23505" &&
+    error.message?.toLowerCase().includes("expense_id")
+  ) {
+    return "One of these receipts is already billed on another invoice — including any void one. Voiding an invoice now releases its receipts automatically, so an older void invoice may still need its lines cleared by support before this receipt can be rebilled.";
   }
   return friendlyDbError(error, context);
 }
@@ -1199,14 +1212,24 @@ export async function createInvoiceDraft(
     }
   }
 
+  // The tenant's OWN vocabulary for expense categories — renamed labels and
+  // custom categories alike (lib/custom-options.ts), the same source every
+  // other surface (expenses list, P&L, quarterly/year-end exports) already
+  // reads through loadOptionLabels. categoryLabel's static eight-entry map
+  // stays only as the fallback for a key this read cannot explain (a failed
+  // read, or a key genuinely unknown to the app) — a client-facing invoice
+  // line must never read "Expense" for a category the pilot has a real name
+  // for everywhere else in the product.
+  const expenseCategoryLabels = await loadOptionLabels("expense_category");
+
   for (const expense of expenses) {
     lines.push({
       account_id: account.id,
       invoice_id: invoiceId,
       line_type: "reimbursable_expense",
-      description: `${categoryLabel(expense.category)}${
-        expense.vendor ? ` — ${expense.vendor}` : ""
-      } (${formatDate(expense.incurred_on)})`,
+      description: `${
+        expenseCategoryLabels[expense.category] ?? categoryLabel(expense.category)
+      }${expense.vendor ? ` — ${expense.vendor}` : ""} (${formatDate(expense.incurred_on)})`,
       quantity: 1,
       unit_amount_cents: expense.amount_cents,
       // C10: a straight expense reimbursement is commonly not taxable —
@@ -1875,6 +1898,32 @@ export async function voidInvoice(id: string): Promise<{ error: string | null }>
   if (error) return { error: friendlyDbError(error, "invoices.update") };
   if (!count) return { error: "That invoice no longer exists." };
 
+  // Release this invoice's lines now that it's void. invoice_lines'
+  // `unique (account_id, expense_id)` is unconditional on status, so a
+  // rebilled expense left sitting on a void invoice's line can never be
+  // rebilled again — and the trip that line rode along with is stuck too,
+  // since createInvoiceDraft batches a trip's day lines and its rebilled
+  // expenses into one insert that fails whole. invoice_lines_protect_issued
+  // deliberately admits 'void' as a DELETE target for exactly this
+  // cleanup (see that trigger's header: void-and-reissue is "the normal
+  // correction path"), but nothing else in the app reaches it — LinesEditor
+  // renders read-only the moment an invoice leaves draft. Best-effort: a
+  // failed delete here doesn't undo the void, it just leaves the pilot to
+  // clear the lines by hand.
+  const { error: linesReleaseError } = await supabase
+    .from("invoice_lines")
+    .delete()
+    .eq("invoice_id", id)
+    .eq("account_id", account.id);
+  if (linesReleaseError) {
+    console.error(
+      `voidInvoice: couldn't release lines for voided invoice ${id}: ${linesReleaseError.message}`
+    );
+    const releaseWarning =
+      "Voided, but this invoice's billed items couldn't be released — its trip and any rebilled expenses will stay unavailable to rebill until you remove its lines by hand.";
+    warning = warning ? `${warning} ${releaseWarning}` : releaseWarning;
+  }
+
   revalidatePath(`/invoices/${id}`);
   revalidatePath("/invoices");
   revalidatePath("/trips");
@@ -1985,13 +2034,18 @@ export async function addRebillExpenseLine(
     return { error: "That expense isn't available to rebill." };
   }
 
+  // Same tenant vocabulary createInvoiceDraft resolves against — see its
+  // comment above the identical read. Falls back to the static map only
+  // when this read cannot explain the key.
+  const expenseCategoryLabels = await loadOptionLabels("expense_category");
+
   const payload: LineInsert = {
     account_id: account.id,
     invoice_id: invoiceId,
     line_type: "reimbursable_expense",
-    description: `${categoryLabel(expense.category)}${
-      expense.vendor ? ` — ${expense.vendor}` : ""
-    } (${formatDate(expense.incurred_on)})`,
+    description: `${
+      expenseCategoryLabels[expense.category] ?? categoryLabel(expense.category)
+    }${expense.vendor ? ` — ${expense.vendor}` : ""} (${formatDate(expense.incurred_on)})`,
     quantity: 1,
     unit_amount_cents: expense.amount_cents,
     taxable: false,

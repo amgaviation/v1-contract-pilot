@@ -229,6 +229,94 @@ const ESTIMATE_LINE_TYPE_LABEL: Record<string, string> = {
   other: "Other",
 };
 
+/** Same strings as app/(app)/clients/[id]/operator-qualification-kinds.ts's
+ *  OPERATOR_QUALIFICATION_REQUIREMENTS labels — restated rather than
+ *  imported, same posture as the invoice/estimate/trip vocabularies above
+ *  (that directory is another agent's surface this session). Covers the
+ *  post-20260807110000 requirement vocabulary (written_test_135_293a /
+ *  competency_check_135_293b), which is why `requirement` below is typed
+ *  as a plain string rather than Tables[...]'s stale union — see
+ *  OperatorQualificationExportRow. */
+const OPERATOR_QUALIFICATION_REQUIREMENT_LABEL: Record<string, string> = {
+  basic_indoc: "Basic indoctrination",
+  initial_training: "Initial training",
+  recurrent_training: "Recurrent training",
+  written_test_135_293a: "Written/oral knowledge test",
+  competency_check_135_293b: "Competency check",
+  ipc_135_297: "Instrument proficiency check (IPC)",
+  line_check_135_299: "Line check",
+  drug_alcohol_program_120: "Drug & alcohol program",
+  prd_consent_111: "PRD (Pilot Records Database) consent",
+  insurance_approval: "Insurance approval",
+  company_manuals: "Company manuals issued/current",
+  other: "Other",
+};
+
+/** Same strings as operator-qualification-kinds.ts's STATUS_OPTIONS. This
+ *  is the pilot's OWN assertion about their standing with an operator
+ *  (not a computed currency verdict), so "Current" here is fine — unlike
+ *  the ok-stage badge on documents/expiry-badge.ts, which is derived. */
+const OPERATOR_QUALIFICATION_STATUS_LABEL: Record<string, string> = {
+  not_started: "Not started",
+  in_progress: "In progress",
+  current: "Current",
+  lapsed: "Lapsed",
+  n_a: "N/A for this operator",
+};
+
+const AIRCRAFT_GEAR_LABEL: Record<string, string> = {
+  tricycle: "Tricycle",
+  tailwheel: "Tailwheel",
+  skid: "Skid",
+  float: "Float",
+  ski: "Ski",
+};
+
+const BANK_ACCOUNT_KIND_LABEL: Record<string, string> = {
+  checking: "Checking",
+  savings: "Savings",
+  credit_card: "Credit card",
+};
+
+const BANK_REVIEW_STATE_LABEL: Record<string, string> = {
+  unreviewed: "Unreviewed",
+  reviewed: "Reviewed",
+  ignored: "Ignored",
+};
+
+const CHART_ACCOUNT_KIND_LABEL: Record<string, string> = {
+  asset: "Asset",
+  liability: "Liability",
+  equity: "Equity",
+  income: "Income",
+  expense: "Expense",
+};
+
+const JOURNAL_SOURCE_TYPE_LABEL: Record<string, string> = {
+  manual: "Manual entry",
+  invoice_issued: "Invoice issued",
+  invoice_voided: "Invoice voided",
+  payment: "Payment",
+  payment_void_reclass: "Payment reclass (void)",
+  expense: "Expense",
+  mileage: "Mileage",
+};
+
+const JOURNAL_SIDE_LABEL: Record<string, string> = {
+  debit: "Debit",
+  credit: "Credit",
+};
+
+const LATE_FEE_BASIS_LABEL: Record<string, string> = {
+  flat: "Flat",
+  bps_per_month: "Percent per month",
+};
+
+const RECURRING_CADENCE_LABEL: Record<string, string> = {
+  monthly: "Monthly",
+  quarterly: "Quarterly",
+};
+
 // ---------------------------------------------------------------------------
 // Cross-reference lookups
 // ---------------------------------------------------------------------------
@@ -284,6 +372,10 @@ export type Lookups = {
   totalsByInvoiceId: Map<string, InvoiceTotalsRef>;
   estimateById: Map<string, EstimateRef>;
   estimateTotalsByEstimateId: Map<string, EstimateTotalsRef>;
+  /** "Chase checking …4521" — label plus last4 when set, built in
+   *  buildLookups so bank_transactions never prints a bank account UUID. */
+  bankAccountLabelById: Map<string, string>;
+  chartAccountNameById: Map<string, string>;
 };
 
 export function emptyLookups(): Lookups {
@@ -295,6 +387,8 @@ export function emptyLookups(): Lookups {
     totalsByInvoiceId: new Map(),
     estimateById: new Map(),
     estimateTotalsByEstimateId: new Map(),
+    bankAccountLabelById: new Map(),
+    chartAccountNameById: new Map(),
   };
 }
 
@@ -1040,6 +1134,519 @@ export function estimateLineValues(
   ];
 }
 
+export type OperatorQualificationExportRow = Pick<
+  Tables["operator_qualifications"]["Row"],
+  | "id"
+  | "client_id"
+  | "completed_on"
+  | "expires_on"
+  | "type_designator"
+  | "notes"
+  | "document_id"
+  | "created_at"
+> & {
+  // requirement/status typed as plain strings: database.types.ts's Row
+  // union predates 20260807110000_operator_qualification_reg_corrections.sql
+  // (written_test_135_293a / competency_check_135_293b) — same "declared
+  // locally" posture as InvoicePaymentExportRow above, so an export never
+  // throws on a value the stale generated type doesn't know about; the
+  // label lookups below fall back to the raw value either way.
+  requirement: string;
+  status: string;
+};
+
+export const OPERATOR_QUALIFICATION_HEADER = [
+  "Client",
+  "Requirement",
+  "Type designator",
+  "Status",
+  "Completed on",
+  "Expires on",
+  "Notes",
+  "Added on",
+  "Qualification ID",
+  "Document ID",
+  "Client ID",
+] as const;
+
+export function operatorQualificationValues(
+  row: OperatorQualificationExportRow,
+  lookups: Lookups
+): CsvValue[] {
+  return [
+    clientName(lookups, row.client_id),
+    OPERATOR_QUALIFICATION_REQUIREMENT_LABEL[row.requirement] ?? row.requirement,
+    row.type_designator,
+    OPERATOR_QUALIFICATION_STATUS_LABEL[row.status] ?? row.status,
+    row.completed_on,
+    row.expires_on,
+    row.notes,
+    isoDate(row.created_at),
+    row.id,
+    row.document_id,
+    row.client_id,
+  ];
+}
+
+/**
+ * pilot.aircraft (20260810110000_aircraft_registry.sql) predates the last
+ * database.types.ts regeneration and has no Tables[...] entry at all —
+ * declared locally in full, same posture as the requirement/status fields
+ * above.
+ */
+export type AircraftExportRow = {
+  id: string;
+  tail_number: string;
+  type_designator: string | null;
+  type_rating: string | null;
+  make_model: string | null;
+  gear: string | null;
+  category_class: string | null;
+  notes: string | null;
+  archived_at: string | null;
+  created_at: string;
+};
+
+export const AIRCRAFT_HEADER = [
+  "Tail number",
+  "Type designator",
+  "Type rating",
+  "Make/model",
+  "Category/class",
+  "Gear",
+  "Notes",
+  "Added on",
+  "Archived on",
+  "Aircraft ID",
+] as const;
+
+export function aircraftValues(row: AircraftExportRow): CsvValue[] {
+  return [
+    row.tail_number,
+    row.type_designator,
+    row.type_rating,
+    row.make_model,
+    row.category_class,
+    row.gear ? AIRCRAFT_GEAR_LABEL[row.gear] ?? row.gear : "",
+    row.notes,
+    isoDate(row.created_at),
+    isoDate(row.archived_at),
+    row.id,
+  ];
+}
+
+export type ClientRateExportRow = Pick<
+  Tables["client_rates"]["Row"],
+  "id" | "client_id" | "day_type_id" | "rate_cents" | "created_at"
+>;
+
+export const CLIENT_RATE_HEADER = [
+  "Client",
+  "Day type",
+  "Rate",
+  "Set on",
+  "Client rate ID",
+] as const;
+
+export function clientRateValues(row: ClientRateExportRow, lookups: Lookups): CsvValue[] {
+  return [
+    clientName(lookups, row.client_id),
+    (row.day_type_id && lookups.dayTypeLabelById.get(row.day_type_id)) || "Unknown day type",
+    centsToDollarsString(row.rate_cents),
+    isoDate(row.created_at),
+    row.id,
+  ];
+}
+
+/**
+ * pilot.client_tax_forms (20260807080000_client_tax_forms.sql) has no
+ * Tables[...] entry — declared locally, same reason as AircraftExportRow.
+ */
+export type ClientTaxFormExportRow = {
+  id: string;
+  client_id: string;
+  tax_year: number;
+  form_type: string;
+  reported_amount_cents: number;
+  received_on: string | null;
+  document_id: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export const CLIENT_TAX_FORM_HEADER = [
+  "Client",
+  "Tax year",
+  "Form type",
+  "Reported amount",
+  "Received on",
+  "Notes",
+  "Document ID",
+  "Client ID",
+  "Tax form ID",
+] as const;
+
+export function clientTaxFormValues(
+  row: ClientTaxFormExportRow,
+  lookups: Lookups
+): CsvValue[] {
+  return [
+    clientName(lookups, row.client_id),
+    row.tax_year,
+    row.form_type,
+    centsToDollarsString(row.reported_amount_cents),
+    row.received_on,
+    row.notes,
+    row.document_id,
+    row.client_id,
+    row.id,
+  ];
+}
+
+export type GuaranteePeriodExportRow = Pick<
+  Tables["guarantee_periods"]["Row"],
+  "id" | "client_id" | "period_month" | "guaranteed_days" | "settled_invoice_id" | "created_at"
+>;
+
+export const GUARANTEE_PERIOD_HEADER = [
+  "Client",
+  "Period month",
+  "Guaranteed days",
+  "Settled invoice",
+  "Settled invoice ID",
+  "Guarantee period ID",
+] as const;
+
+export function guaranteePeriodValues(
+  row: GuaranteePeriodExportRow,
+  lookups: Lookups
+): CsvValue[] {
+  const settledInvoice = row.settled_invoice_id
+    ? lookups.invoiceById.get(row.settled_invoice_id)
+    : undefined;
+  return [
+    clientName(lookups, row.client_id),
+    row.period_month,
+    row.guaranteed_days,
+    row.settled_invoice_id
+      ? settledInvoice?.invoice_number ?? "Unknown invoice"
+      : "",
+    row.settled_invoice_id,
+    row.id,
+  ];
+}
+
+export type BankAccountExportRow = Pick<
+  Tables["bank_accounts"]["Row"],
+  "id" | "label" | "last4" | "kind" | "archived_at" | "created_at"
+>;
+
+export const BANK_ACCOUNT_HEADER = [
+  "Label",
+  "Last 4",
+  "Kind",
+  "Archived on",
+  "Bank account ID",
+] as const;
+
+export function bankAccountValues(row: BankAccountExportRow): CsvValue[] {
+  return [
+    row.label,
+    row.last4,
+    BANK_ACCOUNT_KIND_LABEL[row.kind] ?? row.kind,
+    isoDate(row.archived_at),
+    row.id,
+  ];
+}
+
+/**
+ * source_row (the raw imported CSV/OFX line), import_batch_id, source_file_id,
+ * source_row_number and fingerprint are deliberately NOT columns here: they
+ * are import-machinery bookkeeping, not the pilot's own record. Everything
+ * a pilot categorized or annotated is.
+ */
+export type BankTransactionExportRow = Pick<
+  Tables["bank_transactions"]["Row"],
+  | "id"
+  | "bank_account_id"
+  | "posted_on"
+  | "description"
+  | "amount_cents"
+  | "review_state"
+  | "suggested_category"
+  | "category"
+  | "treatment"
+  | "trip_id"
+  | "expense_id"
+  | "notes"
+>;
+
+export const BANK_TRANSACTION_HEADER = [
+  "Date",
+  "Bank account",
+  "Description",
+  "Amount",
+  "Review state",
+  "Suggested category",
+  "Category",
+  "Treatment",
+  "Client",
+  "Tail number",
+  "Notes",
+  "Trip ID",
+  "Expense ID",
+  "Bank transaction ID",
+] as const;
+
+export function bankTransactionValues(
+  row: BankTransactionExportRow,
+  lookups: Lookups
+): CsvValue[] {
+  const trip = row.trip_id ? lookups.tripById.get(row.trip_id) : undefined;
+  return [
+    row.posted_on,
+    row.bank_account_id
+      ? lookups.bankAccountLabelById.get(row.bank_account_id) ?? "Unknown bank account"
+      : "",
+    row.description,
+    centsToDollarsString(row.amount_cents),
+    BANK_REVIEW_STATE_LABEL[row.review_state] ?? row.review_state,
+    row.suggested_category ? CATEGORY_LABEL[row.suggested_category] ?? row.suggested_category : "",
+    row.category ? CATEGORY_LABEL[row.category] ?? row.category : "",
+    row.treatment ? TREATMENT_LABEL[row.treatment] ?? row.treatment : "",
+    clientName(lookups, trip?.client_id),
+    trip?.aircraft_ident,
+    row.notes,
+    row.trip_id,
+    row.expense_id,
+    row.id,
+  ];
+}
+
+export type AccountsChartExportRow = Pick<
+  Views["accounts_chart"]["Row"],
+  "id" | "name" | "kind" | "system_key" | "archived_at" | "created_at"
+>;
+
+export const ACCOUNTS_CHART_HEADER = [
+  "Account name",
+  "Kind",
+  "System account",
+  "Archived on",
+  "Chart account ID",
+] as const;
+
+export function accountsChartValues(row: AccountsChartExportRow): CsvValue[] {
+  return [
+    row.name,
+    CHART_ACCOUNT_KIND_LABEL[row.kind] ?? row.kind,
+    yesNo(Boolean(row.system_key)),
+    isoDate(row.archived_at),
+    row.id,
+  ];
+}
+
+export type JournalEntryExportRow = Pick<
+  Views["journal_entries"]["Row"],
+  "id" | "entry_date" | "memo" | "source_type" | "source_id" | "created_at"
+>;
+
+export const JOURNAL_ENTRY_HEADER = [
+  "Date",
+  "Memo",
+  "Source",
+  "Source ID",
+  "Journal entry ID",
+] as const;
+
+export function journalEntryValues(row: JournalEntryExportRow): CsvValue[] {
+  return [
+    row.entry_date,
+    row.memo,
+    JOURNAL_SOURCE_TYPE_LABEL[row.source_type] ?? row.source_type,
+    row.source_id,
+    row.id,
+  ];
+}
+
+export type JournalLineExportRow = Pick<
+  Views["journal_lines"]["Row"],
+  "id" | "entry_id" | "chart_account_id" | "side" | "amount_cents" | "line_no"
+>;
+
+export const JOURNAL_LINE_HEADER = [
+  "Journal entry ID",
+  "Line #",
+  "Account",
+  "Side",
+  "Amount",
+  "Journal line ID",
+] as const;
+
+export function journalLineValues(row: JournalLineExportRow, lookups: Lookups): CsvValue[] {
+  return [
+    row.entry_id,
+    row.line_no,
+    row.chart_account_id
+      ? lookups.chartAccountNameById.get(row.chart_account_id) ?? "Unknown account"
+      : "",
+    JOURNAL_SIDE_LABEL[row.side] ?? row.side,
+    centsToDollarsString(row.amount_cents),
+    row.id,
+  ];
+}
+
+export type InvoiceLateFeeExportRow = Pick<
+  Tables["invoice_late_fees"]["Row"],
+  | "id"
+  | "source_invoice_id"
+  | "fee_invoice_id"
+  | "period_start"
+  | "amount_cents"
+  | "basis"
+  | "basis_bps"
+  | "months_accrued"
+  | "created_at"
+>;
+
+export const INVOICE_LATE_FEE_HEADER = [
+  "Period",
+  "Late invoice",
+  "Fee invoice",
+  "Amount",
+  "Basis",
+  "Basis (%/month)",
+  "Months accrued",
+  "Charged on",
+  "Late invoice ID",
+  "Fee invoice ID",
+  "Late fee ID",
+] as const;
+
+export function invoiceLateFeeValues(
+  row: InvoiceLateFeeExportRow,
+  lookups: Lookups
+): CsvValue[] {
+  return [
+    row.period_start,
+    lookups.invoiceById.get(row.source_invoice_id)?.invoice_number ?? "Unknown invoice",
+    lookups.invoiceById.get(row.fee_invoice_id)?.invoice_number ?? "Unknown invoice",
+    centsToDollarsString(row.amount_cents),
+    LATE_FEE_BASIS_LABEL[row.basis] ?? row.basis,
+    row.basis_bps === null || row.basis_bps === undefined ? "" : bpsToPercentString(row.basis_bps),
+    row.months_accrued,
+    isoDate(row.created_at),
+    row.source_invoice_id,
+    row.fee_invoice_id,
+    row.id,
+  ];
+}
+
+export type RecurringInvoiceScheduleExportRow = Pick<
+  Tables["recurring_invoice_schedules"]["Row"],
+  | "id"
+  | "client_id"
+  | "cadence"
+  | "anchor_date"
+  | "end_date"
+  | "description"
+  | "amount_cents"
+  | "tax_rate_bps"
+  | "active"
+  | "created_at"
+>;
+
+export const RECURRING_INVOICE_SCHEDULE_HEADER = [
+  "Client",
+  "Description",
+  "Cadence",
+  "Anchor date",
+  "End date",
+  "Amount",
+  "Tax rate (%)",
+  "Active",
+  "Schedule ID",
+] as const;
+
+export function recurringInvoiceScheduleValues(
+  row: RecurringInvoiceScheduleExportRow,
+  lookups: Lookups
+): CsvValue[] {
+  return [
+    clientName(lookups, row.client_id),
+    row.description,
+    RECURRING_CADENCE_LABEL[row.cadence] ?? row.cadence,
+    row.anchor_date,
+    row.end_date,
+    centsToDollarsString(row.amount_cents),
+    bpsToPercentString(row.tax_rate_bps),
+    yesNo(row.active),
+    row.id,
+  ];
+}
+
+export type DayTypeExportRow = Pick<
+  Tables["day_types"]["Row"],
+  | "id"
+  | "key"
+  | "label"
+  | "billable"
+  | "counts_for_per_diem"
+  | "default_rate_cents"
+  | "default_units"
+  | "invoice_line_type"
+  | "sort_order"
+  | "is_builtin"
+  | "archived_at"
+  | "created_at"
+>;
+
+export const DAY_TYPE_HEADER = [
+  "Label",
+  "Key",
+  "Billable",
+  "Counts for per diem",
+  "Default rate",
+  "Default rate fraction",
+  "Invoice line type",
+  "Sort order",
+  "Built-in",
+  "Archived on",
+  "Day type ID",
+] as const;
+
+export function dayTypeValues(row: DayTypeExportRow): CsvValue[] {
+  return [
+    row.label,
+    row.key,
+    yesNo(row.billable),
+    yesNo(row.counts_for_per_diem),
+    centsToDollarsString(row.default_rate_cents),
+    row.default_units,
+    LINE_TYPE_LABEL[row.invoice_line_type] ?? row.invoice_line_type,
+    row.sort_order,
+    yesNo(row.is_builtin),
+    isoDate(row.archived_at),
+    row.id,
+  ];
+}
+
+export type MileageRateExportRow = Pick<
+  Tables["mileage_rates"]["Row"],
+  "id" | "tax_year" | "rate_cents_per_mile" | "notes" | "created_at"
+>;
+
+export const MILEAGE_RATE_HEADER = [
+  "Tax year",
+  "Rate (cents/mile)",
+  "Notes",
+  "Mileage rate ID",
+] as const;
+
+export function mileageRateValues(row: MileageRateExportRow): CsvValue[] {
+  return [row.tax_year, row.rate_cents_per_mile, row.notes, row.id];
+}
+
 // ---------------------------------------------------------------------------
 // The registry the route and the page both read
 // ---------------------------------------------------------------------------
@@ -1056,7 +1663,21 @@ export type ExportTable =
   | "estimate_lines"
   | "expenses"
   | "mileage_entries"
-  | "documents";
+  | "documents"
+  | "operator_qualifications"
+  | "aircraft"
+  | "client_rates"
+  | "client_tax_forms"
+  | "guarantee_periods"
+  | "bank_accounts"
+  | "bank_transactions"
+  | "accounts_chart"
+  | "journal_entries"
+  | "journal_lines"
+  | "invoice_late_fees"
+  | "recurring_invoice_schedules"
+  | "day_types"
+  | "mileage_rates";
 
 /** Which cross-reference maps the route must fill before streaming. */
 export type LookupNeeds = {
@@ -1067,6 +1688,8 @@ export type LookupNeeds = {
   invoiceTotals?: true;
   estimates?: true;
   estimateTotals?: true;
+  bankAccounts?: true;
+  chartAccounts?: true;
 };
 
 export type EntitySpec = {
@@ -1249,6 +1872,188 @@ export const EXPORT_ENTITIES: Record<string, EntitySpec> = {
     header: DOCUMENT_HEADER,
     needs: { clients: true },
     mapRow: (row, lookups) => documentValues(row as unknown as DocumentExportRow, lookups),
+  },
+  "operator-qualifications": {
+    key: "operator-qualifications",
+    table: "operator_qualifications",
+    select:
+      "id, client_id, requirement, completed_on, status, expires_on, type_designator, notes, document_id, created_at",
+    orderBy: [
+      { column: "created_at", ascending: true },
+      { column: "id", ascending: true },
+    ],
+    header: OPERATOR_QUALIFICATION_HEADER,
+    needs: { clients: true },
+    mapRow: (row, lookups) =>
+      operatorQualificationValues(row as unknown as OperatorQualificationExportRow, lookups),
+  },
+  aircraft: {
+    key: "aircraft",
+    table: "aircraft",
+    select:
+      "id, tail_number, type_designator, type_rating, make_model, category_class, gear, notes, archived_at, created_at",
+    orderBy: [
+      { column: "tail_number", ascending: true },
+      { column: "id", ascending: true },
+    ],
+    header: AIRCRAFT_HEADER,
+    needs: {},
+    mapRow: (row) => aircraftValues(row as unknown as AircraftExportRow),
+  },
+  "client-rates": {
+    key: "client-rates",
+    table: "client_rates",
+    select: "id, client_id, day_type_id, rate_cents, created_at",
+    orderBy: [
+      { column: "created_at", ascending: true },
+      { column: "id", ascending: true },
+    ],
+    header: CLIENT_RATE_HEADER,
+    needs: { clients: true, dayTypes: true },
+    mapRow: (row, lookups) => clientRateValues(row as unknown as ClientRateExportRow, lookups),
+  },
+  "client-tax-forms": {
+    key: "client-tax-forms",
+    table: "client_tax_forms",
+    select:
+      "id, client_id, tax_year, form_type, reported_amount_cents, received_on, document_id, notes, created_at",
+    orderBy: [
+      { column: "tax_year", ascending: true },
+      { column: "id", ascending: true },
+    ],
+    header: CLIENT_TAX_FORM_HEADER,
+    needs: { clients: true },
+    mapRow: (row, lookups) =>
+      clientTaxFormValues(row as unknown as ClientTaxFormExportRow, lookups),
+  },
+  "guarantee-periods": {
+    key: "guarantee-periods",
+    table: "guarantee_periods",
+    select: "id, client_id, period_month, guaranteed_days, settled_invoice_id, created_at",
+    orderBy: [
+      { column: "period_month", ascending: true },
+      { column: "id", ascending: true },
+    ],
+    header: GUARANTEE_PERIOD_HEADER,
+    needs: { clients: true, invoices: true },
+    mapRow: (row, lookups) =>
+      guaranteePeriodValues(row as unknown as GuaranteePeriodExportRow, lookups),
+  },
+  "bank-accounts": {
+    key: "bank-accounts",
+    table: "bank_accounts",
+    select: "id, label, last4, kind, archived_at, created_at",
+    orderBy: [
+      { column: "label", ascending: true },
+      { column: "id", ascending: true },
+    ],
+    header: BANK_ACCOUNT_HEADER,
+    needs: {},
+    mapRow: (row) => bankAccountValues(row as unknown as BankAccountExportRow),
+  },
+  "bank-transactions": {
+    key: "bank-transactions",
+    table: "bank_transactions",
+    select:
+      "id, bank_account_id, posted_on, description, amount_cents, review_state, suggested_category, category, treatment, trip_id, expense_id, notes",
+    orderBy: [
+      { column: "posted_on", ascending: true },
+      { column: "id", ascending: true },
+    ],
+    header: BANK_TRANSACTION_HEADER,
+    needs: { clients: true, trips: true, bankAccounts: true },
+    mapRow: (row, lookups) =>
+      bankTransactionValues(row as unknown as BankTransactionExportRow, lookups),
+  },
+  "accounts-chart": {
+    key: "accounts-chart",
+    table: "accounts_chart",
+    select: "id, name, kind, system_key, archived_at, created_at",
+    orderBy: [
+      { column: "name", ascending: true },
+      { column: "id", ascending: true },
+    ],
+    header: ACCOUNTS_CHART_HEADER,
+    needs: {},
+    mapRow: (row) => accountsChartValues(row as unknown as AccountsChartExportRow),
+  },
+  "journal-entries": {
+    key: "journal-entries",
+    table: "journal_entries",
+    select: "id, entry_date, memo, source_type, source_id, created_at",
+    orderBy: [
+      { column: "entry_date", ascending: true },
+      { column: "id", ascending: true },
+    ],
+    header: JOURNAL_ENTRY_HEADER,
+    needs: {},
+    mapRow: (row) => journalEntryValues(row as unknown as JournalEntryExportRow),
+  },
+  "journal-lines": {
+    key: "journal-lines",
+    table: "journal_lines",
+    select: "id, entry_id, chart_account_id, side, amount_cents, line_no",
+    orderBy: [
+      { column: "entry_id", ascending: true },
+      { column: "line_no", ascending: true },
+      { column: "id", ascending: true },
+    ],
+    header: JOURNAL_LINE_HEADER,
+    needs: { chartAccounts: true },
+    mapRow: (row, lookups) => journalLineValues(row as unknown as JournalLineExportRow, lookups),
+  },
+  "invoice-late-fees": {
+    key: "invoice-late-fees",
+    table: "invoice_late_fees",
+    select:
+      "id, source_invoice_id, fee_invoice_id, period_start, amount_cents, basis, basis_bps, months_accrued, created_at",
+    orderBy: [
+      { column: "period_start", ascending: true },
+      { column: "id", ascending: true },
+    ],
+    header: INVOICE_LATE_FEE_HEADER,
+    needs: { invoices: true },
+    mapRow: (row, lookups) =>
+      invoiceLateFeeValues(row as unknown as InvoiceLateFeeExportRow, lookups),
+  },
+  "recurring-invoice-schedules": {
+    key: "recurring-invoice-schedules",
+    table: "recurring_invoice_schedules",
+    select:
+      "id, client_id, cadence, anchor_date, end_date, description, amount_cents, tax_rate_bps, active, created_at",
+    orderBy: [
+      { column: "anchor_date", ascending: true },
+      { column: "id", ascending: true },
+    ],
+    header: RECURRING_INVOICE_SCHEDULE_HEADER,
+    needs: { clients: true },
+    mapRow: (row, lookups) =>
+      recurringInvoiceScheduleValues(row as unknown as RecurringInvoiceScheduleExportRow, lookups),
+  },
+  "day-types": {
+    key: "day-types",
+    table: "day_types",
+    select:
+      "id, key, label, billable, counts_for_per_diem, default_rate_cents, default_units, invoice_line_type, sort_order, is_builtin, archived_at, created_at",
+    orderBy: [
+      { column: "sort_order", ascending: true },
+      { column: "id", ascending: true },
+    ],
+    header: DAY_TYPE_HEADER,
+    needs: {},
+    mapRow: (row) => dayTypeValues(row as unknown as DayTypeExportRow),
+  },
+  "mileage-rates": {
+    key: "mileage-rates",
+    table: "mileage_rates",
+    select: "id, tax_year, rate_cents_per_mile, notes, created_at",
+    orderBy: [
+      { column: "tax_year", ascending: true },
+      { column: "id", ascending: true },
+    ],
+    header: MILEAGE_RATE_HEADER,
+    needs: {},
+    mapRow: (row) => mileageRateValues(row as unknown as MileageRateExportRow),
   },
 };
 

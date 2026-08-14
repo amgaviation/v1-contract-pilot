@@ -25,6 +25,11 @@ const EXPENSES_LIMIT = 1000;
 // Schedule C deduction and it appeared in NO tax report. Same cap
 // discipline as every other list query in this file.
 const MILEAGE_LIMIT = 1000;
+// Same cap discipline for the clients lookup — see
+// app/(app)/reports/profit-loss/queries.ts's identical CLIENTS_LIMIT. Past
+// this the Data API truncates silently and income/1099-reconciliation rows
+// for the missing clients render as "Unknown client" with no banner.
+const CLIENTS_LIMIT = 1000;
 
 export type IncomeByClient = {
   clientId: string;
@@ -228,15 +233,23 @@ export async function loadYearEndReport(
       .lte("incurred_on", end)
       .order("incurred_on", { ascending: true })
       .limit(EXPENSES_LIMIT),
-    // A pilot's client list is small (same reasoning as
-    // app/(app)/invoices/page.tsx) — fetched whole, not paged.
-    supabase.from("clients").select("id, name"),
+    // Capped and account-scoped, matching every other read in this file
+    // (and profit-loss's identical clients read) — the bare, uncapped,
+    // unscoped select this used to be was the one read in this file that
+    // contradicted this file's own header ("account-scoped throughout",
+    // "every list query below carries an explicit .limit()").
+    supabase
+      .from("clients")
+      .select("id, name")
+      .eq("account_id", accountId)
+      .limit(CLIENTS_LIMIT),
     reportsFrom(supabase, "client_tax_forms")
       .select(
         "id, client_id, tax_year, form_type, reported_amount_cents, received_on, notes"
       )
       .eq("account_id", accountId)
-      .eq("tax_year", year),
+      .eq("tax_year", year)
+      .limit(CLIENTS_LIMIT),
     // E. Mileage — drove_on and miles ONLY, never the per-row snapshotted
     // amount_cents: Schedule C wants total miles for the year x that
     // year's OWN rate on file (queried next), rounded once — see
@@ -278,6 +291,9 @@ export async function loadYearEndReport(
 
   const clients = (clientData ?? []) as { id: string; name: string }[];
   const clientName = new Map(clients.map((c) => [c.id, c.name]));
+  const clientsTruncated = clients.length === CLIENTS_LIMIT;
+  const taxFormsTruncated =
+    ((taxFormData ?? []) as unknown[]).length === CLIENTS_LIMIT;
 
   // ---- A. Income by client -------------------------------------------
   const payments = (paymentData ?? []) as {
@@ -287,7 +303,13 @@ export async function loadYearEndReport(
     amount_cents: number;
     method: string | null;
   }[];
-  const paymentsTruncated = payments.length === PAYMENTS_LIMIT;
+  // Folded together with the clients/tax-forms caps above: a truncated
+  // client roster reassigns income and 1099-reconciliation rows to
+  // "Unknown client" the same silent way a truncated payments page does,
+  // so it rides the same on-screen flag rather than needing its own —
+  // same reasoning as profit-loss/queries.ts's identical fold.
+  const paymentsTruncated =
+    payments.length === PAYMENTS_LIMIT || clientsTruncated || taxFormsTruncated;
 
   const invoiceIds = [...new Set(payments.map((p) => p.invoice_id))];
   const { data: invoiceData, error: invoiceError } = invoiceIds.length
@@ -435,9 +457,9 @@ export async function loadYearEndReport(
     }[]).map((i) => [i.id, i])
   );
 
-  const rebilledTruncated =
-    rebilledTruncatedExpenses ||
-    (expenseIds.length > 0 && lines.length === expenseIds.length && false); // lines has no independent cap concern (one per expense at most)
+  // lines cannot truncate independently — unique (account_id, expense_id)
+  // bounds them by the capped expense read.
+  const rebilledTruncated = rebilledTruncatedExpenses;
 
   const rebilled: RebilledRow[] = rebillExpensesRaw.map((e) => {
     const line = lineByExpenseId.get(e.id) ?? null;

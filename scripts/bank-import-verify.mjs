@@ -383,6 +383,50 @@ check("OFX-5: a single-account file reports which account it is for", () => {
   assert.equal(r.statementAccountId, "987654321", "so the screen can catch a last4 mismatch before importing");
 });
 
+check("CSV-6: a $0.00 signed-amount row is a named rejection, not a value that reaches confirm", () => {
+  // The DB CHECK is `amount_cents <> 0` — genuinely unstorable. Before the
+  // fix, only the debit/credit shape refused a zero value by name; this
+  // signed-amount shape let it through as ordinary "valid", where it used
+  // to abort app/(app)/expenses/import/actions.ts's entire confirm —
+  // batch, source file, every other good row — for one waived-fee line.
+  const csv = "Date,Description,Amount\n2026-03-04,HOTEL,-214.88\n2026-03-05,INTEREST WAIVED,0.00\n";
+  const [header, ...data] = parseCsv(csv);
+  const mapping = suggestColumnMapping(header.fields);
+  const r = applyCsvMapping({ headerRow: header.fields, dataRecords: data, mapping, accountKind: "checking" });
+  assert.equal(r.valid.length, 1, "the good row still parses");
+  assert.equal(r.rejected.length, 1);
+  assert.match(r.rejected[0].reason, /\$0\.00/);
+});
+
+check("OFX-6: a $0.00 TRNAMT is a named rejection, matching the CSV signed-amount shape", () => {
+  const ofx =
+    "<STMTTRN><DTPOSTED>20260304<TRNAMT>-214.88<NAME>HOTEL</STMTTRN>" +
+    "<STMTTRN><DTPOSTED>20260305<TRNAMT>0.00<NAME>INTEREST WAIVED</STMTTRN>";
+  const r = parseOfx(ofx, "ofx");
+  assert.equal(r.valid.length, 1);
+  assert.equal(r.rejected.length, 1);
+  assert.match(r.rejected[0].reason, /\$0\.00/);
+});
+
+check("OFX-7: a <BANKACCTTO> transfer destination inside one <STMTTRN> does not trip the multi-account refusal", () => {
+  // OFX permits <BANKACCTTO><ACCTID>…</BANKACCTTO> INSIDE a single
+  // transaction record to name a transfer's destination account — some
+  // banks emit it for inter-account transfers. That names a SIBLING
+  // account, not a second statement in this file, and must not count
+  // toward OFX-4's refusal the way a genuine second <BANKACCTFROM> does.
+  const ofx =
+    "<OFX><BANKMSGSRSV1>\n" +
+    "<STMTRS><BANKACCTFROM><ACCTID>111111111</BANKACCTFROM><BANKTRANLIST>\n" +
+    "<STMTTRN><DTPOSTED>20260315<TRNAMT>-50.00<NAME>TRANSFER" +
+    "<BANKACCTTO><ACCTID>222222222</BANKACCTTO></STMTTRN>\n" +
+    "<STMTTRN><DTPOSTED>20260316<TRNAMT>-10.00<NAME>COFFEE</STMTTRN>\n" +
+    "</BANKTRANLIST></STMTRS>\n" +
+    "</BANKMSGSRSV1></OFX>";
+  const r = parseOfx(ofx, "ofx");
+  assert.equal(r.valid.length, 2, "the statement is accepted, not refused outright");
+  assert.equal(r.rejected.length, 0);
+});
+
 check("DEDUP-1: identical logical rows produce the identical fingerprint on re-parse", () => {
   const parsedAgain = parseCsv(csvSigned);
   const [header, ...data] = parsedAgain;

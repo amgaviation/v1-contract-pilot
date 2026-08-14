@@ -17,7 +17,57 @@ export type AccountOption = {
   id: string;
   name: string;
   kindLabel: string;
+  /** accounts_chart.system_key — null for a pilot-added account. Presets
+   *  below match on this, never on the (renamable) name. */
+  systemKey: string | null;
 };
+
+/**
+ * Guided presets for the three manual entries a solo pilot actually types
+ * by hand — everything else (invoices, payments, expenses, mileage) posts
+ * itself. Each preset names its two legs by SYSTEM KEY, the seeded chart's
+ * stable posting identity (20260812100000_accounting_ledger.sql) rather
+ * than by account name, so a renamed "Cash & bank" account still matches.
+ * All three system-key accounts exist for every tenant and can never be
+ * archived (accounts_chart_protect forbids archiving a system row), so a
+ * preset can always find both legs.
+ *
+ * Presets pre-select the two accounts and suggest a memo — nothing else.
+ * The date, the amount(s), and the memo text all stay the pilot's own:
+ * this is a shortcut for the two lines that are always the same two
+ * accounts, not a canned transaction the pilot can't see or edit.
+ */
+type Preset = {
+  key: string;
+  label: string;
+  memo: string;
+  debitSystemKey: string;
+  creditSystemKey: string;
+};
+
+const PRESETS: Preset[] = [
+  {
+    key: "owner_draw",
+    label: "Owner draw",
+    memo: "Owner draw",
+    debitSystemKey: "owner_draws",
+    creditSystemKey: "bank",
+  },
+  {
+    key: "owner_contribution",
+    label: "Owner contribution",
+    memo: "Owner contribution",
+    debitSystemKey: "bank",
+    creditSystemKey: "owner_contributions",
+  },
+  {
+    key: "sales_tax_remittance",
+    label: "Sales tax remittance",
+    memo: "Sales tax remittance",
+    debitSystemKey: "sales_tax_payable",
+    creditSystemKey: "bank",
+  },
+];
 
 const initialState: JournalFormState = { error: null };
 
@@ -94,6 +144,30 @@ function FormBody({
     echoed ? draftsFromEcho(echoed) : emptyDrafts()
   );
   const [nextKey, setNextKey] = useState(lines.length);
+  // Controlled, not defaultValue, ONLY so a preset button can fill it —
+  // same reason the account/side/amount fields above are controlled state
+  // rather than plain form fields.
+  const [memo, setMemo] = useState(echoed?.memo ?? "");
+
+  const accountBySystemKey = new Map(
+    accounts.filter((a) => a.systemKey !== null).map((a) => [a.systemKey as string, a])
+  );
+
+  function applyPreset(preset: Preset) {
+    const debitAccount = accountBySystemKey.get(preset.debitSystemKey);
+    const creditAccount = accountBySystemKey.get(preset.creditSystemKey);
+    // Both legs are seeded, non-archivable system accounts (see the
+    // Preset comment above) — this should always resolve. If an account
+    // was somehow filtered out of `accounts` (e.g. archived, which can't
+    // happen to a system row, but the type is still nullable-safe),
+    // leave that line blank rather than guess: the pilot picks it.
+    setLines([
+      { key: 0, account: debitAccount?.id ?? "", side: "debit", amount: "" },
+      { key: 1, account: creditAccount?.id ?? "", side: "credit", amount: "" },
+    ]);
+    setNextKey(2);
+    setMemo(preset.memo);
+  }
 
   const debitCents = lines
     .filter((l) => l.side === "debit")
@@ -134,9 +208,32 @@ function FormBody({
             name="memo"
             required
             placeholder="e.g. Owner draw — August"
-            defaultValue={echoed?.memo ?? ""}
+            value={memo}
+            onChange={(e) => setMemo(e.target.value)}
           />
         </Flex>
+      </Flex>
+
+      <Flex gap="2" wrap="wrap" mb="3" align="center">
+        <Text size="1" color="gray">
+          Common entries:
+        </Text>
+        {PRESETS.map((preset) => (
+          <Button
+            key={preset.key}
+            type="button"
+            size="1"
+            variant="soft"
+            color="gray"
+            onClick={() => applyPreset(preset)}
+          >
+            {preset.label}
+          </Button>
+        ))}
+        <Text size="1" color="gray">
+          — fills in the two accounts and a memo; you still set the date and
+          amount.
+        </Text>
       </Flex>
 
       <Flex direction="column" gap="2">

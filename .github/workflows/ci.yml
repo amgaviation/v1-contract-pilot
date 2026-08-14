@@ -17,9 +17,19 @@ on:
   # not run" is to dirty the history.
   workflow_dispatch:
 
+# A newer push on the same PR/branch supersedes the older run's answer
+# before anyone reads it — without this, three jobs (one with a Playwright
+# install, one replaying every migration onto a fresh Postgres) kept
+# running to completion anyway, burning minutes on a result nobody would
+# see.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -31,6 +41,14 @@ jobs:
       - run: npm ci
 
       - run: npm test
+
+      # Deep ForeFlight CSV fixture (BOM, CRLF, 66-column padding, both
+      # landing-column generations, multi-approach rows, FFS rows) — needs
+      # no database and no browser (spawnSync runs a node subprocess
+      # against a synthetic temp file), so it belongs here rather than a
+      # dedicated job. Previously absent from `npm test` AND every CI job;
+      # logbook:verify's own ForeFlight coverage is shallow by comparison.
+      - run: npm run foreflight-import:verify
 
       # The generated stylesheet is committed, so it can go stale the moment
       # someone edits lib/ds/scales.ts without re-running the generator — and
@@ -57,6 +75,7 @@ jobs:
   # canvas was NARROWER than the phone layout gives at the same viewport.
   layout:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -106,6 +125,18 @@ jobs:
 
       - run: npm run layout:verify
 
+      # lib/receipt-ocr/engine.ts decodes images and drives a WebAssembly
+      # worker — none of that exists in Node, so it is unit-testable only
+      # up to lib/receipt-ocr/extract.ts. This drives the real engine in
+      # the real Chromium this job already paid to install, self-contained
+      # (its own static server, not the dev server above), and checks the
+      # one privacy property that actually matters here: zero off-origin
+      # requests during a scan. Previously wired into no CI job at all —
+      # deliberately excluded from `npm test` (its own header explains why)
+      # but never picked up here either, where the browser cost is already
+      # sunk.
+      - run: npm run receipt-ocr:verify
+
       - name: Dev server log on failure
         if: failure()
         run: cat /tmp/dev.log
@@ -122,6 +153,7 @@ jobs:
   # file, and this job is what makes it run.
   database:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
 
     services:
       postgres:
@@ -172,7 +204,7 @@ jobs:
             psql -X -q -v ON_ERROR_STOP=1 "$U" -f "$m"
           done
 
-      - name: Two-tenant isolation, Connect, and the public invoice share
+      - name: Two-tenant isolation, Connect, the public invoice share, the credential-packet share, and bank import
         env:
           DATABASE_URL: postgresql://postgres@127.0.0.1:55432/v1verify
         run: |
@@ -180,6 +212,19 @@ jobs:
           node scripts/tenancy-verify.mjs
           node scripts/connect-verify.mjs
           node scripts/invoice-share-verify.mjs
+
+          # pilot.document_packet_public — the anon-callable boundary behind
+          # app/packet/[token] serving W-9/passport/medical metadata. Same
+          # rolled-back-transaction pattern as invoice-share-verify above;
+          # previously had zero coverage anywhere (no verify script, no
+          # unit test).
+          node scripts/packet-share-verify.mjs
+
+          # PART 1 (lib/bank-import/* parsing + fingerprint stability) needs
+          # nothing; PART 2 (the bank schema contract) reads DATABASE_URL,
+          # already exported above. Previously wired into no job at all, so
+          # neither half ran anywhere in CI.
+          node --experimental-strip-types scripts/bank-import-verify.mjs
 
       # These build their own scratch database from the scaffold, so they only
       # need to be told where it is.
@@ -191,6 +236,7 @@ jobs:
           LOGBOOK_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
           CURRENCY_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
           ACCOUNTING_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
+          REMINDERS_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
         run: |
           set -euo pipefail
           npm run aircraft:verify
@@ -199,3 +245,4 @@ jobs:
           npm run logbook:verify
           npm run currency:verify
           npm run accounting:verify
+          npm run reminders:verify

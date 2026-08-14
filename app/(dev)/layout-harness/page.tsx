@@ -133,7 +133,19 @@ export default async function LayoutHarnessPage() {
           <Text as="div" size="1" color="gray">
             Payment reference
           </Text>
-          <Text as="div" size="2" wrap="wrap" className="tnum">
+          {/* overflowWrap anywhere, not just wrap="wrap": text-wrap only
+              breaks at spaces and this token has none. This mattered from
+              the day .tnum came back to life — the class now really applies
+              JetBrains Mono, whose wider advance pushed this card past a
+              320px viewport by 13px, which is exactly the sideways-scroll
+              failure this harness exists to catch. */}
+          <Text
+            as="div"
+            size="2"
+            wrap="wrap"
+            className="tnum"
+            style={{ overflowWrap: "anywhere" }}
+          >
             {FIXTURE_INTENT}
           </Text>
         </Card>

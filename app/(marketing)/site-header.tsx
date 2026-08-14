@@ -30,8 +30,8 @@ export default function SiteHeader() {
         position: "sticky",
         top: 0,
         zIndex: 1,
-        borderBottom: "1px solid var(--gray-a5)",
-        background: "var(--color-background)",
+        borderBottom: "1px solid var(--hair)",
+        background: "var(--paper)",
       }}
     >
       <Container size="4" px="4">

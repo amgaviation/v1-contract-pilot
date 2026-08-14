@@ -98,6 +98,85 @@ const EXPORTS: ExportCard[] = [
     description:
       "What's on file and when it expires — kind, label, issued and expiry dates, and filename. The uploaded files themselves are not in this CSV; download each one from its page in Documents.",
   },
+  {
+    href: "/settings/export/operator-qualifications",
+    title: "Operator qualifications",
+    description:
+      "Your per-operator training and check records: requirement, status, completed and expiry dates, and type designator — the 135.293/.297/.299 compliance history an operator or an insurer may ask to see.",
+  },
+  {
+    href: "/settings/export/aircraft",
+    title: "Aircraft",
+    description:
+      "Your own fleet register: tail number, type designator, type rating, make/model, category/class and gear.",
+  },
+  {
+    href: "/settings/export/client-rates",
+    title: "Client rates",
+    description:
+      "Per-client day-type rate overrides: which day type, at what rate, for which client.",
+  },
+  {
+    href: "/settings/export/client-tax-forms",
+    title: "Client 1099s",
+    description:
+      "The 1099 each client reported for each tax year, as the client reported it — for reconciling against your own payment ledger.",
+  },
+  {
+    href: "/settings/export/guarantee-periods",
+    title: "Guarantee periods",
+    description:
+      "Monthly minimum-day guarantees by client: guaranteed days, and the invoice that settled a shortfall if one was billed.",
+  },
+  {
+    href: "/settings/export/bank-accounts",
+    title: "Bank accounts",
+    description: "The accounts you've connected for statement import: label, last 4 digits, and kind.",
+  },
+  {
+    href: "/settings/export/bank-transactions",
+    title: "Bank transactions",
+    description:
+      "Every imported statement line: date, description, amount, review state, category and treatment, with the business/personal triage you made.",
+  },
+  {
+    href: "/settings/export/accounts-chart",
+    title: "Chart of accounts",
+    description: "The accounting ledger's account list: name and kind (asset, liability, equity, income, expense).",
+  },
+  {
+    href: "/settings/export/journal-entries",
+    title: "Journal entries",
+    description:
+      "The accounting ledger's entries: date, memo, and what generated each one (an invoice, a payment, an expense…).",
+  },
+  {
+    href: "/settings/export/journal-lines",
+    title: "Journal lines",
+    description: "Every debit and credit line under every journal entry, with the account it posted to.",
+  },
+  {
+    href: "/settings/export/invoice-late-fees",
+    title: "Late fees",
+    description:
+      "Late fees charged on overdue invoices: the invoice that was late, the fee invoice raised for it, and how it was calculated.",
+  },
+  {
+    href: "/settings/export/recurring-invoice-schedules",
+    title: "Recurring invoice schedules",
+    description: "Standing recurring-invoice setups: client, cadence, amount, and whether each is still active.",
+  },
+  {
+    href: "/settings/export/day-types",
+    title: "Day types",
+    description:
+      "Your day-type configuration: label, billable and per-diem flags, default rate, and the invoice line type it generates.",
+  },
+  {
+    href: "/settings/export/mileage-rates",
+    title: "Mileage rates",
+    description: "The standard mileage rate you set for each tax year, in cents per mile.",
+  },
 ];
 
 export default async function ExportPage() {
@@ -106,7 +185,7 @@ export default async function ExportPage() {
   return (
     <PageShell
       title="Export your data"
-      subtitle="One CSV per record type — everything this product holds for you, in files a spreadsheet can open."
+      subtitle="One CSV per record type — every business, compliance and accounting record this product holds for you, in files a spreadsheet can open."
     >
       <Flex direction="column" gap="3">
         <Text size="2" color="gray">
@@ -179,7 +258,9 @@ export default async function ExportPage() {
           Not included as files: receipt images and document scans. The
           expenses and documents CSVs say whether a file is on record; the
           files themselves stay downloadable one at a time from their own
-          pages.
+          pages. Also not included: internal bookkeeping trails with no
+          data of your own in them — bank-import batch/source-file records
+          and payment-reminder send logs.
         </Text>
       </Flex>
     </PageShell>

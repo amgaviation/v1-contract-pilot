@@ -37,13 +37,60 @@ database there.
 
 ## What is here now
 
-| File | Module under test |
-|---|---|
-| `money.test.mjs` | `lib/bank-import/amount.ts`, `lib/format.ts` |
-| `statement-parsing.test.mjs` | `lib/bank-import/{csv,apply-mapping,ofx,date}.ts` |
-| `receipt-extract.test.mjs` | `lib/receipt-ocr/extract.ts` |
-| `receipt-trip-match.test.mjs` | `lib/receipt-ocr/match-trip.ts` |
-| `connect-auto-payment.test.mjs` | `lib/stripe/connect-payments.ts` |
+*Refreshed 2026-08-14 — 48 files, 608 `test(...)` cases via `npm run
+test:unit`. Both numbers move often; re-run `grep -c '^test(' tests/*.test.mjs`
+before trusting this table on anything but the file list and rough shape.*
+
+| File | Tests | Module under test |
+|---|--:|---|
+| `account-export.test.mjs` | 22 | `lib/csv.ts`, `app/(app)/settings/export/entities.ts` row mappers |
+| `accounting-lib.test.mjs` | 19 | `app/(app)/accounting/ledger-lib.ts`, `lib/accounting-export.ts` |
+| `airman-certificates.test.mjs` | 1 | `lib/airman.ts` |
+| `bank-fingerprint.test.mjs` | 7 | `lib/bank-import/fingerprint.ts`, `lib/logbook-import/fingerprint.ts` |
+| `billing-seats-and-status.test.mjs` | 4 | `lib/entitlements.ts` (`seatsForTier`, writable statuses) |
+| `billing-state.test.mjs` | 16 | `lib/billing-state.ts`, `lib/entitlements.ts` |
+| `connect-auto-payment.test.mjs` | 51 | `lib/stripe/connect-payments.ts` |
+| `cron-allowlist.test.mjs` | 3 | `lib/supabase/proxy.ts` (static read of the allow-list, not an import) |
+| `csv-guard.test.mjs` | 5 | `lib/csv.ts` (the formula-injection guard) |
+| `currency-ui.test.mjs` | 7 | `app/(app)/currency/presentation.ts` |
+| `currency.test.mjs` | 92 | `lib/currency/*` — the whole currency/legality engine |
+| `custom-options.test.mjs` | 5 | `lib/custom-options.ts` |
+| `customer-statement.test.mjs` | 12 | `app/(app)/clients/[id]/statement/{statement-lib,statement-html}.ts` |
+| `dashboard-path.test.mjs` | 1 | `lib/nav.ts`, `app/robots.ts` |
+| `entitlements.test.mjs` | 9 | `lib/entitlements.ts` |
+| `estimate-lib.test.mjs` | 6 | `app/(app)/estimates/estimate-lib.ts` |
+| `estimate-message.test.mjs` | 10 | `lib/email/estimate-message.ts` |
+| `flight-time.test.mjs` | 13 | `app/(app)/reports/flight-time/report-lib.ts` |
+| `invoice-message.test.mjs` | 9 | `lib/email/{address,invoice-message}.ts`, `lib/message-templates.ts` |
+| `invoice-receipts.test.mjs` | 3 | `lib/invoice-receipts.ts`, `lib/email/invoice-message.ts` |
+| `logbook-draft.test.mjs` | 7 | `app/(app)/logbook/db.ts` |
+| `logbook-import-logten.test.mjs` | 2 | `lib/logbook-import/logten.ts` |
+| `logbook-import-time.test.mjs` | 5 | `lib/logbook-import/generic.ts` |
+| `logbook-views.test.mjs` | 23 | `lib/logbook-views.ts` |
+| `marketing-pricing-model.test.mjs` | 8 | `lib/entitlements.ts`, `lib/format.ts`, `lib/nav.ts` |
+| `mileage.test.mjs` | 5 | `lib/mileage.ts` |
+| `money.test.mjs` | 5 | `lib/bank-import/amount.ts`, `lib/format.ts` |
+| `nav-layout.test.mjs` | 4 | `lib/nav.ts`, `app/robots.ts` |
+| `password-policy.test.mjs` | 6 | `lib/password-policy.ts` |
+| `payment-insight.test.mjs` | 9 | `app/(app)/clients/[id]/payment-insight.ts` |
+| `payment-methods.test.mjs` | 11 | `lib/stripe/payment-methods.ts` |
+| `pilot-history.test.mjs` | 36 | `app/(app)/reports/pilot-history/report-lib.ts` |
+| `receipt-extract.test.mjs` | 20 | `lib/receipt-ocr/extract.ts` |
+| `receipt-trip-match.test.mjs` | 4 | `lib/receipt-ocr/match-trip.ts` |
+| `recurring-schedule.test.mjs` | 8 | `app/(app)/invoices/recurring/actions.ts` |
+| `reminder-schedule.test.mjs` | 11 | `lib/reminders/policy.ts`, `lib/email/invoice-message.ts` |
+| `reset-password-recovery-proof.test.mjs` | 4 | static read of the `/reset-password` route source (not an import) |
+| `safe-next.test.mjs` | 1 | `lib/safe-next.ts` |
+| `sales-tax.test.mjs` | 22 | `app/(app)/reports/sales-tax/report-lib.ts` |
+| `statement-parsing.test.mjs` | 9 | `lib/bank-import/{csv,apply-mapping,ofx,date}.ts` |
+| `stripe-webhook-decisions.test.mjs` | 3 | `lib/stripe/webhook-decisions.ts` |
+| `theme-slots.test.mjs` | 3 | `lib/theme-slots.ts` |
+| `travel-log.test.mjs` | 10 | `app/(app)/reports/year-end/travel-log.ts` |
+| `trip-day-quantity.test.mjs` | 8 | `lib/trip-value.ts` |
+| `trip-day-utils.test.mjs` | 6 | `app/(app)/trips/day-utils.ts` |
+| `trip-pl.test.mjs` | 37 | `app/(app)/reports/trip-pl/report-lib.ts` |
+| `trip-settlement.test.mjs` | 9 | `lib/trip-settlement.ts` |
+| `unbilled-money.test.mjs` | 37 | `lib/trip-value.ts` |
 
 `connect-auto-payment.test.mjs` is the clearest illustration of the split
 above. It pins the DECISIONS that move money when a client pays an invoice

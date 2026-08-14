@@ -64,8 +64,8 @@ export default function TaxFormEditor({
   return (
     <Box
       style={{
-        border: "1px solid var(--gray-a5)",
-        borderRadius: "var(--radius-3)",
+        border: "1px solid var(--edge)",
+        borderRadius: "var(--radius)",
       }}
       p="3"
       mt="2"
