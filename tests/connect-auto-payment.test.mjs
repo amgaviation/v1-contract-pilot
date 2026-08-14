@@ -5,6 +5,8 @@ const {
   ASYNC_FAILURE_EVENT_TYPE,
   AUTO_PAYMENT_EVENT_TYPES,
   CONNECT_ENDPOINT_EVENT_TYPES,
+  CONNECT_ENDPOINT_REGISTER_EVENT_TYPES,
+  DEAUTHORIZED_EVENT_TYPE,
   MANUAL_MATCH_WINDOW_DAYS,
   daysBetweenIsoDates,
   formatCentsPlain,
@@ -651,6 +653,23 @@ test("the endpoint listens to three types; only two can become money", () => {
   ]);
   assert.equal(ASYNC_FAILURE_EVENT_TYPE, "checkout.session.async_payment_failed");
   assert.ok(!AUTO_PAYMENT_EVENT_TYPES.includes(ASYNC_FAILURE_EVENT_TYPE));
+
+  // THE REGISTRATION LIST IS WIDER THAN THE PAYMENT LIST, and that gap is
+  // the point: the route acts on a deauthorization, so an operator must
+  // subscribe to it, but it must never be eligible for the payment
+  // decision layer. These drifted apart once already — the route grew the
+  // branch and the documented list stayed at three, so a revoked grant
+  // went on looking connected.
+  assert.deepEqual([...CONNECT_ENDPOINT_REGISTER_EVENT_TYPES], [
+    "checkout.session.completed",
+    "checkout.session.async_payment_succeeded",
+    "checkout.session.async_payment_failed",
+    "account.application.deauthorized",
+  ]);
+  assert.ok(
+    !CONNECT_ENDPOINT_EVENT_TYPES.includes(DEAUTHORIZED_EVENT_TYPE),
+    "a deauthorization must never reach the payment decision layer"
+  );
 });
 
 test("INITIATED: an authorised bank debit is surfaced without being recorded", () => {

@@ -28,11 +28,14 @@ const initialState: DisconnectState = { error: null };
  * must not do twice. See payment-panel.tsx's header for the full picture.
  */
 export default function ConnectPanel({
+  configured,
   canEdit,
   connected,
   warning,
   justConnected,
 }: {
+  /** STRIPE_CONNECT_CLIENT_ID is set on this deployment — resolved server-side. */
+  configured: boolean;
   canEdit: boolean;
   connected: boolean;
   warning?: string;
@@ -102,6 +105,20 @@ export default function ConnectPanel({
               ) : null}
             </Flex>
           </Flex>
+        ) : !configured ? (
+          /* STRIPE_CONNECT_CLIENT_ID is unset on this deployment, so the
+             OAuth hop cannot be built. Said plainly here rather than left
+             to startConnectOnboarding, where connectClientId() throws:
+             inside a server action that throw becomes an unhandled 500 and
+             the pilot reads a blank error page after clicking a button the
+             product offered them. Same posture the reminders panel takes
+             when CRON_SECRET is missing — a control that cannot work is
+             not shown as though it can. */
+          <Text size="2" color="gray">
+            Online payments aren&rsquo;t switched on for this deployment yet, so
+            there&rsquo;s nothing to connect to. Invoices still send and can be
+            paid the way they are today.
+          </Text>
         ) : canEdit ? (
           <form action={startConnectOnboarding}>
             <Button type="submit" style={{ width: "100%" }}>

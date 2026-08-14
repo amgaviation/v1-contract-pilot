@@ -313,6 +313,7 @@ export default async function SettingsPage({
                 </Flex>
               </Card>
               <ConnectPanel
+                configured={Boolean(process.env.STRIPE_CONNECT_CLIENT_ID)}
                 canEdit={canEdit}
                 connected={Boolean(account.connect_account_id)}
                 warning={warning}
