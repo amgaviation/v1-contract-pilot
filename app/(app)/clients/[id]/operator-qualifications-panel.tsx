@@ -110,16 +110,6 @@ export default function OperatorQualificationsPanel({
     <Card size="3">
       <Flex direction="column" gap="1" mb="3">
         <Heading as="h3" size="4">Operator qualifications</Heading>
-        <Text size="2" color="gray">
-          What {clientName} has told or shown you about your standing on their certificate —
-          training, checks, and program status. This is a record of what you were told, not a
-          determination that you are on {clientName}&rsquo;s certificate; only the operator can
-          say that. 135.293(a)/(b), 135.297, and 135.299&rsquo;s valid-through dates are computed
-          for you from the completion date, including the 135.301(a) one-month-early/one-month-late
-          allowance — that computation is a planning aid, not a determination of regulatory
-          compliance; you and the operator remain responsible for that. Everything else here is a
-          date you enter directly.
-        </Text>
         {showPart135 ? null : (
           <Callout.Root color="gray" size="1">
             <Callout.Text>

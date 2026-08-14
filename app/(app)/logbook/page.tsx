@@ -408,16 +408,6 @@ export default async function LogbookPage({
                     <Heading as="h2" size="4">
                       Hours by type
                     </Heading>
-                    <Text size="2" color="gray">
-                      What an insurance pilot-history form asks for, and what a chief
-                      pilot asks on the phone.{" "}
-                      <Link asChild>
-                        <NextLink href="/reports/pilot-history">
-                          See your full pilot history
-                        </NextLink>
-                      </Link>
-                      .
-                    </Text>
                   </Flex>
                   <Button asChild variant="outline">
                     <NextLink href="/logbook/aircraft">Your aircraft</NextLink>

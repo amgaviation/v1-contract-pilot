@@ -48,13 +48,6 @@ export default function ConnectPanel({
       <Flex direction="column" gap="3" p="1">
         <Flex direction="column" gap="1">
           <Heading size="4">Get paid online</Heading>
-          <Text size="2" color="gray">
-            Connect your own Stripe account so clients can pay an invoice online,
-            by card or by bank payment (ACH). You&rsquo;re the merchant of record —
-            payments settle straight to your own Stripe balance. This platform
-            never sees your Stripe keys, never holds your funds, and never takes
-            a cut.
-          </Text>
         </Flex>
 
         {warning ? (

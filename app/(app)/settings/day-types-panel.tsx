@@ -17,11 +17,6 @@ export default function DayTypesPanel({
     <Flex direction="column" gap="4">
       <Flex direction="column" gap="1">
         <Heading as="h3" size="4">Day types</Heading>
-        <Text size="2" color="gray">
-          What a day of work is called on your trips, and how it bills. Rename any of these
-          freely. Archive one you no longer use instead of deleting it — trips already recorded
-          still need it to render.
-        </Text>
       </Flex>
 
       <Flex direction="column" gap="3">

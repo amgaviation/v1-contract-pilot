@@ -9,7 +9,7 @@ import {
   Switch,
   Text,
 } from "@/components/ui";
-import { NAV_SETTINGS, type NavItem, type NavLayout } from "@/lib/nav";
+import { type NavItem, type NavLayout } from "@/lib/nav";
 import {
   saveNavArrangement,
   type CustomizationFormState,
@@ -105,13 +105,6 @@ export default function LayoutPanel({
         <Heading as="h3" size="4">
           Navigation
         </Heading>
-        <Text size="2" color="gray">
-          The order of the sections in the rail, and which of them it shows. Hiding a
-          section only takes it out of the rail — the screen still works, its links
-          from other screens still open it, and a bookmark still gets you there. Your
-          records are untouched either way. {NAV_SETTINGS.label} always stays visible,
-          so you can always get back here.
-        </Text>
         {/* Said here rather than discovered in the rail. The group
             headings only survive while each group is still one unbroken
             run — see navGroupsAreContiguous in lib/nav.ts and the rail's

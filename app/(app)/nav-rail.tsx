@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { Box, Flex, Separator, Text } from "@/components/ui";
 import {
   NAV_SETTINGS,
+  NAV_HELP,
   isCurrentSection,
   navGroupsAreContiguous,
   type NavItem,
@@ -27,7 +28,7 @@ import {
  * the list is filtered by the server-only currency flag
  * (lib/nav.ts visibleNavSections + lib/currency/gate.ts), which a client
  * component cannot read. Both shapes below render off the SAME passed
- * list plus NAV_SETTINGS — never a second, duplicated one.
+ * list plus NAV_SETTINGS and NAV_HELP — never a second, duplicated one.
  *
  * H9: renders two visual shapes — a vertical rail for `sm` and up, and a
  * horizontally-scrolling strip below it. Both are always in the DOM;
@@ -166,6 +167,7 @@ export function NavRail({
         </Box>
 
         <RailLink item={NAV_SETTINGS} pathname={pathname} />
+        <RailLink item={NAV_HELP} pathname={pathname} />
 
         {/* The account this session is acting for. Pinned to the bottom
             because it answers "whose data am I looking at" — a question
@@ -193,7 +195,7 @@ export function NavRail({
  */
 export function NavStrip({ sections }: { sections: readonly NavItem[] }) {
   const pathname = usePathname();
-  const items: NavItem[] = [...sections, NAV_SETTINGS];
+  const items: NavItem[] = [...sections, NAV_SETTINGS, NAV_HELP];
   const currentRef = React.useRef<HTMLAnchorElement | null>(null);
 
   // SCROLL THE CURRENT SECTION INTO VIEW.

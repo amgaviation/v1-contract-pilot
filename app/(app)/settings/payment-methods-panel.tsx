@@ -100,11 +100,6 @@ export default function PaymentMethodsPanel({
 
           <Flex direction="column" gap="1">
             <Heading size="4">How clients can pay</Heading>
-            <Text size="2" color="gray">
-              What a new payment link offers. It doesn&rsquo;t change a link
-              you&rsquo;ve already sent — a link&rsquo;s payment options are fixed
-              when it&rsquo;s created, so change this and generate a new one.
-            </Text>
           </Flex>
 
           <RadioGroup.Root

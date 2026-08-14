@@ -77,11 +77,6 @@ export default function CategoriesPanel({
         <Heading as="h3" size="4">
           Your categories
         </Heading>
-        <Text size="2" color="gray">
-          The words the pickers use. Renaming one changes it everywhere at once,
-          including on records you filed years ago — the name is a label over a
-          stable code underneath, so nothing you have already saved moves.
-        </Text>
       </Flex>
 
       {/*
@@ -133,9 +128,6 @@ export default function CategoriesPanel({
               <Heading as="h4" size="3">
                 {copy.title}
               </Heading>
-              <Text size="2" color="gray">
-                {copy.blurb}
-              </Text>
               <Text size="1" color="gray">
                 {copy.where}
                 {canRetireAny

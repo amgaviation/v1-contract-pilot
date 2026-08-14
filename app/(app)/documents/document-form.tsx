@@ -133,10 +133,6 @@ export default function DocumentForm({
 
           <Flex direction="column" gap="1">
             <Heading as="h2" size="4">Dates</Heading>
-            <Text size="2" color="gray">
-              Enter the dates exactly as printed on the document. Nothing here is calculated
-              from the other — an issue date does not imply an expiration.
-            </Text>
           </Flex>
           <Grid columns={{ initial: "1", md: "2" }} gap="3">
             <Flex direction="column" gap="1">

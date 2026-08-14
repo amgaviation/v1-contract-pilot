@@ -198,11 +198,6 @@ export default async function AircraftPage() {
                 <Heading as="h2" size="4">
                   Every type you have time in
                 </Heading>
-                <Text size="2" color="gray">
-                  The complete list, in the shape an insurance pilot-history form
-                  asks for. Simulator time is its own column because that form asks
-                  for it separately.
-                </Text>
               </Flex>
 
               {byTypeError ? (

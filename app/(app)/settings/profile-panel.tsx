@@ -85,11 +85,6 @@ export default function ProfilePanel({
         <Heading as="h3" size="4">
           Profile &amp; security
         </Heading>
-        <Text size="2" color="gray">
-          How you sign in. This is about you, not about your business — the name and
-          address that print on your invoices are on the Your business tab, and they
-          don&rsquo;t change when this does.
-        </Text>
       </Flex>
 
       {/* ------------------------------------------------------------ identity */}

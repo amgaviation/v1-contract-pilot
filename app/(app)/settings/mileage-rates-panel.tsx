@@ -65,10 +65,6 @@ export default function MileageRatesPanel({
           <Heading as="h3" size="4">
             Mileage rates
           </Heading>
-          <Text size="2" color="gray">
-            The IRS standard mileage rate changes every year, so it is entered here, per tax year
-            — never assumed by this product. Add each year&rsquo;s rate once you know it.
-          </Text>
         </Flex>
 
         <Callout.Root color="blue">

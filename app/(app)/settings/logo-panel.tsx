@@ -28,9 +28,6 @@ export default function LogoPanel({
       <Flex direction="column" gap="3" p="1">
         <Flex direction="column" gap="1">
           <Heading size="4">Logo</Heading>
-          <Text size="2" color="gray">
-            Printed at the top of your invoices. PNG or JPEG, up to 2 MB.
-          </Text>
         </Flex>
 
         {hasLogo ? (

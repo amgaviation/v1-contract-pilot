@@ -4,7 +4,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const { DASHBOARD_PATH, NAV_SECTIONS, NAV_SETTINGS } = await import("../lib/nav.ts");
+const { DASHBOARD_PATH, NAV_SECTIONS, NAV_SETTINGS, NAV_HELP } = await import("../lib/nav.ts");
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -279,7 +279,11 @@ test("the dashboard's path is written down exactly once", async (t) => {
     const rules = robots().rules;
     const disallow = Array.isArray(rules.disallow) ? rules.disallow : [rules.disallow];
 
-    for (const section of [...NAV_SECTIONS, NAV_SETTINGS]) {
+    // NAV_HELP is in this list for the same reason NAV_SETTINGS is: it
+    // sits outside NAV_SECTIONS (so the tenant cannot hide it), which is
+    // exactly how a signed-in path quietly escapes a check that only walks
+    // the sections array.
+    for (const section of [...NAV_SECTIONS, NAV_SETTINGS, NAV_HELP]) {
       assert.ok(
         disallow.includes(section.href),
         `robots.txt does not disallow ${section.href} (${section.label}) — a ` +

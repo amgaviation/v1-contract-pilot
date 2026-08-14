@@ -90,13 +90,6 @@ export default function FleetPanel({
                   ? `${suggestions.length} of the tails you've flown but haven't added`
                   : `${suggestions.length} tail${suggestions.length === 1 ? "" : "s"} you've flown but haven't added`}
               </Heading>
-              <Text size="2" color="gray">
-                Adding one groups every entry you already logged in it — however you
-                spelled the registration at the time — under a make and model.
-                {moreSuggestions
-                  ? " There are more than fit here; add these and the next few will appear."
-                  : ""}
-              </Text>
             </Flex>
             <Flex gap="2" wrap="wrap">
               {suggestions.map((suggestion) => (
