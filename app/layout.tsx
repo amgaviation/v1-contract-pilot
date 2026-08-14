@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { Theme } from "@/components/ui";
-import "@radix-ui/themes/styles.css";
 import { fontVariables } from "@/lib/fonts";
 import { BRAND, THEME_COLOR } from "@/lib/brand";
+import "./design/tokens.css";
+import "./design/system.generated.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -59,8 +59,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  // One value: the <Theme> below is pinned appearance="light", so there is
-  // no dark browser chrome to match and no media-query split is needed.
+  // One value: the root is stamped data-appearance="light" below, so there is
+  // no dark browser chrome to match and no media-query split is needed. A
+  // tenant who chooses dark gets it inside the authenticated shell; the
+  // browser chrome on the signed-out surface stays light either way.
   themeColor: THEME_COLOR,
   width: "device-width",
   initialScale: 1,
@@ -72,92 +74,28 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={fontVariables}>
+    <html
+      lang="en"
+      className={fontVariables}
+      // THE DESIGN SYSTEM IS THESE THREE ATTRIBUTES plus app/design/tokens.css.
+      // There is no <Theme> component any more: the palette, the space scale
+      // and the control heights are all declared against [data-appearance],
+      // [data-accent] and [data-density], and custom properties inherit — so
+      // the root defaults set here are what every page gets, and the
+      // authenticated shell re-stamps them from the tenant's saved
+      // preferences for its own subtree (app/(app)/app-shell.tsx).
+      //
+      // The signed-out surface — marketing, auth, the public invoice and
+      // packet pages — deliberately never reads a preference and stays on
+      // these defaults. A pilot's client opening an invoice link should see
+      // the product's own look, not the pilot's chosen accent.
+      data-appearance="light"
+      data-accent="indigo"
+      data-density="compact"
+    >
       <body>
-        {/*
-          THE ENTIRE VISUAL SYSTEM IS THIS ONE ELEMENT.
 
-          Radix Themes owns every colour, radius, space step and type
-          ramp in the product. There is no token file to maintain, no
-          theme object to extend, and no component stylesheet — restyling
-          the app means changing the props below (plus the one small
-          defaults file, components/ui/index.tsx, that holds component-level
-          defaults such as Card's variant) and nothing else. That is the
-          whole reason this product is on Radix Themes rather than a
-          hand-built system: the previous three attempts each died the
-          same way, as a written spec that the code drifted away from.
-
-          The six knobs, and why each is set where it is (values per the
-          2026-08 design rebuild — docs/design/REBUILD-BRIEF.md):
-
-          accentColor="indigo"  Was "blue" (the nearest Radix scale to the
-                                logo's Signal Blue). Indigo (--indigo-9,
-                                #3E63DD) sits in the same hue family as the
-                                marketing navy #0B1F33, so the app accent,
-                                the marketing ground and the dark nav rail
-                                read as one blue-family system — while the
-                                Signal Blue bug (#036BFC) still pops against
-                                all three. The mark itself is NOT retinted
-                                from this — see globals.css: the wordmark
-                                and bug are brand constants.
-          grayColor="auto"      Pairs the grey to the accent. For an indigo
-                                accent, Radix's getMatchingGrayColor
-                                resolves "auto" to slate — the same grey it
-                                resolved for blue — so the accent change
-                                moved nothing here, which is the coupling
-                                working as designed. lib/brand.ts's
-                                THEME_COLOR literal asserts the slate-1
-                                match explicitly and was re-checked for
-                                indigo (still slate, still #fcfcfd).
-          radius="small"        Was "none" — an explicit owner choice at
-                                the time, superseded by the owner's rebuild
-                                order (REBUILD-BRIEF.md §3). "none" read
-                                brutalist; "small" is the precision-
-                                instrument register dense pro tools use.
-                                "medium" is consumer-soft; rejected.
-          scaling="90%"         Tighter than Radix's default, so a month of
-                                trips or a year of logbook entries fits
-                                without scrolling.
-          panelBackground="solid"
-                                The one idea worth carrying over from the
-                                design system this replaces: a pilot
-                                compares a column of decimal hours, and a
-                                translucent panel behind a figure trades
-                                legibility for decoration. Radix's default
-                                is "translucent"; this product opts out —
-                                doubly load-bearing now that surface Cards
-                                are the product's default panel.
-          appearance="light"    The app is pinned to light and no longer
-                                follows the reader's OS preference. This
-                                replaces the earlier "inherit from a
-                                `.light`/`.dark` class, stamped by an inline
-                                <head> script reading matchMedia" approach.
-                                That script and the second (dark)
-                                `viewport.themeColor` entry existed only to
-                                serve OS-following dark mode; with
-                                appearance pinned, both were dead weight and
-                                have been removed, along with the
-                                `suppressHydrationWarning` on <html> that
-                                existed only to tolerate the script stamping
-                                a class the server couldn't know about.
-                                The one dark surface in the product is the
-                                nav rail: a nested <Theme appearance="dark">
-                                in app/(app)/layout.tsx, server-rendered
-                                (no flash, no hydration concern), which
-                                inherits this accent/gray pairing so the
-                                rail is the same indigo/slate system on a
-                                dark ground.
-        */}
-        <Theme
-          accentColor="indigo"
-          grayColor="auto"
-          radius="small"
-          scaling="90%"
-          panelBackground="solid"
-          appearance="light"
-        >
-          {children}
-        </Theme>
+        {children}
       </body>
     </html>
   );

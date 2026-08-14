@@ -32,6 +32,13 @@ jobs:
 
       - run: npm test
 
+      # The generated stylesheet is committed, so it can go stale the moment
+      # someone edits lib/ds/scales.ts without re-running the generator — and
+      # a stale stylesheet fails SILENTLY, as a prop that renders nothing at
+      # one breakpoint. --check compares the committed file against a fresh
+      # render and fails loudly instead.
+      - run: npm run design:css:check
+
       - run: npm run build
 
   # The responsive contract — docs/RESPONSIVE-CONTRACT.md.

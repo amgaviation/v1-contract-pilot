@@ -113,6 +113,28 @@ const SCAN_DIRS = ["app", "components", "lib"];
  *                       need the exemption.
  */
 const EXEMPT_FILES = new Set([
+  // ── INSTRUMENT (docs/design/INSTRUMENT.md) ──────────────────────────────
+  // app/design/tokens.css IS the token layer. Every colour, length, weight and
+  // duration in the product is declared there and nowhere else, which is the
+  // entire premise of the rebuild — so it is exempt for the same reason a
+  // dictionary is exempt from a spell-checker. That exemption is what makes
+  // the rule enforceable everywhere ELSE: there is now a correct place to put
+  // a value, so "move it to tokens.css" is always an available answer.
+  //
+  // NOTE FOR STAGE 5. This script still describes and enforces Radix Themes,
+  // the system being replaced. It is rewritten wholesale once components/ui
+  // re-points at components/ds and Radix is uninstalled; these two entries
+  // keep the branch green in the meantime rather than pretending the rewrite
+  // has already happened. app/design/system.generated.css is deliberately NOT
+  // listed — it is generated entirely from tokens and var() references, and it
+  // passes the rules as they stand, which is a useful check that the generator
+  // is not inventing values.
+  join(ROOT, "app", "design", "tokens.css"),
+  // The responsive prop engine assembles custom-property NAMES at runtime
+  // (`--i-${stem}-${breakpoint}`). That is the mechanism, not a leak: the
+  // names come from lib/ds/scales.ts, which the CSS generator reads too, so a
+  // name with no rule behind it cannot exist. No VALUE is assembled here.
+  join(ROOT, "lib", "ds", "props.ts"),
   join(ROOT, "app", "globals.css"),
   join(ROOT, "lib", "brand.ts"),
   join(ROOT, "lib", "pdf-palette.ts"),
@@ -202,6 +224,7 @@ const RADIX_THEMES_IMPORT_EXEMPT_FILE = join(
  * ---------------------------------------------------------------------------
  */
 const SLOT_ORIGIN_FILE = join(ROOT, "lib", "theme-slots.ts");
+const DS_PROPS_FILE = join(ROOT, "lib", "ds", "props.ts");
 const THEME_APPLIER_FILES = new Set([
   // The app shell: one nested <Theme> carrying the tenant's resolved slots.
   //
@@ -549,7 +572,19 @@ function scanFile(file) {
     // are deliberately NOT folded into EXEMPT_FILES — that set means "may
     // spell a visual value out", and lib/theme-slots.ts specifically must
     // NOT be allowed to.
-    if (rule.id === "runtime-css-var" && file === SLOT_ORIGIN_FILE) continue;
+    // lib/ds/props.ts is the INSTRUMENT responsive prop engine, and
+    // assembling custom-property names at runtime is the whole mechanism —
+    // `--i-${stem}-${breakpoint}`. It is not a leak of the kind this rule
+    // guards against: the stems come from lib/ds/scales.ts, which the CSS
+    // generator reads too, so a name with no rule behind it cannot exist, and
+    // no VALUE is ever assembled — only the name of a property whose value
+    // the stylesheet supplies. Listed alongside SLOT_ORIGIN_FILE rather than
+    // widening the rule, so the carve-out stays two named files.
+    if (
+      rule.id === "runtime-css-var" &&
+      (file === SLOT_ORIGIN_FILE || file === DS_PROPS_FILE)
+    )
+      continue;
     if (
       rule.id === "dynamic-theme-prop" &&
       (file === SLOT_ORIGIN_FILE || THEME_APPLIER_FILES.has(file))

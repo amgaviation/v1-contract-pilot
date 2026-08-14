@@ -1,0 +1,496 @@
+/* ===========================================================================
+   INSTRUMENT — the token layer.
+
+   EVERY colour, length, weight, duration and easing in this product is
+   declared in this file and nowhere else. Components reach them by name
+   through var(); scripts/verify-tokens.mjs fails the build on any literal
+   written outside this file.
+
+   That is not a style preference, it is the counter-measure to the specific
+   way the three previous visual systems in this codebase died: each was a
+   written spec that the code drifted away from, one 2am hex code at a time.
+   Drift is only possible when a component CAN spell a value out. Here it
+   cannot.
+
+   Read docs/design/INSTRUMENT.md for the reasoning behind the choices; this
+   file is the values themselves.
+
+   ORGANISATION
+     1. Brand constants      — trademark artwork, deliberately outside the scales
+     2. Palette              — raw ramps, light
+     3. Semantic roles       — what components actually reference
+     4. Type                 — families, sizes, weights, tracking
+     5. Space / size / radius
+     6. Motion
+     7. Elevation
+     8. Dark                 — a second design, not an inversion
+     9. Density slots        — compact / default / roomy
+   =========================================================================== */
+
+/* --- 1. BRAND CONSTANTS ---------------------------------------------------
+   The V1 mark. These are trademark artwork and are deliberately NOT wired to
+   the semantic scale: re-pointing the mark at an accent role would mean a
+   future palette change silently retints the logo. The wordmark inverts on a
+   dark ground (the logo kit's own rule); the bug is one blue everywhere,
+   specified that way precisely so there is no light-ground substitute to
+   remember. */
+:root {
+  --brand-mark: #000000;
+  --brand-bug: #036bfc;
+  --brand-mark-size: 20px;
+  /* The marketing surface's navy, baked into public/brand/*.svg. A panel
+     next to one of those marks has to be the same navy, not a near-miss the
+     eye catches. */
+  --brand-navy: #0b1f33;
+  --brand-navy-2: #123152;
+  --brand-navy-3: #1b4c7d;
+  --brand-navy-ink: #ffffff;
+  --brand-navy-ink-muted: #b9cbdd;
+  --brand-navy-line: rgba(255, 255, 255, 0.14);
+  --brand-navy-fill: rgba(255, 255, 255, 0.06);
+  --brand-glow: rgba(3, 107, 252, 0.35);
+}
+
+/* --- 2 & 3. PALETTE AND SEMANTIC ROLES, LIGHT -----------------------------
+   The neutrals are WARM. This is the most visible break from the system this
+   replaces, whose slate ramp was blue-grey and made every surface read cold.
+   A pilot reads this on a ramp in daylight; warm paper is easier on the eye
+   for long document work and gives the product an identity the cool ramp
+   never had.
+
+   Ink steps are three, not seven. A seven-step text ramp sounds flexible and
+   in practice means nobody can tell which step a given label should be, so
+   every screen picks differently. Three steps — primary, secondary,
+   tertiary — is a decision the call site cannot get wrong. */
+:root {
+  color-scheme: light;
+
+  --ink: #17150f;
+  --ink-2: #4a463c;
+  --ink-3: #7a7466;
+
+  --paper: #fffefc;
+  --canvas: #f2f0ea;
+  --sunk: #e8e5dc;
+  --hair: #dbd7cc;
+  --edge: #c4beaf;
+
+  /* Signal — LIVE things only: links, focus, current section, active filter.
+     Not "the primary button". The primary button is ink (see --btn-* below),
+     which is what keeps signal meaning something when it does appear. */
+  --signal: #0b5fd9;
+  --signal-ink: #ffffff;
+  --signal-soft: #e7effc;
+  --signal-edge: #b7cff3;
+
+  --ok: #1b6b3a;
+  --ok-ink: #ffffff;
+  --ok-soft: #e4f0e8;
+  --ok-edge: #b4d5c1;
+
+  --caution: #8a5a00;
+  --caution-ink: #ffffff;
+  --caution-soft: #f8eeda;
+  --caution-edge: #e2cb98;
+
+  --warn: #a32b18;
+  --warn-ink: #ffffff;
+  --warn-soft: #fbe9e6;
+  --warn-edge: #eebfb6;
+
+  /* Focus. One ring, everywhere, always visible — never removed, only ever
+     moved onto the right element. 2px at 2px offset clears WCAG 2.4.11's
+     minimum area on every control in the system. */
+  --focus-ring: 0 0 0 2px var(--paper), 0 0 0 4px var(--signal);
+
+  /* Selection on a table row or list item. Deliberately the softest signal
+     step: the row is marked, not shouted at. */
+  --selected: var(--signal-soft);
+
+  /* Primary action. Ink, not accent — see docs/design/INSTRUMENT.md, "Ink is
+     the primary action". */
+  --btn-primary-bg: var(--ink);
+  --btn-primary-ink: #fffefc;
+  --btn-primary-bg-hover: #2b2820;
+}
+
+/* --- 3b. TENANT ACCENT SLOTS ----------------------------------------------
+   The one visual value a tenant may change, and it is an ENUMERATED slot, not
+   a colour picker.
+
+   A free hex field is the obvious feature and the wrong one: an arbitrary hue
+   will eventually fail contrast against the white ink on a solid badge or the
+   focus ring on paper, and a pilot cannot be expected to debug that. Eight
+   curated values, each checked against --paper and --signal-ink, keeps it
+   user-friendly AND legible.
+
+   Only --signal moves. Ink, paper, canvas and the four semantic tones are the
+   system's and stay put — otherwise "accent" quietly becomes a reskin and the
+   meaning of `tone="warn"` starts depending on a tenant preference.
+
+   Applied as data-accent on the same element as data-appearance, so the whole
+   set travels together and a nested island inherits consistently. The values
+   are declared per appearance: a mid-tone that reads well on paper is too
+   dark on the near-black ground, so each has a lifted dark counterpart. */
+:root,
+[data-accent="indigo"] {
+  --signal: #3a52c9;
+  --signal-soft: #e9ecfb;
+  --signal-edge: #bfc8f0;
+}
+[data-accent="blue"] {
+  --signal: #0b5fd9;
+  --signal-soft: #e7effc;
+  --signal-edge: #b7cff3;
+}
+[data-accent="cyan"] {
+  --signal: #0b6b80;
+  --signal-soft: #e0f0f4;
+  --signal-edge: #a8d2dd;
+}
+[data-accent="teal"] {
+  --signal: #0a6b63;
+  --signal-soft: #e0f1ef;
+  --signal-edge: #a6d5cf;
+}
+[data-accent="jade"] {
+  --signal: #146b45;
+  --signal-soft: #e3f1ea;
+  --signal-edge: #aed5c2;
+}
+[data-accent="violet"] {
+  --signal: #5b3fc4;
+  --signal-soft: #eeeafb;
+  --signal-edge: #cabff0;
+}
+[data-accent="plum"] {
+  --signal: #8a2f75;
+  --signal-soft: #f7e8f4;
+  --signal-edge: #e2bcd9;
+}
+[data-accent="bronze"] {
+  --signal: #7a4a2c;
+  --signal-soft: #f3eae3;
+  --signal-edge: #dcc4b1;
+}
+
+/* The dark counterparts, one per slot. Lifted, because a mid-tone that reads
+   correctly on paper disappears into the near-black canvas.
+
+   Compound selectors, not descendant ones: data-appearance and data-accent
+   are stamped on the SAME element (the root, or the rail island), so
+   [data-appearance="dark"][data-accent="teal"] is the shape that actually
+   matches. A descendant selector would have silently failed for every
+   tenant. The no-accent dark default lives in section 8. */
+[data-appearance="dark"][data-accent="indigo"] {
+  --signal: #8b9cf0;
+  --signal-soft: #1c2140;
+  --signal-edge: #343d68;
+}
+[data-appearance="dark"][data-accent="blue"] {
+  --signal: #6ea8f5;
+  --signal-soft: #16233a;
+  --signal-edge: #2c4468;
+}
+[data-appearance="dark"][data-accent="cyan"] {
+  --signal: #5cb6cc;
+  --signal-soft: #10262d;
+  --signal-edge: #22454f;
+}
+[data-appearance="dark"][data-accent="teal"] {
+  --signal: #4fb5aa;
+  --signal-soft: #0f2624;
+  --signal-edge: #204540;
+}
+[data-appearance="dark"][data-accent="jade"] {
+  --signal: #5fbe86;
+  --signal-soft: #14261b;
+  --signal-edge: #2a4a35;
+}
+[data-appearance="dark"][data-accent="violet"] {
+  --signal: #a48bf0;
+  --signal-soft: #221a3d;
+  --signal-edge: #3d3166;
+}
+[data-appearance="dark"][data-accent="plum"] {
+  --signal: #d07ac0;
+  --signal-soft: #2e1a2a;
+  --signal-edge: #52304a;
+}
+[data-appearance="dark"][data-accent="bronze"] {
+  --signal: #c69a78;
+  --signal-soft: #2a2019;
+  --signal-edge: #4a3a2c;
+}
+
+/* --- 4. TYPE --------------------------------------------------------------
+   Three faces, each with exactly one job. The variables are set by
+   lib/fonts.ts via next/font, which self-hosts all three — no CDN request at
+   runtime and no silent fallback on a slow connection. */
+:root {
+  --font-display: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono-face), ui-monospace, "SF Mono", monospace;
+
+  /* Integer pixels at every step. The system this replaces ran at a 90%
+     scaling factor and produced 14.4px and 28.8px — fractional sizes that
+     render soft at some zoom levels, and which put the shell's Sign out
+     button under the WCAG 2.5.8 target-size minimum without anyone
+     noticing. Whole numbers, and density moves SPACE instead (section 9). */
+  --text-1: 11px;
+  --text-2: 13px;
+  --text-3: 15px;
+  --text-4: 18px;
+  --text-5: 22px;
+  --text-6: 28px;
+  --text-7: 36px;
+
+  --lh-1: 16px;
+  --lh-2: 20px;
+  --lh-3: 24px;
+  --lh-4: 26px;
+  --lh-5: 30px;
+  --lh-6: 36px;
+  --lh-7: 44px;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  /* Tracking. Display type tightens as it grows; the small uppercase label
+     used for column heads and eyebrows opens up, because caps at 11px set
+     solid are unreadable. */
+  --track-tight: -0.011em;
+  --track-normal: 0em;
+  --track-caps: 0.06em;
+}
+
+/* --- 5. SPACE, SIZE, RADIUS -----------------------------------------------
+   The space steps are expressed as multiples of --unit so the density slots
+   in section 9 can move all of them with one value. */
+:root {
+  --unit: 4px;
+
+  --space-0: 0px;
+  --space-1: calc(var(--unit) * 1); /*  4 */
+  --space-2: calc(var(--unit) * 2); /*  8 */
+  --space-3: calc(var(--unit) * 3); /* 12 */
+  --space-4: calc(var(--unit) * 4); /* 16 */
+  --space-5: calc(var(--unit) * 6); /* 24 */
+  --space-6: calc(var(--unit) * 8); /* 32 */
+  --space-7: calc(var(--unit) * 12); /* 48 */
+  --space-8: calc(var(--unit) * 16); /* 64 */
+
+  /* Control heights. 32px default: a multiple of the base unit, comfortably
+     clear of WCAG 2.5.8's 24px minimum, and denser than the 36px the
+     previous system defaulted to. */
+  --control-1: 24px;
+  --control-2: 32px;
+  --control-3: 40px;
+
+  --row-height: 38px;
+
+  /* One radius. Not 0 (brutalist, and rejected by the owner once already),
+     not 6+ (consumer-soft). 3px against a 1px border reads as a machined
+     edge, which is the register this product wants. */
+  --radius: 3px;
+  --radius-full: 9999px;
+
+  --hairline: 1px;
+  --rule: 2px;
+
+  /* The reading measure ladder. Applied by the app shell; see
+     docs/RESPONSIVE-CONTRACT.md for why it is a ladder and not one cap. */
+  --measure-md: 1136px;
+  --measure-lg: 1280px;
+  --measure-xl: 1536px;
+
+  --rail-width: 240px;
+}
+
+/* --- 6. MOTION ------------------------------------------------------------
+   Short and few. This is an instrument; nothing should feel like it is
+   playing an animation at you. Every duration here is under 200ms, and the
+   reduced-motion block at the end takes them all to zero. */
+:root {
+  --dur-instant: 80ms;
+  --dur-fast: 120ms;
+  --dur-base: 180ms;
+  --ease: cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+/* --- 7. ELEVATION ---------------------------------------------------------
+   ONE shadow, and it is only for things that genuinely float above the page
+   in the top layer — dialog, dropdown, toast. Flat surfaces are bordered,
+   never shadowed: a card with a shadow on a canvas is decoration, a card
+   with a hairline is structure. */
+:root {
+  --shadow-overlay: 0 8px 32px -8px rgba(23, 21, 15, 0.24),
+    0 2px 8px -2px rgba(23, 21, 15, 0.12);
+  --scrim: rgba(23, 21, 15, 0.44);
+}
+
+/* --- 8. DARK --------------------------------------------------------------
+   A SECOND DESIGN, NOT AN INVERSION.
+
+   The load-bearing decision is that --canvas and --paper swap ROLES rather
+   than values. In light, paper is brighter than the canvas and panels sit ON
+   the ground. Inverting that literally would make panels DARKER than the
+   ground, which reads as a hole rather than a panel. So in dark, the canvas
+   goes to the darker warm near-black and paper LIFTS above it — panels stay
+   panels, and the nav rail stays a raised surface instead of merging into a
+   near-identical near-black.
+
+   The warm cast is kept. A neutral-grey dark mode next to a warm light mode
+   reads as two different products.
+
+   Soft tone fills are much darker and the tone ink flips to the tone colour
+   itself, because a saturated fill that works on paper is a glare source on
+   a dark ground at 5am in an FBO — which is exactly when dark mode is on. */
+/* NOT `:root[data-appearance="dark"]`. The attribute selector is
+   deliberately unanchored so dark can be applied to ANY element, not only
+   <html> — the nav rail is a dark island inside an otherwise light product,
+   and it gets there by carrying data-appearance="dark" itself. Because every
+   token below is a custom property, and custom properties inherit, stamping
+   the attribute on the rail re-declares the whole palette for that subtree
+   and nothing else. That is the entire mechanism for the dark rail; there is
+   no second stylesheet and no component-level override.
+
+   A LIGHT island inside a dark root is deliberately NOT supported. It would
+   mean a third copy of this palette to maintain, and the product has exactly
+   one island (the rail) which is dark in both modes. If that ever changes,
+   add `[data-appearance="light"]` here rather than overriding colours in a
+   component. */
+[data-appearance="dark"] {
+  color-scheme: dark;
+
+  --ink: #f5f2ea;
+  --ink-2: #b3ada0;
+  --ink-3: #837d70;
+
+  --paper: #211f1a;
+  --canvas: #151310;
+  --sunk: #2b2822;
+  --hair: #35312a;
+  --edge: #4a453c;
+
+  --signal: #6ea8f5;
+  --signal-ink: #0b1220;
+  --signal-soft: #16233a;
+  --signal-edge: #2c4468;
+
+  --ok: #5fbe86;
+  --ok-ink: #08160e;
+  --ok-soft: #14261b;
+  --ok-edge: #2a4a35;
+
+  --caution: #d9a441;
+  --caution-ink: #1a1204;
+  --caution-soft: #2b2010;
+  --caution-edge: #4d3c1c;
+
+  --warn: #e8867a;
+  --warn-ink: #1e0a07;
+  --warn-soft: #2e1714;
+  --warn-edge: #552a24;
+
+  --brand-mark: #ffffff;
+
+  --btn-primary-bg: #f5f2ea;
+  --btn-primary-ink: #17150f;
+  --btn-primary-bg-hover: #ffffff;
+
+  --shadow-overlay: 0 8px 32px -8px rgba(0, 0, 0, 0.7),
+    0 2px 8px -2px rgba(0, 0, 0, 0.5);
+  --scrim: rgba(0, 0, 0, 0.62);
+}
+
+/* The reader's OS preference, honoured only when the tenant has not made an
+   explicit choice. data-appearance="light" therefore has to win over this
+   block, which is why the selector excludes it rather than the media query
+   being listed first — specificity, not order, decides. */
+@media (prefers-color-scheme: dark) {
+  :root[data-appearance="system"], [data-appearance="system"] {
+    color-scheme: dark;
+
+    --ink: #f5f2ea;
+    --ink-2: #b3ada0;
+    --ink-3: #837d70;
+
+    --paper: #211f1a;
+    --canvas: #151310;
+    --sunk: #2b2822;
+    --hair: #35312a;
+    --edge: #4a453c;
+
+    --signal: #6ea8f5;
+    --signal-ink: #0b1220;
+    --signal-soft: #16233a;
+    --signal-edge: #2c4468;
+
+    --ok: #5fbe86;
+    --ok-ink: #08160e;
+    --ok-soft: #14261b;
+    --ok-edge: #2a4a35;
+
+    --caution: #d9a441;
+    --caution-ink: #1a1204;
+    --caution-soft: #2b2010;
+    --caution-edge: #4d3c1c;
+
+    --warn: #e8867a;
+    --warn-ink: #1e0a07;
+    --warn-soft: #2e1714;
+    --warn-edge: #552a24;
+
+    --brand-mark: #ffffff;
+
+    --btn-primary-bg: #f5f2ea;
+    --btn-primary-ink: #17150f;
+    --btn-primary-bg-hover: #ffffff;
+
+    --shadow-overlay: 0 8px 32px -8px rgba(0, 0, 0, 0.7),
+      0 2px 8px -2px rgba(0, 0, 0, 0.5);
+    --scrim: rgba(0, 0, 0, 0.62);
+  }
+}
+
+/* --- 9. DENSITY -----------------------------------------------------------
+   Density moves SPACE, not type size.
+
+   The system this replaces faked density with a font-scaling factor, which
+   is where its fractional pixel sizes came from and which coupled two things
+   a user wants to control separately: a pilot with tired eyes wants larger
+   TEXT and tighter SPACING, and a scaling factor cannot express that — it
+   moves both together, in the same direction.
+
+   Here the two axes are independent. --unit and the control heights move;
+   --text-* does not. */
+[data-density="compact"] {
+  --unit: 4px;
+  --control-1: 22px;
+  --control-2: 28px;
+  --control-3: 34px;
+  --row-height: 32px;
+}
+
+[data-density="roomy"] {
+  --unit: 5px;
+  --control-1: 32px;
+  --control-2: 40px;
+  --control-3: 48px;
+  --row-height: 46px;
+}
+
+/* --- REDUCED MOTION -------------------------------------------------------
+   Every transition in the system reads these three variables, so honouring
+   the preference is three assignments rather than an `!important` sweep over
+   the stylesheet. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-instant: 0ms;
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+  }
+}

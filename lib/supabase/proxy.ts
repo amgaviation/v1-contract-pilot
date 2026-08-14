@@ -207,7 +207,17 @@ async function refreshSession(
     // development — but a public route rendering product chrome should not
     // be one edit away from existing in production.
     (process.env.NODE_ENV === "development" &&
-      normalizedPath === "/layout-harness");
+      (normalizedPath === "/layout-harness" ||
+        // The seam harness — app/(dev)/seam-harness. Renders every shimmed
+        // component in the prop shapes the authenticated screens really use,
+        // which is the closest the migration can get to exercising those
+        // screens without a seeded tenant. Same two guards as the others.
+        normalizedPath === "/seam-harness" ||
+        // The INSTRUMENT specimen sheet — app/(dev)/design-harness. Same
+        // reasoning and the same two guards as the layout harness above: the
+        // page itself calls notFound() off development, and this line only
+        // lets that guard be reached.
+        normalizedPath === "/design-harness"));
   if (!user && !isAuthSurface) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";

@@ -1,142 +1,27 @@
-/* This file is deliberately almost empty, and should stay that way.
 
-   Radix Themes owns the design system. Colour, radius, spacing, shadow and
-   the type ramp all come from @radix-ui/themes/styles.css and are
-   configured by the <Theme> props in app/layout.tsx — not from here.
-   Anything you are tempted to add below is almost certainly a Theme prop,
-   a Radix component prop, or a sign that a component is reaching for a
-   value it should be asking the theme for.
 
-   The three things that legitimately live here:
 
-   1. The type family. Radix Themes ships a system font stack; this points
-      it at the self-hosted Inter loaded in lib/fonts.ts, so there is no
-      runtime request to a font CDN and no silent fallback.
 
-   2. The V1 mark. The wordmark is literal black and the bug is literal
-      #036BFC on every ground — the logo kit frames these as brand-identity
-      constants, not UI tokens. They are deliberately NOT wired to the
-      accent scale: re-pointing the mark at the theme would mean a future
-      accent change silently retints the trademark artwork.
 
-   3. The ghost-Card outdent cancellation below. This is not a visual
-      value — it is a correction of a Radix layout behaviour whose
-      container contract this product does not meet. See the comment
-      above that rule for the full explanation. */
 
-.radix-themes {
-  --default-font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --heading-font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-}
-
-/* Every figure in this product is money or decimal hours read down a
-   column, and proportional digits make those columns ragged. Radix has no
-   prop for this, so it is a class: put it on any cell or figure that is a
-   number. It is the one utility class this product has, and it earns its
-   place because getting it wrong is a legibility bug, not a style
-   preference. */
-.tnum {
-  font-variant-numeric: tabular-nums;
-}
-
-/* Cancel the ghost-Card outdent. Radix's ghost Card variant
-   (styles.css, .rt-Card:where(.rt-variant-ghost)) is not simply "surface
-   minus background" — it also sets
-     --margin-*-override: calc(var(--margin-*) - var(--card-padding))
-   and applies that to margin-*. With no mb/mt/etc. prop, --margin-* is
-   0px, so the override becomes a negative margin equal to the card's own
-   padding on all four sides. That behaviour has a real justification in
-   Radix's own docs: a ghost Card is meant to be used as the sole child of
-   an already-padded container, and the negative margin pulls the card's
-   padding back out so its content lines up flush with the container's
-   edge instead of being padded twice.
-
-   This product's ghost Cards do not live in that shape. When this rule
-   was written EVERY Card here was a ghost — variant="ghost" was the
-   default in components/ui and not one call site set `variant` — and they
-   sat as siblings inside gapped Flex/Grid stacks (Overview's KPI row,
-   every settings panel, the auth/404/error shells), not as lone children
-   of a padded wrapper.
-
-   THE DEFAULT HAS SINCE MOVED: the 2026-08 rebuild flipped Card's default
-   to variant="surface" (components/ui/index.tsx), so this rule now
-   matches nothing and is a DORMANT GUARD — any future explicit
-   variant="ghost" call site would land in the same gapped-sibling shape
-   described above, so the correction stays.
-
-   (This paragraph used to name a count. It was wrong — off by ten — and it
-   would have been wrong again the moment anyone added a Card. What holds
-   is that the shape is universal, not the tally.)
-
-   So the "surface minus background" mental model is
-   the only one that holds here, and the outdent is pure liability:
-   measured before this rule, adjacent size-1 ghost Cards in a gap="4"
-   column overlapped by 7.2px, a size-4 ghost Card inside a p="4" Flex
-   bled 28.8px past its parent's content box on every edge, and an
-   explicit mb="4" on a ghost Card rendered as 3.6px of visual gap
-   instead of the 14.4px --space-4 asks for (verified in a headless
-   Chromium render against the real styles.css cascade before/after this
-   rule; see PR description for the numbers).
-
-   The fix: re-point margin-*-override at the plain, un-decremented
-   margin-* value, so a ghost Card's margin behaves like every other
-   Card's margin (0 by default, exactly what mb/mt/mx/my/m ask for
-   otherwise) and only the background/border are "ghosted". This must
-   load after @radix-ui/themes/styles.css to win the cascade — see the
-   import order in app/layout.tsx. */
-.rt-Card:where(.rt-variant-ghost) {
-  --margin-top-override: var(--margin-top);
-  --margin-right-override: var(--margin-right);
-  --margin-bottom-override: var(--margin-bottom);
-  --margin-left-override: var(--margin-left);
-}
-
+/* The mark's constants now live in app/design/tokens.css (--brand-*), which
+   is the product's one token file. These aliases keep components/ui/logo.tsx
+   and the marketing pages reading the names they already use, so the design
+   system change did not have to touch them; stage 6 renames the call sites
+   and deletes the aliases. */
 :root {
-  --v1-logo-mark: #000000;
-  --v1-logo-bug: #036bfc;
-  --v1-logo-size: 20px;
+  --v1-logo-mark: var(--brand-mark);
+  --v1-logo-bug: var(--brand-bug);
+  --v1-logo-size: var(--brand-mark-size);
 }
 
-/* On a dark ground the wordmark inverts and the bug does not. That is the
-   logo kit's own rule, not a UI decision: it fixes the mark at literal
-   black on light and literal white on dark, and specifies "one blue,
-   everywhere" for the bug precisely so there is no light-ground substitute
-   to remember. Without this the mark would render black-on-near-black and
-   simply disappear the moment dark mode is switched on.
-
-   Selectors, and why there are three: Radix Themes stamps its appearance
-   class on the <Theme> element itself, not on <html> — a real render
-   produces class="radix-themes light" (or "dark") on that div. Radix
-   also recognises a caller-supplied ".dark-theme" class as an appearance
-   override on any element. Neither of those is ".dark" on <html>: this
-   product used to stamp ".dark" on <html> itself via an inline <head>
-   script reading matchMedia, but that script was deleted along with
-   appearance="light" being pinned (see app/layout.tsx). So all three
-   selectors are listed to cover every mechanism that could plausibly set
-   dark mode here:
-     - .radix-themes.dark   the actual class Radix puts on <Theme> when
-                             appearance="dark" is passed — the mechanism
-                             that exists today
-     - .dark-theme          Radix's documented override class, for the
-                             day dark mode is offered as a toggle rather
-                             than a fixed prop
-     - :root.dark            kept for an html-level class, in case a
-                             future implementation goes back to stamping
-                             <html> the old way
-
-   LIVE since the 2026-08 rebuild: the ROOT <Theme> in app/layout.tsx is
-   still pinned appearance="light", but the app's nav rail and phone top
-   bar are now a nested <Theme appearance="dark"> (app/(app)/layout.tsx),
-   which Radix stamps class="radix-themes dark" — the first selector
-   matches that subtree and the wordmark renders white on the dark rail,
-   exactly the mechanism the earlier "DORMANT" note in this comment had
-   verified in advance (temporarily setting appearance="dark" renders
-   class="radix-themes dark" and computes --v1-logo-mark to #ffffff).
-   The other two selectors remain dormant, kept for the day dark mode
-   arrives by a .dark-theme override or an html-level class. */
-:root.dark,
-.radix-themes.dark,
-.dark-theme {
+/* On a dark ground the wordmark inverts and the bug does not — the logo kit's
+   own rule, not a UI decision. It keys on the SAME attribute the token layer
+   uses to mark a dark subtree (app/design/tokens.css), so the nav rail's
+   data-appearance="dark" flips the wordmark to white with nothing else wired
+   up. The previous version keyed on Radix's `.radix-themes.dark` class, which
+   no longer exists. */
+[data-appearance="dark"] {
   --v1-logo-mark: #ffffff;
 }
 
@@ -164,8 +49,8 @@
    lets this file (and only this file — see scripts/verify-tokens.mjs's
    EXEMPT_FILES) hold the hex at all. */
 :root {
-  --v1-marketing-navy: #0b1f33;
-  --v1-marketing-navy-ink: #ffffff;
+  --v1-marketing-navy: var(--brand-navy);
+  --v1-marketing-navy-ink: var(--brand-navy-ink);
 }
 
 /* ---------------------------------------------------------------------------
@@ -189,20 +74,20 @@
 :root {
   /* Two further steps of the same navy the mark is cut from, used only to
      give the hero and CTA band a direction of travel. */
-  --v1-marketing-navy-2: #123152;
-  --v1-marketing-navy-3: #1b4c7d;
+  --v1-marketing-navy-2: var(--brand-navy-2);
+  --v1-marketing-navy-3: var(--brand-navy-3);
   /* Muted ink for secondary copy on a navy ground — the full-strength
      --v1-marketing-navy-ink is reserved for headings and buttons so the
      hierarchy survives on the dark panel. */
-  --v1-marketing-navy-ink-muted: #b9cbdd;
+  --v1-marketing-navy-ink-muted: var(--brand-navy-ink-muted);
   /* Hairlines and fills on the navy ground. Radix's --gray-a* alphas are
      tuned for a light ground and disappear here. */
-  --v1-marketing-navy-line: rgba(255, 255, 255, 0.14);
-  --v1-marketing-navy-fill: rgba(255, 255, 255, 0.06);
+  --v1-marketing-navy-line: var(--brand-navy-line);
+  --v1-marketing-navy-fill: var(--brand-navy-fill);
   /* The logo bug's Signal Blue, reused as the hero's accent glow. Same
      literal as --v1-logo-bug above and deliberately a separate custom
      property: the mark's colour must not become a UI token by proxy. */
-  --v1-marketing-glow: rgba(3, 107, 252, 0.35);
+  --v1-marketing-glow: var(--brand-glow);
 }
 
 .v1-m-dark {
@@ -247,7 +132,7 @@
   display: inline-block;
   border: 1px solid var(--v1-marketing-navy-line);
   background-color: var(--v1-marketing-navy-fill);
-  border-radius: var(--radius-2);
+  border-radius: var(--radius);
   padding: 0.25rem 0.6rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -271,25 +156,25 @@
 }
 
 .v1-m-mock-frame {
-  background-color: var(--color-background);
-  border: 1px solid var(--gray-a6);
-  border-radius: var(--radius-3);
+  background-color: var(--paper);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
   /* overflow so the square-cornered chrome bar clips to the rounded frame */
   overflow: hidden;
-  box-shadow: var(--shadow-5);
+  box-shadow: var(--shadow-overlay);
 }
 
 /* Chrome bar across the top of the mock, so it reads as a screen and not as
    a card that happens to contain a table. */
 .v1-m-mock-chrome {
-  background-color: var(--gray-a3);
-  border-block-end: 1px solid var(--gray-a6);
+  background-color: var(--sunk);
+  border-block-end: 1px solid var(--edge);
 }
 
 .v1-m-mock-dot {
   width: 0.5rem;
   height: 0.5rem;
-  background-color: var(--gray-a7);
+  background-color: var(--ink-3);
   /* --radius-full is a real Radix token (9999px under radius="small"),
      so the chrome dots are the circles they were drawn as. */
   border-radius: var(--radius-full);
@@ -339,7 +224,7 @@
     inset-inline-start: 50%;
     width: 1px;
     height: 50%;
-    background-color: var(--gray-a6);
+    background-color: var(--edge);
   }
 
   /* Crossbar: ends sit over the centres of the outer two columns. */
@@ -349,7 +234,7 @@
     inset-block-start: 50%;
     inset-inline: 16.666%;
     height: 1px;
-    background-color: var(--gray-a6);
+    background-color: var(--edge);
   }
 
   /* Legs: down from the crossbar into each of the three cards. */
@@ -358,7 +243,7 @@
     inset-block-start: 50%;
     width: 1px;
     height: 50%;
-    background-color: var(--gray-a6);
+    background-color: var(--edge);
   }
 
   .v1-m-flow-leg-1 {
@@ -404,7 +289,7 @@
    cursor are restyled; type and colour still come from Radix components
    inside. */
 .v1-m-faq {
-  border-block-end: 1px solid var(--gray-a5);
+  border-block-end: 1px solid var(--hair);
 }
 
 .v1-m-faq > summary {
@@ -423,7 +308,7 @@
 
 .v1-m-faq > summary::after {
   content: "+";
-  color: var(--gray-a11);
+  color: var(--ink-2);
   flex: none;
 }
 

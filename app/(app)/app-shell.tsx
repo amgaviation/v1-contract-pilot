@@ -6,7 +6,6 @@ import {
   Flex,
   Separator,
   Text,
-  Theme,
 } from "@/components/ui";
 import { Logo } from "@/components/ui/logo";
 import { BRAND } from "@/lib/brand";
@@ -75,11 +74,18 @@ export function AppShell({
   signOutAction: () => void | Promise<void>;
   children: React.ReactNode;
 }) {
+  // THE TENANT THEME, as three data attributes rather than a component.
+  // app/design/tokens.css declares the whole palette against
+  // [data-appearance] / [data-accent] / [data-density], and custom properties
+  // inherit — so stamping them here re-declares the palette for this subtree
+  // and nothing else. It is also the entire mechanism for the dark rail
+  // below, which carries data-appearance="dark" and inherits a dark palette
+  // with no second stylesheet and no component-level override.
   return (
-    <Theme
-      accentColor={theme.accentColor}
-      scaling={theme.scaling}
-      appearance={theme.appearance}
+    <Box
+      data-appearance={theme.appearance}
+      data-accent={theme.accent}
+      data-density={theme.density}
       asChild
     >
       {/* 100dvh, not 100vh. On mobile Safari and Chrome, 100vh is the
@@ -107,7 +113,7 @@ export function AppShell({
           display={{ initial: "block", md: "none" }}
           style={{ position: "sticky", top: 0, zIndex: 2 }}
         >
-          <Theme appearance="dark" asChild>
+          <Box data-appearance="dark" asChild>
             <Box
               style={{
                 borderBottom: "1px solid var(--gray-a5)",
@@ -124,7 +130,7 @@ export function AppShell({
               </Flex>
               <NavStrip sections={sections} />
             </Box>
-          </Theme>
+          </Box>
         </Box>
 
         <Box
@@ -134,7 +140,7 @@ export function AppShell({
           display={{ initial: "none", md: "block" }}
         >
           <aside>
-            <Theme appearance="dark" asChild>
+            <Box data-appearance="dark" asChild>
               <Flex
                 direction="column"
                 height="100%"
@@ -179,7 +185,7 @@ export function AppShell({
                 </Box>
                 <NavRail accountName={accountName} sections={sections} />
               </Flex>
-            </Theme>
+            </Box>
           </aside>
         </Box>
 
@@ -315,6 +321,6 @@ export function AppShell({
           </Box>
         </Flex>
       </Flex>
-    </Theme>
+    </Box>
   );
 }

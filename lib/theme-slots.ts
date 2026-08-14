@@ -82,14 +82,14 @@
  * at runtime.
  */
 export const ACCENT_SLOTS = [
-  { value: "indigo", label: "Indigo", swatch: "var(--indigo-9)" },
-  { value: "blue", label: "Blue", swatch: "var(--blue-9)" },
-  { value: "cyan", label: "Cyan", swatch: "var(--cyan-9)" },
-  { value: "teal", label: "Teal", swatch: "var(--teal-9)" },
-  { value: "jade", label: "Jade", swatch: "var(--jade-9)" },
-  { value: "violet", label: "Violet", swatch: "var(--violet-9)" },
-  { value: "plum", label: "Plum", swatch: "var(--plum-9)" },
-  { value: "bronze", label: "Bronze", swatch: "var(--bronze-9)" },
+  { value: "indigo", label: "Indigo", swatch: "var(--signal)" },
+  { value: "blue", label: "Blue", swatch: "var(--signal)" },
+  { value: "cyan", label: "Cyan", swatch: "var(--signal)" },
+  { value: "teal", label: "Teal", swatch: "var(--signal)" },
+  { value: "jade", label: "Jade", swatch: "var(--signal)" },
+  { value: "violet", label: "Violet", swatch: "var(--signal)" },
+  { value: "plum", label: "Plum", swatch: "var(--signal)" },
+  { value: "bronze", label: "Bronze", swatch: "var(--signal)" },
 ] as const;
 
 export type ThemeAccent = (typeof ACCENT_SLOTS)[number]["value"];
@@ -113,19 +113,19 @@ export const DENSITY_SLOTS = [
   {
     value: "compact",
     label: "Compact",
-    scaling: "90%",
+    density: "compact",
     hint: "More rows on screen. The default.",
   },
   {
     value: "comfortable",
     label: "Comfortable",
-    scaling: "100%",
+    density: "default",
     hint: "Larger type and bigger targets.",
   },
 ] as const;
 
 export type ThemeDensity = (typeof DENSITY_SLOTS)[number]["value"];
-export type ThemeScaling = (typeof DENSITY_SLOTS)[number]["scaling"];
+export type ThemeDensityToken = (typeof DENSITY_SLOTS)[number]["density"];
 
 export const DEFAULT_DENSITY: ThemeDensity = "compact";
 
@@ -228,28 +228,38 @@ export function resolveThemeSlots(raw: unknown): ThemeSlots {
  * only which of the two the chrome asks for.
  */
 export type ResolvedTheme = {
-  /** Passed straight to <Theme accentColor>. */
-  accentColor: ThemeAccent;
-  /** Passed straight to <Theme scaling>. */
-  scaling: ThemeScaling;
-  /** Passed straight to <Theme appearance>. */
+  /** Stamped as data-accent. Moves --signal ONLY; see app/design/tokens.css. */
+  accent: ThemeAccent;
+  /** Stamped as data-density. Moves SPACE and control height, never type size. */
+  density: ThemeDensityToken;
+  /** Stamped as data-appearance. */
   appearance: ThemeAppearance;
   /** Ground for the rail, the phone strip and the sticky header. */
   chromeBackground: string;
-  /** Ground for the page canvas the Cards sit on. */
+  /** Ground for the page canvas the panels sit on. */
   canvasBackground: string;
 };
 
 export function themeForSlots(slots: ThemeSlots): ResolvedTheme {
   const density = DENSITY_SLOTS.find((slot) => slot.value === slots.density);
-  const dark = slots.appearance === "dark";
-
   return {
-    accentColor: slots.accent,
-    scaling: density ? density.scaling : "90%",
+    accent: slots.accent,
+    density: density ? density.density : "compact",
     appearance: slots.appearance,
-    chromeBackground: dark ? "var(--gray-2)" : "var(--color-background)",
-    canvasBackground: dark ? "var(--color-background)" : "var(--gray-2)",
+    // ONE PAIR IN BOTH MODES, and that is the point rather than an oversight.
+    //
+    // The old system had to swap these between light and dark, because its
+    // dark palette was an inversion: the token that was brighter in light
+    // became darker in dark, so the rail would have sunk into the canvas
+    // unless the chrome asked for a different token at night.
+    //
+    // INSTRUMENT's dark palette is a second design, not an inversion —
+    // --paper is lifted ABOVE --canvas in both (app/design/tokens.css §8) —
+    // so "chrome is paper, canvas is canvas" holds either way and there is no
+    // mode-dependent branch to get wrong. tests/theme-slots.test.mjs asserts
+    // that relationship against the real token values in both modes.
+    chromeBackground: "var(--paper)",
+    canvasBackground: "var(--canvas)",
   };
 }
 
