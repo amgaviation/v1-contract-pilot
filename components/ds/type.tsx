@@ -60,6 +60,7 @@ function useType(props: Record<string, unknown>, base: string, defaultSize: Text
 }
 
 function render(
+  who: string,
   as: React.ElementType | undefined,
   asChild: boolean | undefined,
   fallbackTag: React.ElementType,
@@ -70,7 +71,16 @@ function render(
   ref: React.Ref<HTMLElement>
 ) {
   if (asChild) {
-    const child = React.Children.only(children) as React.ReactElement<{
+    // Checked rather than relying on React.Children.only, whose message does
+    // not name the offending component — which turned a one-line fix into a
+    // hunt through a 700-line page during the Radix removal.
+    if (!React.isValidElement(children)) {
+      throw new Error(
+        `<${who} asChild> needs exactly one element child; received ` +
+          `${Array.isArray(children) ? `${children.length} children` : JSON.stringify(children)?.slice(0, 200) ?? typeof children}.`
+      );
+    }
+    const child = children as React.ReactElement<{
       className?: string;
       style?: React.CSSProperties;
     }>;
@@ -92,7 +102,7 @@ function render(
 export const Text = React.forwardRef<HTMLElement, TypeProps & Record<string, unknown>>(
   function Text(props, ref) {
     const { as, asChild, className, style, children, rest } = useType(props, "i-text", "3");
-    return render(as, asChild, "span", className, style, rest, children, ref);
+    return render("Text", as, asChild, "span", className, style, rest, children, ref);
   }
 );
 Text.displayName = "Text";
@@ -107,7 +117,7 @@ Text.displayName = "Text";
 export const Heading = React.forwardRef<HTMLElement, TypeProps & Record<string, unknown>>(
   function Heading(props, ref) {
     const { as, asChild, className, style, children, rest } = useType(props, "i-heading", "5");
-    return render(as, asChild, "h2", className, style, rest, children, ref);
+    return render("Heading", as, asChild, "h2", className, style, rest, children, ref);
   }
 );
 Heading.displayName = "Heading";
@@ -121,7 +131,7 @@ Heading.displayName = "Heading";
 export const Caps = React.forwardRef<HTMLElement, TypeProps & Record<string, unknown>>(
   function Caps(props, ref) {
     const { as, asChild, className, style, children, rest } = useType(props, "i-caps", "1");
-    return render(as, asChild, "span", className, style, rest, children, ref);
+    return render("Text", as, asChild, "span", className, style, rest, children, ref);
   }
 );
 Caps.displayName = "Caps";
@@ -143,7 +153,7 @@ export const Figure = React.forwardRef<HTMLElement, TypeProps & Record<string, u
       "i-text i-figure",
       "2"
     );
-    return render(as, asChild, "span", className, style, rest, children, ref);
+    return render("Text", as, asChild, "span", className, style, rest, children, ref);
   }
 );
 Figure.displayName = "Figure";

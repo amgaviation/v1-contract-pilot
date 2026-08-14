@@ -1,207 +1,683 @@
-/**
- * The product's single component-defaults layer.
- *
- * Every other file in app/, lib/ and components/ imports Radix Themes
- * components from HERE ("@/components/ui"), never from "@radix-ui/themes"
- * directly — scripts/verify-tokens.mjs enforces that mechanically. This
- * file re-exports everything Radix Themes exports, unchanged, EXCEPT for
- * the small list of components below, each given one chosen default prop
- * value. This is the ONLY place in the product a component default may
- * live. If a screen needs a different look than the default, it passes
- * the prop explicitly at the call site — every default here is designed
- * to be overridden, never enforced.
- *
- * Defaults applied here, and the reasoning (values per the 2026-08 design
- * rebuild — docs/design/REBUILD-BRIEF.md §5):
- *
- *   Card            variant="surface" was "ghost". The rebuild's single
- *                                     biggest lever: the app's ~144 Card
- *                                     call sites flip from flat regions to
- *                                     bordered white panels on the gray-2
- *                                     canvas at once. Marketing already
- *                                     passes variant="surface" explicitly
- *                                     at its mock/pricing call sites, so
- *                                     nothing doubles up. The ghost-outdent
- *                                     rule in globals.css stays as a
- *                                     dormant guard for any future
- *                                     explicit ghost call site.
- *   TextField.Root  variant="surface" was soft/size-1/gray. Bordered
- *                   size="2"          inputs match bordered panels, and
- *                                     size 2 (28.8px at 90% scaling)
- *                                     retires the WCAG 2.5.8 target-size
- *                                     debt the previous header recorded —
- *                                     the "two-word edit" it promised.
- *   Select.Trigger  variant="surface" matches TextField's default look so
- *                                     the two read as one input family.
- *   Select.Root     (no size default) Radix's own Root default is size
- *                                     "2", which now matches
- *                                     TextField.Root above, so the
- *                                     explicit size="1" default this file
- *                                     used to set is gone rather than
- *                                     rewritten — the two input families
- *                                     must move in lockstep or mixed
- *                                     forms go ragged, and letting Radix's
- *                                     default supply the "2" keeps exactly
- *                                     one place (TextField's default
- *                                     above) where that number is chosen.
- *   Badge           variant="solid"   status badges (paid/void/overdue)
- *                   color="red"       need to read at a glance. This
- *                                     default currently governs nothing:
- *                                     all 10 Badge call sites in the
- *                                     product pass color explicitly. It
- *                                     stays for the next call site that
- *                                     doesn't — and the choice of red is
- *                                     deliberate, not arbitrary, because
- *                                     red is this product's "overdue /
- *                                     not current" colour: a future Badge
- *                                     that forgets to set a color would
- *                                     silently read as a failure state.
- *   Callout.Root    color="amber"     the product's default callout is a
- *                                     caution, not an error or a tip.
- *                                     Also currently inert: all 24
- *                                     Callout.Root call sites pass color
- *                                     explicitly (18 red, 4 amber, 2
- *                                     green) — this is what a future
- *                                     unlabelled Callout falls back to.
- *   Tabs.List       color="indigo"    tracks the Theme accent (was "blue"
- *                                     when the accent was) so the active
- *                                     tab indicator is never ambiguous.
- *                                     Tabs.List's color is not documented
- *                                     as inheriting the accent the way
- *                                     radius does, so leaving it implicit
- *                                     would be relying on unspecified
- *                                     Radix behaviour instead of stating
- *                                     the intent.
- *   Spinner         size="3"          the app's one default loading size;
- *                                     inline spinners override down.
- *   Text            (no default)      the weight="light" body-copy default
- *                                     is REMOVED, not resettled: light
- *                                     text at size 1–2 over 90% scaling is
- *                                     thin on glass in daylight (pilots
- *                                     read this on phones at FBOs), so
- *                                     body copy is back on Radix's regular
- *                                     — the Linear/Stripe register. The
- *                                     one explicit weight="light" call
- *                                     site (marketing hero sub-line)
- *                                     keeps its prop and is unaffected.
- *
- * REJECTED — decisions the owner made and is recording here so they are
- * not re-litigated by a future "shouldn't this also have a default?":
- *
- *   Button variant="surface"   Rejected. Primary actions stay solid (the
- *                               Radix default) so "Create invoice" still
- *                               reads as the main action next to its
- *                               outline neighbours. A surface default
- *                               would flatten that hierarchy.
- *   Text color="gray"          Rejected. 180 of this product's 440 Text
- *                               elements set no colour today. Defaulting
- *                               all of them to gray would mute every one
- *                               at once and collapse the visible step
- *                               between primary and secondary copy.
- *   Button radius default      Redundant, not rejected on the merits: the
- *                               Theme's radius (now "small" — it was
- *                               "none" when this entry was first written;
- *                               same conclusion either way) is inherited
- *                               by Radix Buttons — setting it again here
- *                               would do nothing but suggest, wrongly,
- *                               that Button radius can vary independently
- *                               of the Theme.
- */
 
 import * as React from "react";
 import {
-  Card as RadixCard,
-  type CardProps,
-  Badge as RadixBadge,
-  type BadgeProps,
-  Spinner as RadixSpinner,
-  type SpinnerProps,
-  TextField as RadixTextField,
-  Select as RadixSelect,
-  Callout as RadixCallout,
-  Tabs as RadixTabs,
-} from "@radix-ui/themes";
+  Badge as DsBadge,
+  Button as DsButton,
+  Checkbox as DsCheckbox,
+  Input,
+  Note,
+  Panel,
+  Select as DsSelect,
+  Separator as DsSeparator,
+  Spinner as DsSpinner,
+  Table as DsTable,
+  Textarea,
+} from "@/components/ds/surface";
+import { Box, Flex, Grid, Measure } from "@/components/ds/layout";
+import {
+  Caps,
+  Heading as DsHeading,
+  Link as DsLink,
+  Text as DsText,
+  VisuallyHidden as DsVisuallyHidden,
+} from "@/components/ds/type";
+import { cx } from "@/lib/ds/props";
+import type { Tone } from "@/lib/ds/scales";
 
-export * from "@radix-ui/themes";
+/**
+ * THE MIGRATION SEAM.
+ *
+ * Stage 4 of docs/design/INSTRUMENT.md. Radix Themes is gone; this file is
+ * what makes the ~89 files that still import from "@/components/ui" render on
+ * INSTRUMENT instead, unchanged.
+ *
+ * WHY A SEAM RATHER THAN 105 REWRITTEN SCREENS IN ONE COMMIT — two reasons,
+ * both about being able to tell what broke:
+ *
+ *   1. Rewriting every screen at the same time as replacing every component
+ *      underneath them makes a compile error and a design regression
+ *      indistinguishable. With the seam, the design change lands on its own,
+ *      and anything that looks wrong is a mapping bug in ONE file.
+ *   2. It is reversible. A wrong mapping is fixed here, once, rather than in
+ *      the forty screens that inherited it.
+ *
+ * THIS FILE IS TEMPORARY AND SHOULD SHRINK. Stage 6 rewrites call sites onto
+ * the native INSTRUMENT API — `tone` not `color`, `Panel` not `Card`, `Note`
+ * not `Callout` — deleting the matching entry here as it goes.
+ *
+ * WHAT IS DELIBERATELY LOST, each an improvement rather than a gap:
+ *
+ *   Radix's 12-step colour scales  INSTRUMENT has three ink steps and four
+ *                                  semantic tones. A twelve-step text ramp
+ *                                  sounds flexible and means nobody can tell
+ *                                  which step a given label should be.
+ *   color="amber" and friends      Mapped to tone-by-meaning. The table below
+ *                                  is the LAST place a hue name appears in
+ *                                  this product.
+ *   Radix Select's styled listbox  Now a native <select>: correct keyboard
+ *                                  and screen-reader semantics for free, and
+ *                                  the OS picker on a phone.
+ *   Radix sizes 7-9                Clamped to 7. Nothing here used them.
+ */
 
-export const Card = React.forwardRef<HTMLDivElement, CardProps>(
-  function Card(props, ref) {
-    return <RadixCard ref={ref} variant="surface" {...props} />;
-  }
-);
+/* ── SCALE TRANSLATION ──────────────────────────────────────────────────
+   The one place a Radix hue name still appears. Each entry is a reading of
+   what the colour MEANT at the call sites that used it, checked against real
+   usage rather than guessed:
+     gray  (441 uses) secondary / tertiary copy          → muted
+     red   (129)      overdue, failed, destructive       → warn
+     amber (56)       needs attention, expiring, draft   → caution
+     green (20)       paid, current, reconciled          → ok
+     blue  (7)        informational                      → signal */
+const TONE_FOR_COLOR: Record<string, Tone> = {
+  gray: "muted",
+  red: "warn",
+  amber: "caution",
+  green: "ok",
+  blue: "signal",
+  indigo: "signal",
+};
 
-export const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
-  function Badge(props, ref) {
-    return <RadixBadge ref={ref} variant="solid" color="red" {...props} />;
-  }
-);
+function toneOf(color?: string, highContrast?: boolean): Tone | undefined {
+  if (!color) return undefined;
+  // Radix's `highContrast` on a gray meant "this is primary copy after all".
+  // INSTRUMENT says that with the default ink rather than a modifier.
+  if (color === "gray" && highContrast) return "default";
+  return TONE_FOR_COLOR[color];
+}
 
-export const Spinner = React.forwardRef<HTMLSpanElement, SpinnerProps>(
-  function Spinner(props, ref) {
-    return <RadixSpinner ref={ref} size="3" {...props} />;
-  }
-);
+type Step = "1" | "2" | "3" | "4" | "5" | "6" | "7";
 
-// Text is deliberately NOT wrapped: with the weight="light" default
-// removed (see header), the star re-export above supplies Radix's Text
-// unchanged, and adding a pass-through wrapper here would only suggest a
-// default exists where none does.
+/** Radix put margin props on every component, so the seam has to take them
+ *  everywhere too. They pass straight through to the INSTRUMENT primitive,
+ *  which understands a scale position or a breakpoint object. */
+type Spacing = string | Record<string, string>;
+type SpacingProps = {
+  m?: Spacing; mt?: Spacing; mb?: Spacing; ml?: Spacing; mr?: Spacing;
+  mx?: Spacing; my?: Spacing;
+  p?: Spacing; pt?: Spacing; pb?: Spacing; pl?: Spacing; pr?: Spacing;
+  px?: Spacing; py?: Spacing;
+};
 
-const TextFieldRoot = React.forwardRef<
-  HTMLInputElement,
-  RadixTextField.RootProps
->(function TextFieldRoot(props, ref) {
+/**
+ * Radix ran 1-9; INSTRUMENT runs 1-7. Nothing here used 8 or 9.
+ *
+ * A RESPONSIVE size object narrows to its `initial` step, and that is a
+ * deliberate, documented degradation rather than a silent one: INSTRUMENT's
+ * type scale is a class per step, not a custom property, so it has no
+ * per-breakpoint form yet. Narrowing DOWN (to initial) rather than up means a
+ * marketing heading is a step smaller on desktop than it was — never oversized
+ * on a phone, which is the failure that would actually hurt. Twelve call
+ * sites, all on the marketing pages. Stage 6 either gives the type scale a
+ * responsive form or sets these explicitly.
+ */
+function sizeOf(size?: string | Record<string, string>): Step | undefined {
+  if (!size) return undefined;
+  const raw = typeof size === "string" ? size : size.initial;
+  if (!raw) return undefined;
+  return String(Math.min(7, Math.max(1, Number(raw) || 3))) as Step;
+}
+
+/** Control sizes clamp to the three INSTRUMENT has. */
+function controlSize(size?: string): "1" | "2" | "3" {
+  return String(Math.min(3, Math.max(1, Number(size) || 2))) as "1" | "2" | "3";
+}
+
+/* ── LAYOUT ──────────────────────────────────────────────────────────── */
+export { Box, Flex, Grid };
+
+/** Radix's Container took a fixed size step; INSTRUMENT's measure is a ladder
+ *  that opens up on large screens. See docs/RESPONSIVE-CONTRACT.md. */
+export function Container({
+  size: _size,
+  children,
+  ...rest
+}: { size?: string; children?: React.ReactNode } & Record<string, unknown>) {
+  return <Measure {...(rest as Record<string, never>)}>{children}</Measure>;
+}
+
+/* ── TYPE ────────────────────────────────────────────────────────────── */
+type TextLike = Omit<React.HTMLAttributes<HTMLElement>, "color"> & {
+  align?: string;
+  size?: string | Record<string, string>;
+  color?: string;
+  highContrast?: boolean;
+  weight?: string;
+  trim?: string;
+  truncate?: boolean;
+  as?: React.ElementType;
+  asChild?: boolean;
+  htmlFor?: string;
+  mt?: Spacing;
+  mb?: Spacing;
+  my?: Spacing;
+  mx?: Spacing;
+  ml?: Spacing;
+  mr?: Spacing;
+  p?: Spacing;
+  wrap?: string;
+};
+
+export const Text = React.forwardRef<HTMLElement, TextLike>(function Text(
+  { size, color, highContrast, weight, trim: _trim, align, ...rest },
+  ref
+) {
   return (
-    <RadixTextField.Root
+    <DsText
       ref={ref}
-      variant="surface"
-      size="2"
-      {...props}
+      size={sizeOf(size)}
+      tone={toneOf(color, highContrast)}
+      weight={weight as never}
+      // Radix's `align` on Text meant TEXT alignment. On the INSTRUMENT
+      // primitive `align` is align-items (it is a layout prop), so this has
+      // to be translated or every centred caption would silently become a
+      // flex alignment that does nothing to the text.
+      textAlign={align as never}
+      {...(rest as Record<string, never>)}
     />
   );
 });
 
-export const TextField = {
-  ...RadixTextField,
-  Root: TextFieldRoot,
-};
-
-const SelectTrigger = React.forwardRef<
-  HTMLButtonElement,
-  RadixSelect.TriggerProps
->(function SelectTrigger(props, ref) {
-  return <RadixSelect.Trigger ref={ref} variant="surface" {...props} />;
+export const Heading = React.forwardRef<HTMLElement, TextLike>(function Heading(
+  { size, color, highContrast, weight, trim: _trim, align, ...rest },
+  ref
+) {
+  return (
+    <DsHeading
+      ref={ref}
+      size={sizeOf(size)}
+      tone={toneOf(color, highContrast)}
+      weight={weight as never}
+      textAlign={align as never}
+      {...(rest as Record<string, never>)}
+    />
+  );
 });
 
-// Select.Root carries no default any more: Radix's own Root size default
-// is "2", which is exactly what TextField.Root's size="2" above needs it
-// to be. (size is a Select.Root prop, not a Select.Trigger prop — Trigger
-// reads it from Root's context — so if the two input families ever move
-// again, the size default goes back HERE, on Root, not on Trigger.)
-export const Select = {
-  ...RadixSelect,
-  Trigger: SelectTrigger,
-};
+export function Code({
+  children,
+  ...rest
+}: { children?: React.ReactNode } & Record<string, unknown>) {
+  return (
+    <code className="i-figure" {...(rest as Record<string, never>)}>
+      {children}
+    </code>
+  );
+}
 
+export function Link({
+  href,
+  color: _color,
+  underline: _underline,
+  size,
+  asChild,
+  weight,
+  children,
+  className,
+  ...rest
+}: Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, "color"> &
+  SpacingProps & {
+    href?: string;
+    color?: string;
+    underline?: string;
+    size?: string;
+    asChild?: boolean;
+    weight?: string;
+  }) {
+  const cls = cx("i-link", size && `i-t${sizeOf(size)}`, weight && `i-w-${weight}`, className);
+
+  // asChild is the DOMINANT shape here (~70 call sites), because the product
+  // wraps next/link for client-side navigation:
+  //     <Link asChild><NextLink href="/trips">Trips</NextLink></Link>
+  // Cloning the child rather than rendering an anchor around it is what keeps
+  // that a single <a>. Rendering both would nest an anchor inside an anchor,
+  // which is invalid HTML and makes the inner one unreachable by keyboard.
+  if (asChild && React.isValidElement(children)) {
+    const child = children as React.ReactElement<{ className?: string }>;
+    return React.cloneElement(child, {
+      ...rest,
+      className: cx(cls, child.props.className),
+    } as never);
+  }
+
+  // A Radix <Link> with no href was a styled span. Kept, rather than emitting
+  // an anchor that goes nowhere — which is worse than useless to a screen
+  // reader, since it announces a link the user cannot follow.
+  if (!href) {
+    return (
+      <span className={className} {...(rest as React.HTMLAttributes<HTMLSpanElement>)}>
+        {children}
+      </span>
+    );
+  }
+
+  return (
+    <DsLink href={href} className={cls} {...(rest as Record<string, never>)}>
+      {children}
+    </DsLink>
+  );
+}
+
+export const VisuallyHidden = DsVisuallyHidden;
+
+/* ── SURFACE ─────────────────────────────────────────────────────────── */
+/** Radix's Card is INSTRUMENT's Panel with no header. */
+export const Card = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement> & SpacingProps & { size?: string; variant?: string; asChild?: boolean }
+>(function Card({ size: _size, variant: _variant, children, ...rest }, ref) {
+  return (
+    <Panel ref={ref} {...(rest as Record<string, never>)}>
+      {children}
+    </Panel>
+  );
+});
+
+/**
+ * Radix's variant x colour matrix collapses onto INSTRUMENT's four roles.
+ *
+ * The load-bearing lines are `solid` → primary (INK) and anything red →
+ * danger. Under the old system "solid" meant "filled with the accent"; here
+ * the primary action is ink and the accent is reserved for live state, which
+ * is the system's central colour decision.
+ */
+function buttonVariant(variant?: string, color?: string) {
+  if (color === "red") return "danger" as const;
+  // NO VARIANT MEANS PRIMARY, because Radix's own Button default was "solid".
+  // Defaulting to outline here made every unmarked button — Sign in, Save,
+  // Create invoice — render as a quiet bordered box, so screens had no
+  // visible primary action at all. Checked against the real call sites: the
+  // ones that wanted a secondary look already say so.
+  if (variant === undefined || variant === "solid") return "primary" as const;
+  if (variant === "ghost" || variant === "soft") return "quiet" as const;
+  return "outline" as const;
+}
+
+export const Button = React.forwardRef<
+  HTMLButtonElement,
+  Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "color"> & SpacingProps & {
+    variant?: string;
+    color?: string;
+    size?: string;
+    highContrast?: boolean;
+    asChild?: boolean;
+    /** Radix's Button showed a spinner for this; INSTRUMENT disables and lets
+     *  the call site's own label say what is happening ("Saving…"), which is
+     *  more informative than a spinner that could mean anything. */
+    loading?: boolean;
+  }
+>(function Button(
+  { variant, color, size, highContrast: _hc, loading, disabled, asChild, className, children, ...rest },
+  ref
+) {
+  const cls = cx(
+    "i-btn",
+    `i-btn-${buttonVariant(variant, color)}`,
+    `i-btn-${controlSize(size)}`,
+    className
+  );
+
+  // asChild: the child IS the control. Used across the marketing pages to
+  // give a next/link the button's appearance. Cloning rather than wrapping is
+  // not cosmetic — a <button> around an <a> is invalid HTML and gives the
+  // element two conflicting roles, so a screen reader announces a button that
+  // behaves like a link. This keeps it a single <a>.
+  if (asChild && React.isValidElement(children)) {
+    const child = children as React.ReactElement<{ className?: string }>;
+    return React.cloneElement(child, {
+      ...rest,
+      className: cx(cls, child.props.className),
+    } as never);
+  }
+
+  return (
+    <DsButton
+      ref={ref}
+      variant={buttonVariant(variant, color)}
+      size={controlSize(size)}
+      disabled={disabled || loading}
+      className={className}
+      {...(rest as Record<string, never>)}
+    >
+      {children}
+    </DsButton>
+  );
+});
+
+export const Badge = React.forwardRef<
+  HTMLSpanElement,
+  Omit<React.HTMLAttributes<HTMLSpanElement>, "color"> & SpacingProps & {
+    color?: string;
+    variant?: string;
+    highContrast?: boolean;
+    size?: string;
+  }
+>(function Badge({ color, variant: _v, highContrast: _hc, ...rest }, ref) {
+  return (
+    <DsBadge ref={ref} tone={toneOf(color) ?? "default"} {...(rest as Record<string, never>)} />
+  );
+});
+
+export function Separator({
+  size: _size,
+  orientation,
+  ...rest
+}: { size?: string; orientation?: string } & Record<string, unknown>) {
+  return (
+    <DsSeparator vertical={orientation === "vertical"} {...(rest as { className?: string })} />
+  );
+}
+
+export function Spinner({ size, ...rest }: { size?: string } & Record<string, unknown>) {
+  return <DsSpinner size={controlSize(size)} {...(rest as { label?: string })} />;
+}
+
+/* ── CALLOUT → NOTE ──────────────────────────────────────────────────── */
 const CalloutRoot = React.forwardRef<
   HTMLDivElement,
-  RadixCallout.RootProps
->(function CalloutRoot(props, ref) {
-  return <RadixCallout.Root ref={ref} color="amber" {...props} />;
+  Omit<React.HTMLAttributes<HTMLDivElement>, "color"> & SpacingProps & {
+    color?: string;
+    size?: string;
+    variant?: string;
+  }
+>(function CalloutRoot({ color, children, ...rest }, ref) {
+  return (
+    <Note ref={ref} tone={toneOf(color) ?? "default"} {...(rest as Record<string, never>)}>
+      {children}
+    </Note>
+  );
 });
 
 export const Callout = {
-  ...RadixCallout,
   Root: CalloutRoot,
+  Text: function CalloutText({ children }: { children?: React.ReactNode }) {
+    return <span>{children}</span>;
+  },
+  // INSTRUMENT's Note carries its tone on a left rule rather than an icon, so
+  // this slot renders nothing. Kept as a component so the call sites that
+  // pass one still compile; stage 6 removes them.
+  Icon: function CalloutIcon(_props: { children?: React.ReactNode }) {
+    return null;
+  },
 };
 
-const TabsList = React.forwardRef<HTMLDivElement, RadixTabs.ListProps>(
-  function TabsList(props, ref) {
-    return <RadixTabs.List ref={ref} color="indigo" {...props} />;
+/* ── FIELDS ──────────────────────────────────────────────────────────── */
+const TextFieldRoot = React.forwardRef<
+  HTMLInputElement,
+  Omit<React.InputHTMLAttributes<HTMLInputElement>, "size" | "color"> & {
+    size?: string;
+    variant?: string;
+    color?: string;
+  }
+>(function TextFieldRoot({ size, variant: _v, color: _c, children: _kids, ...rest }, ref) {
+  return <Input ref={ref} size={controlSize(size)} {...(rest as Record<string, never>)} />;
+});
+
+export const TextField = {
+  Root: TextFieldRoot,
+  // Radix's Slot rendered an adornment inside the input's border. INSTRUMENT
+  // has no adornment slot; rendering the children plainly keeps any icon or
+  // unit label visible instead of silently dropping it.
+  Slot: function TextFieldSlot({
+    children,
+  }: {
+    children?: React.ReactNode;
+    side?: string;
+    px?: string;
+    color?: string;
+  }) {
+    return <>{children}</>;
+  },
+};
+
+export const TextArea = React.forwardRef<
+  HTMLTextAreaElement,
+  Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "size"> & {
+    size?: string;
+    variant?: string;
+  }
+>(function TextArea({ size: _s, variant: _v, ...rest }, ref) {
+  return <Textarea ref={ref} {...(rest as Record<string, never>)} />;
+});
+
+export const Checkbox = React.forwardRef<
+  HTMLInputElement,
+  Omit<React.InputHTMLAttributes<HTMLInputElement>, "size" | "onChange"> & {
+    checked?: boolean;
+    onCheckedChange?: (v: boolean) => void;
+    size?: string;
+  }
+>(function Checkbox({ checked, onCheckedChange, size: _s, ...rest }, ref) {
+  return (
+    <DsCheckbox
+      ref={ref}
+      checked={checked}
+      // Radix handed the boolean straight to the callback; a native checkbox
+      // hands over an event. Translated here so no call site has to change.
+      onChange={onCheckedChange ? (e) => onCheckedChange(e.currentTarget.checked) : undefined}
+      {...(rest as Record<string, never>)}
+    />
+  );
+});
+
+/** A switch is a checkbox with a different skin and identical semantics. */
+export const Switch = React.forwardRef<
+  HTMLInputElement,
+  Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange"> & {
+    checked?: boolean;
+    onCheckedChange?: (v: boolean) => void;
+    size?: string;
+  }
+>(function Switch({ checked, onCheckedChange, ...rest }, ref) {
+  return (
+    <DsCheckbox
+      ref={ref}
+      role="switch"
+      checked={checked}
+      onChange={onCheckedChange ? (e) => onCheckedChange(e.currentTarget.checked) : undefined}
+      {...(rest as Record<string, never>)}
+    />
+  );
+});
+
+/* ── SELECT → NATIVE ─────────────────────────────────────────────────────
+   The most involved mapping, because the shapes genuinely differ: Radix
+   composed Root > Trigger + Content > Item, while a native select is one
+   element whose children are <option>s.
+
+   Root therefore walks its own children, finds the Items, and emits options.
+   That is a render-time walk over a handful of nodes, not a hot path.
+
+   PLACEHOLDER: Radix put it on the Trigger. A native select has no such
+   concept, so it becomes a disabled, hidden first option — the standard
+   technique, and `disabled` is what stops it being chosen back. */
+type ItemProps = { value: string; children?: React.ReactNode };
+
+function collectItems(node: React.ReactNode, out: ItemProps[]) {
+  React.Children.forEach(node, (child) => {
+    if (!React.isValidElement(child)) return;
+    const props = child.props as ItemProps & { children?: React.ReactNode };
+    if (typeof props.value === "string") {
+      out.push({ value: props.value, children: props.children });
+      return;
+    }
+    if (props.children) collectItems(props.children, out);
+  });
+}
+
+const SelectRoot = React.forwardRef<
+  HTMLSelectElement,
+  Omit<React.SelectHTMLAttributes<HTMLSelectElement>, "size" | "onChange"> & {
+    value?: string;
+    defaultValue?: string;
+    onValueChange?: (value: string) => void;
+    size?: string;
+  }
+>(function SelectRoot({ value, defaultValue, onValueChange, size, children, ...rest }, ref) {
+  const items: ItemProps[] = [];
+  collectItems(children, items);
+
+  // Pull the Trigger's props up onto the select. aria-labelledby especially
+  // HAS to travel: call sites wired it to a <label> by id, and losing it
+  // would leave ~48 fields unlabelled to a screen reader.
+  let placeholder: string | undefined;
+  let triggerProps: Record<string, unknown> = {};
+  React.Children.forEach(children, (child) => {
+    if (!React.isValidElement(child)) return;
+    const t = child.type as { displayName?: string };
+    if (t?.displayName === "SelectTrigger") {
+      triggerProps = child.props as Record<string, unknown>;
+      placeholder = triggerProps.placeholder as string | undefined;
+    }
+  });
+
+  return (
+    <DsSelect
+      ref={ref}
+      size={controlSize(size)}
+      value={value}
+      defaultValue={defaultValue}
+      onChange={onValueChange ? (e) => onValueChange(e.currentTarget.value) : undefined}
+      aria-labelledby={triggerProps["aria-labelledby"] as string | undefined}
+      aria-label={triggerProps["aria-label"] as string | undefined}
+      {...(rest as Record<string, never>)}
+    >
+      {placeholder ? (
+        <option value="" disabled hidden>
+          {placeholder}
+        </option>
+      ) : null}
+      {items.map((item) => (
+        <option key={item.value} value={item.value}>
+          {/* An <option> can hold only text, so a rich Item child flattens.
+              Every Item in this product is already a plain string. */}
+          {typeof item.children === "string"
+            ? item.children
+            : String(item.children ?? item.value)}
+        </option>
+      ))}
+    </DsSelect>
+  );
+});
+
+const SelectTrigger = React.forwardRef<HTMLElement, Record<string, unknown>>(
+  function SelectTrigger() {
+    // Rendered by SelectRoot, which reads this element's props and emits the
+    // native select itself. Returning null is what stops a second, stray
+    // control appearing beside it.
+    return null;
   }
 );
+SelectTrigger.displayName = "SelectTrigger";
 
-export const Tabs = {
-  ...RadixTabs,
-  List: TabsList,
+export const Select = {
+  Root: SelectRoot,
+  Trigger: SelectTrigger,
+  Content: function SelectContent({ children }: { children?: React.ReactNode }) {
+    return <>{children}</>;
+  },
+  Item: function SelectItem(_props: ItemProps) {
+    return null;
+  },
+  Group: function SelectGroup({ children }: { children?: React.ReactNode }) {
+    return <>{children}</>;
+  },
+  Label: function SelectLabel({ children }: { children?: React.ReactNode }) {
+    return <>{children}</>;
+  },
+  Separator: function SelectSeparatorItem() {
+    return null;
+  },
 };
+
+/* ── TABLE ───────────────────────────────────────────────────────────── */
+/* Radix's Table took presentational props INSTRUMENT expresses structurally:
+   `variant`/`size` on Root (the panel around it decides that now) and
+   `justify` on a cell (which is `numeric`, since the only thing this product
+   right-aligns is a figure). Absorbed here rather than left to fail at ~78
+   call sites. */
+const TableRoot = React.forwardRef<
+  HTMLTableElement,
+  React.TableHTMLAttributes<HTMLTableElement> & SpacingProps & {
+    variant?: string;
+    size?: string;
+    layout?: string;
+  }
+>(function TableRoot({ variant: _v, size: _s, layout: _l, ...rest }, ref) {
+  return <DsTable.Root ref={ref} {...rest} />;
+});
+
+const TableCell = React.forwardRef<
+  HTMLTableCellElement,
+  React.TdHTMLAttributes<HTMLTableCellElement> & SpacingProps & {
+    justify?: string;
+    numeric?: boolean;
+    wrap?: boolean;
+    width?: string;
+    minWidth?: string;
+  }
+>(function TableCell({ justify, numeric, width, minWidth, style, ...rest }, ref) {
+  return (
+    <DsTable.Cell
+      ref={ref}
+      numeric={numeric ?? justify === "end"}
+      style={width || minWidth ? { ...style, width, minWidth } : style}
+      {...rest}
+    />
+  );
+});
+
+const TableColumnHead = React.forwardRef<
+  HTMLTableCellElement,
+  React.ThHTMLAttributes<HTMLTableCellElement> & SpacingProps & {
+    justify?: string;
+    numeric?: boolean;
+    width?: string;
+    minWidth?: string;
+  }
+>(function TableColumnHead({ justify, numeric, width, minWidth, style, ...rest }, ref) {
+  return (
+    <DsTable.ColumnHead
+      ref={ref}
+      numeric={numeric ?? justify === "end"}
+      style={width || minWidth ? { ...style, width, minWidth } : style}
+      {...rest}
+    />
+  );
+});
+
+export const Table = {
+  Root: TableRoot,
+  Header: DsTable.Header,
+  Body: DsTable.Body,
+  Row: DsTable.Row,
+  Cell: TableCell,
+  ColumnHeaderCell: TableColumnHead,
+  // A <th scope="row"> is what makes a screen reader announce "INV-2044" when
+  // you land on a cell in that row. Preserved rather than downgraded to a td.
+  RowHeaderCell: React.forwardRef<HTMLTableCellElement, React.ComponentPropsWithoutRef<"th">>(
+    function RowHeaderCell(props, ref) {
+      return <th ref={ref} scope="row" {...props} />;
+    }
+  ),
+};
+
+/* The stateful components — AlertDialog, Tabs, the radio family, DataList,
+   Section and Skeleton — live in ./interactive because they need
+   "use client", and putting that directive on THIS file made every asChild
+   child cross the RSC boundary and arrive as a lazy reference instead of an
+   element. Re-exported so call sites still import everything from one path. */
+export {
+  AlertDialog,
+  DataList,
+  RadioCards,
+  RadioGroup,
+  Section,
+  SegmentedControl,
+  Skeleton,
+  Tabs,
+} from "./interactive";
+
+/* The native INSTRUMENT names, re-exported so a screen being migrated off the
+   seam can start using them without a second import path. */
+export { Caps, Panel, Note };

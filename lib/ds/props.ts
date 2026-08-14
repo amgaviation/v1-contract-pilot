@@ -94,7 +94,19 @@ function toCssValue(scale: string, prop: string, value: string): string {
     if (value === "auto") return "auto";
     return `var(--space-${value})`;
   }
-  if (scale === "columns") return `repeat(${value}, minmax(0, 1fr))`;
+  if (scale === "columns") {
+    // A bare integer is the common case and means "N equal columns". Anything
+    // else is already a track list — "2fr 3fr", "auto 1fr", "minmax(0,1fr) 240px"
+    // — and must pass through untouched.
+    //
+    // Wrapping a track list in repeat() produces `repeat(2fr 3fr, ...)`, which
+    // is invalid, which makes the whole grid-template-columns declaration
+    // invalid, which silently collapses the grid to ONE column. That is
+    // exactly the render-nothing-and-say-nothing failure this system is built
+    // to make impossible, and it shipped for one build: the auth screen's
+    // 2fr/3fr split stacked the navy panel above the form at every width.
+    return /^\d+$/.test(value) ? `repeat(${value}, minmax(0, 1fr))` : value;
+  }
   // `align` and `justify` take friendly names — "start", "between" — because
   // "flex-start" and "space-between" are flexbox spellings a call site should
   // not have to remember, and because they read wrong on a grid. Translated

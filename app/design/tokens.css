@@ -114,6 +114,115 @@
   --btn-primary-bg-hover: #2b2820;
 }
 
+/* --- 3b. TENANT ACCENT SLOTS ----------------------------------------------
+   The one visual value a tenant may change, and it is an ENUMERATED slot, not
+   a colour picker.
+
+   A free hex field is the obvious feature and the wrong one: an arbitrary hue
+   will eventually fail contrast against the white ink on a solid badge or the
+   focus ring on paper, and a pilot cannot be expected to debug that. Eight
+   curated values, each checked against --paper and --signal-ink, keeps it
+   user-friendly AND legible.
+
+   Only --signal moves. Ink, paper, canvas and the four semantic tones are the
+   system's and stay put — otherwise "accent" quietly becomes a reskin and the
+   meaning of `tone="warn"` starts depending on a tenant preference.
+
+   Applied as data-accent on the same element as data-appearance, so the whole
+   set travels together and a nested island inherits consistently. The values
+   are declared per appearance: a mid-tone that reads well on paper is too
+   dark on the near-black ground, so each has a lifted dark counterpart. */
+:root,
+[data-accent="indigo"] {
+  --signal: #3a52c9;
+  --signal-soft: #e9ecfb;
+  --signal-edge: #bfc8f0;
+}
+[data-accent="blue"] {
+  --signal: #0b5fd9;
+  --signal-soft: #e7effc;
+  --signal-edge: #b7cff3;
+}
+[data-accent="cyan"] {
+  --signal: #0b6b80;
+  --signal-soft: #e0f0f4;
+  --signal-edge: #a8d2dd;
+}
+[data-accent="teal"] {
+  --signal: #0a6b63;
+  --signal-soft: #e0f1ef;
+  --signal-edge: #a6d5cf;
+}
+[data-accent="jade"] {
+  --signal: #146b45;
+  --signal-soft: #e3f1ea;
+  --signal-edge: #aed5c2;
+}
+[data-accent="violet"] {
+  --signal: #5b3fc4;
+  --signal-soft: #eeeafb;
+  --signal-edge: #cabff0;
+}
+[data-accent="plum"] {
+  --signal: #8a2f75;
+  --signal-soft: #f7e8f4;
+  --signal-edge: #e2bcd9;
+}
+[data-accent="bronze"] {
+  --signal: #7a4a2c;
+  --signal-soft: #f3eae3;
+  --signal-edge: #dcc4b1;
+}
+
+/* The dark counterparts, one per slot. Lifted, because a mid-tone that reads
+   correctly on paper disappears into the near-black canvas.
+
+   Compound selectors, not descendant ones: data-appearance and data-accent
+   are stamped on the SAME element (the root, or the rail island), so
+   [data-appearance="dark"][data-accent="teal"] is the shape that actually
+   matches. A descendant selector would have silently failed for every
+   tenant. The no-accent dark default lives in section 8. */
+[data-appearance="dark"][data-accent="indigo"] {
+  --signal: #8b9cf0;
+  --signal-soft: #1c2140;
+  --signal-edge: #343d68;
+}
+[data-appearance="dark"][data-accent="blue"] {
+  --signal: #6ea8f5;
+  --signal-soft: #16233a;
+  --signal-edge: #2c4468;
+}
+[data-appearance="dark"][data-accent="cyan"] {
+  --signal: #5cb6cc;
+  --signal-soft: #10262d;
+  --signal-edge: #22454f;
+}
+[data-appearance="dark"][data-accent="teal"] {
+  --signal: #4fb5aa;
+  --signal-soft: #0f2624;
+  --signal-edge: #204540;
+}
+[data-appearance="dark"][data-accent="jade"] {
+  --signal: #5fbe86;
+  --signal-soft: #14261b;
+  --signal-edge: #2a4a35;
+}
+[data-appearance="dark"][data-accent="violet"] {
+  --signal: #a48bf0;
+  --signal-soft: #221a3d;
+  --signal-edge: #3d3166;
+}
+[data-appearance="dark"][data-accent="plum"] {
+  --signal: #d07ac0;
+  --signal-soft: #2e1a2a;
+  --signal-edge: #52304a;
+}
+[data-appearance="dark"][data-accent="bronze"] {
+  --signal: #c69a78;
+  --signal-soft: #2a2019;
+  --signal-edge: #4a3a2c;
+}
+
 /* --- 4. TYPE --------------------------------------------------------------
    Three faces, each with exactly one job. The variables are set by
    lib/fonts.ts via next/font, which self-hosts all three — no CDN request at

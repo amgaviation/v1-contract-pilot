@@ -78,9 +78,20 @@ function renderAsChild(
   children: React.ReactNode,
   className: string,
   style: React.CSSProperties,
-  rest: Record<string, unknown>
+  rest: Record<string, unknown>,
+  displayName: string
 ) {
-  const child = React.Children.only(children) as React.ReactElement<{
+  // Children.only's own error ("expected to receive a single React element
+  // child") does not say WHICH component threw, which turned a one-line fix
+  // into a hunt through a 700-line marketing page during the Radix removal.
+  // Checking first lets the message name the call site.
+  if (!React.isValidElement(children)) {
+    throw new Error(
+      `<${displayName} asChild> needs exactly one element child; received ` +
+        `${Array.isArray(children) ? `${children.length} children` : typeof children}.`
+    );
+  }
+  const child = children as React.ReactElement<{
     className?: string;
     style?: React.CSSProperties;
   }>;
@@ -99,7 +110,7 @@ function makeLayoutComponent(baseClass: string, defaultDisplay: string, displayN
         baseClass,
         defaultDisplay
       );
-      if (asChild) return renderAsChild(children, className, style, rest);
+      if (asChild) return renderAsChild(children, className, style, rest, displayName);
       const Tag = (as ?? "div") as El;
       return (
         <Tag ref={ref} className={className} style={style} {...rest}>

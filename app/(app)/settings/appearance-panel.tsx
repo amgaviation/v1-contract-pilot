@@ -11,7 +11,6 @@ import {
   RadioGroup,
   Separator,
   Text,
-  Theme,
 } from "@/components/ui";
 import { BRAND } from "@/lib/brand";
 import {
@@ -194,20 +193,20 @@ export default function AppearancePanel({
 
             <Separator size="4" />
 
-            {/* THE PREVIEW. A real nested <Theme> carrying the same three
-                slots the app shell would apply, so what a pilot sees here
-                is the actual cascade rather than a drawing of it. This is
-                one of the two files scripts/verify-tokens.mjs permits to
-                pass a runtime value to a Theme prop; every value still
-                comes from lib/theme-slots.ts. */}
+            {/* THE PREVIEW. The same three data attributes the app shell
+                stamps, on a real element, so what a pilot sees here is the
+                actual token cascade rather than a drawing of it — the palette
+                in app/design/tokens.css is declared against these attributes,
+                and custom properties inherit, so this subtree genuinely
+                re-themes. Every value still comes from lib/theme-slots.ts. */}
             <Flex direction="column" gap="2">
               <Text as="div" size="2" weight="medium">
                 Preview
               </Text>
-              <Theme
-                accentColor={previewAccent.value}
-                scaling={previewDensity.scaling}
-                appearance={previewAppearance.value}
+              <Box
+                data-appearance={previewAppearance.value}
+                data-accent={previewAccent.value}
+                data-density={previewDensity.density}
                 asChild
               >
                 <Box
@@ -239,7 +238,7 @@ export default function AppearancePanel({
                     </Flex>
                   </Card>
                 </Box>
-              </Theme>
+              </Box>
             </Flex>
 
             <div role="alert" aria-live="polite">

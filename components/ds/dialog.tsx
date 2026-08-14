@@ -31,6 +31,59 @@ import { Button, type ButtonVariant } from "./surface";
  * `e.target === dialog` check is wrong.
  */
 
+/**
+ * The bare modal shell: the native element, the design system's skin, and the
+ * open/close plumbing — with no opinion about what goes inside.
+ *
+ * Exported because components/ui's compatibility layer composes its own header
+ * and footer out of the old API's Title/Description/Cancel parts, and wrapping
+ * `Dialog` (which insists on a title prop) would have meant inventing one.
+ */
+export function DialogShell({
+  open,
+  onOpenChange,
+  children,
+  className,
+  labelledBy,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  children?: React.ReactNode;
+  className?: string;
+  labelledBy?: string;
+}) {
+  const ref = React.useRef<HTMLDialogElement>(null);
+
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (open && !el.open) el.showModal();
+    else if (!open && el.open) el.close();
+  }, [open]);
+
+  return (
+    <dialog
+      ref={ref}
+      className={cx("i-dialog", className)}
+      onClose={() => onOpenChange(false)}
+      onClick={(e) => {
+        const el = ref.current;
+        if (!el || e.target !== el) return;
+        const r = el.getBoundingClientRect();
+        const inside =
+          e.clientX >= r.left &&
+          e.clientX <= r.right &&
+          e.clientY >= r.top &&
+          e.clientY <= r.bottom;
+        if (!inside) onOpenChange(false);
+      }}
+      aria-labelledby={labelledBy}
+    >
+      {children}
+    </dialog>
+  );
+}
+
 export function Dialog({
   open,
   onOpenChange,
@@ -48,46 +101,12 @@ export function Dialog({
   footer?: React.ReactNode;
   className?: string;
 }) {
-  const ref = React.useRef<HTMLDialogElement>(null);
-
-  // Drive the element's modal state from the `open` prop. showModal() throws
-  // if called on an already-open dialog, and close() on an already-closed one
-  // is a no-op, so both are guarded on the element's own `open` property
-  // rather than on a render count.
-  React.useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    if (open && !el.open) el.showModal();
-    else if (!open && el.open) el.close();
-  }, [open]);
-
   return (
-    <dialog
-      ref={ref}
-      className={cx("i-dialog", className)}
-      // Fires for Escape and for form method="dialog" alike, so this is the
-      // single place the parent's state is told the dialog went away. Without
-      // it, Escape closes the element while `open` stays true and the dialog
-      // can never be reopened — the classic native-dialog bug.
-      onClose={() => onOpenChange(false)}
-      onClick={(e) => {
-        // Click-outside. The obvious check — `e.target === ref.current` —
-        // looks right and is wrong: the <dialog> element's box covers only
-        // the panel, but it is also the event target for clicks on its own
-        // ::backdrop, so that test fires for backdrop clicks AND for clicks
-        // on any padding of the dialog itself. Comparing coordinates against
-        // the panel's rect distinguishes them properly.
-        const el = ref.current;
-        if (!el || e.target !== el) return;
-        const r = el.getBoundingClientRect();
-        const inside =
-          e.clientX >= r.left &&
-          e.clientX <= r.right &&
-          e.clientY >= r.top &&
-          e.clientY <= r.bottom;
-        if (!inside) onOpenChange(false);
-      }}
-      aria-labelledby="i-dialog-title"
+    <DialogShell
+      open={open}
+      onOpenChange={onOpenChange}
+      className={className}
+      labelledBy="i-dialog-title"
     >
       <div className="i-dialog-head">
         <h2 className="i-heading i-t4" id="i-dialog-title">
@@ -101,7 +120,7 @@ export function Dialog({
         </div>
       ) : null}
       {footer ? <div className="i-dialog-foot">{footer}</div> : null}
-    </dialog>
+    </DialogShell>
   );
 }
 
