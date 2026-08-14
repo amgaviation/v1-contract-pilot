@@ -211,7 +211,7 @@ export function parseForeflight(text: string): ParseResult | { error: string } {
   if (sectionStart === -1 || sectionStart + 1 >= records.length) {
     return {
       error:
-        "Couldn't find a \"Flights Table\" section — this doesn't look like a ForeFlight logbook export. Try the generic CSV mapper instead.",
+        "Couldn't find a \"Flights Table\" section. This doesn't look like a ForeFlight logbook export. Try the generic CSV mapper instead.",
     };
   }
 
@@ -259,14 +259,14 @@ export function parseForeflight(text: string): ParseResult | { error: string } {
     dataRecords.push({
       fields: [],
       raw: record.raw,
-      forceReject: `Row has ${record.fields.length} columns; the Flights Table header has ${headerRow.length}. Skipped — couldn't tell which column was extra.`,
+      forceReject: `Row has ${record.fields.length} columns; the Flights Table header has ${headerRow.length}. Skipped: couldn't tell which column was extra.`,
     });
   }
 
   if (dataRecords.length === 0) {
     return {
       error:
-        "Found a \"Flights Table\" header but no data rows after it. If your logbook has flights, this file's Flights Table section may be empty or malformed — try re-exporting from ForeFlight, or use the generic CSV mapper.",
+        "Found a \"Flights Table\" header but no data rows after it. If your logbook has flights, this file's Flights Table section may be empty or malformed. Try re-exporting from ForeFlight, or use the generic CSV mapper.",
     };
   }
 
