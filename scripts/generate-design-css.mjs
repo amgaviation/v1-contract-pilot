@@ -91,29 +91,73 @@ const keys = BREAKPOINTS.map((b) => b.key);
  * order wrong is the bug the generator exists to make impossible, so it is
  * derived from the breakpoint list rather than written out.
  */
+/**
+ * The shorthand hierarchy. A longhand must fall back to the shorthand that
+ * covers it before it falls back to its own default.
+ *
+ * WHY THIS EXISTS. The generated rule declares every property in list order,
+ * so `padding-block-start` lands AFTER `padding-block` and `padding`. With a
+ * bare `initial` fallback, an element that set only `p="4"` still got
+ *     padding: 16px;                       <- from p
+ *     padding-block: initial;              <- py unset -> 0, clobbers padding
+ *     padding-block-start: initial;        <- pt unset -> 0, clobbers again
+ * and ended up with no padding at all. Every shorthand spacing prop in the
+ * product — p, px, py, m, mx, my — was silently doing nothing, which is how a
+ * <Separator my="3"> came to sit flush against its neighbours.
+ *
+ * Found by measuring a computed margin on the seam harness, not by reading the
+ * CSS: the declaration looks correct in isolation, and only the ORDER makes it
+ * wrong.
+ */
+const SHORTHAND_FALLBACK = {
+  pt: ["py", "p"],
+  pb: ["py", "p"],
+  pl: ["px", "p"],
+  pr: ["px", "p"],
+  px: ["p"],
+  py: ["p"],
+  mt: ["my", "m"],
+  mb: ["my", "m"],
+  ml: ["mx", "m"],
+  mr: ["mx", "m"],
+  mx: ["m"],
+  my: ["m"],
+};
+
+/**
+ * The full fallback chain for one property at one breakpoint.
+ *
+ * Resolution order at breakpoint B is: this property at B, then each broader
+ * shorthand at B, then the same sequence at B-1, and so on down to `initial`,
+ * ending at the property's own default. Written as nested var() fallbacks,
+ * innermost last.
+ *
+ * The breakpoint half is what makes a value set at one width inherit upward
+ * until another replaces it; the shorthand half is what stops a longhand
+ * wiping out the shorthand declared above it.
+ */
 function chain(varName, uptoIndex, dflt) {
-  // The innermost fallback is NOT optional. A `var()` with no fallback whose
-  // custom property is unset makes the whole declaration "invalid at computed
-  // value time", which is not the same as the declaration being absent — it
-  // computes to `unset`, beating any lower-specificity default rule that would
-  // otherwise have applied. That is how `display` on a Flex broke the first
-  // time this generator ran: the primitive's own `display: flex` default was
-  // silently overridden by an IACVT `display: var(--i-d-initial)` for every
-  // element that did not pass the prop.
+  const family = [varName, ...(SHORTHAND_FALLBACK[varName] ?? [])];
+  // Innermost first: the widest fallback is the LAST thing tried, so build the
+  // expression from the inside out.
+  // BUILD ORDER IS THE WHOLE CORRECTNESS ARGUMENT, and getting it backwards
+  // is silent. var() tries its own property first and the fallback second, so
+  // whatever ends up OUTERMOST is tried FIRST. That means:
   //
-  // So every property carries an explicit default from lib/ds/scales.ts, and
-  // two of them are load-bearing rather than cosmetic:
-  //   minWidth  → "0", because a flex/grid child will not shrink below its
-  //               content without it, and a child that does not shrink is the
-  //               single most common cause of a page that scrolls sideways
-  //               (docs/RESPONSIVE-CONTRACT.md rule 1). An explicit minWidth
-  //               prop still wins — this is the default, not an override.
-  //   textAlign → "inherit", because text-align is an inherited property and
-  //               `initial` would reset it to `start`, silently breaking any
-  //               centred region a parent had established.
-  let expr = `var(--i-${varName}-${keys[0]}, ${dflt})`;
-  for (let i = 1; i <= uptoIndex; i++) {
-    expr = `var(--i-${varName}-${keys[i]}, ${expr})`;
+  //   breakpoints ASCEND (initial wrapped first, so `md` ends outermost and is
+  //     tried before `initial`). Built descending, `initial` ended up outermost
+  //     and won at every width — which hid the nav rail at 1024px and up,
+  //     because display={{ initial: "none", md: "block" }} resolved to "none"
+  //     forever. layout:verify caught it; nothing else could have.
+  //
+  //   the shorthand family runs WIDEST-FIRST within each breakpoint, so the
+  //     property's own var ends outermost and beats the shorthand it belongs
+  //     to (pt before py before p).
+  let expr = dflt;
+  for (let i = 0; i <= uptoIndex; i++) {
+    for (let f = family.length - 1; f >= 0; f--) {
+      expr = `var(--i-${family[f]}-${keys[i]}, ${expr})`;
+    }
   }
   return expr;
 }

@@ -71,7 +71,8 @@ function cloneWithClick(children: React.ReactNode, onAfter: () => void) {
   } as never);
 }
 
-export const AlertDialog = {
+export const AlertDialogRoot = AlertRoot;
+const _AlertDialogParts = {
   Root: AlertRoot,
   /** Clones its single child and opens on click — the behaviour Radix's
    *  Trigger supplied, which the child Button does not have on its own. */
@@ -126,7 +127,7 @@ const TabsCtx = React.createContext<{ value: string; setValue: (v: string) => vo
   setValue: () => {},
 });
 
-export const Tabs = {
+const _TabsParts = {
   Root: function TabsRoot({
     value: controlled,
     defaultValue,
@@ -371,12 +372,10 @@ function RadioItem({
   );
 }
 
-export const RadioGroup = { Root: RadioGroupRoot, Item: RadioItem };
-export const RadioCards = { Root: RadioGroupRoot, Item: RadioItem };
-export const SegmentedControl = { Root: RadioGroupRoot, Item: RadioItem };
+export { RadioGroupRoot, RadioItem };
 
 /** A label/value list — the shape every "details" panel in this product uses. */
-export const DataList = {
+const _DataListParts = {
   Root: function DataListRoot({
     children,
     ...rest
@@ -406,3 +405,33 @@ export const DataList = {
     return <dd style={{ margin: 0 }}>{children}</dd>;
   },
 };
+
+
+/* ── EXPORTED AS FUNCTIONS, NOT AS OBJECTS ───────────────────────────────
+   This module carries "use client", so every export crosses the RSC
+   boundary as a CLIENT REFERENCE. A function survives that intact. An OBJECT
+   does not: it arrives as an opaque proxy, and reading a property off it from
+   a server component yields undefined — which React reports as
+   "Element type is invalid ... got: undefined", naming nothing.
+
+   That is not hypothetical here: app/(app)/settings/billing/page.tsx is a
+   server component that renders <DataList.Root>. So each part is exported by
+   name below, and components/ui/index.tsx — a SERVER module — assembles the
+   compound objects from them. The object is then a real object whose values
+   happen to be client references, which is the arrangement that works. */
+export const AlertDialogTrigger = _AlertDialogParts.Trigger;
+export const AlertDialogContent = _AlertDialogParts.Content;
+export const AlertDialogTitle = _AlertDialogParts.Title;
+export const AlertDialogDescription = _AlertDialogParts.Description;
+export const AlertDialogCancel = _AlertDialogParts.Cancel;
+export const AlertDialogAction = _AlertDialogParts.Action;
+
+export const TabsRoot = _TabsParts.Root;
+export const TabsList = _TabsParts.List;
+export const TabsTrigger = _TabsParts.Trigger;
+export const TabsContent = _TabsParts.Content;
+
+export const DataListRoot = _DataListParts.Root;
+export const DataListItem = _DataListParts.Item;
+export const DataListLabel = _DataListParts.Label;
+export const DataListValue = _DataListParts.Value;

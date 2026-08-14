@@ -266,3 +266,53 @@ The rebuild lands in stages, each of which leaves `main` shippable:
 
 Each stage ends with typecheck, unit tests, `tokens:verify`, `layout:verify`
 and a build — all green — before the next begins.
+
+---
+
+## Verifying the seam
+
+`components/ui` translates the old API onto INSTRUMENT for the ~89 files that
+have not been rewritten yet (stage 4). Every such seam fails the same way:
+**silently**. A prop the screens pass and the seam drops type-checks, builds,
+renders, and is simply gone.
+
+The authenticated screens cannot be rendered in CI — they are behind
+`requireAccount()` and every one queries Supabase, so exercising them needs a
+seeded tenant. Two checks stand in for that, and between them they caught
+every defect this migration produced:
+
+| Check | What it does |
+|---|---|
+| `npm run seam:audit` | Walks `app/(app)` and prints every (component, prop) pair the screens actually pass, with counts. It does not decide what is a bug — a seam *should* drop some props deliberately — it makes the list visible so the decision is made rather than assumed. |
+| `app/(dev)/seam-harness` | Renders every shimmed component in those same prop shapes, so the result can be looked at and measured. In the `layout:verify` matrix. |
+
+**Six defects, none of which a type-check or a build could see:**
+
+1. **Separator swallowed `my`/`mb`/`mt`** — twelve rules sat flush against
+   their content.
+2. **Table cells understood only `justify="end"`** — the 63 cells passing
+   `center` or `between` silently lost their alignment.
+3. **`Select.Trigger` dropped `id`** — twenty `<label htmlFor>` attributes
+   pointed at nothing, so those fields had no associated label.
+4. **Compound objects exported from a `"use client"` module are opaque
+   proxies.** `export const Tabs = {Root, List, …}` crosses the RSC boundary
+   as a client *reference*, and reading `.Root` off it from a server component
+   yields `undefined` — which React reports as "Element type is invalid",
+   naming nothing. Real screens hit this: `settings/billing/page.tsx` is a
+   server component rendering `<DataList.Root>`. Each part is now exported as
+   a named function and the objects are assembled in the server module.
+5. **Longhand spacing clobbered the shorthands.** The generated rule declares
+   properties in list order, so `padding-block-start` lands after `padding`.
+   With a bare `initial` fallback, an element setting only `p="4"` got
+   `padding: 16px` and then `padding-block: initial` → 0 and
+   `padding-block-start: initial` → 0. **Every shorthand spacing prop in the
+   product — `p`, `px`, `py`, `m`, `mx`, `my` — was doing nothing.** Longhands
+   now fall back through their shorthands before their own default
+   (`SHORTHAND_FALLBACK` in the generator).
+6. **`"use client"` on the whole seam broke `asChild` everywhere** — children
+   written in a server component crossed the boundary and arrived as a lazy
+   reference rather than an element.
+
+Numbers 4 and 5 are the ones worth remembering: both were invisible in the
+source, both required *measuring a rendered page* to find, and number 5 had
+been shipping since the first commit of the prop engine.

@@ -30,7 +30,8 @@
     "reminders:verify": "node scripts/reminders-verify.mjs",
     "layout:verify": "node scripts/layout-verify.mjs",
     "design:css": "node scripts/generate-design-css.mjs",
-    "design:css:check": "node scripts/generate-design-css.mjs --check"
+    "design:css:check": "node scripts/generate-design-css.mjs --check",
+    "seam:audit": "node scripts/seam-audit.mjs"
   },
   "dependencies": {
     "@radix-ui/colors": "^3.0.0",

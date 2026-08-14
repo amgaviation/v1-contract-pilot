@@ -361,10 +361,19 @@ export const Badge = React.forwardRef<
 export function Separator({
   size: _size,
   orientation,
+  className,
   ...rest
-}: { size?: string; orientation?: string } & Record<string, unknown>) {
+}: { size?: string; orientation?: string; className?: string } & SpacingProps &
+  Record<string, unknown>) {
+  // MARGINS HAVE TO SURVIVE. The first version took only `vertical` and
+  // `className`, so the my/mb/mt on twelve separators was silently dropped and
+  // every rule sat flush against the content above and below it. The
+  // INSTRUMENT Separator is not a layout primitive, so the spacing is applied
+  // by a Box around it rather than by adding layout props to a <hr>.
   return (
-    <DsSeparator vertical={orientation === "vertical"} {...(rest as { className?: string })} />
+    <Box {...(rest as Record<string, never>)}>
+      <DsSeparator vertical={orientation === "vertical"} className={className} />
+    </Box>
   );
 }
 
@@ -538,8 +547,17 @@ const SelectRoot = React.forwardRef<
       value={value}
       defaultValue={defaultValue}
       onChange={onValueChange ? (e) => onValueChange(e.currentTarget.value) : undefined}
+      // EVERY LABELLING ATTRIBUTE THE TRIGGER CARRIED HAS TO TRAVEL. The
+      // first version forwarded only aria-labelledby and aria-label, which
+      // dropped the `id` on twenty fields — and an id is what a
+      // <label htmlFor> points at, so those labels stopped being associated
+      // with any control. aria-invalid and aria-describedby matter for the
+      // same reason: they are the error state a screen reader announces.
+      id={triggerProps.id as string | undefined}
       aria-labelledby={triggerProps["aria-labelledby"] as string | undefined}
       aria-label={triggerProps["aria-label"] as string | undefined}
+      aria-invalid={triggerProps["aria-invalid"] as boolean | undefined}
+      aria-describedby={triggerProps["aria-describedby"] as string | undefined}
       {...(rest as Record<string, never>)}
     >
       {placeholder ? (
@@ -621,11 +639,38 @@ const TableCell = React.forwardRef<
     <DsTable.Cell
       ref={ref}
       numeric={numeric ?? justify === "end"}
-      style={width || minWidth ? { ...style, width, minWidth } : style}
+      // `justify` has THREE values in this codebase — end (302), between (55)
+      // and center (8) — and the first version only understood "end", so the
+      // other 63 cells silently lost their alignment. `end` maps to the
+      // numeric treatment (right-aligned tabular figures, which is the only
+      // thing this product right-aligns); the rest set text-align directly.
+      style={justifyStyle(justify, style, width, minWidth)}
       {...rest}
     />
   );
 });
+
+/** Shared by Table.Cell and Table.ColumnHeaderCell. */
+function justifyStyle(
+  justify: string | undefined,
+  style: React.CSSProperties | undefined,
+  width?: string,
+  minWidth?: string
+): React.CSSProperties | undefined {
+  const extra: React.CSSProperties = {};
+  if (justify === "center") extra.textAlign = "center";
+  // `between` on a cell meant "spread the cell's own children", which is a
+  // flex arrangement, not a text alignment.
+  if (justify === "between") {
+    extra.display = "flex";
+    extra.justifyContent = "space-between";
+    extra.alignItems = "center";
+    extra.gap = "var(--space-2)";
+  }
+  if (width) extra.width = width;
+  if (minWidth) extra.minWidth = minWidth;
+  return Object.keys(extra).length || style ? { ...style, ...extra } : undefined;
+}
 
 const TableColumnHead = React.forwardRef<
   HTMLTableCellElement,
@@ -640,7 +685,7 @@ const TableColumnHead = React.forwardRef<
     <DsTable.ColumnHead
       ref={ref}
       numeric={numeric ?? justify === "end"}
-      style={width || minWidth ? { ...style, width, minWidth } : style}
+      style={justifyStyle(justify, style, width, minWidth)}
       {...rest}
     />
   );
@@ -667,16 +712,62 @@ export const Table = {
    "use client", and putting that directive on THIS file made every asChild
    child cross the RSC boundary and arrive as a lazy reference instead of an
    element. Re-exported so call sites still import everything from one path. */
-export {
-  AlertDialog,
-  DataList,
-  RadioCards,
-  RadioGroup,
-  Section,
-  SegmentedControl,
-  Skeleton,
-  Tabs,
+import {
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogRoot,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+  DataListItem,
+  DataListLabel,
+  DataListRoot,
+  DataListValue,
+  RadioGroupRoot,
+  RadioItem,
+  TabsContent,
+  TabsList,
+  TabsRoot,
+  TabsTrigger,
 } from "./interactive";
+
+export { Section, Skeleton } from "./interactive";
+
+/* THE COMPOUND OBJECTS ARE ASSEMBLED HERE, in a SERVER module, from the
+   individually-exported parts — NOT exported as objects from ./interactive.
+   A "use client" module's exports cross the boundary as client references:
+   a function survives, an object arrives as an opaque proxy whose properties
+   read undefined from a server component. Assembling here makes each of these
+   a real object whose values are client references, which is what works in
+   both directions. */
+export const AlertDialog = {
+  Root: AlertDialogRoot,
+  Trigger: AlertDialogTrigger,
+  Content: AlertDialogContent,
+  Title: AlertDialogTitle,
+  Description: AlertDialogDescription,
+  Cancel: AlertDialogCancel,
+  Action: AlertDialogAction,
+};
+
+export const Tabs = {
+  Root: TabsRoot,
+  List: TabsList,
+  Trigger: TabsTrigger,
+  Content: TabsContent,
+};
+
+export const DataList = {
+  Root: DataListRoot,
+  Item: DataListItem,
+  Label: DataListLabel,
+  Value: DataListValue,
+};
+
+export const RadioGroup = { Root: RadioGroupRoot, Item: RadioItem };
+export const RadioCards = { Root: RadioGroupRoot, Item: RadioItem };
+export const SegmentedControl = { Root: RadioGroupRoot, Item: RadioItem };
 
 /* The native INSTRUMENT names, re-exported so a screen being migrated off the
    seam can start using them without a second import path. */
