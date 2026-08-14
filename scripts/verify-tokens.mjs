@@ -204,7 +204,16 @@ const RADIX_THEMES_IMPORT_EXEMPT_FILE = join(
 const SLOT_ORIGIN_FILE = join(ROOT, "lib", "theme-slots.ts");
 const THEME_APPLIER_FILES = new Set([
   // The app shell: one nested <Theme> carrying the tenant's resolved slots.
-  join(ROOT, "app", "(app)", "layout.tsx"),
+  //
+  // This used to be app/(app)/layout.tsx, and it MOVED. The shell's markup
+  // was extracted to app-shell.tsx so it could be rendered without a
+  // session and measured across a viewport matrix by
+  // scripts/layout-verify.mjs. layout.tsx is now the session read alone and
+  // applies no <Theme> at all, so it is deliberately NOT listed here: this
+  // allow-list has to name the file that actually applies the slots, or it
+  // stops meaning anything. If the shell moves again, move this entry with
+  // it rather than adding a second one.
+  join(ROOT, "app", "(app)", "app-shell.tsx"),
   // The appearance panel's preview card, which shows a pilot the accent
   // they are about to save before they save it. Same values, same
   // enumerated source, one screen.
@@ -599,7 +608,7 @@ if (violations.length > 0) {
       "A per-tenant visual value (accent, density, light/dark) is a different rule:\n" +
       "  it must ORIGINATE in lib/theme-slots.ts, which enumerates every one of them\n" +
       "  and resolves an untrusted stored value against that list. A <Theme> prop may\n" +
-      "  only take a runtime value in the app shell (app/(app)/layout.tsx) and the\n" +
+      "  only take a runtime value in the app shell (app/(app)/app-shell.tsx) and the\n" +
       "  appearance panel's preview; a var(--...) name may only be assembled at\n" +
       "  runtime in lib/theme-slots.ts. Add the slot to that file, don't inject the\n" +
       "  value here.\n"

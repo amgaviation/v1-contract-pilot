@@ -34,6 +34,75 @@ jobs:
 
       - run: npm run build
 
+  # The responsive contract — docs/RESPONSIVE-CONTRACT.md.
+  #
+  # Its own job rather than a step on `build`, for one reason: it is the only
+  # thing in CI needing a browser binary, and confining that cost to a job
+  # keeps it off the critical path of the typecheck/unit/build signal every
+  # push depends on.
+  #
+  # What it protects: the shell governs the layout of every page, and until
+  # this existed it had no automated check of any kind — it lived behind
+  # requireAccount(), so it could not be rendered without a session, so it was
+  # verified by looking at it at whatever window size the last person had
+  # open. Three defects shipped that way, including a band between 768 and
+  # 1023px (iPad portrait; a 1440px desktop at 175% zoom) where the usable
+  # canvas was NARROWER than the phone layout gives at the same viewport.
+  layout:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Chromium only. The contract is geometry — flexbox, grid, media
+      # queries — and the three engines agree on all of it; adding Firefox and
+      # WebKit would triple the setup for no extra signal.
+      - run: npx playwright install --with-deps chromium
+
+      # The DEV server, not a production build, and that is not a shortcut
+      # around the harness's guard — it IS the guard. The harness is
+      # development-only by construction: the page calls notFound(), and
+      # lib/supabase/proxy.ts only allow-lists its path when NODE_ENV is
+      # "development". `npm start` here would measure a redirect to /login at
+      # every viewport and pass having asserted nothing.
+      - name: Start dev server
+        run: |
+          npm run dev > /tmp/dev.log 2>&1 &
+          # Plain curl rather than `npx wait-on`, to avoid pulling a package
+          # off the network mid-job purely to poll a local port. Fails the
+          # step loudly if the server never answers 200 — a silent timeout
+          # here would hand the verify script a dead port and produce 160
+          # identical, meaningless failures.
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/layout-harness || true)
+            if [ "$code" = "200" ]; then echo "dev server up after ${i}s"; exit 0; fi
+            sleep 2
+          done
+          echo "dev server did not serve /layout-harness within 120s (last code: ${code:-none})"
+          cat /tmp/dev.log
+          exit 1
+        env:
+          # The shell and the harness issue no queries, but the Supabase
+          # clients are constructed at module scope and proxy.ts fails loudly
+          # when these are unset. Placeholders are the CORRECT value here: a
+          # real key would be a credential in CI for a surface that never
+          # reaches the database. (Note the names — this product uses
+          # NEXT_SUPABASE_*, not the conventional NEXT_PUBLIC_SUPABASE_*.)
+          NEXT_SUPABASE_URL: http://localhost:54321
+          NEXT_SUPABASE_PUBLISHABLE_KEY: ci-placeholder-publishable-key
+
+      - run: npm run layout:verify
+
+      - name: Dev server log on failure
+        if: failure()
+        run: cat /tmp/dev.log
+
   # The database half of the verification, which never ran before.
   #
   # Every DB-backed verify script takes a <NAME>_VERIFY_BOOTSTRAP pointing at a
