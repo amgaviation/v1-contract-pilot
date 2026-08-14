@@ -132,7 +132,7 @@ export default async function DocumentsPage() {
               }
             >
               Medicals, flight reviews, passports, certificates, insurance and
-              W-9s — anything with a date that matters.
+              W-9s: anything with a date that matters.
             </EmptyState>
           ) : (
             <Table.Root variant="ghost">
@@ -175,7 +175,7 @@ export default async function DocumentsPage() {
                           ) : null}
                           {expiration && MONTH_SEMANTICS_KINDS.has(doc.kind) ? (
                             <Text size="1" color="gray">
-                              Counted against the date you entered — 61.23/61.56
+                              Counted against the date you entered. 61.23/61.56
                               actually run through the end of that month.
                             </Text>
                           ) : null}

@@ -83,7 +83,7 @@ export default function MileageRatesPanel({
                   irs.gov/tax-professionals/standard-mileage-rates
                 </a>
               </RadixLink>
-              . This product never fills in a figure for you — a stale or guessed rate would
+              . This product never fills in a figure for you. A stale or guessed rate would
               silently misstate a real deduction.
             </Text>
           </Callout.Text>
@@ -222,7 +222,7 @@ export default function MileageRatesPanel({
 
               <Text size="1" color="gray">
                 Saving a year that already has a rate replaces it. Drives already logged keep the
-                rate they were captured with — see the{" "}
+                rate they were captured with. See the{" "}
                 <RadixLink asChild>
                   <NextLink href="/expenses/mileage">mileage log</NextLink>
                 </RadixLink>

@@ -65,7 +65,7 @@ export function passwordProblem(
     return `Use at least ${MIN_PASSWORD_LENGTH} characters for your password.`;
   }
   if (byteLength(password) > MAX_PASSWORD_BYTES) {
-    return `That password is too long — keep it to ${MAX_PASSWORD_BYTES} characters or fewer.`;
+    return `That password is too long. Keep it to ${MAX_PASSWORD_BYTES} characters or fewer.`;
   }
   if (password !== confirm) {
     return "Those two passwords don't match.";

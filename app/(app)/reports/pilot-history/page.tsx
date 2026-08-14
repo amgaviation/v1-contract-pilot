@@ -320,7 +320,7 @@ export default async function PilotHistoryReportPage() {
                   <NextLink href="/documents">Documents</NextLink>
                 </RadixLink>
                 . Nothing here is derived, checked against a registry, or
-                calculated from another date — an expiry shown is one you
+                calculated from another date. An expiry shown is one you
                 typed, not one this page worked out.
               </Text>
             </Box>
@@ -384,7 +384,7 @@ export default async function PilotHistoryReportPage() {
                     A document marked &ldquo;No airman recorded&rdquo; is on
                     this account without saying whose it is. It is listed
                     because it is almost certainly yours on a single-pilot
-                    account — but this page will not assert that for you.
+                    account, but this page will not assert that for you.
                     Open the document and record the airman to remove the
                     mark.
                   </Text>

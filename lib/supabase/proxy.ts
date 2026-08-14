@@ -25,7 +25,7 @@ export async function updateSession(request: NextRequest) {
     // Supabase project is the normal starting state.
     if (process.env.NODE_ENV === "production") {
       throw new Error(
-        "NEXT_SUPABASE_URL / NEXT_SUPABASE_PUBLISHABLE_KEY are unset in production — refusing to serve requests without a working auth gate."
+        "NEXT_SUPABASE_URL / NEXT_SUPABASE_PUBLISHABLE_KEY are unset in production. Refusing to serve requests without a working auth gate."
       );
     }
     return response;

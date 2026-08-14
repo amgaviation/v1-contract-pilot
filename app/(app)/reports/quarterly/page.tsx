@@ -204,7 +204,7 @@ export default async function QuarterlyReportPage({
             <Text as="div" size="2" color="gray" mb="3">
               Enter a percentage of net profit you want to set aside for
               taxes. This is your own estimate, not one this product
-              provides — left blank until you enter one, and never saved.
+              provides: left blank until you enter one, and never saved.
             </Text>
             <form method="GET" action="/reports/quarterly">
               <Flex gap="2" align="center" wrap="wrap">
@@ -328,7 +328,7 @@ export default async function QuarterlyReportPage({
                   {pf.mileageCount > 0 ? (
                     <Table.Row>
                       <Table.RowHeaderCell>
-                        Mileage, standard rate (informational — not in net
+                        Mileage, standard rate (informational, not in net
                         profit)
                       </Table.RowHeaderCell>
                       <Table.Cell justify="end">

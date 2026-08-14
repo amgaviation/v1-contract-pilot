@@ -125,7 +125,7 @@ export default function DocumentForm({
                 defaultValue={initial("label", values.label)}
               />
               <Text size="1" color="gray">
-                However you&rsquo;d recognize it — e.g. &ldquo;First class medical&rdquo; or
+                However you&rsquo;d recognize it: e.g. &ldquo;First class medical&rdquo; or
                 &ldquo;N123AB hull policy&rdquo;
               </Text>
             </Flex>
@@ -187,7 +187,7 @@ export default function DocumentForm({
               </Select.Root>
               <input type="hidden" name="client_id" value={clientId === NO_CLIENT ? "" : clientId} />
               <Text size="1" color="gray">
-                Optional — e.g. an insurance certificate or W-9 that names one client
+                Optional: e.g. an insurance certificate or W-9 that names one client
               </Text>
             </Flex>
             <Flex direction="column" gap="1">
@@ -217,7 +217,7 @@ export default function DocumentForm({
             {fileLost ? (
               <Text size="1" color="red">
                 This browser cleared the file you picked. Choose it again before
-                saving — the rest of the form is as you left it.
+                saving. The rest of the form is as you left it.
               </Text>
             ) : (
               <Text size="1" color="gray">

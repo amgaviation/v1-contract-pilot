@@ -62,7 +62,7 @@ export default async function DocumentPage({
         <Card>
           <Flex justify="between" align="center" gap="3" p="1">
             <Text size="2" color="gray">
-              A file is attached. It&rsquo;s stored privately — the link below works for one
+              A file is attached. It&rsquo;s stored privately. The link below works for one
               minute.
             </Text>
             <DocumentLink path={doc.file_path} />
