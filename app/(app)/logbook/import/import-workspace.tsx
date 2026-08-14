@@ -359,23 +359,23 @@ export default function ImportWorkspace() {
           {outcome.duplicatesInLogbook ? (
             <Text size="2" color="gray">
               <span className="tnum">{outcome.duplicatesInLogbook}</span> row
-              {outcome.duplicatesInLogbook === 1 ? "" : "s"} skipped — already in your logbook from a
+              {outcome.duplicatesInLogbook === 1 ? "" : "s"} skipped. Already in your logbook from a
               previous import.
             </Text>
           ) : null}
           {outcome.duplicatesInFile ? (
             <Text size="2" color="gray">
               <span className="tnum">{outcome.duplicatesInFile}</span> row
-              {outcome.duplicatesInFile === 1 ? "" : "s"} skipped — duplicate of an earlier row in this
+              {outcome.duplicatesInFile === 1 ? "" : "s"} skipped. Duplicate of an earlier row in this
               same file, not a previous import. If these are genuinely two different flights (e.g. two
-              identical pattern-work hops flown back to back), add the missed one by hand — see the rows
+              identical pattern-work hops flown back to back), add the missed one by hand. See the rows
               below.
             </Text>
           ) : null}
           {outcome.rejectedCount ? (
             <Text size="2" color="amber">
               {outcome.rejectedCount} row{outcome.rejectedCount === 1 ? "" : "s"} couldn&rsquo;t be
-              parsed — see the rejected rows below for why.
+              parsed. See the rejected rows below for why.
             </Text>
           ) : null}
           <Flex gap="3" mt="2">
@@ -440,8 +440,8 @@ export default function ImportWorkspace() {
                   <Flex align="center" gap="2" wrap="wrap">
                     <span>
                       {summary.needsRole} row{summary.needsRole === 1 ? "" : "s"} don&rsquo;t give
-                      an unambiguous PIC/SIC/Solo/Dual-received signal and can&rsquo;t be inferred
-                      — these will be held back when you import (the rest of the batch is not
+                      an unambiguous PIC/SIC/Solo/Dual-received signal and can&rsquo;t be inferred.
+                      These will be held back when you import (the rest of the batch is not
                       blocked). Pick a role for each, or set one default for all of them, to
                       include them this time:
                     </span>
@@ -474,7 +474,7 @@ export default function ImportWorkspace() {
                   <Flex align="center" gap="2" wrap="wrap">
                     <span>
                       {summary.needsDevice} row{summary.needsDevice === 1 ? "" : "s"} log simulator
-                      time without saying FFS/FTD/ATD/other — pick one for each, or set a default:
+                      time without saying FFS, FTD, ATD, or other. Pick one for each, or set a default:
                     </span>
                     <Button size="1" variant="outline" onClick={() => applyDefaultDeviceToUndecided("ffs")}>
                       Set undecided to FFS
