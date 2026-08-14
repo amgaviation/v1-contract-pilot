@@ -203,6 +203,17 @@ async function refreshSession(
     // /ocr had exactly this bug an hour earlier.
     path.startsWith("/packet/") ||
     normalizedPath === "/packet" ||
+    // THE SAMPLE CONNECT STOREFRONT (app/store/[accountId]) — the public
+    // shop page belonging to a merchant onboarded through the sample Connect
+    // integration, plus its post-checkout success page. Same shape as the
+    // two above: it is opened by someone with no account here — the
+    // MERCHANT'S customer — so a redirect to /login would break the only
+    // thing the page is for. It exposes only what a shopfront must (product
+    // names, descriptions, prices) and takes no amount from the request; see
+    // app/store/[accountId]/actions.ts for why that action needs no session.
+    // The merchant-facing dashboard at /sample-connect is NOT listed here
+    // and stays behind the session, which is correct — it spends money.
+    path.startsWith("/store/") ||
     // THE LAYOUT HARNESS — app/(dev)/layout-harness, the fixture render of
     // the authenticated shell that scripts/layout-verify.mjs measures. It
     // needs no session by construction (that is the entire point: the
