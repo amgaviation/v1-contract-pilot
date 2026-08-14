@@ -116,6 +116,31 @@ export const CONNECT_ENDPOINT_EVENT_TYPES = [
 ] as const;
 
 /**
+ * A pilot revoking the platform's OAuth grant from their own Stripe
+ * dashboard. Carries no Checkout Session, so it is handled in the route
+ * before the payment-decision path and must NEVER join the list above —
+ * anything in CONNECT_ENDPOINT_EVENT_TYPES is a candidate for the payment
+ * decision layer, and a deauthorization is not money.
+ */
+export const DEAUTHORIZED_EVENT_TYPE = "account.application.deauthorized";
+
+/**
+ * WHAT AN OPERATOR ACTUALLY REGISTERS in the Stripe dashboard — the
+ * payment types plus the deauthorization the route also acts on.
+ *
+ * Separate from CONNECT_ENDPOINT_EVENT_TYPES because the two lists answer
+ * different questions, and for a while they silently disagreed: the route
+ * grew a deauthorization branch while .env.example still told operators to
+ * subscribe to three events, so an endpoint built to the documented list
+ * never delivered the fourth and a revoked grant went on looking connected
+ * forever. docs/SETUP.md and .env.example name this constant now.
+ */
+export const CONNECT_ENDPOINT_REGISTER_EVENT_TYPES = [
+  ...CONNECT_ENDPOINT_EVENT_TYPES,
+  DEAUTHORIZED_EVENT_TYPE,
+] as const;
+
+/**
  * How far apart a hand-typed payment and a Stripe payment may sit and
  * still be read as "the same money, entered twice".
  *
