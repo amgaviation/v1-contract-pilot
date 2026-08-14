@@ -367,7 +367,7 @@ export default async function PublicInvoicePage({
                 Invoice
               </Text>
               <Text as="div" size="5" weight="bold">
-                {invoice.invoice.invoice_number ?? "N/A"}
+                {invoice.invoice.invoice_number ?? "—"}
               </Text>
               <Text as="div" size="2" color="gray">
                 {invoice.invoice.issued_on ? `Issued ${formatDate(invoice.invoice.issued_on)}` : null}

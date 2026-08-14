@@ -208,10 +208,10 @@ export default async function VendorPage({
                   const status = OPEN_STATUS_LABEL[invoice.status] ?? OPEN_STATUS_LABEL.sent!;
                   return (
                     <Table.Row key={`${invoice.invoice_number}-${i}`}>
-                      <Table.RowHeaderCell>{invoice.invoice_number ?? "N/A"}</Table.RowHeaderCell>
+                      <Table.RowHeaderCell>{invoice.invoice_number ?? "—"}</Table.RowHeaderCell>
                       <Table.Cell>
                         <Text color="gray">
-                          {invoice.due_on ? formatDate(invoice.due_on) : "N/A"}
+                          {invoice.due_on ? formatDate(invoice.due_on) : "—"}
                         </Text>
                       </Table.Cell>
                       <Table.Cell>
@@ -258,10 +258,10 @@ export default async function VendorPage({
               <Table.Body>
                 {page.paid_invoices.map((invoice, i) => (
                   <Table.Row key={`${invoice.invoice_number}-${i}`}>
-                    <Table.RowHeaderCell>{invoice.invoice_number ?? "N/A"}</Table.RowHeaderCell>
+                    <Table.RowHeaderCell>{invoice.invoice_number ?? "—"}</Table.RowHeaderCell>
                     <Table.Cell>
                       <Text color="gray">
-                        {invoice.paid_on ? formatDate(invoice.paid_on) : "N/A"}
+                        {invoice.paid_on ? formatDate(invoice.paid_on) : "—"}
                       </Text>
                     </Table.Cell>
                     <Table.Cell align="right" className="tnum">

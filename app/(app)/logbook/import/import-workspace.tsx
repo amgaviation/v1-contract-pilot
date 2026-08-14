@@ -805,7 +805,7 @@ function DuplicateTable({ rows, truncated }: { rows: DuplicateRowDetail[]; trunc
         </Flex>
         <Text size="1" color="gray">
           &ldquo;Already in your logbook&rdquo; rows match a flight from a previous import.
-          &ldquo;Duplicate in this file&rdquo; rows match an earlier row in THIS file — if that&rsquo;s a
+          &ldquo;Duplicate in this file&rdquo; rows match an earlier row in THIS file. If that&rsquo;s a
           real second flight (not a data-entry repeat), add it by hand.
         </Text>
         {truncated ? (

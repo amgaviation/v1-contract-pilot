@@ -168,7 +168,7 @@ export default async function PublicEstimatePage({
                 Estimate
               </Text>
               <Text as="div" size="5" weight="bold">
-                {estimate.estimate.estimate_number ?? "N/A"}
+                {estimate.estimate.estimate_number ?? "—"}
               </Text>
               <Text as="div" size="2" color="gray">
                 {estimate.estimate.issued_on ? `Sent ${formatDate(estimate.estimate.issued_on)}` : null}

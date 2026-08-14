@@ -69,7 +69,7 @@ export default async function RecurringInvoicesPage() {
     for (const d of due) {
       dueRows.push({
         ...d,
-        client_name: clientNames.get(schedule.client_id) ?? "N/A",
+        client_name: clientNames.get(schedule.client_id) ?? "—",
         description: schedule.description,
       });
     }

@@ -476,7 +476,7 @@ export default function ScheduleManager({
                 <ScheduleRowView
                   key={schedule.id}
                   schedule={schedule}
-                  clientName={clientNames.get(schedule.client_id) ?? "N/A"}
+                  clientName={clientNames.get(schedule.client_id) ?? "—"}
                   editing={editingId === schedule.id}
                   onEdit={() => setEditingId(schedule.id)}
                   onDone={() => setEditingId(null)}

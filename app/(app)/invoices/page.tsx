@@ -432,7 +432,7 @@ export default async function InvoicesPage({
                       </RadixLink>
                     </Table.RowHeaderCell>
                     <Table.Cell>
-                      <Text color="gray">{clientNames.get(invoice.client_id) ?? "N/A"}</Text>
+                      <Text color="gray">{clientNames.get(invoice.client_id) ?? "—"}</Text>
                     </Table.Cell>
                     <Table.Cell>
                       <Text color="gray">{formatDate(invoice.issued_on)}</Text>
