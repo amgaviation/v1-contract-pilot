@@ -91,6 +91,21 @@ export const NAV_SECTIONS: readonly NavItem[] = [
 export const NAV_SETTINGS: NavItem = { href: "/settings", label: "Settings" };
 
 /**
+ * The user guide (app/(app)/help).
+ *
+ * Sits apart from NAV_SECTIONS for the same reason Settings does: it is not
+ * another place to file work, so it must not appear in the tenant's
+ * reorder-and-hide layout (that feature enumerates NAV_SECTIONS, and a
+ * pilot hiding Help would be hiding the thing they reach for when they are
+ * already lost). Rendered next to Settings, below the separator.
+ *
+ * Still listed in robots.txt's disallow set via app/robots.ts, like every
+ * other signed-in path — the guide describes a specific account's product
+ * and is behind the session.
+ */
+export const NAV_HELP: NavItem = { href: "/help", label: "Help" };
+
+/**
  * The sections the rail and phone strip actually render.
  *
  * Currency ships behind THE flag (docs/PLAN.md decision #15;

@@ -42,9 +42,6 @@ export default function SettingsForm({
         <Flex direction="column" gap="4" p="2">
           <Flex direction="column" gap="1">
             <Heading as="h2" size="4">Your business</Heading>
-            <Text size="2" color="gray">
-              This is what prints on the invoices your clients receive.
-            </Text>
           </Flex>
 
           <Grid columns={{ initial: "1", md: "12" }} gap="3">

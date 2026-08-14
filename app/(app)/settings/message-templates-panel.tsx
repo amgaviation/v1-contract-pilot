@@ -83,10 +83,6 @@ export default function MessageTemplatesPanel({
         <Heading as="h3" size="4">
           Message wording
         </Heading>
-        <Text size="2" color="gray">
-          The opening line of the emails your clients receive, saved once and
-          reused every time. Leave a box empty to use the wording shown in it.
-        </Text>
       </Flex>
 
       <Card>

@@ -69,11 +69,6 @@ export default function RemindersPanel({
         <Heading as="h3" size="4">
           Reminders
         </Heading>
-        <Text size="2" color="gray">
-          Follow-ups on invoices that are already out, sent in your name on the
-          schedule you set per client. They never change an invoice, and a paid
-          or voided one is never chased.
-        </Text>
       </Flex>
 
       <Card>

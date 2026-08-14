@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { NAV_SECTIONS, NAV_SETTINGS } from "@/lib/nav";
+import { NAV_SECTIONS, NAV_SETTINGS, NAV_HELP } from "@/lib/nav";
 
 /**
  * Only "/" and "/pricing" are indexable — see app/(marketing)/layout.tsx.
@@ -53,6 +53,7 @@ export default function robots(): MetadataRoute.Robots {
         // tests/dashboard-path.test.mjs asserts it stays true.
         ...NAV_SECTIONS.map((section) => section.href),
         NAV_SETTINGS.href,
+        NAV_HELP.href,
         // The rest are not nav sections and are listed on purpose.
         "/login",
         "/signup",

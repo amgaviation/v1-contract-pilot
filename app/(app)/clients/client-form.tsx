@@ -409,9 +409,6 @@ export default function ClientForm({
 
         <Flex direction="column" gap="1" mt="5" mb="3">
           <Heading as="h2" size="4">Rate agreement</Heading>
-          <Text size="2" color="gray">
-            Defaults only — every trip can override them.
-          </Text>
         </Flex>
         <Grid columns={{ initial: "1", md: "3" }} gap="3">
           <Flex direction="column" gap="1">
@@ -522,9 +519,6 @@ export default function ClientForm({
 
         <Flex direction="column" gap="1" mt="5" mb="3">
           <Heading as="h2" size="4">Contract terms</Heading>
-          <Text size="2" color="gray">
-            What this client&rsquo;s agreement says beyond the rates above.
-          </Text>
         </Flex>
         <Grid columns={{ initial: "1", md: "2" }} gap="3">
           <Flex direction="column" gap="1">

@@ -45,10 +45,6 @@ export default function AddDayTypeForm() {
         <Flex direction="column" gap="4" p="1">
           <Flex direction="column" gap="1">
             <Heading as="h2" size="4">Add a day type</Heading>
-            <Text size="2" color="gray">
-              Give it a name your trips and invoices will use. You choose which invoice line it
-              bills as; that part is fixed.
-            </Text>
           </Flex>
 
           <Grid columns={{ initial: "2", md: "12" }} gap="3" align="start">

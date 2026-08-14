@@ -31,12 +31,6 @@ export default function RateOverridesPanel({
     <Card size="3">
       <Flex direction="column" gap="1" mb="3">
         <Heading as="h3" size="4">Rate overrides</Heading>
-        <Text size="2" color="gray">
-          What this client pays per day type, if different from your usual
-          rate. Blank uses the day type&rsquo;s own default. A change here
-          affects days captured from now on — it never re-prices work
-          already recorded.
-        </Text>
       </Flex>
 
       {visibleDayTypes.length === 0 ? (

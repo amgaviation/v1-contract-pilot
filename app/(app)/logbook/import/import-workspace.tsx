@@ -431,10 +431,6 @@ export default function ImportWorkspace() {
             <Heading as="h3" size="4">
               Review before importing
             </Heading>
-            <Text size="2" color="gray">
-              {stage.fileName} — {result.valid.length} row{result.valid.length === 1 ? "" : "s"}{" "}
-              parsed, {result.rejected.length} rejected.
-            </Text>
             {summary && summary.needsRole > 0 ? (
               <Callout.Root color="amber">
                 <Callout.Icon>
@@ -668,10 +664,6 @@ export default function ImportWorkspace() {
           <Heading as="h3" size="4">
             Match your columns
           </Heading>
-          <Text size="2" color="gray">
-            {stage.fileName} — map each column from your file to a logbook field. Columns left
-            &ldquo;Ignore&rdquo; are not imported. Nothing is written to your logbook yet.
-          </Text>
           <div style={{ overflowX: "auto" }}>
             <Table.Root variant="ghost" size="1">
               <Table.Header>

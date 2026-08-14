@@ -82,11 +82,6 @@ export default function ProfileDefaultsForm({
         <Flex direction="column" gap="4" p="2">
           <Flex direction="column" gap="1">
             <Heading as="h2" size="4">Profile &amp; billing defaults</Heading>
-            <Text size="2" color="gray">
-              What setup collected: your airman profile, and the defaults
-              that pre-fill each new client and trip. Your certificate is
-              for your own records — never shared or shown to clients.
-            </Text>
           </Flex>
 
           <Grid columns={{ initial: "1", md: "12" }} gap="3">

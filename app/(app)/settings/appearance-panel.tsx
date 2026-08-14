@@ -12,7 +12,6 @@ import {
   Separator,
   Text,
 } from "@/components/ui";
-import { BRAND } from "@/lib/brand";
 import {
   ACCENT_SLOTS,
   APPEARANCE_SLOTS,
@@ -85,12 +84,6 @@ export default function AppearancePanel({
         <Heading as="h3" size="4">
           Appearance
         </Heading>
-        <Text size="2" color="gray">
-          How {BRAND.name} looks for this account, on every device you sign in from.
-          It changes nothing about your records, your invoices or what your clients
-          see — an invoice PDF and a shared invoice link look the same to them
-          whatever you pick here.
-        </Text>
       </Flex>
 
       <Card>
