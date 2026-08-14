@@ -407,7 +407,7 @@ export default function DayGrid({
                           style={{ width: "100%" }}
                         />
                         <Select.Content>
-                          <Select.Item value={NOT_COUNTED}>— not counted —</Select.Item>
+                          <Select.Item value={NOT_COUNTED}>(not counted)</Select.Item>
                           {optionsFor(row.dayTypeId).map((t) => (
                             <Select.Item key={t.id} value={t.id}>
                               {t.archived_at ? `${t.label} (archived)` : t.label}

@@ -159,7 +159,7 @@ function parseEntryForm(formData: FormData): {
   if (rate === null) {
     return {
       values: null,
-      error: "Enter the rate for this drive's tax year, set it once under Settings → Mileage rates and it'll be offered here.",
+      error: "Enter the rate for this drive's tax year. Set it once under Settings → Mileage rates and it'll be offered here.",
     };
   }
 

@@ -399,7 +399,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
         <Flex direction="column" gap="3">
           <Text weight="medium">2. Upload a statement</Text>
           <Text size="2" color="gray">
-            CSV, OFX, or QFX, whatever your bank's online portal lets you download. Nothing is written until you
+            CSV, OFX, or QFX: whatever your bank's online portal lets you download. Nothing is written until you
             review and confirm below.
           </Text>
           <input
@@ -429,7 +429,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
           <Flex direction="column" gap="3">
             <Text weight="medium">3. Match your file's columns</Text>
             <Text size="2" color="gray">
-              We guessed based on the header names, check them, especially Amount vs. Debit/Credit.
+              We guessed based on the header names. Check them, especially Amount vs. Debit/Credit.
             </Text>
             <Text as="label" size="2">
               <Flex gap="2" align="center">
@@ -437,7 +437,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                   checked={firstRowIsData}
                   onCheckedChange={(checked) => toggleFirstRowIsData(checked === true)}
                 />
-                The first row above is a transaction, not column headers, some
+                The first row above is a transaction, not column headers. Some
                 banks (Wells Fargo among them) export CSVs with no header row at all.
               </Flex>
             </Text>
@@ -574,9 +574,9 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                   .{" "}
                   {parseResult.signInterpretation.decisive
                     ? "That matches this statement's own pattern."
-                    : "This statement is too evenly split to be sure, check it against your card before importing."}{" "}
+                    : "This statement is too evenly split to be sure. Check it against your card before importing."}{" "}
                   <RadixLink href="#" onClick={(e) => { e.preventDefault(); invertSignReading(); }}>
-                    That&rsquo;s backwards, swap them
+                    That&rsquo;s backwards; swap them
                   </RadixLink>
                   {parseResult.signInterpretation.overridden ? " (swapped)" : ""}
                 </Callout.Text>
@@ -624,7 +624,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                 </Table.Root>
                 {parseResult.valid.length > 500 ? (
                   <Text size="1" color="gray">
-                    Showing the first 500 of {parseResult.valid.length} rows, every row is still included in the
+                    Showing the first 500 of {parseResult.valid.length} rows. Every row is still included in the
                     import.
                   </Text>
                 ) : null}

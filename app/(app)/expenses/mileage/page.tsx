@@ -257,7 +257,7 @@ export default async function MileagePage() {
               <Text size="2" color="gray">
                 {"You haven't recorded a mileage rate yet. Add one under "}
                 <NextLink href="/settings?tab=mileage">Settings → Mileage</NextLink>
-                {", drives can still be logged with a rate typed in by hand."}
+                {". Drives can still be logged with a rate typed in by hand."}
               </Text>
             </Card>
           ) : null}

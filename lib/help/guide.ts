@@ -78,7 +78,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
           "If you share a link, the invoice records when the client first opened it and when they last did. That is a record of the link being fetched, not proof a human read it.",
           "Voiding an invoice releases any rebilled expenses attached to it, so they become unbilled again and can go on a replacement.",
         ],
-        keywords: ["void", "numbering", "share link", "viewed", "overdue", "aging"],
+        keywords: ["void", "numbering", "share link", "viewed", "overdue", "aging", "partial payment"],
       },
       {
         id: "reminders",

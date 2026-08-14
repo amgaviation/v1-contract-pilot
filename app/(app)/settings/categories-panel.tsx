@@ -100,7 +100,7 @@ export default function CategoriesPanel({
         <Callout.Root color="red">
           <Callout.Text>
             {readError} Your categories aren&rsquo;t shown below because we
-            couldn&rsquo;t read them — not because you have none. Reload in a moment.
+            couldn&rsquo;t read them, not because you have none. Reload in a moment.
           </Callout.Text>
         </Callout.Root>
       ) : null}
@@ -111,7 +111,7 @@ export default function CategoriesPanel({
             {canRetireAny
               ? "You can rename, reorder and retire any of these. "
               : "You can rename and reorder any of these. Retiring one isn't offered because every option here is a built-in: they're what your existing records are already filed under, so the database refuses to hide them. Rename instead; the new name shows everywhere, including on past records. "}
-            Adding a brand-new category isn&rsquo;t available yet — the three lists
+            Adding a brand-new category isn&rsquo;t available yet. The three lists
             themselves are fixed in the database, so a new one couldn&rsquo;t be
             saved onto an expense, trip or document even if this screen offered it.
             Renaming covers most of what people want from it.

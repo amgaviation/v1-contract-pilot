@@ -144,7 +144,7 @@ export default function ReceiptScan({
     if (!file) {
       setStatus({
         phase: "failed",
-        message: "No photo is selected any more, pick the receipt again.",
+        message: "No photo is selected any more. Pick the receipt again.",
       });
       return;
     }

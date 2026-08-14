@@ -179,7 +179,7 @@ export default async function BillingPage({
               configured Stripe Price(s) disagree.
             </Text>{" "}
             Checkout would charge a different amount than the pricing page shows.
-            This is visible to the account owner only — fix the STRIPE_PRICE_ID_*
+            This is visible to the account owner only. Fix the STRIPE_PRICE_ID_*
             env var(s) or the Stripe Price object before a pilot checks out.
             <Flex direction="column" gap="1" mt="2">
               {drift.mismatches.map((m) => (
@@ -222,7 +222,7 @@ export default async function BillingPage({
         <Callout.Root color={pendingTier ? "blue" : "green"}>
           <Callout.Text>
             {pendingTier
-              ? `Stripe has confirmed your switch to ${TIER_DISPLAY[pendingTier].name}. It takes effect here the moment Stripe's confirmation event arrives — usually within seconds. Refresh to see it.`
+              ? `Stripe has confirmed your switch to ${TIER_DISPLAY[pendingTier].name}. It takes effect here the moment Stripe's confirmation event arrives, usually within seconds. Refresh to see it.`
               : changed === "cancel"
                 ? "Cancellation scheduled with Stripe. Nothing changes until the date below, and you can resume any time before it."
                 : changed === "resume"
@@ -260,7 +260,7 @@ export default async function BillingPage({
 
           {isComped ? (
             <Text size="2" color="gray">
-              This account isn&rsquo;t billed through Stripe — its plan is managed for
+              This account isn&rsquo;t billed through Stripe. Its plan is managed for
               you, so there&rsquo;s nothing to change here.
             </Text>
           ) : (
@@ -354,7 +354,7 @@ export default async function BillingPage({
 
               <Text size="1" color="gray">
                 Plan changes are confirmed with Stripe first and take effect here on
-                Stripe&rsquo;s confirmation — the same path your subscription itself
+                Stripe&rsquo;s confirmation, the same path your subscription itself
                 arrives by.
               </Text>
               {!canEdit ? (
@@ -450,7 +450,7 @@ export default async function BillingPage({
                           <SwitchIntervalButton
                             tier={planTier}
                             targetInterval={otherInterval}
-                            label={`Switch to ${otherInterval} billing — ${otherIntervalPrice.chargeLabel}`}
+                            label={`Switch to ${otherInterval} billing: ${otherIntervalPrice.chargeLabel}`}
                             disabled={!canEdit}
                           />
                         ) : null
@@ -557,7 +557,7 @@ export default async function BillingPage({
                 {history && !history.ok ? (
                   <Text size="2" color="amber">
                     Couldn&rsquo;t load your receipts just now. This is not a statement
-                    that you have none — the full archive is always in the billing
+                    that you have none. The full archive is always in the billing
                     portal.
                   </Text>
                 ) : history && history.rows.length === 0 ? (
@@ -570,9 +570,9 @@ export default async function BillingPage({
                     title="No invoices yet"
                     action={<BillingPortalButton disabled={!canEdit} />}
                   >
-                    Receipts appear here once Stripe has charged you — the first one
-                    after your trial converts. The billing portal always holds the
-                    full archive.
+                    Receipts appear here once Stripe has charged you, starting with the
+                    first one after your trial converts. The billing portal always holds
+                    the full archive.
                   </EmptyState>
                 ) : (
                   <Table.Root variant="ghost" size="1">
@@ -642,7 +642,7 @@ export default async function BillingPage({
                 </Text>
                 <Text size="2" color="gray">
                   Your card, your billing address, and the full invoice archive are
-                  handled in Stripe&rsquo;s secure billing portal — we never see your
+                  handled in Stripe&rsquo;s secure billing portal. We never see your
                   card number.
                 </Text>
                 <Flex>
@@ -688,8 +688,8 @@ export default async function BillingPage({
           </Grid>
 
           <Text size="1" color="gray">
-            Changing what your own clients pay you is a different thing entirely —
-            that&rsquo;s in{" "}
+            Changing what your own clients pay you is a different thing entirely.
+            That&rsquo;s in{" "}
             <RadixLink asChild>
               <NextLink href="/settings">Settings</NextLink>
             </RadixLink>

@@ -256,8 +256,8 @@ export default async function ExpensesPage() {
                 </Callout.Icon>
                 <Callout.Text>
                   Couldn&rsquo;t check for imported transactions awaiting
-                  review. This is not a statement that there are none,
-                  reload, or check{" "}
+                  review. This is not a statement that there are none.
+                  Reload, or check{" "}
                   <NextLink href="/expenses/transactions">
                     the review queue
                   </NextLink>{" "}
@@ -275,8 +275,8 @@ export default async function ExpensesPage() {
                     </Text>
                     <Text as="div" color="gray" className="tnum">
                       {unreviewedTransactions} transaction{unreviewedTransactions === 1 ? "" : "s"} from a bank
-                      statement import {unreviewedTransactions === 1 ? "hasn't" : "haven't"} been categorized yet,
-                      nothing here is in your books until you review each one.
+                      statement import {unreviewedTransactions === 1 ? "hasn't" : "haven't"} been categorized yet.
+                      Nothing here is in your books until you review each one.
                     </Text>
                   </Box>
                   <Button asChild variant="soft">

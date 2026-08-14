@@ -264,7 +264,7 @@ function EntryFields({
                 <RadixLink asChild>
                   <NextLink href="/settings?tab=mileage">Add it in Settings</NextLink>
                 </RadixLink>
-               , or enter it manually.
+                , or enter it manually.
               </Text>
             )}
           </>
@@ -571,11 +571,11 @@ export default function MileageForm({
         <Callout.Text>
           <Text as="div" size="2">
             This is a record of drives, not a determination of what&rsquo;s deductible. Commuting
-            between home and a regular place of work generally isn&rsquo;t, whether a given drive
-            counts turns on facts about your situation this product can&rsquo;t see. The standard
-            mileage rate and actual vehicle expenses (tracked as fuel/rental-car expenses) are
-            alternatives, not additive, using both for the same vehicle in the same year can
-            double-count. Confirm your method and your deductions with a tax professional.
+            between home and a regular place of work generally isn&rsquo;t deductible. Whether a
+            given drive counts turns on facts about your situation this product can&rsquo;t see.
+            The standard mileage rate and actual vehicle expenses (tracked as fuel and rental-car
+            expenses) are alternatives, not additive. Using both for the same vehicle in the same
+            year can double-count. Confirm your method and your deductions with a tax professional.
           </Text>
         </Callout.Text>
       </Callout.Root>
@@ -589,7 +589,7 @@ export default function MileageForm({
               No drives logged yet
             </Text>
             <Text size="2" color="gray" align="center">
-              Log a drive above, date, miles, and what it was for.
+              Log a drive above: date, miles, and what it was for.
             </Text>
           </Flex>
         ) : (

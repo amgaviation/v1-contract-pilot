@@ -74,7 +74,7 @@ export default function PrivacyPage() {
           <Text size="2" color="gray">
             This is not the complete policy. It does not yet address data
             retention, deletion, or every detail a full policy has to
-            cover — that text is pending counsel review.
+            cover. That text is pending counsel review.
           </Text>
         </Flex>
       </Container>

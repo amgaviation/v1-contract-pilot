@@ -271,8 +271,8 @@ export default function OperatorQualificationRow({
                         // comment). Generic on purpose — it must never
                         // guess a citation for a requirement it wasn't
                         // written for.
-                        "Rotation history, not currently judged against the expiry ladder. " +
-                          "Planning aid, not a determination of regulatory compliance."}
+                        "Rotation history. This row is not currently judged against the expiry " +
+                          "ladder. Planning aid, not a determination of regulatory compliance."}
                   </Text>
                 </>
               ) : (
