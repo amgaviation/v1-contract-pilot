@@ -27,7 +27,8 @@
     "logbook:verify": "node scripts/logbook-verify.mjs",
     "currency:verify": "node scripts/currency-verify.mjs",
     "accounting:verify": "node scripts/accounting-verify.mjs",
-    "reminders:verify": "node scripts/reminders-verify.mjs"
+    "reminders:verify": "node scripts/reminders-verify.mjs",
+    "layout:verify": "node scripts/layout-verify.mjs"
   },
   "dependencies": {
     "@radix-ui/colors": "^3.0.0",
@@ -48,6 +49,7 @@
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.1",
+    "playwright": "^1.62.1",
     "typescript": "^5.7.2"
   }
 }

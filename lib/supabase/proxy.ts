@@ -191,7 +191,23 @@ async function refreshSession(
     // whole feature, silently dead. Caught before shipping only because
     // /ocr had exactly this bug an hour earlier.
     path.startsWith("/packet/") ||
-    normalizedPath === "/packet";
+    normalizedPath === "/packet" ||
+    // THE LAYOUT HARNESS — app/(dev)/layout-harness, the fixture render of
+    // the authenticated shell that scripts/layout-verify.mjs measures. It
+    // needs no session by construction (that is the entire point: the
+    // shell could not be tested while it was reachable only from behind
+    // one), so it has to be on this allow-list or the verify script
+    // measures a redirect to /login at every viewport and passes on
+    // nothing.
+    //
+    // Gated on NODE_ENV twice over, deliberately: here, so off development
+    // the path is not even an allow-listed surface, and again inside the
+    // page itself, which calls notFound(). The page's own guard is the one
+    // that matters — this line only lets that guard be REACHED in
+    // development — but a public route rendering product chrome should not
+    // be one edit away from existing in production.
+    (process.env.NODE_ENV === "development" &&
+      normalizedPath === "/layout-harness");
   if (!user && !isAuthSurface) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";

@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Box, Flex, Separator, Text } from "@/components/ui";
@@ -75,13 +76,22 @@ function RailLink({ item, pathname }: { item: NavItem; pathname: string }) {
 
 /** The same link, laid out for the horizontal strip: no wrap, no shrink,
  *  no left border (fill + highContrast mark the current section). */
-function StripLink({ item, pathname }: { item: NavItem; pathname: string }) {
+const StripLink = React.forwardRef<
+  HTMLAnchorElement,
+  { item: NavItem; pathname: string }
+>(function StripLink({ item, pathname }, ref) {
   const current = isCurrentSection(item.href, pathname);
   return (
     <Link
+      ref={ref}
       href={item.href}
       aria-current={current ? "page" : undefined}
-      style={{ textDecoration: "none", flexShrink: 0 }}
+      style={{
+        textDecoration: "none",
+        flexShrink: 0,
+        // Pairs with scrollSnapType on the strip below.
+        scrollSnapAlign: "center",
+      }}
     >
       <Box
         px="3"
@@ -103,7 +113,7 @@ function StripLink({ item, pathname }: { item: NavItem; pathname: string }) {
       </Box>
     </Link>
   );
-}
+});
 
 export function NavRail({
   accountName,
@@ -182,6 +192,29 @@ export function NavRail({
 export function NavStrip({ sections }: { sections: readonly NavItem[] }) {
   const pathname = usePathname();
   const items: NavItem[] = [...sections, NAV_SETTINGS];
+  const currentRef = React.useRef<HTMLAnchorElement | null>(null);
+
+  // SCROLL THE CURRENT SECTION INTO VIEW.
+  //
+  // The strip holds twelve entries and a phone shows about four. Without
+  // this, a pilot on Reports — the eleventh — saw a strip reading
+  // "Overview Trips Logbook Estimates": none of them the page they were
+  // on, no indication that the strip scrolled at all, and no indication
+  // they were looking at the wrong end of it. The rail never had this
+  // problem because it shows every section at once; the strip is the
+  // shape that needs the help.
+  //
+  // `inline: "center"` rather than "nearest" on purpose — centring
+  // reveals the neighbours on BOTH sides, which is the thing that tells
+  // you the strip scrolls. `block: "nearest"` stops it scrolling the
+  // PAGE vertically to achieve that.
+  //
+  // Costs nothing on desktop: from `md` up the strip's container is
+  // display:none, and scrollIntoView on a display:none element is a
+  // no-op in every engine.
+  React.useEffect(() => {
+    currentRef.current?.scrollIntoView({ inline: "center", block: "nearest" });
+  }, [pathname]);
 
   return (
     <Flex
@@ -189,11 +222,23 @@ export function NavStrip({ sections }: { sections: readonly NavItem[] }) {
       gap="1"
       px="3"
       py="2"
-      style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}
+      style={{
+        overflowX: "auto",
+        WebkitOverflowScrolling: "touch",
+        // Keeps a swipe that reaches either end of the strip from
+        // chaining out to the document — and, on iOS, from triggering the
+        // browser's back-swipe gesture.
+        overscrollBehaviorInline: "contain",
+      }}
     >
       <nav aria-label="Sections">
         {items.map((item) => (
-          <StripLink key={item.href} item={item} pathname={pathname} />
+          <StripLink
+            key={item.href}
+            item={item}
+            pathname={pathname}
+            ref={isCurrentSection(item.href, pathname) ? currentRef : undefined}
+          />
         ))}
       </nav>
     </Flex>
