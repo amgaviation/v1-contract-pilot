@@ -12,8 +12,14 @@ import { NAVY_SURFACE } from "@/lib/surface-style";
  * in-app one on the marketing site would put two different "V1" marks in
  * front of the same visitor within one signup flow.
  *
- * Sticky, like the app's own header after the rebuild (REBUILD-BRIEF
- * §4.4) — solid ground, hairline, no backdrop-filter. The CTA keeps the
+ * Sticky, like the app's own header. It now carries the same floating-chrome
+ * treatment the app shell uses (.i-chrome + .i-chrome-edge): a translucent,
+ * blurred ground with a short fade below it instead of a solid bar with a 1px
+ * rule. REBUILD-BRIEF §4.4 originally specified solid-with-hairline because
+ * backdrop-filter was banned system-wide; that ban has been lifted and the
+ * material now lives in tokens (--chrome-veil / --chrome-blur / --chrome-edge)
+ * rather than being spelled out here. Falls back to a solid bar under
+ * prefers-reduced-transparency and prefers-contrast. The CTA keeps the
  * brand navy rather than the theme accent: on the marketing surface navy
  * is the brand's primary-action color (see lib/surface-style.ts), and it
  * now sits in the same blue family as the app's indigo accent.
@@ -26,12 +32,11 @@ import { NAVY_SURFACE } from "@/lib/surface-style";
 export default function SiteHeader() {
   return (
     <Box
+      className="i-chrome i-chrome-edge"
       style={{
         position: "sticky",
         top: 0,
         zIndex: 1,
-        borderBottom: "1px solid var(--hair)",
-        background: "var(--paper)",
       }}
     >
       <Container size="4" px="4">

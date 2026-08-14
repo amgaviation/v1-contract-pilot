@@ -124,12 +124,17 @@ export function AppShell({
           style={{ position: "sticky", top: 0, zIndex: 2 }}
         >
           <Box data-appearance="dark" asChild>
-            <Box
-              style={{
-                borderBottom: "1px solid var(--hair)",
-                background: theme.chromeBackground,
-              }}
-            >
+            {/* .i-chrome + .i-chrome-edge (app/design/system.generated.css):
+                floating chrome that content scrolls UNDER, so it is a
+                translucent blurred material with a short fade below it
+                rather than an opaque bar with a 1px rule. The rule asserted
+                a boundary that is not there — the list genuinely continues
+                beneath this bar. `background` is no longer set here because
+                .i-chrome owns it; setting both would paint an opaque ground
+                over the veil and there would be nothing left to blur.
+                Both classes fall back to a solid bar under
+                prefers-reduced-transparency and prefers-contrast. */}
+            <Box className="i-chrome i-chrome-edge">
               <Flex align="center" justify="between" gap="2" px="3" pt="3">
                 <Link
                   href={DASHBOARD_PATH}
@@ -244,12 +249,17 @@ export function AppShell({
             px="4"
             py="2"
             display={{ initial: "none", md: "flex" }}
+            /* Same floating-chrome treatment as the phone bar above — see
+               its comment. The nav rail deliberately does NOT get this: it
+               is a full-height structural region, and Apple's rule (which
+               holds for the same legibility reason here) is that heavy
+               opaque materials separate structure while light translucent
+               ones float over content. */
+            className="i-chrome i-chrome-edge"
             style={{
               position: "sticky",
               top: 0,
               zIndex: 1,
-              background: theme.chromeBackground,
-              borderBottom: "1px solid var(--hair)",
             }}
           >
             <header>

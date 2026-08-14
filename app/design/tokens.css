@@ -70,6 +70,22 @@
   --ink-3: #7a7466;
 
   --paper: #fffefc;
+  /* FLOATING CHROME. The translucent ground for chrome that content scrolls
+     UNDER — the phone top bar and the desktop header. Not the nav rail: a
+     full-height structural region stays opaque (a heavy material separates
+     structure; a light one floats over content, and stacking two light
+     translucent surfaces destroys legibility).
+     Alpha, not a solid, so --chrome-blur below has something to blur. */
+  --chrome-veil: rgba(255, 254, 252, 0.72);
+  /* Saturation is raised as well as blurred: blur alone greys out whatever
+     passes under the bar, and the extra saturation is what keeps it reading
+     as glass rather than as fog. */
+  --chrome-blur: blur(20px) saturate(180%);
+  /* THE SCROLL EDGE. Replaces a 1px divider under floating chrome. A hard
+     line asserts a boundary that is not there — content genuinely continues
+     under the bar — while a short fade says "this keeps going" and stops
+     text colliding with the chrome as it scrolls past. */
+  --chrome-edge: linear-gradient(to bottom, rgba(255, 254, 252, 0.72), rgba(255, 254, 252, 0));
   --canvas: #f2f0ea;
   --sunk: #e8e5dc;
   --hair: #dbd7cc;
@@ -264,6 +280,23 @@
   --track-tight: -0.011em;
   --track-normal: 0em;
   --track-caps: 0.06em;
+
+  /* TRACKING IS A FUNCTION OF SIZE, NOT OF ROLE.
+     One letter-spacing value applied at every size is wrong somewhere: as
+     type grows the counters and sidebearings grow with it, so large text
+     reads too loose at the value that suits body copy, while small text
+     reads too tight. The ramp below runs from slightly open at 11px to
+     firmly closed at 36px, and .i-t1…7 apply it beside the size they name,
+     so nothing has to remember to pair them.
+     (This replaces a single --track-tight on .i-heading, which set the same
+     -0.011em on a 36px page title and a 13px card title alike.) */
+  --track-1: 0.006em;   /* 11px */
+  --track-2: 0.002em;   /* 13px */
+  --track-3: 0em;       /* 15px — the hinge: body copy sits at its natural fit */
+  --track-4: -0.006em;  /* 18px */
+  --track-5: -0.012em;  /* 22px */
+  --track-6: -0.018em;  /* 28px */
+  --track-7: -0.024em;  /* 36px */
 }
 
 /* --- 5. SPACE, SIZE, RADIUS -----------------------------------------------
@@ -318,6 +351,29 @@
   --dur-fast: 120ms;
   --dur-base: 180ms;
   --ease: cubic-bezier(0.2, 0, 0.2, 1);
+
+  /* PRESS. The one piece of feedback that has to exist on a touch device,
+     because :hover does not: a control must acknowledge the finger on
+     pointer-DOWN, not when the server answers. 3% is deliberately small —
+     enough to read as "I felt that" at arm's length on a ramp, not enough
+     to look like a toy. Applied with --dur-instant so it lands under the
+     ~100ms threshold where a response still feels like part of the touch.
+
+     Kept under reduced motion on purpose. The preference is about
+     vestibular disturbance from large or sustained movement; a 3% scale on
+     the thing under your finger is the accessible equivalent of the
+     feedback, not the thing being guarded against — and removing it would
+     leave a touch user with no acknowledgement at all. Its DURATION still
+     goes to zero with everything else, so it becomes instant rather than
+     animated. */
+  --press-scale: 0.97;
+
+  /* OVERLAY ENTRY. A dialog that simply exists on one frame and is gone on
+     the next reads as a rendering glitch rather than as a thing arriving.
+     Scale is the smaller half of the gesture (0.96 → 1) with a few pixels
+     of rise, so it materialises toward the reader. */
+  --overlay-scale-from: 0.96;
+  --overlay-rise-from: 4px;
 }
 
 /* --- 7. ELEVATION ---------------------------------------------------------
@@ -370,6 +426,9 @@
   --ink-3: #837d70;
 
   --paper: #211f1a;
+  --chrome-veil: rgba(33, 31, 26, 0.72);
+  --chrome-blur: blur(20px) saturate(180%);
+  --chrome-edge: linear-gradient(to bottom, rgba(33, 31, 26, 0.72), rgba(33, 31, 26, 0));
   --canvas: #151310;
   --sunk: #2b2822;
   --hair: #35312a;
@@ -419,6 +478,9 @@
     --ink-3: #837d70;
 
     --paper: #211f1a;
+    --chrome-veil: rgba(33, 31, 26, 0.72);
+    --chrome-blur: blur(20px) saturate(180%);
+    --chrome-edge: linear-gradient(to bottom, rgba(33, 31, 26, 0.72), rgba(33, 31, 26, 0));
     --canvas: #151310;
     --sunk: #2b2822;
     --hair: #35312a;
