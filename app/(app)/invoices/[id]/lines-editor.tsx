@@ -516,7 +516,7 @@ function RebillRow({
         variant="outline"
         size="2"
         disabled={pending || added}
-        aria-label={`Add to invoice, ${label}${
+        aria-label={`Add to invoice: ${label}${
           expense.vendor ? `, ${expense.vendor}` : ""
         } (${formatDate(expense.incurred_on)})`}
         onClick={() => {

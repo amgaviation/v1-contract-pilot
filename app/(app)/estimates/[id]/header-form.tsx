@@ -178,7 +178,7 @@ function LockedHeader({
   clients: ClientOption[];
 }) {
   const [state, formAction, pending] = useActionState(updateEstimateNotes, initialState);
-  const clientName = clients.find((c) => c.id === estimate.client_id)?.name ?? "—";
+  const clientName = clients.find((c) => c.id === estimate.client_id)?.name ?? "N/A";
 
   return (
     <Card size="3">
@@ -216,7 +216,7 @@ function LockedHeader({
           <Text size="1" color="gray">
             Terms
           </Text>
-          <Text weight="medium">{estimate.terms || "—"}</Text>
+          <Text weight="medium">{estimate.terms || "N/A"}</Text>
         </Flex>
       </Grid>
 

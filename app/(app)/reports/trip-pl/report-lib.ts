@@ -590,7 +590,7 @@ export function assembleTripPL(input: {
         // screen says the grouping is short.
         return {
           ok: false,
-          reason: `trip ${raw.trip_id} references client ${clientId} which the clients read didn't return, refusing to print a partial per-client rollup`,
+          reason: `trip ${raw.trip_id} references client ${clientId} which the clients read didn't return, so this report won't print a partial per-client rollup`,
         };
       }
       clientName = found;

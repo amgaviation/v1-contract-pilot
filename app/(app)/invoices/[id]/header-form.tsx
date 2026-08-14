@@ -178,7 +178,7 @@ function LockedHeader({
   clients: ClientOption[];
 }) {
   const [state, formAction, pending] = useActionState(updateInvoiceNotes, initialState);
-  const clientName = clients.find((c) => c.id === invoice.client_id)?.name ?? "—";
+  const clientName = clients.find((c) => c.id === invoice.client_id)?.name ?? "N/A";
 
   return (
     <Card size="3">

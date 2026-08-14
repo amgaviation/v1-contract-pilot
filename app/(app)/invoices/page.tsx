@@ -432,7 +432,7 @@ export default async function InvoicesPage({
                       </RadixLink>
                     </Table.RowHeaderCell>
                     <Table.Cell>
-                      <Text color="gray">{clientNames.get(invoice.client_id) ?? "—"}</Text>
+                      <Text color="gray">{clientNames.get(invoice.client_id) ?? "N/A"}</Text>
                     </Table.Cell>
                     <Table.Cell>
                       <Text color="gray">{formatDate(invoice.issued_on)}</Text>
@@ -452,7 +452,7 @@ export default async function InvoicesPage({
                           {`${daysOverdueById.get(invoice.id) ?? 0}d`}
                         </Text>
                       ) : (
-                        <Text color="gray">—</Text>
+                        <Text color="gray">N/A</Text>
                       )}
                     </Table.Cell>
                     <Table.Cell>

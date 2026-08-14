@@ -298,7 +298,7 @@ export default async function EstimatesPage({
                       </RadixLink>
                     </Table.RowHeaderCell>
                     <Table.Cell>
-                      <Text color="gray">{clientNames.get(estimate.client_id) ?? "—"}</Text>
+                      <Text color="gray">{clientNames.get(estimate.client_id) ?? "N/A"}</Text>
                     </Table.Cell>
                     <Table.Cell>
                       <Text color="gray">{formatDate(estimate.issued_on)}</Text>

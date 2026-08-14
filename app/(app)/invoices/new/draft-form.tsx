@@ -240,7 +240,7 @@ export default function DraftForm({
                           ) : null}
                         </Table.Cell>
                         <Table.Cell>
-                          <Text color="gray">{trip.aircraft_ident ?? "—"}</Text>
+                          <Text color="gray">{trip.aircraft_ident ?? "N/A"}</Text>
                         </Table.Cell>
                         <Table.Cell justify="end">
                           {trip.has_day_rows ? (
@@ -253,7 +253,7 @@ export default function DraftForm({
                         </Table.Cell>
                         <Table.Cell justify="end">
                           {trip.has_day_rows ? (
-                            <Text color="gray">—</Text>
+                            <Text color="gray">N/A</Text>
                           ) : (
                             <Text
                               className="tnum"
