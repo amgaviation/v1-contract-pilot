@@ -148,9 +148,19 @@ for (const route of ROUTES) {
           const rail = document.querySelector("aside");
           const navs = [...document.querySelectorAll('nav[aria-label="Sections"]')];
           const visibleNavs = navs.filter((n) => n.getBoundingClientRect().width > 0);
-          const signOut = [...document.querySelectorAll("button")].find(
+          // There are two Sign out forms in the shell — the phone top bar's
+          // (first in DOM order, display:none from `md` up) and the desktop
+          // header's. `.find()` on the first match therefore reports the
+          // HIDDEN one at desktop widths and fails the check against a
+          // perfectly visible button. The assertion's real claim is "at
+          // least one visible Sign out exists", so measure the visible one.
+          const signOutButtons = [...document.querySelectorAll("button")].filter(
             (b) => (b.textContent || "").trim() === "Sign out"
           );
+          const signOut =
+            signOutButtons.find((b) => b.getBoundingClientRect().width > 0) ??
+            signOutButtons[0] ??
+            null;
           const signOutBox = signOut ? signOut.getBoundingClientRect() : null;
 
           // (4) tap targets on chrome only: nav entries and buttons.
