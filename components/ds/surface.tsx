@@ -279,12 +279,12 @@ export const Table = {
   }),
   Cell: React.forwardRef<
     HTMLTableCellElement,
-    React.ComponentPropsWithoutRef<"td"> & { numeric?: boolean }
-  >(function TableCell({ numeric, className, ...rest }, ref) {
+    React.ComponentPropsWithoutRef<"td"> & { numeric?: boolean; wrap?: boolean }
+  >(function TableCell({ numeric, wrap, className, ...rest }, ref) {
     return (
       <td
         ref={ref}
-        className={cx(numeric && "i-num", className)}
+        className={cx(numeric && "i-num", wrap && "i-cell-wrap", className)}
         {...(rest as React.TdHTMLAttributes<HTMLTableCellElement>)}
       />
     );

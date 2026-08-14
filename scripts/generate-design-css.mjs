@@ -519,6 +519,27 @@ out.push(`
   height: var(--row-height);
   color: var(--ink);
   vertical-align: middle;
+  /* CELLS DO NOT WRAP BY DEFAULT, and the scroll container above is why.
+     With width:100% and wrapping cells, a twelve-column table shrinks to
+     fit its frame and reflows every cell onto two or three lines — the
+     scroller never engages, and a money column becomes unreadable at exactly
+     the width where reading it matters. Caught on the specimen sheet, where
+     the panel claimed "scrolls inside its own frame" while the table beside
+     it was visibly wrapping instead.
+
+     Nowrap makes the table take its natural width and hand the overflow to
+     .i-table-scroll, which is the intended arrangement. A cell that genuinely
+     holds prose rather than a value opts back in with the wrap prop, which
+     is the rarer case and should be the one that says so. */
+  white-space: nowrap;
+}
+/* The opt-out, for a cell holding a note or a description rather than a
+   value. Paired with a sensible max so one long note cannot set the whole
+   table's width. */
+.i-table td.i-cell-wrap {
+  white-space: normal;
+  min-width: 22ch;
+  max-width: 44ch;
 }
 .i-table tbody tr:last-child td { border-block-end: none; }
 .i-table tbody tr[data-selected="true"] td { background: var(--selected); }

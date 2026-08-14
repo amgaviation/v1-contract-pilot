@@ -20,6 +20,7 @@ import {
   Textarea,
 } from "@/components/ds/surface";
 import { TONE } from "@/lib/ds/scales";
+import { InteractiveSpecimens } from "./interactive";
 
 /**
  * INSTRUMENT — the specimen sheet. Development only; 404s elsewhere.
@@ -257,6 +258,8 @@ export default async function DesignHarnessPage() {
             </Table.Foot>
           </Table.Root>
         </Panel>
+
+        <InteractiveSpecimens />
 
         {/* ── UNBROKEN TOKEN ── */}
         <Panel title="Unbounded strings">

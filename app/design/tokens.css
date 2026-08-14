@@ -239,7 +239,21 @@
    Soft tone fills are much darker and the tone ink flips to the tone colour
    itself, because a saturated fill that works on paper is a glare source on
    a dark ground at 5am in an FBO — which is exactly when dark mode is on. */
-:root[data-appearance="dark"] {
+/* NOT `:root[data-appearance="dark"]`. The attribute selector is
+   deliberately unanchored so dark can be applied to ANY element, not only
+   <html> — the nav rail is a dark island inside an otherwise light product,
+   and it gets there by carrying data-appearance="dark" itself. Because every
+   token below is a custom property, and custom properties inherit, stamping
+   the attribute on the rail re-declares the whole palette for that subtree
+   and nothing else. That is the entire mechanism for the dark rail; there is
+   no second stylesheet and no component-level override.
+
+   A LIGHT island inside a dark root is deliberately NOT supported. It would
+   mean a third copy of this palette to maintain, and the product has exactly
+   one island (the rail) which is dark in both modes. If that ever changes,
+   add `[data-appearance="light"]` here rather than overriding colours in a
+   component. */
+[data-appearance="dark"] {
   color-scheme: dark;
 
   --ink: #f5f2ea;
@@ -288,7 +302,7 @@
    block, which is why the selector excludes it rather than the media query
    being listed first — specificity, not order, decides. */
 @media (prefers-color-scheme: dark) {
-  :root[data-appearance="system"] {
+  :root[data-appearance="system"], [data-appearance="system"] {
     color-scheme: dark;
 
     --ink: #f5f2ea;
@@ -344,7 +358,7 @@
 
    Here the two axes are independent. --unit and the control heights move;
    --text-* does not. */
-:root[data-density="compact"] {
+[data-density="compact"] {
   --unit: 4px;
   --control-1: 22px;
   --control-2: 28px;
@@ -352,7 +366,7 @@
   --row-height: 32px;
 }
 
-:root[data-density="roomy"] {
+[data-density="roomy"] {
   --unit: 5px;
   --control-1: 32px;
   --control-2: 40px;
