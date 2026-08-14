@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Opening plus net movement doesn't equal closing. Refusing to export a statement that doesn't tie. Contact support.",
+          "Opening plus net movement doesn't equal closing. Nothing was exported: this product never ships a statement that doesn't tie. Contact support.",
       },
       { status: 500 }
     );

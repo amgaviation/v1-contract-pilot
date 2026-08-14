@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
   rows.push(
     csvRow([
       "Basis",
-      "Cash: an invoice's tax counts on the day it was paid in full, matching this product's other reports. If a payment is corrected later, the period it was originally counted in stands unchanged and the correction appears as a negative row in the period the correction was made. Figures for whoever prepares your filings. This file does not calculate what to remit.",
+      "Cash: an invoice's tax counts on the day it was paid in full, matching this product's other reports. If a payment is corrected later, the period it was originally counted in stands unchanged and the correction appears as a negative row in the period the correction was made. These figures are for whoever prepares your filings. This file does not calculate what to remit.",
     ])
   );
   rows.push(csvRow([]));

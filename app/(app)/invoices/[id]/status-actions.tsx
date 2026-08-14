@@ -404,7 +404,7 @@ export default function StatusActions({
                             : `all ${receiptCount} receipts`
                         } for rebilled expenses`
                       : ""}
-                   . It doesn&rsquo;t change the invoice or add any late fee.
+                    . It doesn&rsquo;t change the invoice or add any late fee.
                   </AlertDialog.Description>
 
                   <Box mt="3">

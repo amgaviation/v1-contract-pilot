@@ -512,7 +512,7 @@ export default function LegEditor({
       {legs.length === 0 ? (
         <Box pb="4">
           <Text size="2" color="gray">
-            No legs yet. Add them as you fly — they become the route on the
+            No legs yet. Add them as you fly. They become the route on the
             invoice and the draft entries for your logbook.
           </Text>
         </Box>

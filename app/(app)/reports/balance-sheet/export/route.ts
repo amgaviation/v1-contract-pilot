@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "This balance sheet does not balance, which should be impossible. Refusing to export rather than shipping figures that don't tie. Contact support.",
+          "This balance sheet does not balance, which should be impossible. Nothing was exported: this product never ships figures that don't tie. Contact support.",
       },
       { status: 500 }
     );

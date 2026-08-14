@@ -254,14 +254,14 @@ export default async function LogbookDraftsPage() {
       subtitle={
         pendingTrips.length === 0
           ? draftCheckIncomplete
-            ? "Nothing waiting in what this screen checked. See the note below before assuming your logbook is fully caught up."
+            ? "Nothing is waiting in the checks this screen ran. See the note below before assuming your logbook is fully caught up."
             : notYetFlownCount
-              ? `Nothing waiting here — but ${notYetFlownCount} trip${
+              ? `Nothing is waiting here, but ${notYetFlownCount} trip${
                   notYetFlownCount === 1 ? " is" : "s are"
                 } still marked Scheduled. Mark a trip flown and its legs show up here.`
               : notYetFlownCountFailed
-                ? "Nothing waiting here, but this screen couldn't check whether any trips are still marked Scheduled, so that isn't confirmed either."
-                : "Nothing waiting. Every completed trip's legs are already in your logbook."
+                ? "Nothing is waiting here, but this screen couldn't check whether any trips are still marked Scheduled, so that isn't confirmed either."
+                : "Nothing is waiting. Every completed trip's legs are already in your logbook."
           : `${pendingTrips.length} completed trip${pendingTrips.length === 1 ? "" : "s"} with unconfirmed legs`
       }
     >

@@ -396,7 +396,7 @@ export async function createInvoiceDraft(
     const committedLabel = committedByTrip.get(t.id);
     if (committedLabel) {
       preselectionWarnings.push(
-        `${formatDateRange(t.starts_on, t.ends_on)}: already billed on ${committedLabel}, not added to this invoice.`
+        `${formatDateRange(t.starts_on, t.ends_on)}: already billed on ${committedLabel}. Not added to this invoice.`
       );
       return false;
     }
@@ -793,7 +793,7 @@ export async function createInvoiceDraft(
           // (lib/format.ts) are the one date format this file uses
           // anywhere a pilot or client reads it — no second one invented
           // here.
-          description: `${dayType.label}s, ${describeDayDates(sortedDays)}`,
+          description: `${dayType.label}s: ${describeDayDates(sortedDays)}`,
           quantity: qty,
           unit_amount_cents: group.rateCents,
           taxable: true,
@@ -860,7 +860,7 @@ export async function createInvoiceDraft(
                 account_id: account.id,
                 invoice_id: invoiceId,
                 line_type: "other",
-                description: `Contract minimum, ${formatMinDays(minDays)}-day minimum, ${worked} ${
+                description: `Contract minimum: ${formatMinDays(minDays)}-day minimum, ${worked} ${
                   totalBillableQty === 1 ? "day" : "days"
                 } worked`,
                 quantity: shortfall,
@@ -896,7 +896,7 @@ export async function createInvoiceDraft(
             account_id: account.id,
             invoice_id: invoiceId,
             line_type: "flight_day",
-            description: `Flight days, ${formatDateRange(trip.starts_on, trip.ends_on)}`,
+            description: `Flight days: ${formatDateRange(trip.starts_on, trip.ends_on)}`,
             quantity: trip.day_count,
             unit_amount_cents: trip.day_rate_cents,
             taxable: true,
@@ -917,7 +917,7 @@ export async function createInvoiceDraft(
             account_id: account.id,
             invoice_id: invoiceId,
             line_type: "travel_day",
-            description: `Travel days, ${formatDateRange(trip.starts_on, trip.ends_on)}`,
+            description: `Travel days: ${formatDateRange(trip.starts_on, trip.ends_on)}`,
             quantity: trip.travel_day_count,
             unit_amount_cents: trip.travel_day_rate_cents,
             taxable: true,
@@ -954,7 +954,7 @@ export async function createInvoiceDraft(
             account_id: account.id,
             invoice_id: invoiceId,
             line_type: "per_diem",
-            description: `Per diem, ${formatDateRange(trip.starts_on, trip.ends_on)}`,
+            description: `Per diem: ${formatDateRange(trip.starts_on, trip.ends_on)}`,
             quantity: perDiemCount,
             unit_amount_cents: perDiemRateCents,
             // C10: a straight expense reimbursement is commonly not
@@ -1207,7 +1207,7 @@ export async function createInvoiceDraft(
       warnings.push(
         `This client has a cancellation policy on file: "${clientBilling.cancellation_policy_note}". ${formatDate(
           trip.starts_on
-        )} trip was ${describeCancellationTiming(trip)}, add a cancellation_fee line by hand if it applies.`
+        )} trip was ${describeCancellationTiming(trip)}. Add a cancellation_fee line by hand if it applies.`
       );
     }
   }
@@ -1637,7 +1637,7 @@ export async function sendInvoice(
   const note = customMessage?.trim() ?? "";
   if (note.length > MAX_CUSTOM_MESSAGE_CHARS) {
     return {
-      error: `That message is longer than ${MAX_CUSTOM_MESSAGE_CHARS} characters. Nothing was sent and the invoice is still a draft, shorten it and try again.`,
+      error: `That message is longer than ${MAX_CUSTOM_MESSAGE_CHARS} characters. Nothing was sent and the invoice is still a draft. Shorten it and try again.`,
     };
   }
 
