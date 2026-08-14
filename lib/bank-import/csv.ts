@@ -96,7 +96,7 @@ export function parseCsv(text: string): CsvRecord[] | CsvParseError {
 
     if (inQuotes) {
       return {
-        error: `This file has an unclosed quote starting at line ${quoteStartLine} — a " was opened but never closed, so everything from there to the end of the file was read as one field. Fix the quoting near that line and re-upload.`,
+        error: `This file has an unclosed quote starting at line ${quoteStartLine}. A " was opened but never closed, so everything from there to the end of the file was read as one field. Fix the quoting near that line and re-upload.`,
       };
     }
 

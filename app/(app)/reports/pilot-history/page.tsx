@@ -162,7 +162,7 @@ export default async function PilotHistoryReportPage() {
               <Text as="div" size="2" color="gray">
                 {`Compiled ${formatDate(data.compiledOn)}. Your logbook runs from ${formatDate(
                   data.earliestEntryDate
-                )} to ${formatDate(data.latestEntryDate)}. Simulator time is on its own line and is never added to a total — every hour above it is time in an aircraft.`}
+                )} to ${formatDate(data.latestEntryDate)}. Simulator time is on its own line and is never added to a total. Every hour above it is time in an aircraft.`}
               </Text>
               {/* Almost always a mistyped year. Said out loud, because the
                   entry is in the pilot's logbook and in none of these

@@ -8,7 +8,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"),
   title: {
-    default: `${BRAND.name} — ${BRAND.descriptor}`,
+    default: `${BRAND.name}: ${BRAND.descriptor}`,
     template: `%s | ${BRAND.name}`,
   },
   // THE ONE DESCRIPTION, and it is now a crawlable marketing claim rather
@@ -34,7 +34,7 @@ export const metadata: Metadata = {
   // Kept in step with app/(marketing)/page.tsx's hero. If that copy changes,
   // change this with it.
   description:
-    "Log the trip once — your logbook draft and your invoice lines come from it, and your receipts attach to it. A business tool for independent contract pilots.",
+    "Log the trip once. Your logbook draft and your invoice lines come from it, and your receipts attach to it. A business tool for independent contract pilots.",
   // Kept noindex product-wide even now that the Phase 1 auth gate is in
   // place (app/(app)/layout.tsx redirects anyone without a session to
   // /login). A product whose trust story is "AMG cannot see your client

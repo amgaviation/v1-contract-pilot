@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
   const webhookSecret = process.env.SAMPLE_CONNECT_THIN_WEBHOOK_SECRET;
   if (!webhookSecret) {
     console.error(
-      "[sample-connect/thin] SAMPLE_CONNECT_THIN_WEBHOOK_SECRET is not set — refusing the delivery. " +
+      "[sample-connect/thin] SAMPLE_CONNECT_THIN_WEBHOOK_SECRET is not set. Refusing the delivery. " +
         "Set it from your webhook destination's signing secret (or from `stripe listen`)."
     );
     // 503, not 200: a silently-swallowed delivery is a bug you find weeks

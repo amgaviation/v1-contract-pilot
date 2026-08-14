@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     // A deployment without this secret cannot verify anything, so it must
     // refuse rather than trust the payload. 500 (not 400) so Stripe retries
     // once it is configured, instead of treating it as permanently bad.
-    console.error("STRIPE_WEBHOOK_SECRET is unset — refusing webhook.");
+    console.error("STRIPE_WEBHOOK_SECRET is unset. Refusing webhook.");
     return NextResponse.json({ error: "Webhook not configured" }, { status: 500 });
   }
 
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
       console.error(
         `[db] stripe_events.insert(${event.id}) ${insertError.message} (code ${
           insertError.code ?? "none"
-        }) — refusing to run the handler with no delivery row to mark.`
+        }). Refusing to run the handler with no delivery row to mark.`
       );
       return NextResponse.json({ error: "Delivery ledger unavailable" }, { status: 500 });
     }
@@ -182,7 +182,7 @@ async function markProcessed(eventId: string) {
     throw new Error(`stripe_events.update(${eventId}): ${error.message}`);
   }
   if (count === 0) {
-    throw new Error(`stripe_events.update(${eventId}) matched 0 rows — not marked processed.`);
+    throw new Error(`stripe_events.update(${eventId}) matched 0 rows. Not marked processed.`);
   }
 }
 
@@ -282,11 +282,11 @@ async function handleEvent(event: Stripe.Event, objectId: string | null) {
           throw new Error(
             `${event.type} (${event.id}): no account matched subscription ${subscription.id} / customer ${
               typeof subscription.customer === "string" ? subscription.customer : subscription.customer?.id
-            } yet — retrying while the event is still recent.`
+            } yet. Retrying while the event is still recent.`
           );
         }
         console.error(
-          `${event.type} (${event.id}): no account matched subscription ${subscription.id} after 1 hour — giving up on redelivery.`
+          `${event.type} (${event.id}): no account matched subscription ${subscription.id} after 1 hour. Giving up on redelivery.`
         );
       }
       return;

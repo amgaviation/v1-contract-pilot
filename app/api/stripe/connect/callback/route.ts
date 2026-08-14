@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
     return redirectToSettings(
       request,
       rolledBack
-        ? "Couldn't finish connecting Stripe — that connection attempt had expired. Try connecting again."
+        ? "Couldn't finish connecting Stripe. That connection attempt had expired. Try connecting again."
         : "Couldn't finish connecting Stripe. Check Connected Apps in your Stripe Dashboard and remove this app if it's listed, then try again."
     );
   }

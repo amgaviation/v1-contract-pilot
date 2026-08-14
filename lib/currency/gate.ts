@@ -68,7 +68,7 @@ export function assertCurrencyEngineEnabled(): void {
   if (!isCurrencyEngineEnabled()) {
     throw new Error(
       "Currency engine reached with the flag off. This is a routing or import bug, " +
-        "not a config problem — see lib/currency/gate.ts."
+        "not a config problem. See lib/currency/gate.ts."
     );
   }
 }

@@ -78,9 +78,10 @@ function AddAccountForm() {
           ) : null}
         </Flex>
         <Text as="div" size="1" color="gray" mt="2">
-          The type can&rsquo;t change later — archive and re-add if it was wrong.
-          Built-in accounts can be renamed but not archived: they&rsquo;re where your
-          invoices, payments, expenses and mileage post automatically.
+          The type can&rsquo;t change later. Archive and re-add the account
+          if it was wrong. Built-in accounts can be renamed but not
+          archived: they&rsquo;re where your invoices, payments, expenses,
+          and mileage post automatically.
         </Text>
       </form>
     </Card>

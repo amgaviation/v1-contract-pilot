@@ -105,7 +105,7 @@ export default function ReconcileBoard({
         ) : (
           <Text size="1" color="gray">
             Select one line in each column, then match. Money in is positive,
-            money out negative — both sides use the same sign.
+            money out negative. Both sides use the same sign.
           </Text>
         )}
       </Flex>
@@ -219,7 +219,7 @@ export default function ReconcileBoard({
                 <Table.Row key={statement.id}>
                   <Table.Cell>
                     <Text size="1">
-                      {formatDate(statement.postedOn)} — {statement.description}
+                      {formatDate(statement.postedOn)}: {statement.description}
                     </Text>
                     <Text size="1" color="gray">
                       {" "}

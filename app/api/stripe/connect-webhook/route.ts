@@ -153,7 +153,7 @@ export async function POST(request: NextRequest) {
   const secret = process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
   if (!secret) {
     console.error(
-      "STRIPE_CONNECT_WEBHOOK_SECRET is unset — automatic payment recording is off, refusing this Connect delivery. Set it from the connected-accounts webhook endpoint's signing secret (dashboard.stripe.com/webhooks)."
+      "STRIPE_CONNECT_WEBHOOK_SECRET is unset. Automatic payment recording is off, refusing this Connect delivery. Set it from the connected-accounts webhook endpoint's signing secret (dashboard.stripe.com/webhooks)."
     );
     return NextResponse.json(
       { error: "Connect webhook not configured" },
@@ -238,7 +238,7 @@ export async function POST(request: NextRequest) {
       console.error(
         `[db] stripe_connect_events.insert(${event.id}) ${insertError.message} (code ${
           insertError.code ?? "none"
-        }) — refusing to run the handler with no delivery row to record its outcome on.`
+        }). Refusing to run the handler with no delivery row to record its outcome on.`
       );
       return NextResponse.json({ error: "Delivery ledger unavailable" }, { status: 500 });
     }
@@ -285,7 +285,7 @@ export async function POST(request: NextRequest) {
     }
     if (count === 0) {
       throw new Error(
-        `stripe_connect_events.update(${event.id}) matched 0 rows — outcome "${
+        `stripe_connect_events.update(${event.id}) matched 0 rows. Outcome "${
           patch.outcome ?? "unset"
         }" was not recorded anywhere.`
       );
@@ -371,7 +371,7 @@ export async function POST(request: NextRequest) {
       }
 
       console.error(
-        `Connect event ${event.id}: account ${account.id} deauthorized the platform's Stripe grant from their own dashboard — connect_account_id cleared, payment links retired, oauth state cleared. Settings will show "not connected" on next load.`
+        `Connect event ${event.id}: account ${account.id} deauthorized the platform's Stripe grant from their own dashboard. connect_account_id cleared, payment links retired, oauth state cleared. Settings will show "not connected" on next load.`
       );
       // 'ignored' is the closest of the CHECK-constrained outcomes — this
       // event carries no money and none of the other four values fit
@@ -382,7 +382,7 @@ export async function POST(request: NextRequest) {
       await finish({
         account_id: account.id,
         outcome: "ignored",
-        detail: "Stripe grant deauthorized from the connected account's own dashboard — disconnected here too",
+        detail: "Stripe grant deauthorized from the connected account's own dashboard. Disconnected here too.",
       });
       return NextResponse.json({ received: true, outcome: "deauthorized" });
     }
@@ -550,7 +550,7 @@ export async function POST(request: NextRequest) {
       outcome = inserted ? "recorded" : "duplicate";
       detail = inserted
         ? decision.detail
-        : `Payment ${claim.paymentIntentId} was already on the ledger — recorded once, not twice.`;
+        : `Payment ${claim.paymentIntentId} was already on the ledger. Recorded once, not twice.`;
     }
 
     // STATUS SYNC RUNS ON BOTH PATHS, including 'duplicate'. That is what
@@ -618,7 +618,7 @@ async function insertPayment(supabase: ServiceClient, payload: PaymentInsert): P
   if (!error) return true;
   if (error.code === "23505") {
     console.warn(
-      `invoice_payments insert for ${payload.stripe_payment_intent_id} hit the payment-intent unique index — already recorded.`
+      `invoice_payments insert for ${payload.stripe_payment_intent_id} hit the payment-intent unique index. Already recorded.`
     );
     return false;
   }
@@ -734,7 +734,7 @@ async function resolveAsyncSettlement(params: {
     if (prior) {
       return {
         outcome: "ignored",
-        detail: `Session ${settlement.sessionId} reported an authorised payment, but this session has already been resolved by ${prior.type} (${prior.outcome}) — that answer arrived first and stands. No pending notice was raised.`,
+        detail: `Session ${settlement.sessionId} reported an authorised payment, but this session has already been resolved by ${prior.type} (${prior.outcome}). That answer arrived first and stands. No pending notice was raised.`,
       };
     }
 
@@ -756,7 +756,7 @@ async function resolveAsyncSettlement(params: {
         settlement.amountCents === null ? "a bank payment" : formatCentsPlain(settlement.amountCents);
       return {
         outcome: "needs_review",
-        detail: `A client has authorised ${amount} for this invoice through a payment link that should have been deactivated, and it is due to settle in a few business days. This invoice is ${invoice?.status ?? "not payable"}, so the money will NOT be recorded against it when it lands — it will simply arrive in your Stripe balance. Refund it in Stripe once it settles, or reissue the invoice.`,
+        detail: `A client has authorised ${amount} for this invoice through a payment link that should have been deactivated, and it is due to settle in a few business days. This invoice is ${invoice?.status ?? "not payable"}, so the money will NOT be recorded against it when it lands. It will simply arrive in your Stripe balance. Refund it in Stripe once it settles, or reissue the invoice.`,
       };
     }
 
@@ -975,7 +975,7 @@ async function syncInvoiceStatus(
   if (balance !== null && balance < 0) {
     return `This invoice is now overpaid by ${formatCentsPlain(
       -balance
-    )} — a payment was probably recorded by hand at the same moment this one arrived. Check whether they are the same money, and correct one of them if they are.`;
+    )}. A payment was probably recorded by hand at the same moment this one arrived. Check whether they are the same money, and correct one of them if they are.`;
   }
 
   return null;
@@ -983,7 +983,7 @@ async function syncInvoiceStatus(
 
 function deadInvoiceNote(status: string): string {
   return status === "void"
-    ? "This invoice was voided at the same moment the payment arrived, so it has NOT been marked paid — the money is in your Stripe account against a cancelled invoice. Refund the client in Stripe, or reissue the invoice."
+    ? "This invoice was voided at the same moment the payment arrived, so it has NOT been marked paid. The money is in your Stripe account against a cancelled invoice. Refund the client in Stripe, or reissue the invoice."
     : "This invoice was put back to draft at the same moment the payment arrived, so its status has not been advanced. Check the invoice against what reached your Stripe account.";
 }
 
@@ -1016,7 +1016,7 @@ async function retirePaymentLink(params: {
     });
   } catch (err) {
     note =
-      `The payment link ${params.paymentLinkId} could not be switched off on Stripe — deactivate it in your Stripe Dashboard.`;
+      `The payment link ${params.paymentLinkId} could not be switched off on Stripe. Deactivate it in your Stripe Dashboard.`;
     console.error(
       `deactivatePaymentLink failed after auto-recording a payment on invoice ${params.invoiceId}: ${
         err instanceof Error ? err.message : "unknown error"

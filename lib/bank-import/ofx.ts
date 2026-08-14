@@ -224,7 +224,7 @@ export function parseOfx(text: string, format: "ofx" | "qfx"): BankParseResult {
         {
           rowNumber: 0,
           raw: "",
-          reason: "No <STMTTRN>...</STMTTRN> transaction records were found in this file — it may not be a valid OFX/QFX statement export.",
+          reason: "No <STMTTRN>...</STMTTRN> transaction records were found in this file. It may not be a valid OFX/QFX statement export.",
         },
       ],
     };
@@ -239,7 +239,7 @@ export function parseOfx(text: string, format: "ofx" | "qfx"): BankParseResult {
       rowNumber,
       raw: "",
       reason:
-        "This <STMTTRN> transaction record is missing its closing </STMTTRN> tag, so it couldn't be read. The file may have been truncated during download — re-download the statement and import it again.",
+        "This <STMTTRN> transaction record is missing its closing </STMTTRN> tag, so it couldn't be read. The file may have been truncated during download. Re-download the statement and import it again.",
     });
   }
 
@@ -297,7 +297,7 @@ export function parseOfx(text: string, format: "ofx" | "qfx"): BankParseResult {
     // and belongs skipped by name rather than reaching the server as a
     // row that aborts the whole import.
     if (amountCents === 0) {
-      reject("TRNAMT is $0.00 — a zero-amount row has nothing to import.");
+      reject("TRNAMT is $0.00. A zero-amount row has nothing to import.");
       return;
     }
 
@@ -309,10 +309,10 @@ export function parseOfx(text: string, format: "ofx" | "qfx"): BankParseResult {
     const name = fields.NAME ?? fields.PAYEE;
     const memo = fields.MEMO;
     let description: string | undefined;
-    if (name && memo && memo !== name) description = `${name} — ${memo}`;
+    if (name && memo && memo !== name) description = `${name}: ${memo}`;
     else description = name ?? memo;
     if (!description) {
-      reject("Missing both NAME and MEMO — no description available for this transaction.");
+      reject("Missing both NAME and MEMO. No description is available for this transaction.");
       return;
     }
 

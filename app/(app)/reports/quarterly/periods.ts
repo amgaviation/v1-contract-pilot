@@ -100,7 +100,7 @@ export function estimatedTaxPeriods(year: number): EstimatedTaxPeriod[] {
     {
       number: 1,
       label: "Period 1",
-      covers: `${MONTH_LABEL[0]} 1 – ${MONTH_LABEL[2]} 31`,
+      covers: `${MONTH_LABEL[0]} 1 to ${MONTH_LABEL[2]} 31`,
       start: isoDate(year, 1, 1),
       end: isoDate(year, 3, 31),
       dueDate: isoDate(year, 4, 15),
@@ -109,7 +109,7 @@ export function estimatedTaxPeriods(year: number): EstimatedTaxPeriod[] {
     {
       number: 2,
       label: "Period 2",
-      covers: `${MONTH_LABEL[3]} 1 – ${MONTH_LABEL[4]} 31`,
+      covers: `${MONTH_LABEL[3]} 1 to ${MONTH_LABEL[4]} 31`,
       start: isoDate(year, 4, 1),
       end: isoDate(year, 5, 31),
       dueDate: isoDate(year, 6, 15),
@@ -118,7 +118,7 @@ export function estimatedTaxPeriods(year: number): EstimatedTaxPeriod[] {
     {
       number: 3,
       label: "Period 3",
-      covers: `${MONTH_LABEL[5]} 1 – ${MONTH_LABEL[7]} 31`,
+      covers: `${MONTH_LABEL[5]} 1 to ${MONTH_LABEL[7]} 31`,
       start: isoDate(year, 6, 1),
       end: isoDate(year, 8, 31),
       dueDate: isoDate(year, 9, 15),
@@ -127,7 +127,7 @@ export function estimatedTaxPeriods(year: number): EstimatedTaxPeriod[] {
     {
       number: 4,
       label: "Period 4",
-      covers: `${MONTH_LABEL[8]} 1 – ${MONTH_LABEL[11]} 31`,
+      covers: `${MONTH_LABEL[8]} 1 to ${MONTH_LABEL[11]} 31`,
       start: isoDate(year, 9, 1),
       end: isoDate(year, 12, 31),
       // Due January 15 of the FOLLOWING year — deliberate, per the IRS

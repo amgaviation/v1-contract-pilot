@@ -333,9 +333,9 @@ export default async function TripProfitabilityPage({
                     {formatCents(report.totals.draftDayMoneyCents)}
                   </span>{" "}
                   of the invoiced day money above sits on invoices that are
-                  still <strong>drafts</strong> — counted here because a
-                  draft line already commits the trip, but not yet sent to
-                  anyone.
+                  still <strong>drafts</strong>. They are counted here
+                  because a draft line already commits the trip, even
+                  though it has not been sent to anyone yet.
                 </Callout.Text>
               </Callout.Root>
             ) : null}
@@ -553,7 +553,7 @@ export default async function TripProfitabilityPage({
 
             {!anyExcluded ? (
               <Text size="2" color="gray">
-                Nothing excluded for these trips — no rebilled receipts, no
+                Nothing excluded for these trips: no rebilled receipts, no
                 undecided receipts, no mileage.
               </Text>
             ) : (

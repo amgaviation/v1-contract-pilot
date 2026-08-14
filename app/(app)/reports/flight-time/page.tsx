@@ -126,7 +126,7 @@ export default async function FlightTimeReportPage() {
                 </Heading>
                 <Text as="div" size="2" color="gray">
                   Every logbook entry&rsquo;s aircraft time, by the
-                  entry&rsquo;s own date — simulator sessions excluded.
+                  entry&rsquo;s own date. Simulator sessions are excluded.
                   Your logbook covers{" "}
                   {formatDate(report.data.earliestEntryDate)} to today.
                 </Text>

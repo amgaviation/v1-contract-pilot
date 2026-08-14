@@ -215,10 +215,10 @@ export function resolvePLPeriod(params: PLPeriodParams): PLPeriod {
     const priorDay = Math.min(td, daysInMonth(priorYear, priorMonth));
     return {
       kind,
-      label: `${MONTH_LABEL[tm - 1]} 1–${td}, ${ty} (month to date)`,
+      label: `${MONTH_LABEL[tm - 1]} 1-${td}, ${ty} (month to date)`,
       start,
       end: today,
-      priorLabel: `${MONTH_LABEL[priorMonth - 1]} 1–${priorDay}, ${priorYear}`,
+      priorLabel: `${MONTH_LABEL[priorMonth - 1]} 1-${priorDay}, ${priorYear}`,
       priorStart: monthBounds(priorYear, priorMonth).start,
       priorEnd: `${priorYear}-${pad2(priorMonth)}-${pad2(priorDay)}`,
       priorIsApproximate: false,
@@ -237,10 +237,10 @@ export function resolvePLPeriod(params: PLPeriodParams): PLPeriod {
     const priorStart = shiftIsoDate(priorEnd, -(lengthDays - 1));
     return {
       kind,
-      label: `${safeStart} – ${safeEnd}`,
+      label: `${safeStart} to ${safeEnd}`,
       start: safeStart,
       end: safeEnd,
-      priorLabel: `${priorStart} – ${priorEnd}`,
+      priorLabel: `${priorStart} to ${priorEnd}`,
       priorStart,
       priorEnd,
       priorIsApproximate: true,

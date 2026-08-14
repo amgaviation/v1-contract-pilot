@@ -283,7 +283,7 @@ export async function runDueRemindersForAccount(
   // has ever sent. Stop instead.
   if (sendError) {
     summary.errors.push(
-      `${friendlyDbError(sendError, "invoice_reminder_sends.select")} No reminders were sent — without the record of what has already gone out, sending anything risks sending it twice.`
+      `${friendlyDbError(sendError, "invoice_reminder_sends.select")} No reminders were sent. Without the record of what has already gone out, sending anything risks sending it twice.`
     );
     return summary;
   }
@@ -410,7 +410,7 @@ export async function runDueRemindersForAccount(
           rung: item.rung,
           outcome: "skipped",
           detail:
-            "Its moment had passed — this invoice went overdue, and a note saying it is due shortly would no longer be true.",
+            "Its moment had passed. This invoice went overdue, and a note saying it is due shortly would no longer be true.",
         });
         if (record.ok) summary.skipped += 1;
       }
@@ -523,7 +523,7 @@ export async function runDueRemindersForAccount(
         outcome: "skipped",
         detail: sent.ok
           ? "A later reminder in the same schedule came due at the same time and was sent instead of this one."
-          : "A later reminder in the same schedule came due at the same time and took precedence — its send failed, and that rung's own row says why.",
+          : "A later reminder in the same schedule came due at the same time and took precedence. Its send failed, and that rung's own row says why.",
       });
       if (superseded.ok) summary.skipped += 1;
     }

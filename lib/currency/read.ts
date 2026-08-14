@@ -364,7 +364,7 @@ export async function recordSnapshots(results: CurrencyResult[], asOf: IsoDate):
   }
   if (count !== rows.length) {
     throw new Error(
-      `lib/currency/read.ts: currency_snapshots insert wrote ${count === null ? "an unknown number of" : count} of ${rows.length} rows — PostgREST returns 200 for a partial, zero-row, or unconfirmed write, so this is not a success.`
+      `lib/currency/read.ts: currency_snapshots insert wrote ${count === null ? "an unknown number of" : count} of ${rows.length} rows. PostgREST returns 200 for a partial, zero-row, or unconfirmed write, so this is not a success.`
     );
   }
 }

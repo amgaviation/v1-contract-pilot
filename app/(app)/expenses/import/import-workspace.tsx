@@ -731,7 +731,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
 
             {/* CROSS-FORMAT REMATCH. Same statement range imported once as
                 CSV and later as OFX/QFX (or the reverse) hashes to a
-                DIFFERENT fingerprint — OFX builds "NAME — MEMO" where a CSV
+                DIFFERENT fingerprint — OFX builds "NAME: MEMO" where a CSV
                 export carries the bank's own single description column —
                 so the exact-match dedup above lets it straight through with
                 no warning. These rows WERE imported (unlike the in-file

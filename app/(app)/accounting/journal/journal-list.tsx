@@ -78,8 +78,9 @@ function EntryCard({ entry }: { entry: JournalEntryView }) {
             <AlertDialog.Content maxWidth="420px">
               <AlertDialog.Title>Delete this journal entry?</AlertDialog.Title>
               <AlertDialog.Description size="2">
-                {formatDate(entry.entryDate)} — {entry.memo}. Fixing a mistake is
-                delete-and-re-enter; this can&rsquo;t be undone.
+                {formatDate(entry.entryDate)}: {entry.memo}. Fixing a
+                mistake means deleting and re-entering it. This
+                can&rsquo;t be undone.
               </AlertDialog.Description>
               {deleteError ? (
                 <Box mt="2">
@@ -138,8 +139,9 @@ export default function JournalList({ entries }: { entries: JournalEntryView[] }
             No journal entries yet
           </Text>
           <Text size="2" color="gray" align="center">
-            Issue an invoice, record a payment, or log an expense and it posts
-            here automatically — or record a manual entry above.
+            Issue an invoice, record a payment, or log an expense, and it
+            posts here automatically. You can also record a manual entry
+            above.
           </Text>
         </Flex>
       </Card>

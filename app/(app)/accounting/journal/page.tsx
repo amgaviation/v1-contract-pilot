@@ -202,9 +202,9 @@ export default async function JournalPage() {
                 <InfoCircledIcon />
               </Callout.Icon>
               <Callout.Text>
-                Showing the most recent {ENTRIES_LIMIT} entries — older history
-                exists but isn&rsquo;t listed here. The reports still count
-                everything.
+                Showing the most recent {ENTRIES_LIMIT} entries. Older
+                history exists but isn&rsquo;t listed here. The reports
+                still count everything.
               </Callout.Text>
             </Callout.Root>
           ) : null}

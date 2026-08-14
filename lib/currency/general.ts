@@ -142,8 +142,8 @@ export function evaluateGeneralExperience(input: {
       : null;
 
   const assumptions = [
-    "61.57(a) has no time-of-day limit — night takeoffs and night landings count toward this total, not only day ones.",
-    "Whether 61.57(a) applies to this flight at all — carrying persons, or an aircraft certificated for more than one pilot flight crewmember — is not evaluated here.",
+    "61.57(a) has no time-of-day limit. Night takeoffs and night landings count toward this total, not only day ones.",
+    "Whether 61.57(a) applies to this flight at all (carrying persons, or an aircraft certificated for more than one pilot flight crewmember) is not evaluated here.",
     NINETY_DAY_BOUNDARY_ASSUMPTION,
     CATEGORY_MATCH_ASSUMPTION,
   ];
@@ -153,7 +153,7 @@ export function evaluateGeneralExperience(input: {
   // explanation — part135.ts already discloses its own equivalent below.
   if (aircraft.gear === "tailwheel") {
     assumptions.push(
-      "61.57(a)(1)(ii): because this is a tailwheel airplane, only full-stop landings count — touch-and-goes are excluded — and both the takeoffs and landings must have been made in a tailwheel airplane, not merely to a full stop in whatever was flown."
+      "61.57(a)(1)(ii): because this is a tailwheel airplane, only full-stop landings count (touch-and-goes are excluded), and both the takeoffs and landings must have been made in a tailwheel airplane, not merely to a full stop in whatever was flown."
     );
   }
   const typeAssumption = typeMatchAssumption(aircraft);

@@ -140,7 +140,8 @@ export default async function ReconcilePage({
               <RadixLink asChild>
                 <NextLink href="/expenses/import">Expenses → Import</NextLink>
               </RadixLink>{" "}
-              first — reconciliation matches those lines against your ledger.
+              first. Reconciliation matches those lines against your
+              ledger.
             </Text>
           </Flex>
         </Card>
@@ -300,11 +301,12 @@ export default async function ReconcilePage({
           {multipleSources ? (
             <>
               {BRAND.name} keeps one Cash &amp; bank ledger account, so
-              reconciliation trues your combined statements — all{" "}
-              {bankAccounts.length} imported sources together — against it for the
-              month. Per-account reconciliation needs a bank dimension on the
-              ledger, which isn&rsquo;t built; the difference below compares every
-              statement line against your book cash, like with like.
+              reconciliation trues your combined statements, all{" "}
+              {bankAccounts.length} imported sources together, against it
+              for the month. Per-account reconciliation would need a bank
+              dimension on the ledger, which isn&rsquo;t built. The
+              difference below compares every statement line against your
+              book cash, like with like.
             </>
           ) : (
             <>
@@ -351,8 +353,8 @@ export default async function ReconcilePage({
           </Text>
           {totals.reconciled ? (
             <Text as="div" size="1" color="green">
-              Reconciled — every line is matched and the books fully explain this
-              period.
+              Reconciled. Every line is matched, and the books fully
+              explain this period.
             </Text>
           ) : totals.differenceCents === 0 ? (
             <Text as="div" size="1" color="amber">
@@ -361,14 +363,14 @@ export default async function ReconcilePage({
               {totals.unmatchedStatementCount + totals.unmatchedLedgerCount === 1
                 ? ""
                 : "s"}{" "}
-              are still unmatched — they only cancel out. Match every line before
-              this period reads as reconciled.
+              are still unmatched. They only cancel out. Match every line
+              before this period reads as reconciled.
             </Text>
           ) : (
             <Text as="div" size="1" color="gray">
-              Record the missing side (confirm an expense, record a payment, or
-              add a journal entry) to bring this to zero — matching alone never
-              moves it.
+              Record the missing side (confirm an expense, record a
+              payment, or add a journal entry) to bring this to zero.
+              Matching alone never moves it.
             </Text>
           )}
         </Card>
@@ -380,9 +382,9 @@ export default async function ReconcilePage({
             <InfoCircledIcon />
           </Callout.Icon>
           <Callout.Text>
-            This period has more lines than one screen can safely total — the
-            difference figure above may be incomplete. Narrow to a month with
-            fewer lines.
+            This period has more lines than one screen can safely total.
+            The difference figure above may be incomplete. Narrow to a
+            month with fewer lines.
           </Callout.Text>
         </Callout.Root>
       ) : null}

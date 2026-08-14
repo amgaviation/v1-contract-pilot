@@ -36,7 +36,7 @@ import type { AircraftFacts, CountedEntry, CurrencyEntry, DateWindow, IsoDate, M
 export function typeMatchAssumption(intended: AircraftFacts): string | null {
   const required = intended.typeRating !== null && intended.typeRating.trim() !== "";
   if (required) return null;
-  return "No type rating is recorded for the intended aircraft, so a different (or unrecorded) type of aircraft is not read as \"no rating required\" — an entry of the SAME type as the intended aircraft still counts; a different type is excluded from this total unless it could be the difference between current and not, in which case this card asks you to resolve it rather than guessing.";
+  return "No type rating is recorded for the intended aircraft, so a different (or unrecorded) type of aircraft is not read as \"no rating required.\" An entry of the SAME type as the intended aircraft still counts; a different type is excluded from this total unless it could be the difference between current and not, in which case this card asks you to resolve it rather than guessing.";
 }
 
 /**
@@ -57,7 +57,7 @@ export function typeMatchAssumption(intended: AircraftFacts): string | null {
  * comparison has produced a number for this sentence to caveat yet.
  */
 export const CATEGORY_MATCH_ASSUMPTION =
-  "An entry's aircraft category/class is compared to the intended aircraft's as one exact, pilot-typed field (e.g. \"ASEL\") — a different wording of the same category, such as \"Airplane Single-Engine Land,\" reads as a different aircraft, and its takeoffs/landings are excluded, not corrected for you.";
+  "An entry's aircraft category/class is compared to the intended aircraft's as one exact, pilot-typed field (e.g. \"ASEL\"). A different wording of the same category, such as \"Airplane Single-Engine Land,\" reads as a different aircraft, and its takeoffs/landings are excluded, not corrected for you.";
 
 export const NINETY_DAYS = 90;
 
@@ -245,7 +245,7 @@ const AMBIGUOUS_FACT_PHRASE: Partial<Record<MissingInput, string>> = {
 
 function describeAmbiguousEntry(a: AmbiguousEntry): string {
   const facts = a.missing.map((m) => AMBIGUOUS_FACT_PHRASE[m] ?? m).join("; ");
-  return `Entry ${a.entry.entryDate}: ${facts} — and its takeoffs/landings could be the difference between current and not current, so this card asks rather than guesses.`;
+  return `Entry ${a.entry.entryDate}: ${facts}, and its takeoffs/landings could be the difference between current and not current, so this card asks rather than guesses.`;
 }
 
 /**
@@ -293,7 +293,7 @@ export function ambiguousFactGates(
  * disclosed in code but never on the card a pilot actually reads.
  */
 export const NINETY_DAY_BOUNDARY_ASSUMPTION =
-  "The 90-day window runs from this date back through the 89 days before it — a takeoff or landing made exactly 90 days before this date falls one day outside the window and does not count.";
+  "The 90-day window runs from this date back through the 89 days before it. A takeoff or landing made exactly 90 days before this date falls one day outside the window and does not count.";
 
 /**
  * FINDING B: an undisclosed attribution, now disclosed. classifyForCurrency
@@ -318,7 +318,7 @@ export const NINETY_DAY_BOUNDARY_ASSUMPTION =
 export function mixedSimulatorRowAssumption(eligible: readonly CurrencyEntry[]): string | null {
   const countedAMixedRow = eligible.some((e) => (e.simulatorTime ?? 0) > 0);
   if (!countedAMixedRow) return null;
-  return "At least one counted entry also logs simulator/device time alongside real aircraft time (a mixed row) — this schema records no split of its takeoffs and landings between the aircraft and the device, so all of them were taken as flown in the aircraft.";
+  return "At least one counted entry also logs simulator/device time alongside real aircraft time (a mixed row). This schema records no split of its takeoffs and landings between the aircraft and the device, so all of them were taken as flown in the aircraft.";
 }
 
 export function countedFrom(

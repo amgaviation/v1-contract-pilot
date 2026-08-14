@@ -83,7 +83,7 @@ export function evaluateFlightReview(input: { asOf: IsoDate; completedOn: IsoDat
     // test, or FAA-sponsored proficiency program phase may substitute,
     // and this engine cannot decide whether one did.
     notes.push(
-      "A proficiency check or practical test within the same period may substitute for a flight review under 61.56(d) — record its date here if it did."
+      "A proficiency check or practical test within the same period may substitute for a flight review under 61.56(d). Record its date here if it did."
     );
   }
 

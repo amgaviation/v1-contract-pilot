@@ -234,7 +234,7 @@ export default async function SampleConnectPage({
               <Text size="2" color="gray">
                 {accountId
                   ? "No products yet. Create one above and it appears on your storefront."
-                  : "Connect an account first — products live on the connected account."}
+                  : "Connect an account first. Products live on the connected account."}
               </Text>
             )}
           </Flex>
@@ -256,7 +256,7 @@ export default async function SampleConnectPage({
               {!status?.readyToProcessPayments ? (
                 <Callout.Root color="amber" size="1">
                   <Callout.Text>
-                    Finish onboarding before sharing this — until card payments are
+                    Finish onboarding before sharing this. Until card payments are
                     active, checkout will fail for your customers.
                   </Callout.Text>
                 </Callout.Root>
@@ -272,7 +272,7 @@ export default async function SampleConnectPage({
               <Heading size="4">4. Your subscription to the platform</Heading>
               <Text size="2" color="gray">
                 Separate money from the storefront above: this is you paying the
-                platform. Billed to your connected account directly — with V2 accounts
+                platform. Billed to your connected account directly. With V2 accounts
                 one id is both the account and the customer.
               </Text>
 
