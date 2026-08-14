@@ -67,10 +67,10 @@ export async function GET(request: NextRequest) {
 
   const period: PLPeriod = {
     kind: kindParam,
-    label: `${start} – ${end}`,
+    label: `${start} to ${end}`,
     start: start as string,
     end: end as string,
-    priorLabel: `${priorStart} – ${priorEnd}`,
+    priorLabel: `${priorStart} to ${priorEnd}`,
     priorStart: priorStart as string,
     priorEnd: priorEnd as string,
     priorIsApproximate: kindParam === "custom",

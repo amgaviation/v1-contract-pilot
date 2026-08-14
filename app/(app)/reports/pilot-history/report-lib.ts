@@ -162,7 +162,7 @@ export function lastTwelveCalendarMonths(today: string): ReportWindow {
     key: "last-12-months",
     from,
     to: today,
-    label: `${MONTH_ABBR[fromMonth]} ${fromYear} – ${MONTH_ABBR[month - 1]} ${year}`,
+    label: `${MONTH_ABBR[fromMonth]} ${fromYear} to ${MONTH_ABBR[month - 1]} ${year}`,
   };
 }
 
@@ -987,8 +987,8 @@ export function computePilotHistoryReport(
 export function futureDatedNote(count: number): string | null {
   if (count <= 0) return null;
   return count === 1
-    ? "1 entry is dated after today and is not counted in any figure here — check its date in your logbook."
-    : `${count} entries are dated after today and are not counted in any figure here — check their dates in your logbook.`;
+    ? "1 entry is dated after today and is not counted in any figure here. Check its date in your logbook."
+    : `${count} entries are dated after today and are not counted in any figure here. Check their dates in your logbook.`;
 }
 
 /**
@@ -999,8 +999,8 @@ export function futureDatedNote(count: number): string | null {
 export function unattributedEntriesNote(count: number): string | null {
   if (count <= 0) return null;
   return count === 1
-    ? "1 entry counted here names no airman. It is included rather than dropped — on an account with more than one pilot, it may not be this airman's."
-    : `${count} entries counted here name no airman. They are included rather than dropped — on an account with more than one pilot, some of them may not be this airman's.`;
+    ? "1 entry counted here names no airman. It is included rather than dropped. On an account with more than one pilot, it may not be this airman's."
+    : `${count} entries counted here name no airman. They are included rather than dropped. On an account with more than one pilot, some of them may not be this airman's.`;
 }
 
 /**
@@ -1022,7 +1022,7 @@ export function unrecordedHoursNote(
     recent.unrecordedHours > 0
       ? ` (${recent.unrecordedHours.toFixed(1)} of them in the last 12 months)`
       : "";
-  return `${all} hours all time${window} are not counted either way — flown in an aircraft that is not on file, or one where this is not recorded.`;
+  return `${all} hours all time${window} are not counted either way. They were flown in an aircraft that is not on file, or in one where this is not recorded.`;
 }
 
 /**

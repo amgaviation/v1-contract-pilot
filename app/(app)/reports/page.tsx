@@ -57,7 +57,7 @@ export default async function ReportsIndexPage() {
           </Heading>
           <Text as="div" size="2" color="gray">
             What each trip and each client billed, what it cost you, and
-            the margin per day &mdash; invoiced, not collected.
+            the margin per day. Invoiced, not collected.
           </Text>
         </Card>
         <Card size="3">
@@ -78,7 +78,7 @@ export default async function ReportsIndexPage() {
             </RadixLink>
           </Heading>
           <Text as="div" size="2" color="gray">
-            What you own and owe as of a date — cash, receivables, tax
+            What you own and owe as of a date: cash, receivables, tax
             collected, and owner equity, from your ledger.
           </Text>
         </Card>
@@ -101,7 +101,7 @@ export default async function ReportsIndexPage() {
           </Heading>
           <Text as="div" size="2" color="gray">
             Cross-operator flight-time totals in 14 CFR 135.267&rsquo;s
-            windows — the picture no single operator can see.
+            windows: the picture no single operator can see.
           </Text>
         </Card>
         {/* Sits beside Flight time as the second logbook-derived report.
@@ -117,7 +117,7 @@ export default async function ReportsIndexPage() {
           </Heading>
           <Text as="div" size="2" color="gray">
             Total time, PIC and SIC, time by type and by airframe, and the
-            dates on your paperwork — what an insurance or operator history
+            dates on your paperwork: what an insurance or operator history
             form asks for, ready to download.
           </Text>
         </Card>

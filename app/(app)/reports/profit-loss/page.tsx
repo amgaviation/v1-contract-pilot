@@ -194,13 +194,13 @@ export default async function ProfitLossReportPage({
         </Callout.Icon>
         <Callout.Text>
           <Text as="div" weight="medium">
-            This is your own ledger, summarized — not a filed statement.
+            This is your own ledger, summarized. Not a filed statement.
           </Text>
           <Text as="div" size="2">
             Income is cash-basis: payments actually received in this
             period, not invoices issued. Expenses are the receipts you
-            tagged as deductions. It doesn&rsquo;t know your tax situation
-            — for that, see the{" "}
+            tagged as deductions. It doesn&rsquo;t know your tax situation.
+            For that, see the{" "}
             <RadixLink asChild>
               <NextLink href="/reports/year-end">year-end report</NextLink>
             </RadixLink>{" "}
@@ -234,8 +234,8 @@ export default async function ProfitLossReportPage({
               <Callout.Text>
                 A custom range has no calendar unit to compare against, so
                 &ldquo;{period.priorLabel}&rdquo; is the same number of
-                days immediately before your range — an approximation, not
-                the same calendar period last cycle.
+                days immediately before your range. That is an
+                approximation, not the same calendar period last cycle.
               </Callout.Text>
             </Callout.Root>
           ) : null}
@@ -250,7 +250,7 @@ export default async function ProfitLossReportPage({
                 {report.incomeTruncated && report.expensesTruncated ? " and " : ""}
                 {report.expensesTruncated ? "deductible expenses" : ""} in
                 this period (or its comparison period) than this page
-                totals — the figures below and the downloaded CSV may both
+                totals. The figures below and the downloaded CSV may both
                 be partial. Contact support if your totals look short.
               </Callout.Text>
             </Callout.Root>
@@ -382,13 +382,13 @@ export default async function ProfitLossReportPage({
                   {report.rebilledCount} rebilled receipt
                   {report.rebilledCount === 1 ? "" : "s"} totaling{" "}
                   <span className="tnum">{formatCents(report.rebilledCostCents)}</span>{" "}
-                  this period ARE counted above, as their own line, inside
-                  Expenses — this is money the pilot actually paid out of
-                  pocket. It is not excluded: the matching reimbursement is
-                  a client payment already counted in Income above, and
-                  only subtracting the outflow here lets the two sides of
-                  that pass-through net out to the true economic result.
-                  See the{" "}
+                  this period ARE counted above, as their own line inside
+                  Expenses. This is money you actually paid out of pocket,
+                  so it is not excluded. The matching reimbursement is a
+                  client payment already counted in Income above.
+                  Subtracting the outflow here is what lets the two sides
+                  of that pass-through net out to the true economic
+                  result. See the{" "}
                   <RadixLink asChild>
                     <NextLink href="/reports/year-end">year-end report</NextLink>
                   </RadixLink>{" "}
@@ -410,13 +410,13 @@ export default async function ProfitLossReportPage({
                 </Heading>
                 <Text as="div" size="2" color="gray">
                   Standard-mileage-rate drives logged {period.start} through{" "}
-                  {period.end} — excluded from Expenses above. The standard
-                  mileage rate and actual vehicle expenses (fuel, rental
-                  car) are alternative deduction methods for the same
-                  vehicle, never additive, and this report can&rsquo;t tell
-                  which one applies to a given vehicle and year — folding
-                  this in automatically risks a double-claimed deduction.
-                  Review it in{" "}
+                  {period.end}. These are excluded from Expenses above. The
+                  standard mileage rate and actual vehicle expenses (fuel,
+                  rental car) are alternative deduction methods for the
+                  same vehicle, never additive. This report can&rsquo;t
+                  tell which one applies to a given vehicle and year, so
+                  folding this in automatically risks a double-claimed
+                  deduction. Review it in{" "}
                   <RadixLink asChild>
                     <NextLink href="/expenses/mileage">Mileage</NextLink>
                   </RadixLink>{" "}
@@ -486,9 +486,9 @@ export default async function ProfitLossReportPage({
                   Unassigned receipts
                 </Heading>
                 <Text as="div" size="2" color="gray">
-                  Neither billed to a client nor claimed as a deduction —
-                  excluded from both Income and Expenses above. Resolve
-                  them on{" "}
+                  These receipts are neither billed to a client nor
+                  claimed as a deduction, so they are excluded from both
+                  Income and Expenses above. Resolve them on{" "}
                   <RadixLink asChild>
                     <NextLink href="/expenses">Expenses</NextLink>
                   </RadixLink>

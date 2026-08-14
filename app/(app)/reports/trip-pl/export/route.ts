@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
 
   const period: TripPLPeriod = {
     kind: kindParam,
-    label: `${start} – ${end}`,
+    label: `${start} to ${end}`,
     start: start as string,
     end: end as string,
   };
@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
   rows.push(
     csvRow([
       "Period rule",
-      "A trip is included when its dates overlap the period. A trip straddling a boundary appears in full in both periods; its money is not split across the boundary.",
+      "A trip is included when its dates overlap the period. A trip straddling a boundary appears in full in both periods. Its money is not split across the boundary.",
     ])
   );
   rows.push(csvRow([]));

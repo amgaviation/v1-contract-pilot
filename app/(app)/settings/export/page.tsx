@@ -72,7 +72,7 @@ const EXPORTS: ExportCard[] = [
     href: "/settings/export/estimates",
     title: "Estimates",
     description:
-      "Every estimate: number, client, status, issued and valid-until dates, terms, the computed subtotal, tax and total, and, where a quote became an invoice, which invoice and when.",
+      "Every estimate: number, client, status, issued and valid-until dates, terms, and the computed subtotal, tax and total. Where a quote became an invoice, this also shows which invoice and when.",
   },
   {
     href: "/settings/export/estimate-lines",
@@ -102,7 +102,7 @@ const EXPORTS: ExportCard[] = [
     href: "/settings/export/operator-qualifications",
     title: "Operator qualifications",
     description:
-      "Your per-operator training and check records: requirement, status, completed and expiry dates, and type designator, the 135.293/.297/.299 compliance history an operator or an insurer may ask to see.",
+      "Your per-operator training and check records: requirement, status, completed and expiry dates, and type designator. This is the 135.293/.297/.299 compliance history an operator or an insurer may ask to see.",
   },
   {
     href: "/settings/export/aircraft",
@@ -120,7 +120,7 @@ const EXPORTS: ExportCard[] = [
     href: "/settings/export/client-tax-forms",
     title: "Client 1099s",
     description:
-      "The 1099 each client reported for each tax year, as the client reported it, for reconciling against your own payment ledger.",
+      "The 1099 each client reported for each tax year, as they reported it. Use it to reconcile against your own payment ledger.",
   },
   {
     href: "/settings/export/guarantee-periods",

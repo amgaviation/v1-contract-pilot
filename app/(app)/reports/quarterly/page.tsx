@@ -127,23 +127,23 @@ export default async function QuarterlyReportPage({
         </Callout.Icon>
         <Callout.Text>
           <Text as="div" weight="medium">
-            This is a planning aid computed from the records you entered —
-            not a tax calculation, and not tax advice.
+            This is a planning aid computed from the records you entered.
+            It is not a tax calculation, and it is not tax advice.
           </Text>
           <Text as="div" size="2">
             Net profit below is income minus deductible expenses and
             rebilled costs. It does NOT include the standard-mileage
-            deduction, which is informational only — the standard rate and
+            deduction, which is informational only. The standard rate and
             actual vehicle expenses are alternative deduction methods,
             never both, and this report can&rsquo;t tell which one you
             elected. It also does not account for self-employment tax, the
             QBI deduction, your filing status, a spouse&rsquo;s
             withholding, or other income. The &ldquo;Set aside&rdquo;
             column is simple arithmetic on a percentage you choose, applied
-            to that same net profit, and also does not include mileage —
-            not a number this product is asserting as correct. Confirm
-            amounts and due dates with a tax professional or the IRS
-            before you pay.
+            to that same net profit, and it also does not include mileage.
+            This is not a number this product is asserting as correct.
+            Confirm amounts and due dates with a tax professional or the
+            IRS before you pay.
           </Text>
         </Callout.Text>
       </Callout.Root>
@@ -172,7 +172,7 @@ export default async function QuarterlyReportPage({
                   ? " and "
                   : ""}
                 {report.deductibleTruncated ? "deductible expenses" : ""} in{" "}
-                {year} than this page totals — the figures below and the
+                {year} than this page totals. The figures below and the
                 downloaded CSV may both be partial. Contact support if your
                 totals look short.
               </Callout.Text>
@@ -185,9 +185,9 @@ export default async function QuarterlyReportPage({
                 <ExclamationTriangleIcon />
               </Callout.Icon>
               <Callout.Text>
-                There are more drives logged in {year} than this page totals
-                — the mileage figures below and the downloaded CSV may both
-                be partial.
+                There are more drives logged in {year} than this page
+                totals. The mileage figures below and the downloaded CSV
+                may both be partial.
               </Callout.Text>
             </Callout.Root>
           ) : null}
@@ -241,7 +241,7 @@ export default async function QuarterlyReportPage({
                   <Text as="div" size="2" color="gray">
                     Payment due {pf.period.dueDateLabel}. When a due date
                     falls on a Saturday, Sunday, or legal holiday, the IRS
-                    moves the deadline to the next business day — confirm
+                    moves the deadline to the next business day. Confirm
                     the exact date for {year} with the IRS or your
                     accountant before you pay.
                   </Text>
@@ -394,7 +394,7 @@ export default async function QuarterlyReportPage({
                       {formatCents(pf.unassignedTotalCents)} in this period
                       are currently counted in neither your income nor your
                       deductions. An unassigned receipt in a closed period
-                      is a deduction you&rsquo;re about to lose — resolve
+                      is a deduction you&rsquo;re about to lose. Resolve
                       them on{" "}
                       <RadixLink asChild>
                         <NextLink href="/expenses">Expenses</NextLink>
@@ -409,7 +409,7 @@ export default async function QuarterlyReportPage({
                       </Callout.Icon>
                       <Callout.Text>
                         There are more unassigned receipts in {year} than
-                        this page totals — this period&rsquo;s count and
+                        this page totals. This period&rsquo;s count and
                         total may also be partial.
                       </Callout.Text>
                     </Callout.Root>

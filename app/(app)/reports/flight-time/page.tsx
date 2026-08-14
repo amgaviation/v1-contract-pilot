@@ -67,24 +67,24 @@ export default async function FlightTimeReportPage() {
         </Callout.Icon>
         <Callout.Text>
           <Text as="div" weight="medium">
-            Your own cross-operator picture — totals, not a legality call.
+            Your own cross-operator picture: totals, not a legality call.
           </Text>
           <Text as="div" size="2">
-            14 CFR 135.267 limits a flight crewmember&rsquo;s total flight
-            time in all commercial flying — 500 hours in any calendar
-            quarter, 800 hours in any two
-            consecutive calendar quarters, 1,400 hours in any calendar
-            year, and a per-24-consecutive-hours limit on the day of
-            flight (135.267(a), (b), current text retrieved 11 AUG 2026).
-            Because those limits count your flying for every operator plus
-            any other commercial flying, no single operator can see the
-            whole picture from their own records — this page computes it
-            from your own logbook, so you can answer the
-            &ldquo;what else have you flown&rdquo; question a certificate
-            holder must ask before assigning you. Whether an assignment
-            may be accepted is determined under the assigning
-            operator&rsquo;s certificate and the regulation — never by
-            this page, which states totals and nothing more.
+            14 CFR 135.267 limits how much a flight crewmember can fly
+            commercially, counting every operator together: 500 hours in
+            any calendar quarter, 800 hours in any two consecutive
+            calendar quarters, 1,400 hours in any calendar year, and a
+            separate limit on hours in any 24 consecutive hours on the
+            day of flight. (135.267(a), (b), current text retrieved 11
+            AUG 2026) Because those limits count your flying for every
+            operator, plus any other commercial flying, no single
+            operator can see the whole picture from their own records.
+            This page computes it from your own logbook, so you can
+            answer the &ldquo;what else have you flown&rdquo; question a
+            certificate holder must ask before assigning you. Whether an
+            assignment may be accepted is decided under the assigning
+            operator&rsquo;s certificate and the regulation, never by
+            this page. This page states totals only.
           </Text>
         </Callout.Text>
       </Callout.Root>
@@ -106,10 +106,10 @@ export default async function FlightTimeReportPage() {
             No figures to state yet
           </Heading>
           <Text as="p" size="2" color="gray">
-            Your logbook has no entries, so this page shows no totals — a
-            row of 0.0-hour figures would be a claim about your flying that
-            there is no record behind. Log a flight or import your history
-            in{" "}
+            Your logbook has no entries, so this page shows no totals. A
+            row of 0.0-hour figures would claim something about your
+            flying with no record behind it. Log a flight or import your
+            history in{" "}
             <RadixLink asChild>
               <NextLink href="/logbook">Logbook</NextLink>
             </RadixLink>{" "}
@@ -158,7 +158,7 @@ export default async function FlightTimeReportPage() {
                     </Table.RowHeaderCell>
                     <Table.Cell>
                       <Text color="gray" size="2">
-                        {formatDate(figure.window.from)} –{" "}
+                        {formatDate(figure.window.from)} to{" "}
                         {formatDate(figure.window.to)}
                       </Text>
                     </Table.Cell>
@@ -176,7 +176,7 @@ export default async function FlightTimeReportPage() {
                       {figure.coverageGapFrom ? (
                         <Text size="1" color="amber">
                           Your logbook&rsquo;s earliest entry is{" "}
-                          {formatDate(figure.coverageGapFrom)} — flying
+                          {formatDate(figure.coverageGapFrom)}. Flying
                           before that isn&rsquo;t in this figure, so it
                           can&rsquo;t be read as the window&rsquo;s full
                           total.
@@ -204,7 +204,7 @@ export default async function FlightTimeReportPage() {
                 </Text>{" "}
                 Trip-derived entries log block time (out to in), which runs
                 equal to or slightly longer than flight time as 14 CFR 1.1
-                defines it — and your logbook doesn&rsquo;t separate
+                defines it. Your logbook also doesn&rsquo;t separate
                 commercial from personal flying, so both are included. Each
                 approximation pushes these totals higher, never lower, than
                 the regulation&rsquo;s own basis.
@@ -214,19 +214,20 @@ export default async function FlightTimeReportPage() {
                   The three-calendar-day row stands in for the 24-hour
                   window.
                 </Text>{" "}
-                Logbook entries carry a date, not off/on times, so a
-                clock-exact 24-consecutive-hour total can&rsquo;t be
-                computed from them. The first row totals your last three
-                calendar days instead — a span that contains every 24-hour
-                window ending now no matter which timezone you log dates
-                in, so it can only over-cover, never miss flying.
+                Logbook entries carry a date, not takeoff and landing
+                times, so a clock-exact 24-consecutive-hour total
+                can&rsquo;t be computed from them. The first row totals
+                your last three calendar days instead. That span contains
+                every 24-hour window ending now, no matter which timezone
+                you log dates in, so it can only over-cover flying, never
+                miss it.
               </Text>
               <Text as="p" size="2" color="gray">
                 <Text as="span" size="2" weight="medium">
                   Keep the logbook current to keep this current.
                 </Text>{" "}
-                These totals are exactly as complete as your logbook —
-                flying you haven&rsquo;t logged yet isn&rsquo;t in them.
+                These totals are exactly as complete as your logbook.
+                Flying you haven&rsquo;t logged yet isn&rsquo;t in them.
               </Text>
             </Flex>
           </Card>

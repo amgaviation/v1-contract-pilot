@@ -129,8 +129,8 @@ export default async function BalanceSheetPage({
             This sheet does not balance (assets{" "}
             {formatCents(sheet.totalAssetsCents)} vs liabilities + equity{" "}
             {formatCents(sheet.totalLiabilitiesAndEquityCents)}), which should be
-            impossible — the ledger enforces debits = credits. Refusing to
-            present it as if it did; contact support.
+            impossible. The ledger enforces debits = credits. This report
+            refuses to present it as if it did. Contact support.
           </Callout.Text>
         </Callout.Root>
       ) : (
@@ -203,9 +203,10 @@ export default async function BalanceSheetPage({
             <Callout.Text>
               <Text size="2">
                 Accounts receivable counts invoices from the day they were
-                issued (accrual), while the P&amp;L and tax reports count income
-                when payments arrive (cash) — both derive from the same
-                records, on different bases, and each says which it uses.
+                issued (accrual). The P&amp;L and tax reports count income
+                when payments arrive (cash). Both derive from the same
+                records, on different bases, and each screen says which it
+                uses.
               </Text>
             </Callout.Text>
           </Callout.Root>

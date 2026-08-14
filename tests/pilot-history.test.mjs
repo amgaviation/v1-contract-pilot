@@ -99,7 +99,7 @@ test("the last-12-months window opens on the first of the month eleven months ba
   const window = lastTwelveCalendarMonths("2026-08-13");
   assert.equal(window.from, "2025-09-01");
   assert.equal(window.to, "2026-08-13");
-  assert.equal(window.label, "Sep 2025 – Aug 2026");
+  assert.equal(window.label, "Sep 2025 to Aug 2026");
 });
 
 test("the window crosses the year boundary without a special case", () => {

@@ -209,7 +209,7 @@ export function resolveTripPLPeriod(
     const td = Number(today.slice(8, 10));
     return {
       kind,
-      label: `${MONTH_LABEL[tm - 1]} 1–${td}, ${ty} (month to date)`,
+      label: `${MONTH_LABEL[tm - 1]} 1-${td}, ${ty} (month to date)`,
       start: monthBounds(ty, tm).start,
       end: today,
     };
@@ -224,7 +224,7 @@ export function resolveTripPLPeriod(
     // A reversed pair is swapped rather than rejected — "between these two
     // dates" is unambiguous. Same treatment as resolveSalesTaxPeriod.
     const [lo, hi] = start <= end ? [start, end] : [end, start];
-    return { kind, label: `${lo} – ${hi}`, start: lo, end: hi };
+    return { kind, label: `${lo} to ${hi}`, start: lo, end: hi };
   }
 
   return { kind: "year", label: `${year}`, start: `${year}-01-01`, end: `${year}-12-31` };

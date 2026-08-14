@@ -100,20 +100,20 @@ export default async function PilotHistoryReportPage() {
         </Callout.Icon>
         <Callout.Text>
           <Text as="div" weight="medium">
-            Arithmetic on your own records — nothing more.
+            Arithmetic on your own records. Nothing more.
           </Text>
           <Text as="div" size="2">
             Every figure below is a sum of the hours you logged and a
             restatement of the dates you entered. This page draws no
-            conclusion from them: it does not assess your experience
-            against anyone&rsquo;s minimums, an insurer&rsquo;s, an
-            operator&rsquo;s or anybody else&rsquo;s, and it does not tell
+            conclusion from them. It does not assess your experience
+            against anyone&rsquo;s minimums, whether an insurer&rsquo;s, an
+            operator&rsquo;s, or anybody else&rsquo;s, and it does not tell
             you what you may or may not fly. Those judgements belong to
             whoever is asking for this form, under the certificate or the
-            policy that governs. What this page is for is answering their
-            questions from one place instead of a calculator and an evening
-            with your logbook — and the numbers are exactly as complete as
-            the records behind them.
+            policy that governs. This page exists so you can answer their
+            questions from one place, instead of a calculator and an
+            evening with your logbook. The numbers are exactly as complete
+            as the records behind them.
           </Text>
         </Callout.Text>
       </Callout.Root>
@@ -142,9 +142,9 @@ export default async function PilotHistoryReportPage() {
             No figures to state yet
           </Heading>
           <Text as="p" size="2" color="gray">
-            Your logbook has no entries, so this page shows no totals — a
-            column of 0.0-hour figures would be a claim about your flying
-            that there is no record behind. Log a flight or import your
+            Your logbook has no entries, so this page shows no totals. A
+            column of 0.0-hour figures would claim something about your
+            flying with no record behind it. Log a flight or import your
             history in{" "}
             <RadixLink asChild>
               <NextLink href="/logbook">Logbook</NextLink>
@@ -194,7 +194,7 @@ export default async function PilotHistoryReportPage() {
                     <Text as="div">Last 90 days</Text>
                     <Text as="div" size="1" weight="regular" color="gray">
                       {formatDate(data.lastNinetyDays.window.from ?? data.lastNinetyDays.window.to)}
-                      {" – "}
+                      {" to "}
                       {formatDate(data.lastNinetyDays.window.to)}
                     </Text>
                   </Table.ColumnHeaderCell>
@@ -567,8 +567,8 @@ function FlagFigureRow({
         </Text>
         <Text as="div" size="2" color="gray">
           Not recorded. None of your aircraft says one way or the other, so
-          there is no figure to give — and a 0.0 here would read as an
-          answer rather than as a blank.
+          there is no figure to give. A 0.0 here would read as an answer
+          rather than as a blank.
         </Text>
       </Box>
     );

@@ -193,7 +193,7 @@ export function flightTimeWindows(today: string): FlightTimeWindow[] {
       key: "twoQuarters",
       from: prevQStart,
       to: today,
-      label: `Two consecutive quarters (${quarterLabel(prevQStart)}–${quarterLabel(today)}), to date`,
+      label: `Two consecutive quarters (${quarterLabel(prevQStart)} to ${quarterLabel(today)}), to date`,
       citation: "135.267(a)(2): any two consecutive calendar quarters",
     },
     {

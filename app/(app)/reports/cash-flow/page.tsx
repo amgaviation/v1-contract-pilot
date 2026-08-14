@@ -174,9 +174,9 @@ export default async function CashFlowPage({
           </Callout.Icon>
           <Callout.Text>
             Opening balance plus net movement doesn&rsquo;t equal the closing
-            balance, which should be impossible — refusing to present this
-            statement as if it tied. Reload, and contact support if it
-            persists.
+            balance, which should be impossible. This report refuses to
+            show the statement as if it tied. Reload the page, and contact
+            support if it persists.
           </Callout.Text>
         </Callout.Root>
       ) : (
@@ -229,10 +229,10 @@ export default async function CashFlowPage({
             <Callout.Text>
               <Text size="2">
                 Cash basis: only money that actually moved. Client payments
-                appear against Accounts receivable (the invoice&rsquo;s income was
-                recognized at issue on the balance sheet side); mileage never
-                appears here because the standard-rate deduction is not a cash
-                outflow.
+                appear against Accounts receivable. The invoice&rsquo;s
+                income was already recognized at issue, on the balance
+                sheet side. Mileage never appears here, because the
+                standard-rate deduction is not a cash outflow.
               </Text>
             </Callout.Text>
           </Callout.Root>

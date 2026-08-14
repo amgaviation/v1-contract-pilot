@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
   }
 
   const rows: string[] = [];
-  rows.push(csvRow(["Sales tax", `${period.from} – ${period.to}`]));
+  rows.push(csvRow(["Sales tax", `${period.from} to ${period.to}`]));
   rows.push(
     csvRow([
       "Basis",

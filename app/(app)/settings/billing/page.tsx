@@ -205,8 +205,8 @@ export default async function BillingPage({
         <Callout.Root color="amber">
           <Callout.Text>
             {state === "read-only"
-              ? "The change you just tried needs an active subscription. This account is read-only until it's resubscribed; every record stays viewable and exportable in the meantime. Pick a plan below to start making changes again."
-              : "This account is read-only. Every record stays viewable and exportable; pick a plan below to start making changes again."}
+              ? "The change you just tried needs an active subscription. This account is read-only until it's resubscribed. Every record stays viewable and exportable in the meantime. Pick a plan below to start making changes again."
+              : "This account is read-only. Every record stays viewable and exportable. Pick a plan below to start making changes again."}
           </Callout.Text>
         </Callout.Root>
       ) : null}
@@ -657,7 +657,7 @@ export default async function BillingPage({
                 <Text size="2" color="gray">
                   {facts?.cancelAtPeriodEnd
                     ? "Your subscription is set to end at the close of the current period. Resuming withdraws that: no new charge, no gap, and the date above goes back to being a renewal."
-                    : "Cancelling stops the NEXT charge. You keep everything you've paid for until the end of the current period, and after that the account goes read-only: every record stays viewable and exportable, and nothing is deleted."}
+                    : "Cancelling stops the NEXT charge. You keep everything you've paid for until the end of the current period. After that, the account goes read-only: every record stays viewable and exportable, and nothing is deleted."}
                 </Text>
                 <CancelResumeButton
                   cancelling={facts?.cancelAtPeriodEnd ?? false}

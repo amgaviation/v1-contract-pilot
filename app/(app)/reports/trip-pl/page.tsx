@@ -228,7 +228,7 @@ export default async function TripProfitabilityPage({
             Every figure here is what you <strong>billed</strong> for a
             trip, not what has landed in your account. Payments are
             recorded per invoice, not per line, so there is no honest way
-            to say which trip a given payment paid for — this report
+            to say which trip a given payment paid for. This report
             doesn&rsquo;t guess. For what you actually collected, see{" "}
             <RadixLink asChild>
               <NextLink href="/reports/profit-loss">profit &amp; loss</NextLink>
@@ -307,8 +307,8 @@ export default async function TripProfitabilityPage({
                   Invoiced day money minus the expenses you tagged as
                   deductions, across {report.totals.tripCount}{" "}
                   {report.totals.tripCount === 1 ? "trip" : "trips"} touching{" "}
-                  {period.start} – {period.end}. Rebilled costs, undecided
-                  receipts and mileage are all excluded — each is listed
+                  {period.start} to {period.end}. Rebilled costs, undecided
+                  receipts, and mileage are all excluded. Each is listed
                   below.
                 </Text>
               </Box>
@@ -348,8 +348,8 @@ export default async function TripProfitabilityPage({
             </Heading>
             <Text as="div" size="2" color="gray" mb="3">
               A trip appears here when its dates overlap the period. A trip
-              that straddles the boundary is shown in full in both periods
-              — its money is not split across the boundary, because nothing
+              that straddles the boundary is shown in full in both periods.
+              Its money is not split across the boundary, because nothing
               in your records says which day of a day-rate invoice belongs
               to which side of it.
             </Text>
@@ -452,20 +452,20 @@ export default async function TripProfitabilityPage({
               By client
             </Heading>
             <Text as="div" size="2" color="gray" mb="3">
-              The same trips, added up per client — every figure is the sum
+              The same trips, added up per client. Every figure is the sum
               of the trip rows above, so the columns reconcile by hand.
               &ldquo;Not tied to a trip&rdquo; is live invoice money for
-              this client that belongs to no single trip (a monthly
-              guarantee is the usual case); it is real revenue and it is
+              this client that belongs to no single trip. A monthly
+              guarantee is the usual case. It is real revenue, and it stays
               deliberately outside the margin, because splitting it across
-              trips would be inventing an allocation. That one column is
-              dated differently from the rest of this table: having no
-              trip, it lands in a period by its invoice&rsquo;s{" "}
+              trips would mean inventing an allocation. That one column is
+              dated differently from the rest of this table: with no trip
+              of its own, it lands in a period by its invoice&rsquo;s{" "}
               <em>issue date</em>, while trips land by the dates they were
               flown. So a guarantee for December work issued in January
-              shows up here in January, alongside December trips it tops
-              up. Money on invoices you haven&rsquo;t sent yet is listed
-              separately underneath and is never date-filtered.
+              shows up here in January, alongside the December trips it
+              tops up. Money on invoices you haven&rsquo;t sent yet is
+              listed separately underneath and is never date-filtered.
             </Text>
 
             {report.clients.length === 0 ? (
@@ -561,7 +561,7 @@ export default async function TripProfitabilityPage({
                 {anyRebillActivity ? (
                   <Box>
                     <Heading as="h3" size="3" mb="1">
-                      Rebilled receipts — a pass-through, both legs out
+                      Rebilled receipts: a pass-through, both legs out
                     </Heading>
                     <Text as="div" size="2" color="gray" mb="2">
                       You paid{" "}
@@ -590,7 +590,7 @@ export default async function TripProfitabilityPage({
                               </span>{" "}
                               of rebilled cost was never billed back, or was
                               billed short. That is money you fronted and
-                              haven&rsquo;t recovered — it is invisible in
+                              haven&rsquo;t recovered. It is invisible in
                               the margin by design, which is exactly why
                               it&rsquo;s called out here. The{" "}
                               <RadixLink asChild>
@@ -606,9 +606,10 @@ export default async function TripProfitabilityPage({
                               <span className="tnum">
                                 {formatCents(report.totals.rebillGapCents)}
                               </span>{" "}
-                              more than the recorded receipts. Usually a
-                              receipt entered short or a markup — worth a
-                              look either way.
+                              more than the recorded receipts, usually
+                              because a receipt was entered short or
+                              because of a markup. Either way, it&rsquo;s
+                              worth a look.
                             </>
                           )}
                         </Callout.Text>
@@ -627,8 +628,9 @@ export default async function TripProfitabilityPage({
                         {formatCents(report.totals.unassignedExpenseCents)}
                       </span>{" "}
                       of receipts on these trips are still tagged
-                      unassigned — neither billed to the client nor claimed
-                      as a deduction. Until you decide, they cost you in
+                      unassigned. They are neither billed to the client nor
+                      claimed as a deduction. Until you decide, they cost
+                      you in
                       both directions and cannot be in any margin. Resolve
                       them on{" "}
                       <RadixLink asChild>
@@ -649,8 +651,9 @@ export default async function TripProfitabilityPage({
                       against these trips, shown in miles and not in
                       dollars on purpose. The standard mileage rate and
                       actual vehicle expenses are alternative deduction
-                      methods for the same vehicle — never additive — so no
-                      mileage figure can go into a trip margin. Your
+                      methods for the same vehicle. They are never
+                      additive, so no mileage figure can go into a trip
+                      margin. Your
                       deduction is computed once, from the year&rsquo;s
                       rate, on{" "}
                       <RadixLink asChild>
