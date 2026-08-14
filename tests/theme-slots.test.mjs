@@ -90,6 +90,38 @@ test("the resolved theme is three data attributes", async (t) => {
       assert.ok(TOKENS.includes(`[data-appearance="${slot.value}"]`));
     }
   });
+
+  /**
+   * A regression test for the "eight identical swatches" bug: the accent
+   * picker paints each slot's swatch by stamping data-accent (and the
+   * previewed data-appearance) on the swatch itself so the compound
+   * selectors below resolve --signal per slot rather than inheriting the
+   * account's CURRENT accent from an ancestor. That mechanism only works
+   * if every slot's block actually declares a distinct --signal — this
+   * proves the token layer holds up its half of the contract, in both
+   * appearances.
+   */
+  await t.test("every accent slot's --signal is distinct, light and dark", () => {
+    const light = new Map();
+    const dark = new Map();
+    for (const slot of ACCENT_SLOTS) {
+      light.set(slot.value, tokenIn(`[data-accent="${slot.value}"] {`, "signal"));
+      dark.set(
+        slot.value,
+        tokenIn(`[data-appearance="dark"][data-accent="${slot.value}"] {`, "signal")
+      );
+    }
+    assert.equal(
+      new Set(light.values()).size,
+      ACCENT_SLOTS.length,
+      `light --signal values collide: ${JSON.stringify([...light])}`
+    );
+    assert.equal(
+      new Set(dark.values()).size,
+      ACCENT_SLOTS.length,
+      `dark --signal values collide: ${JSON.stringify([...dark])}`
+    );
+  });
 });
 
 /**

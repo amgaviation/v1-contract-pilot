@@ -58,6 +58,7 @@ const ROLE_OPTIONS: { value: LogbookRole; label: string }[] = [
   { value: "DUAL_RECEIVED", label: "Dual received" },
 ];
 const DEVICE_OPTIONS: { value: SimulatorDeviceType; label: string }[] = [
+  { value: "ffs", label: "Full flight simulator (FFS)" },
   { value: "ftd", label: "FTD" },
   { value: "atd", label: "ATD" },
   { value: "other", label: "Other" },
@@ -477,8 +478,11 @@ export default function ImportWorkspace() {
                   <Flex align="center" gap="2" wrap="wrap">
                     <span>
                       {summary.needsDevice} row{summary.needsDevice === 1 ? "" : "s"} log simulator
-                      time without saying FTD/ATD/other — pick one for each, or set a default:
+                      time without saying FFS/FTD/ATD/other — pick one for each, or set a default:
                     </span>
+                    <Button size="1" variant="outline" onClick={() => applyDefaultDeviceToUndecided("ffs")}>
+                      Set undecided to FFS
+                    </Button>
                     <Button size="1" variant="outline" onClick={() => applyDefaultDeviceToUndecided("ftd")}>
                       Set undecided to FTD
                     </Button>

@@ -377,7 +377,7 @@ function buildFaq(): { q: string; a: string }[] {
     },
     {
       q: "What happens if I downgrade or cancel?",
-      a: "Nothing is deleted. Downgrading stops new work on the screens your new plan doesn't include; everything already created stays visible and exportable, and those screens come straight back if you upgrade. Cancelling puts the account in read-only. A pilot's logbook is a legal record; a lapsed card will never be the thing that destroys one.",
+      a: "Nothing is deleted. Downgrading closes the screens your new plan doesn't include — those come straight back the moment you upgrade — but every record you already created stays in the account-wide export the whole time, on any plan. Cancelling puts the account in read-only: everything stays viewable and exportable there too. A pilot's logbook is a legal record; a lapsed card will never be the thing that destroys one.",
     },
     {
       q: "Can I get my data out?",

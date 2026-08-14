@@ -1,5 +1,6 @@
 import { Badge, Box, Button, Card, Flex, Grid, Separator, Table, Text } from "@/components/ui";
 import { BRAND } from "@/lib/brand";
+import { formatDate, formatDateRange } from "@/lib/format";
 import { visibleNavSections } from "@/lib/nav";
 
 /**
@@ -44,31 +45,48 @@ const KPIS = [
   { label: "Deductible expenses", value: "$12,865.40", sub: "38 receipts filed" },
 ];
 
+// Dates below are ISO ("YYYY-MM-DD") and rendered through lib/format.ts's
+// own formatDate/formatDateRange — the same functions the real screens
+// call — so this mock's date STRINGS cannot drift from the product's
+// ("Apr 30, 2026", not a hand-typed "30 Apr 2026") even though its data is
+// invented. See the file header: EVERY figure below is still synthetic.
 const READY_TO_INVOICE = [
   {
     client: "Northlight Air Partners",
     route: "KBED → KTEB → KBED",
-    detail: "N412SP · 3 days · Mar 4–6",
+    tailNumber: "N412SP",
+    days: 3,
+    startsOn: "2026-03-04",
+    endsOn: "2026-03-06",
     amount: "$7,350.00",
   },
   {
     client: "Cardinal Ridge Aviation",
     route: "KHPN → KPBI",
-    detail: "N778QC · 2 days · Mar 11–12",
+    tailNumber: "N778QC",
+    days: 2,
+    startsOn: "2026-03-11",
+    endsOn: "2026-03-12",
     amount: "$5,900.00",
   },
   {
     client: "Harbor Rock Holdings",
     route: "KTEB → KASE → KTEB",
-    detail: "N219DL · 2 days · Mar 18–19",
+    tailNumber: "N219DL",
+    days: 2,
+    startsOn: "2026-03-18",
+    endsOn: "2026-03-19",
     amount: "$5,150.00",
   },
 ];
 
 const EXPIRATIONS: { label: string; date: string; tone: "amber" | "gray"; badge: string }[] = [
-  { label: "First-class medical", date: "12 Apr 2026", tone: "amber", badge: "30 days" },
-  { label: "Flight review", date: "30 Sep 2026", tone: "gray", badge: "OK" },
-  { label: "Passport", date: "14 Jun 2028", tone: "gray", badge: "OK" },
+  // 61.23: medical validity always runs through the LAST DAY of a
+  // calendar month, so a mid-month date here would read as wrong to the
+  // only audience this page has — see the file header's own standard.
+  { label: "First-class medical", date: "2026-04-30", tone: "amber", badge: "30 days" },
+  { label: "Flight review", date: "2026-09-30", tone: "gray", badge: "OK" },
+  { label: "Passport", date: "2028-06-14", tone: "gray", badge: "OK" },
 ];
 
 export default function ProductMock() {
@@ -80,9 +98,9 @@ export default function ProductMock() {
             Text that doesn't set a color prop — the rail's current item
             and the mock's page title were rendering white-on-white. The
             frame paints the app's light ground, so it must also restore
-            the app's default ink (--gray-12, the token Radix's own root
+            the app's default ink (--ink, the app's ink token
             sets). Caught by the rebuild QA pass, rule 12. */}
-        <Box className="v1-m-mock-frame" style={{ color: "var(--gray-12)" }}>
+        <Box className="v1-m-mock-frame" style={{ color: "var(--ink)" }}>
           {/* Window chrome, so this reads as a screen rather than a card. */}
           <Flex align="center" gap="2" px="3" py="2" className="v1-m-mock-chrome">
             <Box className="v1-m-mock-dot" />
@@ -101,7 +119,7 @@ export default function ProductMock() {
               width="9rem"
               flexShrink="0"
               display={{ initial: "none", sm: "block" }}
-              style={{ borderRight: "1px solid var(--gray-a5)" }}
+              style={{ borderRight: "1px solid var(--edge)" }}
             >
               <Flex direction="column" gap="2">
                 {MOCK_NAV_SECTIONS.map((item, index) => (
@@ -180,7 +198,8 @@ export default function ProductMock() {
                                 {trip.route}
                               </Text>
                               <Text size="1" color="gray">
-                                {trip.detail}
+                                {trip.tailNumber} · {trip.days} days ·{" "}
+                                {formatDateRange(trip.startsOn, trip.endsOn)}
                               </Text>
                             </Flex>
                             <Text size="1" weight="medium" className="tnum">
@@ -222,7 +241,7 @@ export default function ProductMock() {
                             </Table.Cell>
                             <Table.Cell>
                               <Text size="1" color="gray">
-                                {row.date}
+                                {formatDate(row.date)}
                               </Text>
                             </Table.Cell>
                             <Table.Cell justify="end">

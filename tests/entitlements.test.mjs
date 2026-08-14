@@ -139,6 +139,17 @@ test("route gating finds the gated child under an ungated parent, per segment", 
   assert.equal(featureForPath("/accounting/ledger"), "accounting");
   assert.equal(featureForPath("/accounting/reconciliation/2026-07"), "accounting");
 
+  // Balance-sheet and cash-flow live under /reports/*, not /accounting,
+  // but are the same Business-tier feature and gated inline the same way
+  // — the route→feature map must claim them too, or a future path-based
+  // enforcement caller would silently leave both open.
+  assert.equal(featureForPath("/reports/balance-sheet"), "accounting");
+  assert.equal(featureForPath("/reports/balance-sheet/export"), "accounting");
+  assert.equal(featureForPath("/reports/cash-flow"), "accounting");
+  assert.equal(featureForPath("/reports/cash-flow/export"), "accounting");
+  // sales-tax stays its own feature — adjacent under /reports, not folded in.
+  assert.equal(featureForPath("/reports/sales-tax"), "sales_tax_report");
+
   // Matching is per-SEGMENT, not per-character: a sibling route that
   // merely starts with the same letters is not gated.
   assert.equal(featureForPath("/estimates-archive"), null);

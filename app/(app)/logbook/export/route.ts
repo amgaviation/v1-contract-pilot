@@ -48,6 +48,8 @@ const HEADER = [
   "Intercepted and Tracked Course",
   "Safety Pilot",
   "Holds",
+  "Sole Manipulator of Controls",
+  "Night Window Asserted",
   "Remarks",
   "Source",
 ] as const;
@@ -93,6 +95,15 @@ function entryToValues(e: LogbookEntryRow): (string | number | null | undefined)
     e.courses_intercepted_tracked ? "Yes" : "No",
     e.view_limiting_pilot_name,
     e.holds,
+    // Both nullable booleans, unlike courses_intercepted_tracked above:
+    // NULL means unrecorded and must render as blank, never as "No" — the
+    // same collapse the migration's column comments (20260811040000)
+    // document fighting everywhere else on this table (approach_condition,
+    // sole_manipulator itself). "No" here would assert a fact ("was not
+    // sole manipulator" / "flight was not in the 61.57(b)(1) night window")
+    // the pilot never stated.
+    e.sole_manipulator === null ? "" : e.sole_manipulator ? "Yes" : "No",
+    e.night_window_asserted === null ? "" : e.night_window_asserted ? "Yes" : "No",
     e.remarks,
     e.source,
   ];

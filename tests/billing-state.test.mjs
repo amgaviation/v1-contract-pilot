@@ -9,6 +9,7 @@ const {
   trialDaysRemaining,
   renewalNotice,
   renewalText,
+  planChangeIsIncrease,
 } = await import("../lib/billing-state.ts");
 
 const { ACCOUNT_WRITABLE_STATUSES } = await import("../lib/entitlements.ts");
@@ -195,4 +196,30 @@ test("renewalText substitutes the caller's formatted date and leaves no placehol
   );
   const text = renewalText(notice, "Sep 1, 2026");
   assert.doesNotMatch(text, /\{date\}/);
+});
+
+test("planChangeIsIncrease: a tier-rank increase must invoice immediately", () => {
+  assert.equal(planChangeIsIncrease("solo", "pro", 1, 1), true);
+  assert.equal(planChangeIsIncrease("solo", "business", 1, 2), true);
+  assert.equal(planChangeIsIncrease("pro", "business", 1, 2), true);
+});
+
+test("planChangeIsIncrease: a tier-rank downgrade waits for the next invoice", () => {
+  assert.equal(planChangeIsIncrease("business", "pro", 2, 1), false);
+  assert.equal(planChangeIsIncrease("pro", "solo", 1, 1), false);
+});
+
+test("planChangeIsIncrease: a same-tier seat increase (Business) invoices immediately", () => {
+  // The un-annualised part of the finding: an existing Business account
+  // adding seats without changing tier is still money owed now, not a
+  // pending item that a same-cycle cancel-at-period-end can drop.
+  assert.equal(planChangeIsIncrease("business", "business", 2, 3), true);
+});
+
+test("planChangeIsIncrease: a same-tier interval switch (equal quantity) is not an increase", () => {
+  // Monthly <-> annual with no seat change keeps the ordinary
+  // credit/charge-at-next-invoice behavior — it is not the collection
+  // hazard this function exists to catch.
+  assert.equal(planChangeIsIncrease("solo", "solo", 1, 1), false);
+  assert.equal(planChangeIsIncrease("business", "business", 2, 2), false);
 });

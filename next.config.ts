@@ -1,11 +1,87 @@
 import type { NextConfig } from "next";
 
-// Baseline security headers. No Content-Security-Policy yet: CSP needs the
-// real Supabase project URL and Stripe/Stripe Connect origins, neither of
-// which exist until Phase 0 infra (Supabase project) and Phase 2 (Stripe)
-// are wired up. Add a CSP mirroring amgaviation/amg1's next.config.ts
-// pattern as soon as those origins are known — do not ship to production
-// without one.
+// The Supabase project origin, derived from the same env var
+// lib/supabase/server.ts and lib/supabase/client.ts already read — never
+// hand-typed, so a project migration (a new ref) can't leave the CSP
+// pointed at the old one. Both http(s) and the matching ws(s) scheme are
+// derived: the REST/Auth client uses the former; nothing in this codebase
+// opens a Supabase Realtime channel today (checked — no `.channel(` call
+// site), but admitting the websocket scheme too costs nothing and avoids a
+// silent break the day one is added.
+function supabaseOrigins(): { http: string | null; ws: string | null } {
+  const raw = process.env.NEXT_SUPABASE_URL;
+  if (!raw) return { http: null, ws: null };
+  try {
+    const origin = new URL(raw).origin;
+    return { http: origin, ws: origin.replace(/^http/, "ws") };
+  } catch {
+    return { http: null, ws: null };
+  }
+}
+
+// Content-Security-Policy, built once here rather than as a static string,
+// so it can fold in the Supabase origin without anyone hand-copying it.
+// Mirrors amgaviation/amg1's next.config.ts pattern per the comment this
+// replaces. Audited against every rendered-content and script-loading
+// surface in this app before enforcing:
+//
+//   - script-src needs 'wasm-unsafe-eval': tesseract.js compiles the OCR
+//     engine's WebAssembly core (public/ocr/core, synced by
+//     scripts/sync-ocr-assets.mjs) in the main thread's worker.
+//   - script-src and style-src need 'unsafe-inline': the App Router
+//     hydrates by pushing the RSC payload through inline <script> tags
+//     with no nonce wired up (that needs a per-request nonce threaded
+//     through proxy.ts and every layout — a larger change than this pass),
+//     and React's inline `style={}` props render as literal `style="..."`
+//     attributes throughout components/ui. Both are a real reduction in
+//     what a stylesheet/script tag can express, not a placeholder: outside
+//     'self', no remote <script src> or <link rel=stylesheet> is
+//     admitted at all.
+//   - worker-src is 'self' ONLY, deliberately no `blob:`. tesseract.js
+//     defaults to re-serving its worker script as a blob: URL; this app
+//     turns that off (`workerBlobURL: false` in lib/receipt-ocr/engine.ts,
+//     enforced by scripts/sync-ocr-assets.mjs) specifically so `worker-src
+//     blob:` never has to enter this policy — see that file's comment: a
+//     blob-sourced worker is a standard way to run arbitrary JS around a
+//     script-src that forbids it, defeating the point of this header for
+//     any future XSS. The OCR worker instead loads from the same-origin
+//     `/ocr/worker.min.js` path, which plain 'self' already covers.
+//   - img-src needs `data:`: the invoice/packet share pages inline receipt
+//     images as data: URIs server-side (app/invoice/[token]/page.tsx) —
+//     deliberately, per that file's comment, since there is no remote URL
+//     for next/image to optimise.
+//   - connect-src needs the Supabase origin: every auth/DB call from the
+//     browser client (lib/supabase/client.ts) goes there directly.
+//   - form-action is 'self' only: every Stripe hop in this app (Connect
+//     OAuth, Checkout, the customer billing portal) is a server-side
+//     redirect via Next's redirect() — a Location header, not a client
+//     <form action> — so no Stripe origin needs a form-action entry. If
+//     that ever changes, this needs https://connect.stripe.com added
+//     alongside it.
+//   - frame-ancestors 'none': nothing in this app is meant to be framed by
+//     anyone, including itself (no iframe/frame use exists in the
+//     codebase — checked). Stricter than the legacy X-Frame-Options:
+//     SAMEORIGIN header kept below for pre-CSP3 browsers.
+function contentSecurityPolicy(): string {
+  const { http: supabaseHttp, ws: supabaseWs } = supabaseOrigins();
+  const connectSrc = ["'self'", supabaseHttp, supabaseWs].filter(Boolean).join(" ");
+  const imgSrc = ["'self'", "data:", supabaseHttp].filter(Boolean).join(" ");
+
+  return [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+    "style-src 'self' 'unsafe-inline'",
+    `img-src ${imgSrc}`,
+    "font-src 'self' data:",
+    `connect-src ${connectSrc}`,
+    "worker-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join("; ");
+}
+
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
@@ -18,6 +94,7 @@ const securityHeaders = [
     key: "Strict-Transport-Security",
     value: "max-age=63072000; includeSubDomains",
   },
+  { key: "Content-Security-Policy", value: contentSecurityPolicy() },
 ];
 
 const nextConfig: NextConfig = {
@@ -26,6 +103,13 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
+  // No file in this app imports next/image today (verified by grep — the
+  // two <img> call sites are deliberate: SVGs, and the invoice share
+  // page's data: URI receipts, whose own comment explains why next/image
+  // is intentionally not used there). This block is forward-provisioning,
+  // not live optimisation. Before the first next/image use on a remote
+  // (Supabase Storage) receipt URL, this also needs `images.remotePatterns`
+  // for that host.
   images: {
     formats: ["image/avif", "image/webp"],
   },
@@ -58,7 +142,27 @@ const nextConfig: NextConfig = {
     NEXT_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_SUPABASE_PUBLISHABLE_KEY,
   },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      // The OCR engine (public/ocr/*: tesseract's wasm core, worker, and
+      // ~2.9 MB English language model) is otherwise served with Vercel's
+      // default public/ caching — max-age=0, must-revalidate — which pays
+      // a conditional-request round trip on every scan session, on exactly
+      // the ramp-grade LTE this product's mobile-first posture targets.
+      // These bytes only change when scripts/sync-ocr-assets.mjs re-syncs
+      // them off a tesseract.js version bump, so a day of staleness is
+      // harmless. Scoped to /ocr/ only — every other path keeps the
+      // default caching set above.
+      {
+        source: "/ocr/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=86400, stale-while-revalidate=604800",
+          },
+        ],
+      },
+    ];
   },
 };
 

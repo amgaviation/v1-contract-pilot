@@ -7,8 +7,9 @@ import { requireAccount } from "@/lib/supabase/account";
 import { isLiveMode } from "@/lib/stripe/server";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
-import { emailIsConfigured } from "@/lib/email/send";
+import { emailIsConfigured, looksLikeEmail } from "@/lib/email/send";
 import { loadPreferences } from "@/lib/preferences";
+import { loadOptionLabels } from "@/lib/custom-options-read";
 import PageShell from "../../page-shell";
 import HeaderForm, { type ClientOption } from "./header-form";
 import LinesEditor, { type LineRow, type RebillableExpense } from "./lines-editor";
@@ -111,14 +112,18 @@ export default async function InvoicePage({
     supabase.from("invoices_overdue").select("invoice_id").eq("invoice_id", id),
     // Not filtered to active-only: an issued invoice may bill a client
     // that has since been archived, and the picker still needs to show it.
-    // contact_email rides along for StatusActions: whether "email it to the
-    // client" can be offered depends on the client having an address on file,
-    // which is one of the two halves a send needs. (The other is the mail
-    // service being configured, which is an environment question only the
-    // server can answer — see emailIsConfigured() below.)
+    // contact_email/billing_email ride along for StatusActions: whether
+    // "email it to the client" can be offered depends on the client having
+    // an address on file, which is one of the two halves a send needs. (The
+    // other is the mail service being configured, which is an environment
+    // question only the server can answer — see emailIsConfigured() below.)
+    // billing_email (20260814092000) is the address sendInvoiceEmail
+    // actually prefers when it looks like a real one — this screen has to
+    // resolve the SAME preference or "Goes to {email}" would name an
+    // address the send does not use.
     supabase
       .from("clients")
-      .select("id, name, contact_email")
+      .select("id, name, contact_email, billing_email")
       .order("name", { ascending: true }),
     // A share row is best-effort read: its own error is not folded into
     // moneyError below, because a failed read here degrades to "no share
@@ -194,6 +199,7 @@ export default async function InvoicePage({
   const overdue = ((overdueData ?? []) as { invoice_id: string }[]).length > 0;
   const clients = (clientData ?? []) as (ClientOption & {
     contact_email: string | null;
+    billing_email: string | null;
   })[];
   const share = (shareData ?? null) as ShareRow;
   const connectNotices = (connectNoticeData ?? []) as ConnectNoticeRow[];
@@ -207,6 +213,15 @@ export default async function InvoicePage({
   // The client this invoice actually bills, for the send controls. Read off
   // the list already fetched rather than issuing a sixth query.
   const billedClient = clients.find((c) => c.id === invoice.client_id) ?? null;
+
+  // THE SAME PREFERENCE sendInvoiceEmail resolves (lib/email/send-invoice.ts):
+  // billing_email when it looks like a real address, contact_email
+  // otherwise. Computed once here so StatusActions' "Goes to {email}" and
+  // ReminderPanel's "has no email on file" can never name or gate on an
+  // address the actual send does not use.
+  const billedClientEmail = looksLikeEmail(billedClient?.billing_email)
+    ? (billedClient?.billing_email as string)
+    : (billedClient?.contact_email ?? null);
 
   // A failed totals/payments/overdue/clients query is not "no data" — a
   // sent, unpaid invoice must not render as a healthy $0.00 balance in
@@ -230,14 +245,23 @@ export default async function InvoicePage({
   // meant to rebill are never billed at all. That has to be disclosed,
   // not just degraded to an empty list.
   let rebillableError: { code?: string | null; message?: string | null } | null = null;
+  // The tenant's own expense-category vocabulary — same source
+  // createInvoiceDraft/addRebillExpenseLine now write onto the line itself
+  // (app/(app)/invoices/actions.ts), so the picker below offers the same
+  // label the line will actually be saved with rather than the retired
+  // eight-entry fallback.
+  let categoryLabels: Record<string, string> = {};
   if (draft) {
     const [
       { data: clientTrips, error: clientTripsError },
       { data: usedLines, error: usedLinesError },
+      resolvedCategoryLabels,
     ] = await Promise.all([
       supabase.from("trips").select("id").eq("client_id", invoice.client_id),
       supabase.from("invoice_lines").select("expense_id").not("expense_id", "is", null),
+      loadOptionLabels("expense_category"),
     ]);
+    categoryLabels = resolvedCategoryLabels;
     rebillableError = clientTripsError ?? usedLinesError;
     const tripIds = ((clientTrips ?? []) as { id: string }[]).map((t) => t.id);
     const usedExpenseIds = new Set(
@@ -331,7 +355,7 @@ export default async function InvoicePage({
       supabase
         .from("clients")
         .select(
-          "reminder_before_due, reminder_on_due, reminder_after_due, late_fee_flat_cents, late_fee_bps_per_month, late_fee_grace_days"
+          "reminder_before_due, reminder_on_due, reminder_after_due, late_fee_flat_cents, late_fee_bps_per_month, late_fee_grace_days, archived_at"
         )
         .eq("id", invoice.client_id)
         .eq("account_id", account.id)
@@ -359,7 +383,17 @@ export default async function InvoicePage({
       late_fee_flat_cents: number | null;
       late_fee_bps_per_month: number | null;
       late_fee_grace_days: number | null;
+      archived_at: string | null;
     } | null;
+
+    // runDueRemindersForAccount (lib/reminders/run.ts) scopes its whole pass
+    // to `.is("archived_at", null)` — an archived client's open invoices are
+    // silently out of scope for the run, no send, no hold, no blocked entry.
+    // decideReminder below has no idea archival exists, so left alone it
+    // would render this panel's ladder and "Next: …" exactly as if the run
+    // were going to act on it. Overridden below so the screen and the
+    // scheduler cannot disagree about whether anything is actually coming.
+    const clientArchived = policyRow?.archived_at != null;
 
     const policy = normalizeReminderPolicy({
       beforeDue: policyRow?.reminder_before_due,
@@ -389,6 +423,11 @@ export default async function InvoicePage({
       // scheduler cannot disagree about why nothing is going out.
       lastReminderAt:
         sends.find((row) => row.outcome === "sent")?.created_at ?? null,
+      // Same quiet period as a reminder itself — see ReminderInput.sentAt's
+      // comment. Without this the panel would promise a before-due rung the
+      // scheduler is actually holding, on every invoice sent the same day
+      // (or within QUIET_PERIOD_DAYS) as its own before-due ladder starts.
+      sentAt: invoice.sent_at,
       // A REVOKED LINK'S STAMPS DESCRIBE A PAGE THE CLIENT CAN NO LONGER OPEN,
       // so they are no information — the same rule the run applies, and it has
       // to be the same one or this panel's premise fails in the direction that
@@ -464,13 +503,17 @@ export default async function InvoicePage({
     reminderView = {
       scheduleIsEmpty: reminderPolicyIsEmpty(policy),
       rungs,
-      nextUp: nextRung
-        ? `Next: ${describeRung(nextRung).toLowerCase()}, on ${formatDate(nextRung.onDate)}.`
-        : null,
+      nextUp:
+        !clientArchived && nextRung
+          ? `Next: ${describeRung(nextRung).toLowerCase()}, on ${formatDate(nextRung.onDate)}.`
+          : null,
       // A hold that is merely "nothing is due yet" is not worth a sentence —
-      // the ladder above already shows that.
-      hold:
-        decision.action === "hold" && decision.reason !== "nothing_due"
+      // the ladder above already shows that. Archival wins over that rule:
+      // it is worth saying even when nothing would otherwise be due today,
+      // because the ladder above is describing a chase that will not run.
+      hold: clientArchived
+        ? "This client is archived, so scheduled reminders don't run for them. Unarchive them to resume the ladder above."
+        : decision.action === "hold" && decision.reason !== "nothing_due"
           ? describeHold(decision.reason)
           : null,
       lateFee: {
@@ -550,6 +593,7 @@ export default async function InvoicePage({
               lines={lines}
               editable={draft}
               rebillable={rebillable}
+              categoryLabels={categoryLabels}
             />
 
             <Separator size="4" my="4" />
@@ -577,7 +621,7 @@ export default async function InvoicePage({
             invoice={invoice}
             hasLines={lines.length > 0}
             canEmail={emailIsConfigured()}
-            clientEmail={billedClient?.contact_email ?? null}
+            clientEmail={billedClientEmail}
             clientName={billedClient?.name ?? "this client"}
             receiptCount={receiptCount}
             hasInvoiceTemplate={hasInvoiceTemplate}
@@ -608,7 +652,7 @@ export default async function InvoicePage({
               nextUp={reminderView.nextUp}
               hold={reminderView.hold}
               canEmail={emailIsConfigured()}
-              clientHasEmail={Boolean(billedClient?.contact_email)}
+              clientHasEmail={Boolean(billedClientEmail)}
               lateFee={reminderView.lateFee}
               manualSends={reminderView.manualSends}
             />

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <title>V1 — Log the trip once.</title>
+  <!--
+    Source for public/brand/og-image.png (the file actually declared in
+    openGraph/twitter metadata — link-preview crawlers are not reliable SVG
+    renderers, so this file is rasterized once via sharp, not served
+    directly). Same navy ground (#0B1F33) and white mark as
+    public/brand/expanded.svg and presentation.svg, resized to the 1200x630
+    social-card aspect ratio instead of reusing either file's own canvas.
+
+    Mark plus tagline only, per the brand kit's restriction on where
+    "powered by AMG Aviation" attribution may appear (lib/brand.ts) — a
+    social share card is not the app footer or an about page, so it carries
+    none. The mark's own letterform already reads as "V1" (see navy.svg's
+    <title>); no separate wordmark text is added. Tagline text is
+    lib/brand.ts's BRAND.tagline, "Log the trip once.", copied verbatim — a
+    static SVG asset cannot import from a TS module, so if that string ever
+    changes this file needs the same edit.
+  -->
+  <rect width="1200" height="630" fill="#0B1F33"/>
+  <g transform="translate(450.75 165) scale(.6)" fill="#FFFFFF" shape-rendering="geometricPrecision">
+    <polygon points="0,0 76.923,0 176.923,210.256 176.923,300 153.846,300"/>
+    <polygon points="289.744,0 364.103,0 212.821,300 189.744,300 189.744,210.256"/>
+    <polygon points="413.019375,0 497.564375,0 497.564375,300 423.928375,300 423.928375,73.636 377.564375,73.636"/>
+  </g>
+  <text x="600" y="440" fill="#FFFFFF" text-anchor="middle"
+        font-family="Arial, Helvetica, sans-serif" font-size="46">Log the trip once.</text>
+</svg>

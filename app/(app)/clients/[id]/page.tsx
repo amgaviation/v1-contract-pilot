@@ -112,24 +112,36 @@ export default async function EditClientPage({
     supabase.from("client_rates").select("*").eq("client_id", id),
     // "Open" as in not yet billed — the same billing_state='unbilled'
     // trips/page.tsx and Overview both use for "still owes work", not a
-    // flight-status reading of "open".
+    // flight-status reading of "open". Status is allow-listed to exactly
+    // what the caption promises ("Flown or scheduled, not yet invoiced"):
+    // a canceled trip keeps billing_state='unbilled' forever (nothing ever
+    // invoices it through the normal path) and a 'hold' (20260814094000)
+    // is a tentative, unconfirmed block on the calendar, not scheduled
+    // work — either one sitting in this list would look like open work the
+    // caption explicitly excludes, and for a canceled trip it hides the
+    // fact that it might still owe a cancellation fee, which belongs on
+    // its own, honest surface rather than disguised as a live trip.
+    // +1: the only way to know the cap was actually hit — see
+    // tripsTruncated below, same pattern trips/page.tsx uses for its own
+    // 1000-row cap.
     supabase
       .from("trips")
       .select("id, starts_on, ends_on, aircraft_ident, billing_state")
       .eq("client_id", id)
       .eq("billing_state", "unbilled")
+      .in("status", ["scheduled", "in_progress", "completed"])
       .order("starts_on", { ascending: false })
-      .limit(OPEN_TRIPS_LIMIT),
+      .limit(OPEN_TRIPS_LIMIT + 1),
     // "Outstanding" matches Overview's own "Awaiting payment" definition:
     // issued invoices that still owe something — draft owes nothing yet,
-    // paid/void owe nothing anymore.
+    // paid/void owe nothing anymore. +1 for the same truncation check.
     supabase
       .from("invoices")
       .select("id, invoice_number, due_on, status")
       .eq("client_id", id)
       .in("status", ["sent", "partial"])
       .order("due_on", { ascending: true })
-      .limit(OUTSTANDING_INVOICES_LIMIT),
+      .limit(OUTSTANDING_INVOICES_LIMIT + 1),
     supabase.from("operator_qualifications").select("*").eq("client_id", id),
     // The packet: what this pilot could send, and whatever link is live.
     // Documents NOT already tied to another client — a per-client document
@@ -191,8 +203,19 @@ export default async function EditClientPage({
   const rateOverrides = (ratesResult.data ?? []) as ClientRateRow[];
   const ratesLoadError = dayTypesResult.error ?? ratesResult.error;
 
-  const openTrips = (openTripsResult.data ?? []) as OpenTripRow[];
-  const outstandingInvoices = (invoicesResult.data ?? []) as OutstandingInvoiceRow[];
+  const openTripsAll = (openTripsResult.data ?? []) as OpenTripRow[];
+  const openTrips = openTripsAll.slice(0, OPEN_TRIPS_LIMIT);
+  // A client with more open trips than the cap used to show exactly 10
+  // with nothing on screen admitting it — on the one screen whose stated
+  // job is "what does this client owe me". Every other capped list in
+  // this codebase (trips/page.tsx's 1000-trip cap included) detects and
+  // says so; this now does too.
+  const openTripsTruncated = openTripsAll.length > OPEN_TRIPS_LIMIT;
+
+  const outstandingInvoicesAll = (invoicesResult.data ?? []) as OutstandingInvoiceRow[];
+  const outstandingInvoices = outstandingInvoicesAll.slice(0, OUTSTANDING_INVOICES_LIMIT);
+  const outstandingInvoicesTruncated =
+    outstandingInvoicesAll.length > OUTSTANDING_INVOICES_LIMIT;
 
   const qualifications = (qualificationsResult.data ?? []) as OperatorQualificationRow[];
   const qualificationsLoadError = Boolean(qualificationsResult.error);
@@ -288,6 +311,13 @@ export default async function EditClientPage({
                     </RadixLink>
                   </Flex>
                 ))}
+                {openTripsTruncated ? (
+                  <RadixLink asChild size="1">
+                    <NextLink href={`/trips?client=${id}&billing_state=unbilled`}>
+                      Showing the {OPEN_TRIPS_LIMIT} most recent — view all
+                    </NextLink>
+                  </RadixLink>
+                ) : null}
               </Flex>
             )}
           </Card>
@@ -317,6 +347,12 @@ export default async function EditClientPage({
                     </Text>
                   </Flex>
                 ))}
+                {outstandingInvoicesTruncated ? (
+                  <Text size="1" color="gray">
+                    Showing the {OUTSTANDING_INVOICES_LIMIT} soonest due — more are
+                    outstanding.
+                  </Text>
+                ) : null}
               </Flex>
             )}
           </Card>

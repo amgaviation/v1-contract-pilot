@@ -1,7 +1,7 @@
 import "server-only";
 import { buildInvoiceDocument } from "@/lib/invoice-document";
 import { isLiveMode } from "@/lib/stripe/server";
-import { loadPreferences } from "@/lib/preferences";
+import { resolvePreferences } from "@/lib/preferences";
 import { friendlyDbError } from "@/lib/db-errors";
 import { sendEmail, emailIsConfigured, looksLikeEmail } from "./send";
 import {
@@ -134,7 +134,7 @@ export async function sendInvoiceEmail(
       // The late-fee columns ride the same read the greeting already needed.
       // They are used ONLY to compose a sentence about what was agreed, and
       // only when late_fee_note_on_reminders is on — see below.
-      "name, contact_name, contact_email, late_fee_flat_cents, late_fee_bps_per_month, late_fee_grace_days, late_fee_note_on_reminders"
+      "name, contact_name, contact_email, billing_email, late_fee_flat_cents, late_fee_bps_per_month, late_fee_grace_days, late_fee_note_on_reminders"
     )
     .eq("id", invoice.client_id)
     .eq("account_id", accountId)
@@ -150,6 +150,7 @@ export async function sendInvoiceEmail(
     name: string;
     contact_name: string | null;
     contact_email: string | null;
+    billing_email: string | null;
     late_fee_flat_cents: number | null;
     late_fee_bps_per_month: number | null;
     late_fee_grace_days: number | null;
@@ -158,9 +159,19 @@ export async function sendInvoiceEmail(
   if (!client) {
     return { ok: false, error: "That invoice's client no longer exists." };
   }
+  // WHERE THE MONEY PAPERWORK GOES. billing_email (20260814092000) is an
+  // optional AP/accounting inbox, distinct from contact_email — a real
+  // operator's scheduler books the trip and never touches payables, so an
+  // invoice addressed to them instead of ap@ is a common, silent cause of
+  // slow payment. Preferred whenever it looks like a real address; falls
+  // back to contact_email exactly as every account did before this column
+  // existed.
+  const recipientEmail = looksLikeEmail(client.billing_email)
+    ? (client.billing_email as string)
+    : client.contact_email;
   // The most common reason a send cannot happen, and the one the pilot can fix
   // in ten seconds — so it names the client and points at the screen.
-  if (!looksLikeEmail(client.contact_email)) {
+  if (!looksLikeEmail(recipientEmail)) {
     return {
       ok: false,
       error: `${client.name} has no email address on file, so nothing was sent. Add one on the client's page and try again.`,
@@ -191,12 +202,36 @@ export async function sendInvoiceEmail(
   // it at all, and a template edited in another tab between render and
   // click must not send yesterday's sentence.
   //
-  // loadPreferences is total — a missing row (the ordinary state) and a
-  // failed read both resolve to the product's own defaults, which for this
-  // section means "no template", i.e. exactly the built-in copy. So a
-  // preferences outage costs a pilot their custom opening line and never
-  // costs them the send.
-  const preferences = await loadPreferences(accountId);
+  // READ THROUGH THE `supabase` CLIENT THIS CALL WAS HANDED, NOT via
+  // lib/preferences.ts's loadPreferences — that helper always opens its OWN
+  // cookie-bound session client (lib/supabase/server createClient()),
+  // ignoring whatever client the caller already has. The scheduled reminder
+  // run (lib/reminders/run.ts) calls this function with a SERVICE-ROLE
+  // client because there is no session to run as; loadPreferences's fresh
+  // client sees no session either, runs as anon, and account_preferences'
+  // policies are authenticated-only — so on every cron send loadPreferences
+  // silently degraded to DEFAULT_PREFERENCES, and the pilot's saved
+  // wording never reached a single scheduled reminder, while the manual
+  // "Send a reminder" button (a real session) used it correctly the whole
+  // time. Querying with the client already in hand fixes both callers at
+  // once: the service-role client can read the row directly, and the
+  // interactive callers keep RLS exactly as before.
+  //
+  // resolvePreferences is the same TOTAL validator loadPreferences uses on
+  // this same column — a missing row (the ordinary state) and a failed read
+  // both resolve to the product's own defaults, which for this section
+  // means "no template", i.e. exactly the built-in copy. So a preferences
+  // outage still costs a pilot their custom opening line and never costs
+  // them the send.
+  const { data: prefsRow, error: prefsError } = await supabase
+    .from("account_preferences")
+    .select("prefs")
+    .eq("account_id", accountId)
+    .maybeSingle();
+  if (prefsError) friendlyDbError(prefsError, "account_preferences.load");
+  const preferences = resolvePreferences(
+    (prefsRow as { prefs: unknown } | null)?.prefs
+  );
   const template =
     kind === "reminder"
       ? preferences.templates.reminder
@@ -239,7 +274,7 @@ export async function sendInvoiceEmail(
   }
 
   const result = await sendEmail({
-    to: client.contact_email as string,
+    to: recipientEmail as string,
     subject: message.subject,
     text: message.text,
     // Only set when it is a usable address — a malformed reply-to is worse

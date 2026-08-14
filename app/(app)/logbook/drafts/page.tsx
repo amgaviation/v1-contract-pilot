@@ -108,6 +108,7 @@ export default async function LogbookDraftsPage() {
     supabase
       .from("trips")
       .select("id, starts_on, ends_on, aircraft_ident, aircraft_type, status")
+      .eq("account_id", account.id)
       .eq("status", "completed")
       .order("starts_on", { ascending: false })
       .limit(TRIP_LIMIT),
@@ -115,9 +116,16 @@ export default async function LogbookDraftsPage() {
     // an empty queue told them "every completed trip's legs are already in
     // your logbook" — true, and deeply misleading, when the real answer
     // was that none of their trips had been marked completed yet.
+    //
+    // .eq on account_id, not just RLS: current_account_ids() spans every
+    // account a user belongs to, and this whole page's job is per-account
+    // drafts (see /logbook/page.tsx and the aircraft page for the same
+    // documented hazard). Without it, a user with two memberships sees the
+    // other account's completed trips proposed as drafts here.
     supabase
       .from("trips")
       .select("id", { count: "exact", head: true })
+      .eq("account_id", account.id)
       .in("status", ["scheduled", "in_progress"]),
   ]);
   // A failed count here must not fall to 0 — that's the exact value that
@@ -160,6 +168,13 @@ export default async function LogbookDraftsPage() {
             .select(
               "id, trip_id, leg_date, from_icao, to_icao, block_hours, night_hours, instrument_hours, instrument_actual_hours, instrument_simulated_hours, cross_country_hours, day_takeoffs, day_landings, day_landings_full_stop, night_takeoffs, night_landings_full_stop, night_landings_touch_go, approaches, holds"
             )
+            // tripIds is already account-scoped (the trips query above
+            // filters on account_id), so this is redundant given RLS and
+            // that upstream filter alone — added anyway to match the
+            // documented, defence-in-depth pattern every sibling read in
+            // this feature directory uses rather than relying on RLS by
+            // itself.
+            .eq("account_id", account.id)
             .in("trip_id", tripIds)
             // Newest-first, not the chronological-ascending this table used
             // to fetch: if LEG_LIMIT truncates, it's the legs the pilot

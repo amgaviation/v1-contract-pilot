@@ -21,7 +21,7 @@
  * dates, counts and sentences only.
  */
 
-import { ACCOUNT_WRITABLE_STATUSES } from "./entitlements";
+import { ACCOUNT_WRITABLE_STATUSES, TIER_RANK, type PlanTier } from "./entitlements";
 
 /**
  * The full `pilot.accounts.status` CHECK, in the order the Phase-1
@@ -110,8 +110,13 @@ const STATUS_DISPLAY: Record<AccountStatus, StatusDisplay> = {
   paused: {
     label: "Paused",
     tone: "gray",
+    // NOT "Resume it" — the billing screen's only resume-shaped control
+    // (CancelResumeButton) flips cancel_at_period_end, a different Stripe
+    // field, and does nothing for a paused subscription. The billing
+    // portal is Stripe's own UI for pause_collection and is the one path
+    // that actually works here.
     meaning:
-      "This subscription is paused, so the account is read-only. Resume it to start making changes again.",
+      "This subscription is paused, so the account is read-only. Resume it from the billing portal below to start making changes again.",
   },
 };
 
@@ -138,6 +143,26 @@ export function statusDisplay(status: string): StatusDisplay {
 /** True when this status may still write — the one rule, read from entitlements. */
 export function statusIsWritable(status: string): boolean {
   return (ACCOUNT_WRITABLE_STATUSES as readonly string[]).includes(status);
+}
+
+/**
+ * True when a plan change must collect its proration NOW rather than let
+ * it ride to the next invoice — a tier-rank increase, or a seat-count
+ * increase within the same tier (Business 1→2+ seats). Both are cases
+ * where "credit/charge on the next invoice" can mean charging nothing at
+ * all: an annual plan's next invoice can be up to a year away, and
+ * canceling at period end before that invoice ever fires drops the
+ * pending proration item entirely. A downgrade or a flat interval switch
+ * carries no such risk, so it keeps the ordinary next-invoice behavior
+ * (settings/billing/actions.ts's changePlan is the caller).
+ */
+export function planChangeIsIncrease(
+  currentTier: PlanTier,
+  targetTier: PlanTier,
+  currentQuantity: number,
+  targetQuantity: number
+): boolean {
+  return TIER_RANK[targetTier] > TIER_RANK[currentTier] || targetQuantity > currentQuantity;
 }
 
 /**

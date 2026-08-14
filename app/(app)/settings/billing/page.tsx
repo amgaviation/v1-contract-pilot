@@ -16,7 +16,6 @@ import {
 import EmptyState from "@/components/ui/empty-state";
 import { accountIsReadOnly, requireAccount } from "@/lib/supabase/account";
 import {
-  DOWNGRADE_NOTE,
   FEATURES,
   PLAN_TIERS,
   TIER_DISPLAY,
@@ -26,6 +25,8 @@ import {
   type BillingInterval,
   type PlanTier,
 } from "@/lib/entitlements";
+import { isCurrencyEngineEnabled } from "@/lib/currency/gate";
+import { visibleDowngradeNote } from "./downgrade-note";
 import {
   renewalNotice,
   renewalText,
@@ -34,12 +35,14 @@ import {
 } from "@/lib/billing-state";
 import { tierPriceLabels } from "@/lib/stripe/prices";
 import { billingHistory, subscriptionFacts } from "@/lib/stripe/billing-facts";
+import { checkPriceDrift, describeMismatch } from "@/lib/stripe/price-drift";
 import { formatDate } from "@/lib/format";
 import PageShell from "../../page-shell";
 import {
   BillingPortalButton,
   CancelResumeButton,
   ChangePlanButtons,
+  ResubscribeButtons,
   SwitchIntervalButton,
 } from "./billing-buttons";
 
@@ -90,12 +93,19 @@ export default async function BillingPage({
   const tier = account.plan_tier;
   const isComped = account.stripe_customer_id === null;
   const status = statusDisplay(account.status);
+  // The two statuses whose Stripe subscription object is genuinely dead —
+  // Stripe rejects subscriptions.update() on either one, so changePlan and
+  // CancelResumeButton can never do anything here. Every OTHER read-only
+  // status (past_due, unpaid, incomplete, paused) still has a live,
+  // updatable subscription, so those keep the normal controls.
+  const needsResubscribe =
+    account.status === "canceled" || account.status === "incomplete_expired";
 
   // One clock for the whole render. Recomputing `new Date()` per figure is
   // how a trial reads "3 days" in one place and "2 days" in another.
   const now = new Date();
 
-  const [prices, facts, history] = await Promise.all([
+  const [prices, facts, history, drift] = await Promise.all([
     tierPriceLabels(),
     isComped
       ? Promise.resolve(null)
@@ -103,6 +113,18 @@ export default async function BillingPage({
     isComped
       ? Promise.resolve(null)
       : billingHistory(account.stripe_customer_id),
+    // Owner-only: an extra round trip to Stripe on every render is only
+    // worth paying for the one role who can act on what it finds, and the
+    // one role docs/PRICING.md's drift risk actually concerns.
+    canEdit
+      ? checkPriceDrift()
+      : Promise.resolve({
+          checked: false as const,
+          ok: true,
+          mismatches: [],
+          unconfigured: [],
+          unreachable: [],
+        }),
   ]);
 
   const pendingTier = facts?.pendingTier ?? null;
@@ -126,13 +148,50 @@ export default async function BillingPage({
       ? null
       : renewalText(notice, notice.dateIso ? formatDate(notice.dateIso) : "the renewal date");
 
-  const matrix = marketingMatrix();
+  // Display-honesty, not a gate change: with CURRENCY_ENGINE_ENABLED off
+  // (the only permitted state), the currency board is unreachable
+  // anywhere in the app — /currency refuses to render and the nav omits
+  // it — so this in-app comparison table must not tell a paying
+  // subscriber their plan includes it, exactly like the public pricing
+  // page's PUBLIC_CLAIM_FILTER already does for the public matrix.
+  const currencyVisible = isCurrencyEngineEnabled();
+  const matrix = marketingMatrix().filter(
+    (row) => currencyVisible || row.feature !== "currency"
+  );
 
   return (
     <PageShell
       title="Billing"
       subtitle="Your plan, what it includes, what you're next charged, and your receipts."
     >
+      {/* PRICE-DRIFT GUARD, OWNER-ONLY. lib/stripe/price-drift.ts compares
+          the public pricing page's printed copy against the live Stripe
+          Price the configured env var actually points at. This is an
+          OPERATOR problem, not a billing-state one for this account, so it
+          renders unconditionally when it fires — even for a comped
+          account — because a misconfigured Price affects every future
+          checkout regardless of what this one account is on. */}
+      {drift.checked && !drift.ok ? (
+        <Callout.Root color="red">
+          <Callout.Text>
+            <Text weight="bold">
+              Price configuration drift: the public pricing page and the
+              configured Stripe Price(s) disagree.
+            </Text>{" "}
+            Checkout would charge a different amount than the pricing page shows.
+            This is visible to the account owner only — fix the STRIPE_PRICE_ID_*
+            env var(s) or the Stripe Price object before a pilot checks out.
+            <Flex direction="column" gap="1" mt="2">
+              {drift.mismatches.map((m) => (
+                <Text key={`${m.tier}-${m.interval}`} size="1" className="tnum">
+                  {describeMismatch(m)}
+                </Text>
+              ))}
+            </Flex>
+          </Callout.Text>
+        </Callout.Root>
+      ) : null}
+
       {/* WHY THIS CALLOUT AND THE CARD BELOW NO LONGER SAY THE SAME
           THING. `status.meaning` explains the badge, and the badge is in
           the Card — so that is where the explanation belongs and where it
@@ -316,7 +375,9 @@ export default async function BillingPage({
               const isCurrent = planTier === tier;
               const direction: "Upgrade" | "Downgrade" =
                 TIER_RANK[planTier] > TIER_RANK[tier] ? "Upgrade" : "Downgrade";
-              const added = featuresAddedByTier(planTier);
+              const added = featuresAddedByTier(planTier).filter(
+                (feature) => currencyVisible || feature !== "currency"
+              );
               const previousTier: PlanTier | null =
                 planTier === "pro" ? "solo" : planTier === "business" ? "pro" : null;
               const monthly = prices[planTier].monthly;
@@ -374,7 +435,17 @@ export default async function BillingPage({
                       ))}
                     </Flex>
                     <Flex direction="column" gap="2" mt="2">
-                      {isCurrent ? (
+                      {needsResubscribe ? (
+                        // No live subscription to switch or update — every
+                        // card, including the one matching the tier on
+                        // record, offers a fresh Checkout session instead.
+                        <ResubscribeButtons
+                          tier={planTier}
+                          monthlyLabel={monthly?.chargeLabel ?? null}
+                          annualLabel={annual?.chargeLabel ?? null}
+                          disabled={!canEdit}
+                        />
+                      ) : isCurrent ? (
                         otherInterval && otherIntervalPrice ? (
                           <SwitchIntervalButton
                             tier={planTier}
@@ -471,7 +542,7 @@ export default async function BillingPage({
                 Downgrading
               </Text>
               <Text size="2" color="gray">
-                {DOWNGRADE_NOTE}
+                {visibleDowngradeNote()}
               </Text>
             </Flex>
           </Card>
@@ -593,12 +664,23 @@ export default async function BillingPage({
                   // Refused unless we actually READ the flag this button
                   // inverts. Offering it on a guess could send exactly the
                   // opposite instruction to the one its label promises.
-                  disabled={!canEdit || !facts?.ok || !facts.hasSubscription}
+                  // Also refused once the subscription itself is dead
+                  // (canceled/incomplete_expired) — Stripe rejects an
+                  // update to either, so the button would always error;
+                  // ResubscribeButtons above is the working path from here.
+                  disabled={
+                    !canEdit || !facts?.ok || !facts.hasSubscription || needsResubscribe
+                  }
                 />
                 {facts && !facts.ok ? (
                   <Text size="1" color="amber">
                     Cancel and resume are unavailable while we can&rsquo;t read your
                     subscription from Stripe. Use the billing portal above.
+                  </Text>
+                ) : needsResubscribe ? (
+                  <Text size="1" color="gray">
+                    This subscription has ended, so there&rsquo;s nothing to cancel or
+                    resume. Pick a plan above to resubscribe.
                   </Text>
                 ) : null}
               </Flex>

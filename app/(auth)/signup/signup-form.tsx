@@ -192,9 +192,9 @@ export default function SignUpForm({ trialDays }: { trialDays: number }) {
           <Box
             p="3"
             style={{
-              background: "var(--gray-2)",
-              border: "1px solid var(--gray-a5)",
-              borderRadius: "var(--radius-3)",
+              background: "var(--canvas)",
+              border: "1px solid var(--edge)",
+              borderRadius: "var(--radius)",
             }}
           >
             <Flex direction="column" gap="1">

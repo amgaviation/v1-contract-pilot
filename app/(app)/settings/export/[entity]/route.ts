@@ -176,6 +176,26 @@ async function buildLookups(
     }
   }
 
+  if (spec.needs.bankAccounts) {
+    const bankAccounts = await fetchAll<{ id: string; label: string; last4: string | null }>(
+      supabase, accountId, "bank_accounts", "id, label, last4", "id"
+    );
+    if (!bankAccounts.ok) return { ok: false, what: "bank accounts", error: bankAccounts.error };
+    for (const b of bankAccounts.rows) {
+      lookups.bankAccountLabelById.set(b.id, b.last4 ? `${b.label} …${b.last4}` : b.label);
+    }
+  }
+
+  if (spec.needs.chartAccounts) {
+    const chartAccounts = await fetchAll<{ id: string; name: string }>(
+      supabase, accountId, "accounts_chart", "id, name", "id"
+    );
+    if (!chartAccounts.ok) {
+      return { ok: false, what: "chart of accounts", error: chartAccounts.error };
+    }
+    for (const c of chartAccounts.rows) lookups.chartAccountNameById.set(c.id, c.name);
+  }
+
   if (spec.needs.invoiceTotals) {
     const totals = await fetchAll<InvoiceTotalsRef & { invoice_id: string }>(
       supabase,

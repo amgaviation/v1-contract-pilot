@@ -190,10 +190,18 @@ export default async function PilotHistoryReportPage() {
                       {data.lastTwelveMonths.window.label}
                     </Text>
                   </Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell justify="end">
+                    <Text as="div">Last 90 days</Text>
+                    <Text as="div" size="1" weight="regular" color="gray">
+                      {formatDate(data.lastNinetyDays.window.from ?? data.lastNinetyDays.window.to)}
+                      {" – "}
+                      {formatDate(data.lastNinetyDays.window.to)}
+                    </Text>
+                  </Table.ColumnHeaderCell>
                 </Table.Row>
               </Table.Header>
               <Table.Body>
-                {hourRows(data.allTime, data.lastTwelveMonths).map((row) => (
+                {hourRows(data.allTime, data.lastTwelveMonths, data.lastNinetyDays).map((row) => (
                   <Table.Row key={row.label}>
                     <Table.RowHeaderCell>
                       <Text as="div" weight={row.strong ? "medium" : "regular"}>
@@ -220,6 +228,13 @@ export default async function PilotHistoryReportPage() {
                         {row.decimals === 0
                           ? row.recent
                           : row.recent.toFixed(1)}
+                      </Text>
+                    </Table.Cell>
+                    <Table.Cell justify="end">
+                      <Text className="tnum" color={row.strong ? undefined : "gray"}>
+                        {row.decimals === 0
+                          ? row.ninety
+                          : row.ninety.toFixed(1)}
                       </Text>
                     </Table.Cell>
                   </Table.Row>
@@ -418,57 +433,66 @@ type HourRow = {
   note?: string;
   allTime: number;
   recent: number;
+  ninety: number;
   decimals: 0 | 1;
   strong?: boolean;
 };
 
 function hourRows(
   allTime: PilotHistoryFigures,
-  recent: PilotHistoryFigures
+  recent: PilotHistoryFigures,
+  ninety: PilotHistoryFigures
 ): HourRow[] {
   const a = allTime.hours;
   const r = recent.hours;
+  const n = ninety.hours;
   return [
     {
       label: "Total time",
       note: "Time in an aircraft. Simulator hours are below, never in here.",
       allTime: a.total,
       recent: r.total,
+      ninety: n.total,
       decimals: 1,
       strong: true,
     },
-    { label: "PIC", allTime: a.pic, recent: r.pic, decimals: 1, strong: true },
-    { label: "SIC", allTime: a.sic, recent: r.sic, decimals: 1, strong: true },
-    { label: "Solo", allTime: a.solo, recent: r.solo, decimals: 1 },
+    { label: "PIC", allTime: a.pic, recent: r.pic, ninety: n.pic, decimals: 1, strong: true },
+    { label: "SIC", allTime: a.sic, recent: r.sic, ninety: n.sic, decimals: 1, strong: true },
+    { label: "Solo", allTime: a.solo, recent: r.solo, ninety: n.solo, decimals: 1 },
     {
       label: "Dual received",
       allTime: a.dualReceived,
       recent: r.dualReceived,
+      ninety: n.dualReceived,
       decimals: 1,
     },
     {
       label: "Instructor given",
       allTime: a.instructorGiven,
       recent: r.instructorGiven,
+      ninety: n.instructorGiven,
       decimals: 1,
     },
     {
       label: "Cross country",
       allTime: a.crossCountry,
       recent: r.crossCountry,
+      ninety: n.crossCountry,
       decimals: 1,
     },
-    { label: "Night", allTime: a.night, recent: r.night, decimals: 1 },
+    { label: "Night", allTime: a.night, recent: r.night, ninety: n.night, decimals: 1 },
     {
       label: "Instrument — actual",
       allTime: a.instrumentActual,
       recent: r.instrumentActual,
+      ninety: n.instrumentActual,
       decimals: 1,
     },
     {
       label: "Instrument — simulated",
       allTime: a.instrumentSimulated,
       recent: r.instrumentSimulated,
+      ninety: n.instrumentSimulated,
       decimals: 1,
     },
     {
@@ -476,6 +500,7 @@ function hourRows(
       note: "Actual and simulated added together, for a form that asks for one figure.",
       allTime: totalInstrument(a),
       recent: totalInstrument(r),
+      ninety: totalInstrument(n),
       decimals: 1,
     },
     {
@@ -483,6 +508,7 @@ function hourRows(
       note: "Its own line. Time in a training device is not time in an aircraft, and every form asks for the two separately.",
       allTime: a.simulator,
       recent: r.simulator,
+      ninety: n.simulator,
       decimals: 1,
       strong: true,
     },
@@ -490,24 +516,28 @@ function hourRows(
       label: "Takeoffs",
       allTime: totalTakeoffs(a),
       recent: totalTakeoffs(r),
+      ninety: totalTakeoffs(n),
       decimals: 0,
     },
     {
       label: "Landings",
       allTime: totalLandings(a),
       recent: totalLandings(r),
+      ninety: totalLandings(n),
       decimals: 0,
     },
     {
       label: "Night landings",
       allTime: a.nightLandingsFullStop + a.nightLandingsTouchGo,
       recent: r.nightLandingsFullStop + r.nightLandingsTouchGo,
+      ninety: n.nightLandingsFullStop + n.nightLandingsTouchGo,
       decimals: 0,
     },
     {
       label: "Logbook entries",
       allTime: a.entryCount,
       recent: r.entryCount,
+      ninety: n.entryCount,
       decimals: 0,
     },
   ];

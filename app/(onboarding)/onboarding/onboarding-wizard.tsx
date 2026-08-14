@@ -412,11 +412,11 @@ function Stepper({
                     style={{
                       borderRadius: "var(--radius-full)",
                       background:
-                        done || active ? "var(--accent-9)" : "var(--gray-a4)",
+                        done || active ? "var(--signal)" : "var(--sunk)",
                       color:
                         done || active
-                          ? "var(--accent-contrast)"
-                          : "var(--gray-11)",
+                          ? "var(--signal-ink)"
+                          : "var(--ink-2)",
                     }}
                   >
                     {done ? (
@@ -446,7 +446,7 @@ function Stepper({
                     aria-hidden
                     style={{
                       height: "1px",
-                      background: done ? "var(--accent-9)" : "var(--gray-a6)",
+                      background: done ? "var(--signal)" : "var(--hair)",
                     }}
                   />
                 ) : null}

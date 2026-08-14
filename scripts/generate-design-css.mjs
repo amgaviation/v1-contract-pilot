@@ -289,6 +289,18 @@ out.push(`
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
+}
+/* Alias for the ~252 call sites still spelling out className="tnum" from
+   the pre-INSTRUMENT system rather than the <Figure> primitive (0 app call
+   sites use Figure yet — stage 6 migrates these). Deleted once that
+   migration lands; until then this is the difference between every money
+   and hours figure in the product rendering in tabular mono digits or
+   silently falling back to proportional Inter. Kept byte-identical to
+   .i-figure on purpose — it is the same rule under the old name. */
+.tnum {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
 }`);
 out.push(`.i-heading {
   margin: 0;

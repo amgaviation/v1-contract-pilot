@@ -341,7 +341,7 @@ export default async function PublicInvoicePage({
     invoice.totals.balance_due_cents > 0 && linkLooksLive && !linkCurrent;
 
   return (
-    <Box style={{ minHeight: "100vh", background: "var(--gray-2)" }}>
+    <Box style={{ minHeight: "100vh", background: "var(--canvas)" }}>
       <Container size="3" p={{ initial: "4", sm: "6" }}>
         <Flex align="center" justify="between" mb="5">
           <Logo />

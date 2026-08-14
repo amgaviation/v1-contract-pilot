@@ -25,6 +25,26 @@ const MAX_ROWS_PER_CONFIRM = 5000;
 const MAX_STORED_REJECTIONS = 500;
 /** Same URL-length reasoning as logbook's FINGERPRINT_LOOKUP_CHUNK. */
 const FINGERPRINT_LOOKUP_CHUNK = 40;
+/**
+ * Same window as the review queue's duplicate-spend advisory
+ * (app/(app)/expenses/transactions/page.tsx's DUP_WINDOW_DAYS) — reused
+ * here for the same reason it exists there: fingerprint.ts's dedup key
+ * hashes the DESCRIPTION, and an OFX re-import of a statement already
+ * imported as CSV (or vice versa) builds a different description string
+ * for the identical charge ("NAME — MEMO" vs. the bank's single column),
+ * so the fingerprint never collides and the row would otherwise be
+ * inserted a second time with no warning at all.
+ */
+const REMATCH_WINDOW_DAYS = 4;
+/** Ceiling on the advisory lookup below — same silent-truncation posture as MAX_ROWS_PER_CONFIRM, just for a read instead of a write. */
+const REMATCH_LOOKUP_LIMIT = 5000;
+
+/** Calendar arithmetic in UTC — a local timezone must never shift the window by a day. */
+function shiftDays(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const t = Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1) + days * 86_400_000;
+  return new Date(t).toISOString().slice(0, 10);
+}
 
 export type BankAccountOption = {
   id: string;
@@ -93,6 +113,19 @@ export type DuplicateTxnDetail = {
   kind: "in_ledger" | "in_file";
 };
 
+/**
+ * A row that was INSERTED (its fingerprint is genuinely new) but happens
+ * to match the amount and posted-on-date (within REMATCH_WINDOW_DAYS) of a
+ * bank_transactions row already on file for this account — the shape a
+ * cross-format re-import produces (see REMATCH_WINDOW_DAYS's header):
+ * fingerprint.ts hashes the description, and OFX/CSV build a different
+ * description for the identical charge, so the exact-match dedup above
+ * never catches it. Advisory only, same posture as duplicateDetail — it is
+ * NOT excluded from the import, because a same-amount, same-week charge
+ * can be genuinely real (two client dinners, a toll paid twice).
+ */
+export type PossibleRematch = { rowNumber: number; sourceRow: Record<string, string> };
+
 export type ConfirmBankImportResult = {
   error: string | null;
   batchId?: string;
@@ -104,6 +137,8 @@ export type ConfirmBankImportResult = {
   rejectedCount?: number;
   partial?: boolean;
   partialMessage?: string;
+  possibleRematches?: PossibleRematch[];
+  possibleRematchesTruncated?: boolean;
 };
 
 function isDateString(v: unknown): v is string {
@@ -236,14 +271,33 @@ export async function confirmBankImport(payload: ConfirmBankImportPayload): Prom
   }
   sourceFileId = (fileInsert.data as { id: string }).id;
 
+  // A row THIS server finds invalid — see validateRow's header — is now a
+  // NAMED rejection scoped to that one row, not a reason to discard every
+  // other good row in the batch (fixed after review). A $0.00 line the
+  // client-side parsers let through, or a >2000-char description, used to
+  // hit `fail(..., null, 0)` here: the batch and source file were deleted
+  // and the pilot got "Couldn't complete that import. Nothing was added —
+  // check the file and try again" with no row number, no reason, and
+  // hundreds of otherwise-good rows discarded with it. The DB CHECK stays
+  // as defense in depth; its blast radius now stops at the row.
+  const serverRejected: { rowNumber: number; raw: string; reason: string }[] = [];
+  const rows: ConfirmBankImportRow[] = [];
   for (const row of payload.rows) {
     const problem = validateRow(row);
-    if (problem) return await fail(`row ${row.rowNumber}: ${problem}`, null, 0);
+    if (problem) {
+      serverRejected.push({
+        rowNumber: row.rowNumber,
+        raw: JSON.stringify(row.sourceRow).slice(0, 500),
+        reason: `Not imported: ${problem}.`,
+      });
+      continue;
+    }
+    rows.push(row);
   }
 
   // Fingerprint + dedup — see fingerprint.ts. Computed here, never
   // accepted from the client.
-  const withFingerprint = payload.rows.map((row) => ({
+  const withFingerprint = rows.map((row) => ({
     row,
     fingerprint: transactionFingerprint({
       postedOn: row.postedOn,
@@ -301,6 +355,55 @@ export async function confirmBankImport(payload: ConfirmBankImportPayload): Prom
     });
   }
 
+  // CROSS-FORMAT REMATCH ADVISORY — see PossibleRematch's header. A CSV
+  // re-import and an OFX re-import of the same statement range hash to
+  // DIFFERENT fingerprints (fingerprint.ts includes description, and OFX
+  // builds "NAME — MEMO" while a CSV export carries the bank's single
+  // description column), so the exact-match dedup above never catches a
+  // charge imported once as CSV and again as OFX/QFX — it would otherwise
+  // book twice with no warning at all. Runs only over rows about to be
+  // INSERTED: an exact fingerprint dup already got its own report above
+  // and is excluded here.
+  //
+  // Advisory only, like duplicateDetail — never removes a row from
+  // toInsert. A failed lookup must not block or fail the import either;
+  // it only means this one extra warning doesn't fire this time.
+  const possibleRematches: PossibleRematch[] = [];
+  let possibleRematchesTruncated = false;
+  if (toInsert.length > 0) {
+    const postedDates = toInsert.map((r) => r.posted_on).sort();
+    const nearby = await supabase
+      .from("bank_transactions")
+      .select("posted_on, amount_cents")
+      .eq("account_id", account.id)
+      .eq("bank_account_id", payload.bankAccountId)
+      .gte("posted_on", shiftDays(postedDates[0]!, -REMATCH_WINDOW_DAYS))
+      .lte("posted_on", shiftDays(postedDates[postedDates.length - 1]!, REMATCH_WINDOW_DAYS))
+      .limit(REMATCH_LOOKUP_LIMIT);
+    if (!nearby.error) {
+      const postedOnByAmount = new Map<number, string[]>();
+      for (const r of (nearby.data ?? []) as { posted_on: string; amount_cents: number }[]) {
+        const list = postedOnByAmount.get(r.amount_cents);
+        if (list) list.push(r.posted_on);
+        else postedOnByAmount.set(r.amount_cents, [r.posted_on]);
+      }
+      for (const row of toInsert) {
+        const candidates = postedOnByAmount.get(row.amount_cents) ?? [];
+        const from = shiftDays(row.posted_on, -REMATCH_WINDOW_DAYS);
+        const to = shiftDays(row.posted_on, REMATCH_WINDOW_DAYS);
+        if (!candidates.some((d) => d >= from && d <= to)) continue;
+        if (possibleRematches.length < MAX_STORED_REJECTIONS) {
+          possibleRematches.push({
+            rowNumber: row.source_row_number,
+            sourceRow: row.source_row as unknown as Record<string, string>,
+          });
+        } else {
+          possibleRematchesTruncated = true;
+        }
+      }
+    }
+  }
+
   const CHUNK = 500;
   let imported = 0;
   for (let i = 0; i < toInsert.length; i += CHUNK) {
@@ -328,7 +431,12 @@ export async function confirmBankImport(payload: ConfirmBankImportPayload): Prom
     imported += gotCount;
   }
 
-  const rejectedForSummary = payload.rejected.slice(0, MAX_STORED_REJECTIONS).map((r) => ({
+  // Client-reported rejections and this server's own (the loop above) are
+  // both real rows that didn't make it in — combined into one count and
+  // one stored list so a pilot re-reading the batch later sees the whole
+  // picture, not just the half the browser knew about.
+  const allRejected = [...payload.rejected, ...serverRejected];
+  const rejectedForSummary = allRejected.slice(0, MAX_STORED_REJECTIONS).map((r) => ({
     rowNumber: r.rowNumber,
     raw: r.raw.slice(0, 500),
     reason: r.reason,
@@ -336,12 +444,14 @@ export async function confirmBankImport(payload: ConfirmBankImportPayload): Prom
   const duplicateDetailTruncated = duplicateDetail.length >= MAX_STORED_REJECTIONS;
   const errorSummary = JSON.stringify({
     rejected: rejectedForSummary,
-    rejectedTruncated: payload.rejected.length > MAX_STORED_REJECTIONS,
+    rejectedTruncated: allRejected.length > MAX_STORED_REJECTIONS,
     duplicatesInLedger,
     duplicatesInFile,
     duplicateDetail,
     duplicateDetailTruncated,
     excludedByPilot: payload.excludedByPilot,
+    possibleRematches,
+    possibleRematchesTruncated,
   });
 
   const closeOut = await supabase
@@ -350,7 +460,7 @@ export async function confirmBankImport(payload: ConfirmBankImportPayload): Prom
       {
         status: "completed",
         imported_rows: imported,
-        rejected_rows: payload.rejected.length,
+        rejected_rows: allRejected.length,
         duplicate_rows: duplicatesInLedger + duplicatesInFile,
         error_summary: errorSummary,
       } as never,
@@ -374,6 +484,8 @@ export async function confirmBankImport(payload: ConfirmBankImportPayload): Prom
     duplicatesInFile,
     duplicateDetail,
     duplicateDetailTruncated,
-    rejectedCount: payload.rejected.length,
+    rejectedCount: allRejected.length,
+    possibleRematches,
+    possibleRematchesTruncated,
   };
 }

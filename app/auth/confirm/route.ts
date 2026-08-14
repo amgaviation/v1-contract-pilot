@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { safeNextPath } from "@/lib/safe-next";
+import {
+  RECOVERY_PROOF_COOKIE,
+  RECOVERY_PROOF_MAX_AGE_SECONDS,
+} from "@/lib/supabase/reauth";
 
 export const dynamic = "force-dynamic";
 
@@ -54,5 +58,32 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/forgot-password?expired=1", url));
   }
 
-  return NextResponse.redirect(new URL(next, url));
+  const response = NextResponse.redirect(new URL(next, url));
+
+  // PROOF THIS SESSION CAME FROM A RECOVERY LINK, not from a session that
+  // was already open. app/(auth)/reset-password/actions.ts requires this
+  // cookie before it will set a new password — see
+  // lib/supabase/reauth.ts's RECOVERY_PROOF_COOKIE doc for why that gate
+  // has to exist at all.
+  //
+  // Two ways to know this was a recovery: the `token_hash` shape carries
+  // `type=recovery` directly. The `code` (PKCE) shape carries no type at
+  // all — but `next` was only ever set to "/reset-password" by
+  // forgot-password/actions.ts's `resetPasswordForEmail` call, so a code
+  // that resolves to that destination is the same proof by construction.
+  // A code from any OTHER flow (signup confirmation, magic link, email
+  // change) never carries next=/reset-password, so this cannot be used to
+  // smuggle a non-recovery session past the gate.
+  const isRecovery = type === "recovery" || (Boolean(code) && next === "/reset-password");
+  if (isRecovery) {
+    response.cookies.set(RECOVERY_PROOF_COOKIE, "1", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      maxAge: RECOVERY_PROOF_MAX_AGE_SECONDS,
+      path: "/",
+    });
+  }
+
+  return response;
 }

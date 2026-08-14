@@ -116,6 +116,17 @@ export default function OperatorQualificationRow({
   const [rowError, setRowError] = useState<string | null>(null);
   const [typeInput, setTypeInput] = useState(typeDesignator);
   const [statusValue, setStatusValue] = useState<string>(existing?.status ?? "not_started");
+  // isPastLocalDate reads the DEVICE'S wall clock, which the server cannot
+  // know at render time — Vercel's SSR pass runs in UTC. Gating on `mounted`
+  // makes both the SSR pass and React's first client render agree (always
+  // gray, never red, until the client has actually mounted), so there is
+  // nothing for hydration to reconcile; the real local-date judgment — and
+  // any resulting red badge — only ever appears after mount, once it can
+  // be computed from the pilot's own clock rather than the server's.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const derived = DERIVED_EXPIRY_REQUIREMENTS.has(requirement);
   const regCite = OPERATOR_QUALIFICATION_REG_CITE[requirement];
@@ -240,7 +251,11 @@ export default function OperatorQualificationRow({
               existing?.expires_on ? (
                 <>
                   <Badge
-                    color={rotationCurrent && isPastLocalDate(existing.expires_on) ? "red" : "gray"}
+                    color={
+                      mounted && rotationCurrent && isPastLocalDate(existing.expires_on)
+                        ? "red"
+                        : "gray"
+                    }
                   >
                     {formatDate(existing.expires_on)}
                   </Badge>

@@ -95,6 +95,7 @@ export async function GET(_request: NextRequest) {
       registeredAircraftCount={data.registeredAircraftCount}
       allTime={data.allTime}
       lastTwelveMonths={data.lastTwelveMonths}
+      lastNinetyDays={data.lastNinetyDays}
       recordedDates={data.recordedDates}
       hasUnattributedDates={data.hasUnattributedDates}
       kindLabels={kindLabels}

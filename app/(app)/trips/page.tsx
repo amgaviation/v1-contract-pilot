@@ -14,7 +14,6 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
-import { tripValueCents, type TripDayValueRow } from "@/lib/trip-value";
 import EmptyState from "@/components/ui/empty-state";
 import PageShell from "../page-shell";
 import MarkFlownButton from "./mark-flown-button";
@@ -36,6 +35,36 @@ type TripListRow = {
   billing_state: string;
 };
 
+/**
+ * pilot.trip_list_value's row shape
+ * (supabase/migrations/20260814094000_trip_list_value.sql) — one priced row
+ * per trip, every status and billing_state, computed in SQL so the Value
+ * column can never be truncated by the Data API's 1000-row cap the way a
+ * raw `.in("trip_id", tripIds)` read over trip_days could. numeric columns
+ * arrive over PostgREST as strings, same as every other RPC in this
+ * codebase that returns one (see overview/page.tsx's `Number(row.*)`
+ * reads) — `billable_days` is additionally null whenever `has_day_rows` is
+ * false, since it is the GRID-derived count only; the scalar fallback is
+ * trips.day_count, already on hand from the query above.
+ */
+type TripListValueRow = {
+  trip_id: string;
+  has_day_rows: boolean;
+  billable_days: number | string | null;
+  day_value_cents: number | string;
+};
+
+/**
+ * A grid-derived day count for display — same one-decimal-place rule as
+ * pilot.trip_days.quantity's own scale (numeric(3,1)): a whole number
+ * renders without a trailing ".0" (a count, not a measurement), a half day
+ * keeps its ".5" rather than getting rounded away in the pilot's favor.
+ */
+function formatDayCount(days: number): string {
+  const rounded = Math.round(days * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
 type BadgeInfo = { color: "gray" | "blue" | "green" | "red" | "amber"; label: string };
 
 const STATUS_FALLBACK: BadgeInfo = { color: "gray", label: "Scheduled" };
@@ -44,6 +73,10 @@ const STATUS_BADGE: Record<string, BadgeInfo> = {
   in_progress: { color: "blue", label: "In progress" },
   completed: { color: "green", label: "Completed" },
   canceled: { color: "gray", label: "Canceled" },
+  // 20260814094000: amber reads as "needs a decision" — distinct from the
+  // gray of Scheduled/Canceled (settled either way) and from the blue/
+  // green of active/confirmed work.
+  hold: { color: "amber", label: "Hold" },
 };
 
 const BILLING_FALLBACK: BadgeInfo = { color: "amber", label: "Unbilled" };
@@ -62,20 +95,71 @@ const BILLING_BADGE: Record<string, BadgeInfo> = {
  * CPA a figure short by a sixth.
  */
 const TRIP_LIMIT = 1000;
-const DAY_ROW_LIMIT = 1000;
 
-export default async function TripsPage() {
-  await requireAccount("/trips");
+const STATUS_FILTERS = ["scheduled", "in_progress", "completed", "canceled", "hold"] as const;
+const BILLING_FILTERS = ["unbilled", "invoiced", "paid", "written_off"] as const;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Builds a /trips link that keeps every OTHER active filter and sets (or,
+ * for `null`, clears) the one named here — so picking "Unbilled" from the
+ * billing row doesn't silently drop a status filter or a client deep link
+ * the pilot arrived with, and clicking the already-active choice again is
+ * exactly how a filter is cleared.
+ */
+function tripsFilterHref(
+  current: { client?: string; status?: string; billing_state?: string },
+  patch: Partial<{ client: string | null; status: string | null; billing_state: string | null }>
+): string {
+  const merged = { ...current, ...patch };
+  const params = new URLSearchParams();
+  if (merged.client) params.set("client", merged.client);
+  if (merged.status) params.set("status", merged.status);
+  if (merged.billing_state) params.set("billing_state", merged.billing_state);
+  const qs = params.toString();
+  return qs ? `/trips?${qs}` : "/trips";
+}
+
+export default async function TripsPage({
+  searchParams,
+}: {
+  // gap S: client/status/billing_state narrowing, and the ?client= deep
+  // link clients/[id]/page.tsx's own comment names as missing — that page
+  // inlines its own 10-row "Unbilled trips" list specifically because this
+  // one couldn't be filtered to a client before now.
+  searchParams: Promise<{ client?: string; status?: string; billing_state?: string }>;
+}) {
+  const { account } = await requireAccount("/trips");
+  const params = await searchParams;
+
+  // Unrecognized values are ignored rather than rejected — a stale or
+  // hand-edited query string should degrade to "show everything", not a
+  // page error, on a screen with no form validation to fail against.
+  const clientFilter = params.client && UUID_RE.test(params.client) ? params.client : null;
+  const statusFilter =
+    params.status && (STATUS_FILTERS as readonly string[]).includes(params.status)
+      ? params.status
+      : null;
+  const billingFilter =
+    params.billing_state &&
+    (BILLING_FILTERS as readonly string[]).includes(params.billing_state)
+      ? params.billing_state
+      : null;
 
   const supabase = await createClient();
+  let tripsQuery = supabase
+    .from("trips")
+    .select(
+      "id, client_id, trip_kind, status, starts_on, ends_on, aircraft_ident, day_rate_cents, day_count, travel_day_count, travel_day_rate_cents, billing_state"
+    )
+    .order("starts_on", { ascending: false })
+    .limit(TRIP_LIMIT);
+  if (clientFilter) tripsQuery = tripsQuery.eq("client_id", clientFilter);
+  if (statusFilter) tripsQuery = tripsQuery.eq("status", statusFilter);
+  if (billingFilter) tripsQuery = tripsQuery.eq("billing_state", billingFilter);
+
   const [{ data: tripData, error }, { data: clientData, error: clientError }] = await Promise.all([
-    supabase
-      .from("trips")
-      .select(
-        "id, client_id, trip_kind, status, starts_on, ends_on, aircraft_ident, day_rate_cents, day_count, travel_day_count, travel_day_rate_cents, billing_state"
-      )
-      .order("starts_on", { ascending: false })
-      .limit(TRIP_LIMIT),
+    tripsQuery,
     supabase.from("clients").select("id, name").limit(TRIP_LIMIT),
   ]);
 
@@ -99,48 +183,55 @@ export default async function TripsPage() {
   // had failed.
   const clientNamesError = Boolean(clientError);
 
-  // F3: day rows for exactly the trips just listed, plus the account's
-  // day-type taxonomy to know which of them are billable. Skipped
-  // entirely when there are no trips — an empty `.in()` list is a query
-  // with nothing to answer.
-  const dayRowsByTrip = new Map<string, TripDayValueRow[]>();
-  const billableByDayType = new Map<string, boolean>();
-  const tripIds = trips.map((t) => t.id);
-  // H8: this read used to throw and 500 the whole page on a transient
-  // failure — harsher than the primary `trips` query below, which
-  // degrades to a Callout instead. Can't safely tell which trips have day
-  // rows without both queries succeeding (guessing "no day rows, use the
-  // scalar fallback" could understate a trip that actually bills more
-  // through its grid), so on failure the Value column itself is hidden
-  // rather than risk showing a wrong number.
+  // P2: trip pricing and grid-derived day counts for every trip on this
+  // page, computed once in SQL (pilot.trip_list_value) rather than read as
+  // raw trip_days and priced here in JavaScript. The old approach read
+  // every listed trip's day rows with a single `.in("trip_id", tripIds)`
+  // capped at 1000 rows TOTAL across the whole page — a working pilot
+  // accrues roughly 300-400 day rows a year, so by year three that cap hit
+  // on every visit and the Value column was gone for good, not
+  // transiently. The SQL function returns one row per trip regardless of
+  // how many trip_days rows back it, so that class of truncation cannot
+  // recur here — see the migration's header for the full argument and the
+  // arithmetic it mirrors from lib/trip-value.ts.
+  const tripValueByTrip = new Map<
+    string,
+    { hasDayRows: boolean; billableDays: number | null; valueCents: number }
+  >();
+  // Same H8 reasoning as before: a failed read must not throw and 500 the
+  // whole page (the primary `trips` query above degrades to a Callout, not
+  // a crash), and on failure the Value column is hidden rather than risk
+  // showing a wrong number.
   let dayGridError = false;
-  if (tripIds.length > 0) {
-    const [{ data: dayRowsData, error: dayRowsError }, { data: dayTypeData, error: dayTypeError }] =
-      await Promise.all([
-        supabase
-          .from("trip_days")
-          .select("trip_id, day_type_id, rate_cents, quantity, units")
-          .in("trip_id", tripIds)
-          .limit(DAY_ROW_LIMIT),
-        supabase.from("day_types").select("id, billable").limit(DAY_ROW_LIMIT),
-      ]);
+  if (trips.length > 0) {
+    // `as unknown as {...}`: pilot.trip_list_value has no entry in
+    // lib/supabase/database.types.ts — that hand-authored file sits
+    // outside this fix's file allowlist (flagged for its owner), so this
+    // casts the rpc() CALL itself rather than only its args, the way every
+    // other rpc() site in this codebase casts once its function IS listed
+    // there. The function is real (20260814094000_trip_list_value.sql);
+    // only the local TypeScript description of it is missing upstream.
+    const { data: valueData, error: valueError } = await (
+      supabase as unknown as {
+        rpc: (
+          fn: string,
+          args: Record<string, unknown>
+        ) => Promise<{
+          data: TripListValueRow[] | null;
+          error: { message: string } | null;
+        }>;
+      }
+    ).rpc("trip_list_value", { target_account_id: account.id });
 
-    // A TRUNCATED day-grid read is exactly as dangerous as a failed one,
-    // and used to be invisible: the missing rows would simply not be
-    // counted, so the Value column would show a number lower than the
-    // trip actually bills. Same treatment as an error — hide the column
-    // rather than print a wrong figure.
-    const dayRowsTruncated = (dayRowsData?.length ?? 0) === DAY_ROW_LIMIT;
-    if (dayRowsError || dayTypeError || dayRowsTruncated) {
+    if (valueError) {
       dayGridError = true;
     } else {
-      for (const row of (dayRowsData ?? []) as (TripDayValueRow & { trip_id: string })[]) {
-        const forTrip = dayRowsByTrip.get(row.trip_id) ?? [];
-        forTrip.push(row);
-        dayRowsByTrip.set(row.trip_id, forTrip);
-      }
-      for (const t of (dayTypeData ?? []) as { id: string; billable: boolean }[]) {
-        billableByDayType.set(t.id, t.billable);
+      for (const row of valueData ?? []) {
+        tripValueByTrip.set(row.trip_id, {
+          hasDayRows: row.has_day_rows,
+          billableDays: row.billable_days === null ? null : Number(row.billable_days),
+          valueCents: Number(row.day_value_cents),
+        });
       }
     }
   }
@@ -149,6 +240,9 @@ export default async function TripsPage() {
     (trip) => trip.billing_state === "unbilled" && trip.status === "completed"
   ).length;
 
+  const filtersActive = Boolean(clientFilter || statusFilter || billingFilter);
+  const filterHrefBase = { client: clientFilter ?? undefined, status: statusFilter ?? undefined, billing_state: billingFilter ?? undefined };
+
   return (
     <PageShell
       title="Trips"
@@ -156,8 +250,8 @@ export default async function TripsPage() {
         error
           ? "Couldn't load your trips."
           : `${trips.length} trip${trips.length === 1 ? "" : "s"}${
-              unbilled ? ` · ${unbilled} flown but not yet invoiced` : ""
-            }`
+              filtersActive ? " matching these filters" : ""
+            }${unbilled ? ` · ${unbilled} flown but not yet invoiced` : ""}`
       }
       action={
         <Button asChild>
@@ -174,6 +268,67 @@ export default async function TripsPage() {
           </Callout.Text>
         </Callout.Root>
       ) : null}
+
+      {/* gap S: status and billing filters, plus the ?client= deep link
+          clients/[id]/page.tsx now sends its "Showing the 10 most recent"
+          overflow notice to. Link-based chips (no client JS), same idiom
+          as invoices/page.tsx's FILTERS row — each link keeps every OTHER
+          active filter via tripsFilterHref, and re-clicking the active
+          choice clears just that one. */}
+      <Flex direction="column" gap="2" mb="3">
+        {clientFilter ? (
+          <Flex gap="2" align="center" wrap="wrap">
+            <Text size="2" color="gray">
+              Client:{" "}
+              <Text as="span" weight="medium" color="gray">
+                {clientNames.get(clientFilter) ?? "Unknown client"}
+              </Text>
+            </Text>
+            <RadixLink asChild size="1">
+              <NextLink href={tripsFilterHref(filterHrefBase, { client: null })}>
+                Clear
+              </NextLink>
+            </RadixLink>
+          </Flex>
+        ) : null}
+        <Flex gap="2" wrap="wrap">
+          <Button asChild size="1" variant={statusFilter === null ? "solid" : "soft"}>
+            <NextLink href={tripsFilterHref(filterHrefBase, { status: null })}>
+              Any status
+            </NextLink>
+          </Button>
+          {STATUS_FILTERS.map((s) => (
+            <Button key={s} asChild size="1" variant={statusFilter === s ? "solid" : "soft"}>
+              <NextLink
+                href={tripsFilterHref(filterHrefBase, {
+                  status: statusFilter === s ? null : s,
+                })}
+              >
+                {(STATUS_BADGE[s] ?? STATUS_FALLBACK).label}
+              </NextLink>
+            </Button>
+          ))}
+        </Flex>
+        <Flex gap="2" wrap="wrap">
+          <Button asChild size="1" variant={billingFilter === null ? "solid" : "soft"}>
+            <NextLink href={tripsFilterHref(filterHrefBase, { billing_state: null })}>
+              Any billing
+            </NextLink>
+          </Button>
+          {BILLING_FILTERS.map((b) => (
+            <Button key={b} asChild size="1" variant={billingFilter === b ? "solid" : "soft"}>
+              <NextLink
+                href={tripsFilterHref(filterHrefBase, {
+                  billing_state: billingFilter === b ? null : b,
+                })}
+              >
+                {(BILLING_BADGE[b] ?? BILLING_FALLBACK).label}
+              </NextLink>
+            </Button>
+          ))}
+        </Flex>
+      </Flex>
+
       <Card>
         {error ? (
           <Callout.Root color="red" m="3">
@@ -183,18 +338,33 @@ export default async function TripsPage() {
           // The shared primitive (components/ui/empty-state.tsx). The words
           // stay here — they are about trips — and only the shape is shared.
           // The error branch above deliberately does NOT route through it:
-          // "couldn't load" is not "you have none".
-          <EmptyState
-            title="No trips yet"
-            action={
-              <Button asChild>
-                <NextLink href="/trips/new">Log your first trip</NextLink>
-              </Button>
-            }
-          >
-            Log the trip once. Its legs feed your logbook, its days feed the
-            invoice, and its expenses file themselves against it.
-          </EmptyState>
+          // "couldn't load" is not "you have none". Filtered-to-nothing is
+          // a third case, distinct from both — the account has trips, this
+          // combination of filters just doesn't match any of them.
+          filtersActive ? (
+            <EmptyState
+              title="No trips match these filters"
+              action={
+                <Button asChild variant="soft">
+                  <NextLink href="/trips">Clear filters</NextLink>
+                </Button>
+              }
+            >
+              Nothing in your account matches this combination right now.
+            </EmptyState>
+          ) : (
+            <EmptyState
+              title="No trips yet"
+              action={
+                <Button asChild>
+                  <NextLink href="/trips/new">Log your first trip</NextLink>
+                </Button>
+              }
+            >
+              Log the trip once. Its legs feed your logbook, its days feed the
+              invoice, and its expenses file themselves against it.
+            </EmptyState>
+          )
         ) : (
           <>
             {clientNamesError ? (
@@ -256,15 +426,24 @@ export default async function TripsPage() {
                       </Table.Cell>
                       <Table.Cell justify="end">
                         <Text size="2" className="tnum">
-                          {trip.day_count}
+                          {/* P2: once the grid has rows, it is what bills
+                              (see the Value cell below) and it must also be
+                              what this COUNTS — printing a grid-priced
+                              Value next to a day count still read from the
+                              legacy scalar columns is the same
+                              "two sources for one number" defect this
+                              product eradicated for money, just for days.
+                              Falls back to the scalar day_count only when
+                              the trip truly has no day rows yet. */}
+                          {tripValueByTrip.get(trip.id)?.hasDayRows
+                            ? formatDayCount(tripValueByTrip.get(trip.id)!.billableDays ?? 0)
+                            : trip.day_count}
                         </Text>
                       </Table.Cell>
                       {dayGridError ? null : (
                         <Table.Cell justify="end">
                           <Text size="2" weight="medium" className="tnum">
-                            {formatCents(
-                              tripValueCents(trip, dayRowsByTrip.get(trip.id), billableByDayType)
-                            )}
+                            {formatCents(tripValueByTrip.get(trip.id)?.valueCents ?? 0)}
                           </Text>
                         </Table.Cell>
                       )}

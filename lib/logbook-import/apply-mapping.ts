@@ -1,4 +1,41 @@
 import { parseTenth } from "@/lib/format";
+
+/**
+ * LogTen Pro (and other sources) can export times as "H:MM"
+ * (hours:minutes, LogTen's own display convention) or as decimal
+ * hundredths ("1.25") rather than the tenths numeric(4,1) actually
+ * stores — parseTenth (the same parser manual entry uses, in
+ * lib/format.ts) accepts neither shape outright, so a file exported either
+ * way had essentially every row rejected. This translates a raw cell into
+ * the tenths-decimal string parseTenth accepts, ONLY when the translation
+ * is exact: an h:mm or hundredths value that does not land on a real tenth
+ * (e.g. "1:15" = 1.25h, or "1.25" itself) is precision the numeric(4,1)
+ * column cannot hold, and is left untouched so parseTenth's own rejection
+ * still fires — naming that raw value in its message — rather than
+ * silently rounding a fact into the legal record. Deliberately import-side
+ * only: parseTenth itself is unchanged, so nothing about what a human
+ * types into the manual-entry form is affected.
+ */
+function normalizeImportTime(raw: string): string {
+  const value = raw.trim();
+  const hhmm = /^(\d{1,3}):([0-5]\d)$/.exec(value);
+  if (hhmm) {
+    const hours = Number(hhmm[1]);
+    const minutes = Number(hhmm[2]);
+    const exact = hours + minutes / 60;
+    const tenths = Math.round(exact * 10);
+    if (Math.abs(exact - tenths / 10) < 1e-9) return (tenths / 10).toFixed(1);
+    return value;
+  }
+  const hundredths = /^\d{1,4}\.\d{2}$/.exec(value);
+  if (hundredths) {
+    const parsed = Number(value);
+    const tenths = Math.round(parsed * 10);
+    if (Math.abs(parsed - tenths / 10) < 1e-9) return (tenths / 10).toFixed(1);
+    return value;
+  }
+  return value;
+}
 import type { CsvRecord } from "./csv";
 import { parseFlexibleDate, parseCount, normalizeIcao, normalizeEnum, FIELD_DEFS } from "./fields";
 import type {
@@ -157,14 +194,16 @@ export function applyMapping(params: {
     // — the old max:999 rejected a perfectly legal 999.9 the column can
     // hold. Same bound applied to every other numeric(4,1) time column
     // below (timeField) for the same reason.
-    const totalTime = parseTenth(totalRaw, { max: 999.9, allowBlank: false });
+    const totalTime = parseTenth(normalizeImportTime(totalRaw), { max: 999.9, allowBlank: false });
     // allowBlank:false means parseTenth's runtime contract never returns
     // null (only undefined-on-invalid or a real number) — but its type
     // covers null too since the allowBlank branch is a runtime, not
     // type-level, distinction. Guard both so `totalTime` narrows to a
     // plain `number` below.
     if (totalTime === undefined || totalTime === null) {
-      reject(`Total time isn't a valid number of hours (at most one decimal place, up to 999.9): "${totalRaw}".`);
+      reject(
+        `Total time isn't a valid number of hours (at most one decimal place, up to 999.9 — "H:MM" and hundredths that land on a tenth are also accepted): "${totalRaw}".`
+      );
       return;
     }
 
@@ -208,7 +247,7 @@ export function applyMapping(params: {
 
     const timeField = (key: string, label: string): number | null | undefined => {
       if (!isMapped(key)) return null;
-      const result = reconcile(key, label, (raw) => parseTenth(raw, { max: 999.9, allowBlank: true }) ?? undefined);
+      const result = reconcile(key, label, (raw) => parseTenth(normalizeImportTime(raw), { max: 999.9, allowBlank: true }) ?? undefined);
       if (!result) return undefined;
       return result.cells[0]?.v ?? null;
     };

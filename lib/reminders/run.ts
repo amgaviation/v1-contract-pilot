@@ -132,6 +132,12 @@ type ClientRow = {
   id: string;
   name: string;
   contact_email: string | null;
+  // The AP/accounting inbox sendInvoiceEmail actually sends to when it looks
+  // like a real address (20260814092000) — the pre-flight check below has to
+  // agree with that or a client with ONLY a billing_email on file (no
+  // contact_email) would be reported as blocked for having "no email address
+  // on file" while a send would in fact go out.
+  billing_email: string | null;
   reminder_before_due: number[] | null;
   reminder_on_due: boolean | null;
   reminder_after_due: number[] | null;
@@ -143,6 +149,7 @@ type InvoiceRow = {
   client_id: string;
   status: string;
   due_on: string | null;
+  sent_at: string | null;
   reminders_suppressed: boolean | null;
 };
 
@@ -195,7 +202,7 @@ export async function runDueRemindersForAccount(
   const { data: clientData, error: clientError } = await supabase
     .from("clients")
     .select(
-      "id, name, contact_email, reminder_before_due, reminder_on_due, reminder_after_due"
+      "id, name, contact_email, billing_email, reminder_before_due, reminder_on_due, reminder_after_due"
     )
     .eq("account_id", accountId)
     .is("archived_at", null);
@@ -234,7 +241,7 @@ export async function runDueRemindersForAccount(
   // money nobody owes.
   const { data: invoiceData, error: invoiceError } = await supabase
     .from("invoices")
-    .select("id, invoice_number, client_id, status, due_on, reminders_suppressed")
+    .select("id, invoice_number, client_id, status, due_on, sent_at, reminders_suppressed")
     .eq("account_id", accountId)
     .in("status", ["sent", "partial"])
     .not("due_on", "is", null)
@@ -362,6 +369,7 @@ export async function runDueRemindersForAccount(
       today,
       consumed: consumedByInvoice.get(invoice.id) ?? [],
       lastReminderAt: lastReminderByInvoice.get(invoice.id) ?? null,
+      sentAt: invoice.sent_at,
       lastViewedAt: viewedByInvoice.get(invoice.id) ?? null,
       suppressed: invoice.reminders_suppressed === true,
     });
@@ -422,7 +430,10 @@ export async function runDueRemindersForAccount(
       });
       return;
     }
-    if (!looksLikeEmail(entry.row.contact_email)) {
+    if (
+      !looksLikeEmail(entry.row.billing_email) &&
+      !looksLikeEmail(entry.row.contact_email)
+    ) {
       summary.blocked.push({
         invoiceId: invoice.id,
         invoiceNumber: invoice.invoice_number,

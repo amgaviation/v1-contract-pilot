@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { parseDollarsToCents, parseTenth } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+import { looksLikeEmail } from "@/lib/email/address";
 import type { ClientOperatingRule } from "@/lib/operating-rule";
 import {
   REMINDER_AFTER_DAYS,
@@ -282,6 +283,21 @@ function parseClientForm(formData: FormData): ParsedClient {
     lateFeeKind !== "none" &&
     String(formData.get("late_fee_note_on_reminders") ?? "") === "1";
 
+  // contact_email is the address a platform-sent invoice actually goes to
+  // (see the form's own helper text) — a malformed value here was only
+  // ever discovered at send time, as a delivery error far from where it
+  // was typed. looksLikeEmail is this codebase's one shape check for an
+  // address column (lib/email/address.ts, already used the same way by
+  // settings/profile-actions.ts and lib/reminders/run.ts) — deliberately
+  // permissive, a typo guard rather than an RFC 5322 parser.
+  const contactEmail = optional(formData, "contact_email");
+  if (contactEmail !== null && !looksLikeEmail(contactEmail)) {
+    return {
+      ...empty,
+      error: "That contact email doesn't look like an email address.",
+    };
+  }
+
   return {
     error: null,
     values: {
@@ -302,7 +318,7 @@ function parseClientForm(formData: FormData): ParsedClient {
       late_fee_grace_days: graceDays,
       late_fee_note_on_reminders: noteOnReminders,
       contact_name: optional(formData, "contact_name"),
-      contact_email: optional(formData, "contact_email"),
+      contact_email: contactEmail,
       contact_phone: optional(formData, "contact_phone"),
       address_line1: optional(formData, "address_line1"),
       address_line2: optional(formData, "address_line2"),

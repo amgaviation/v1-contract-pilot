@@ -1,13 +1,13 @@
 import { notFound } from "next/navigation";
 import NextLink from "next/link";
-import { Box, Button, Card, Flex, Grid, Heading, Text } from "@/components/ui";
+import { Box, Button, Callout, Card, Flex, Grid, Heading, Text } from "@/components/ui";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { loadFleetOptions } from "@/lib/fleet";
 import { loadOptionChoices } from "@/lib/custom-options-read";
-import { formatCents, formatDateRange } from "@/lib/format";
-import { tripValueCents } from "@/lib/trip-value";
+import { formatCents, formatDate, formatDateRange } from "@/lib/format";
+import { tripDayQuantity, tripValueCents } from "@/lib/trip-value";
 import PageShell from "../../page-shell";
 import TripForm, { type ClientOption, type TripFormValues } from "../trip-form";
 import LegEditor, { type LegRow } from "../leg-editor";
@@ -24,10 +24,18 @@ export const metadata = { title: "Trip" };
 
 export default async function TripPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  // gap S: createTrip's redirect appends ?overlap=1 when the new trip's
+  // dates intersect an existing one — see findOverlappingTrip in
+  // actions.ts. A redirect carries no return value, so this is how the
+  // warning survives the hop from create to here. Non-blocking: the trip
+  // is already saved by the time this ever renders.
+  searchParams: Promise<{ overlap?: string }>;
 }) {
   const { id } = await params;
+  const { overlap } = await searchParams;
   const { account } = await requireAccount(`/trips/${id}`);
 
   const supabase = await createClient();
@@ -49,8 +57,11 @@ export default async function TripPage({
       .order("leg_date", { ascending: true }),
     supabase
       .from("clients")
+      // cancellation_policy_note (gap S: guided cancellation-fee billing)
+      // rides along on this same picker read rather than a second query —
+      // it's one more column on a list this page already fetches in full.
       .select(
-        "id, name, default_day_rate_cents, default_travel_day_rate_cents, operating_rule"
+        "id, name, default_day_rate_cents, default_travel_day_rate_cents, operating_rule, cancellation_policy_note"
       )
       .is("archived_at", null)
       .order("name", { ascending: true }),
@@ -137,7 +148,19 @@ export default async function TripPage({
   if (!trip) notFound();
 
   const legs = (legData ?? []) as LegRow[];
-  const clients = (clientData ?? []) as ClientOption[];
+  // Cast carries one extra column (cancellation_policy_note) past
+  // ClientOption's own shape — structurally fine to still hand to
+  // TripForm below, which only ever reads the fields it declares.
+  const clients = (clientData ?? []) as (ClientOption & {
+    cancellation_policy_note: string | null;
+  })[];
+  // gap S: guided cancellation-fee billing. The client's own recorded
+  // terms, surfaced right where a pilot is looking at a canceled trip —
+  // today this is only ever shown on the CLIENT page, which is a screen
+  // away from the trip a pilot is actually canceling.
+  const cancellationNote = trip.client_id
+    ? clients.find((c) => c.id === trip.client_id)?.cancellation_policy_note ?? null
+    : null;
   const dayTypes = (dayTypeData ?? []) as DayTypeOption[];
   const tripDays = (tripDayData ?? []) as TripDayRow[];
   // client_rates is fetched for the whole account (see the query above)
@@ -172,6 +195,33 @@ export default async function TripPage({
   const billableByDayType = new Map(dayTypes.map((t) => [t.id, t.billable]));
   const value = tripValueCents(trip, tripDays, billableByDayType);
 
+  // P2: once the day grid has rows, it is what bills — and it must also be
+  // what this headline COUNTS, not just what it prices. Printing a value
+  // derived from tripDays next to a day count still read from the legacy
+  // day_count/travel_day_count scalars is the exact "two sources for one
+  // number" defect this screen's own comment above warns about, just for
+  // days instead of dollars: a pilot who corrects the grid (2 scalar days
+  // -> 3 grid days) would see a header whose value moved but whose count
+  // didn't. tripDayQuantity mirrors pilot.trip_pl's day_quantity — same
+  // billable-only filter, same quantity*units, summed once and rounded
+  // once — so this can never disagree with the report that uses the same
+  // rule server-side.
+  const gridDayQuantity = hasDayRows
+    ? tripDayQuantity(tripDays, billableByDayType)
+    : null;
+  const dayCountLabel =
+    gridDayQuantity !== null
+      ? `${gridDayQuantity} billable day${gridDayQuantity === 1 ? "" : "s"}`
+      : `${trip.day_count} flight day${
+          Number(trip.day_count) === 1 ? "" : "s"
+        }${
+          trip.travel_day_count
+            ? ` · ${trip.travel_day_count} travel day${
+                trip.travel_day_count === 1 ? "" : "s"
+              }`
+            : ""
+        }`;
+
   // F5: keyed on the trip's id and dates only — NOT on the persisted day
   // rows' content anymore. That extra component used to force a remount
   // (and reset DayGrid's useActionState) on every successful save of the
@@ -187,15 +237,9 @@ export default async function TripPage({
   return (
     <PageShell
       title={formatDateRange(trip.starts_on, trip.ends_on)}
-      subtitle={`${formatCents(value)} · ${trip.day_count} flight day${
-        Number(trip.day_count) === 1 ? "" : "s"
-      }${
-        trip.travel_day_count
-          ? ` · ${trip.travel_day_count} travel day${
-              trip.travel_day_count === 1 ? "" : "s"
-            }`
-          : ""
-      } · ${legs.length} leg${legs.length === 1 ? "" : "s"}`}
+      subtitle={`${formatCents(value)} · ${dayCountLabel} · ${legs.length} leg${
+        legs.length === 1 ? "" : "s"
+      }`}
       action={
         <Flex gap="2" wrap="wrap" align="start">
           {/* The trip's own state is what everything downstream filters
@@ -204,6 +248,13 @@ export default async function TripPage({
           {trip.status === "scheduled" || trip.status === "in_progress" ? (
             <MarkFlownButton id={trip.id} />
           ) : null}
+          {/* gap S: the recurring-gig case — same client, same tail, same
+              rates, next week — typed from scratch every time until now.
+              A plain link, not a server action: nothing is written until
+              the pre-filled form on the other end is actually submitted. */}
+          <Button asChild variant="soft">
+            <NextLink href={`/trips/new?clone=${trip.id}`}>Duplicate</NextLink>
+          </Button>
           <DeleteTripButton id={trip.id} disabled={locked} />
         </Flex>
       }
@@ -240,6 +291,55 @@ export default async function TripPage({
           </Flex>
         </Card>
       ) : null}
+      {trip.status === "canceled" ? (
+        // gap S: guided cancellation-fee billing. The machinery was
+        // already half-built — canceled_at is trigger-recorded evidence,
+        // cancellation_notice_from is captured on the form above, and
+        // clients.cancellation_policy_note is recorded — but nothing on
+        // THIS screen ever pointed at it, so a pilot canceling a trip saw
+        // no next step and the fee became a fully manual, unlinked
+        // invoice line. The invoice trip picker only offers completed
+        // trips (see clients/[id]/page.tsx's own comment on that), so
+        // this still can't preselect the trip — it can only get the
+        // pilot to the right client with the right terms in view.
+        <Card mb="4">
+          <Flex direction="column" gap="2">
+            <Text size="2" color="gray">
+              This trip is canceled
+              {trip.canceled_at ? ` (recorded ${formatDate(trip.canceled_at.slice(0, 10))})` : ""}
+              {trip.cancellation_notice_from
+                ? ` — notice from ${trip.cancellation_notice_from}`
+                : ""}
+              .
+            </Text>
+            {cancellationNote ? (
+              <Text size="2" color="gray">
+                <Text as="span" weight="bold">
+                  Cancellation terms on file:
+                </Text>{" "}
+                {cancellationNote}
+              </Text>
+            ) : null}
+            <Flex gap="3" wrap="wrap" align="center">
+              <Button asChild variant="soft" size="2">
+                <NextLink
+                  href={
+                    trip.client_id
+                      ? `/invoices/new?client=${trip.client_id}`
+                      : "/invoices/new"
+                  }
+                >
+                  Bill a cancellation fee
+                </NextLink>
+              </Button>
+              <Text size="1" color="gray">
+                Opens a new invoice for this client — the fee is a
+                hand-typed line, never computed automatically.
+              </Text>
+            </Flex>
+          </Flex>
+        </Card>
+      ) : null}
       {locked ? (
         <Card mb="4">
           <Text size="2" color="gray">
@@ -249,6 +349,15 @@ export default async function TripPage({
             invoice first.
           </Text>
         </Card>
+      ) : null}
+      {overlap === "1" ? (
+        // gap S: advisory only, never a block — this trip already saved.
+        <Callout.Root color="amber" mb="4">
+          <Callout.Text>
+            This trip&rsquo;s dates overlap another trip on your calendar —
+            check you haven&rsquo;t double-booked or double-entered it.
+          </Callout.Text>
+        </Callout.Root>
       ) : null}
 
       <Grid columns={{ initial: "1", lg: "12" }} gap="4">

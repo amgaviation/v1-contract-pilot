@@ -1,10 +1,30 @@
 #!/usr/bin/env node
 /**
- * Platform-billing webhook verification (docs/PLAN.md: `npm run
- * billing:verify` — "trial creation, webhook idempotency (replay the same
- * event ID), out-of-order events, seat quantity sync, test/live mode
- * separation").
+ * Platform-billing webhook verification (docs/PLAN.md names this script's
+ * remit as "trial creation, webhook idempotency (replay the same event
+ * ID), out-of-order events, seat quantity sync, test/live mode
+ * separation" — WHAT ACTUALLY RUNS BELOW, so a green run states only
+ * guarantees this file checks:
+ *   - signature verification (section 1)
+ *   - test/live mode separation (section 2)
+ *   - idempotency: replayed event id (section 3)
+ *   - out-of-order delivery (section 4)
+ *   - retry safety: unfinished handler (section 5)
+ *   - provisioning is webhook-only (section 6)
+ *   - plan-tier mapping, price -> tier (section 7)
+ *   - invoice.payment_failed reads the current API's subscription
+ *     reference (section 9)
+ *   - price drift: public copy vs live Stripe Price (section 10)
+ *   - concurrent delivery / same-second watermark ties (section 8)
+ * NOT COVERED (docs/PLAN.md's list names these; they are not exercised
+ * here — see lib/stripe/provisioning.ts for where seat_count is written
+ * today, and the "trial creation" gap tracked alongside it): TRIAL
+ * CREATION (no section asserts a Checkout session actually carries
+ * trial_end through provisioning) and SEAT QUANTITY SYNC (pilot.accounts
+ * .seat_count is not written from a subscription's item quantity at all
+ * yet, so there is nothing to assert).
  *
+
  * WHY IT SIGNS ITS OWN PAYLOADS rather than waiting on real deliveries:
  * the properties under test are properties of OUR handler, not of Stripe.
  * Signing locally with the same secret the route verifies against lets
@@ -25,6 +45,7 @@
 
 import { createHmac, randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
+import Stripe from "stripe";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
 const WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
@@ -591,6 +612,152 @@ if (!db) {
           "concurrent events resolve to the newer state, not the last writer",
           `only ${newerWon}/${ROUNDS} rounds stayed active — a stale event overwrote a newer one`
         );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 9. invoice.payment_failed reads the CURRENT API's subscription reference.
+//    Stripe API 2025-03-31.basil moved Invoice.subscription to
+//    invoice.parent.subscription_details.subscription (see
+//    node_modules/stripe/esm/resources/Invoices.d.ts and
+//    app/api/stripe/webhook/route.ts). A payload shaped like the pinned API
+//    version (2026-07-29.dahlia) — parent.subscription_details, NO
+//    top-level `subscription` — must still reach the authoritative
+//    subscriptions.retrieve() re-fetch this branch exists for; a handler
+//    reading the removed top-level field would find `undefined` and
+//    silently no-op instead (200, nothing synced, dunning re-check never
+//    happens).
+// ---------------------------------------------------------------------------
+console.log("\ninvoice.payment_failed (current API shape)");
+{
+  const subId = `sub_verify_invoice_failed_${randomUUID().slice(0, 8)}`;
+  const evt = {
+    id: `evt_test_${randomUUID()}`,
+    object: "event",
+    api_version: "2026-07-29.dahlia",
+    created: Math.floor(Date.now() / 1000),
+    livemode: false,
+    type: "invoice.payment_failed",
+    data: {
+      object: {
+        id: `in_verify_${randomUUID().slice(0, 8)}`,
+        object: "invoice",
+        // Deliberately NO top-level `subscription` — that field does not
+        // exist on this API version's Invoice object.
+        parent: {
+          type: "subscription_details",
+          subscription_details: { subscription: subId, metadata: null },
+          quote_details: null,
+        },
+      },
+    },
+  };
+
+  const res = await postEvent(evt);
+  // A fake subscription id makes the live subscriptions.retrieve() call
+  // fail — which is the PROOF the handler extracted subId from the
+  // current-API shape and tried to act on it. The old code's
+  // `if (!subId) return;` on a nonexistent top-level field would instead
+  // succeed with 200 and never call Stripe at all.
+  res.status === 500
+    ? pass(
+        "subscription id read from parent.subscription_details",
+        "handler attempted the authoritative re-fetch (500 on a fake id, as expected)"
+      )
+    : fail(
+        "subscription id read from parent.subscription_details",
+        `expected 500 (live retrieve attempted), got ${res.status} ${JSON.stringify(res.body)} — the handler may be silently no-op'ing on a field that no longer exists`
+      );
+}
+
+// ---------------------------------------------------------------------------
+// 10. Price drift — the public pricing page's copy vs the live Stripe
+//     Price objects the six STRIPE_PRICE_ID_* env vars actually point at.
+//     docs/PLAN-GATES.md records this happening once already: the public
+//     page said Business was $39/seat ($78 at the two-seat floor) while
+//     the configured test-mode Prices were still the placeholder ladder
+//     ($29/$49/$89) — a $178 checkout behind a page that said $78, with
+//     nothing anywhere catching the mismatch. This section is that catch.
+//
+//     TIER_PRICE_COPY below is a DELIBERATE DUPLICATE of
+//     app/(marketing)/pricing/pricing-model.ts's export of the same name
+//     (see lib/stripe/price-drift.ts for the in-app version of this same
+//     check, which imports the real module directly) — this script runs
+//     under plain `node`, without the TypeScript loader `npm run
+//     billing:verify`'s sibling scripts use, so it cannot import a .ts
+//     module. If the owner signs a new price, BOTH copies move together:
+//     pricing-model.ts (what pilots read) and this table (what CI checks
+//     it against). This section only compares numbers that already exist
+//     — it never invents or writes a price.
+// ---------------------------------------------------------------------------
+console.log("\nPrice drift (public copy vs live Stripe Price)");
+{
+  const SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+  if (!SECRET_KEY) {
+    skip("price drift", "needs STRIPE_SECRET_KEY to read live Price objects");
+  } else {
+    // Mirrors lib/entitlements.ts's TIER_PRICE_ENV and
+    // pricing-model.ts's TIER_PRICE_COPY (in cents). Keep both in sync by
+    // hand if either source moves — see the section header.
+    const TIER_PRICE_ENV = {
+      solo: { monthly: "STRIPE_PRICE_ID_SOLO", annual: "STRIPE_PRICE_ID_SOLO_ANNUAL" },
+      pro: { monthly: "STRIPE_PRICE_ID_PRO", annual: "STRIPE_PRICE_ID_PRO_ANNUAL" },
+      business: { monthly: "STRIPE_PRICE_ID_BUSINESS", annual: "STRIPE_PRICE_ID_BUSINESS_ANNUAL" },
+    };
+    const TIER_PRICE_COPY_CENTS = {
+      solo: { monthly: 2900, annual: 29000 },
+      pro: { monthly: 4900, annual: 49000 },
+      business: { monthly: 3900, annual: 39000 },
+    };
+
+    const stripe = new Stripe(SECRET_KEY, { apiVersion: "2026-07-29.dahlia" });
+    let anyConfigured = false;
+    let anyMismatch = false;
+
+    for (const tier of Object.keys(TIER_PRICE_ENV)) {
+      for (const interval of ["monthly", "annual"]) {
+        const envVar = TIER_PRICE_ENV[tier][interval];
+        const priceId = process.env[envVar];
+        if (!priceId) continue; // unconfigured tier/interval — nothing to compare
+        anyConfigured = true;
+        const expectedCents = TIER_PRICE_COPY_CENTS[tier][interval];
+
+        try {
+          const price = await stripe.prices.retrieve(priceId);
+          if (price.unit_amount === expectedCents) {
+            pass(
+              `${tier}/${interval} price matches public copy`,
+              `${envVar}=${priceId} is ${(price.unit_amount / 100).toFixed(2)}`
+            );
+          } else {
+            anyMismatch = true;
+            fail(
+              `${tier}/${interval} price matches public copy`,
+              `pricing-model.ts says ${(expectedCents / 100).toFixed(2)}/unit, but ${envVar} ` +
+                `(${priceId}) is actually ${
+                  typeof price.unit_amount === "number"
+                    ? (price.unit_amount / 100).toFixed(2)
+                    : "not a flat unit_amount"
+                } — checkout will charge a different figure than the public page shows`
+            );
+          }
+        } catch (err) {
+          anyMismatch = true;
+          fail(
+            `${tier}/${interval} price matches public copy`,
+            `could not retrieve ${envVar} (${priceId}): ${
+              err instanceof Error ? err.message : String(err)
+            }`
+          );
+        }
+      }
+    }
+
+    if (!anyConfigured) {
+      skip("price drift", "none of the six STRIPE_PRICE_ID_* env vars are set");
+    } else if (!anyMismatch) {
+      console.log("  (every configured price agrees with pricing-model.ts)");
+    }
   }
 }
 

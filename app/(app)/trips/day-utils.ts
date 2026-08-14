@@ -153,7 +153,13 @@ export type SeedResult = {
  * money formatter. */
 export function quantityToInput(quantity: number | null | undefined): string {
   if (quantity === null || quantity === undefined || !Number.isFinite(quantity)) {
-    return "1";
+    // "1.0", not "1" — QUANTITY_OPTIONS in day-grid.tsx keys its "Full day"
+    // choice on "1.0". A bare "1" doesn't match that option's value, so
+    // quantityOptionsFor() would treat it as a stored custom value and
+    // append a spurious "1 day (custom)" entry instead of showing "Full
+    // day" — see this file's computeSeed default and the three matching
+    // fallbacks in day-grid.tsx, which all had the same bug.
+    return "1.0";
   }
   return quantity.toFixed(1);
 }
@@ -242,7 +248,7 @@ export function computeSeed(
       dayTypeId: "",
       rate: "",
       notes: "",
-      quantity: "1",
+      quantity: "1.0",
       // This placeholder row (no day type assigned yet) always starts
       // units=1.00/away=false — there is no day type here to resolve
       // either from. The travel/flight loops below OVERWRITE this
@@ -311,7 +317,7 @@ export function computeSeed(
         dayTypeId: travelType.id,
         rate: centsToInput(scalars.travelDayRateCents ?? 0),
         notes: "",
-        quantity: "1",
+        quantity: "1.0",
         units: "1.00",
         away: resolveAwayFromDayType(travelType),
       };
@@ -325,7 +331,7 @@ export function computeSeed(
         dayTypeId: flightType.id,
         rate: centsToInput(scalars.dayRateCents),
         notes: "",
-        quantity: "1",
+        quantity: "1.0",
         units: "1.00",
         away: resolveAwayFromDayType(flightType),
       };

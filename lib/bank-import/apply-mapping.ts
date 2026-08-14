@@ -202,6 +202,16 @@ export function applyCsvMapping(params: {
         reject(ambiguousCommaReason(raw) ?? `Amount isn't a recognized number: "${raw}".`);
         return;
       }
+      // The debit/credit shape below already refuses a zero value by name
+      // ("Neither debit nor credit has a nonzero value") — this signed-
+      // column shape needs the same refusal. A waived-fee or $0.00
+      // adjustment line parses fine otherwise and used to reach the server
+      // as a genuinely unstorable row (the DB CHECK is amount_cents <> 0),
+      // aborting the whole confirm instead of being skipped by itself.
+      if (amountCents === 0) {
+        reject('Amount is $0.00 — a zero-amount row has nothing to import.');
+        return;
+      }
       signSelfDeclared = declaresOwnSign(raw);
     } else {
       const debitRaw = debitIdx >= 0 ? (fields[debitIdx] ?? "").trim() : "";

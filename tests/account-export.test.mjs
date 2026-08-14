@@ -17,11 +17,17 @@ const {
   invoicePaymentValues,
   estimateValues,
   estimateLineValues,
+  operatorQualificationValues,
+  journalLineValues,
+  bankTransactionValues,
   CLIENT_HEADER,
   INVOICE_HEADER,
   INVOICE_PAYMENT_HEADER,
   ESTIMATE_HEADER,
   ESTIMATE_LINE_HEADER,
+  OPERATOR_QUALIFICATION_HEADER,
+  JOURNAL_LINE_HEADER,
+  BANK_TRANSACTION_HEADER,
 } = await import("../app/(app)/settings/export/entities.ts");
 const { csvRow, csvField } = await import("../lib/csv.ts");
 
@@ -443,4 +449,113 @@ test("estimate lines: the estimate resolves by number and client; a draft estima
   );
   assert.equal(draftByHeader["Estimate number"], null);
   assert.equal(draftByHeader["Estimate ID"], "e-draft");
+});
+
+test("operator qualifications: requirement/status labels resolve, and an unrecognized value falls back to itself", () => {
+  // requirement/status are typed as plain strings (see entities.ts's
+  // OperatorQualificationExportRow comment) precisely so a value the
+  // stale generated database.types.ts union doesn't know about still
+  // round-trips instead of throwing.
+  const lookups = emptyLookups();
+  lookups.clientNameById.set("c-1", "Skyline Aviation LLC");
+  const byHeader = (row) =>
+    Object.fromEntries(
+      OPERATOR_QUALIFICATION_HEADER.map((h, i) => [h, operatorQualificationValues(row, lookups)[i]])
+    );
+
+  const known = byHeader({
+    id: "oq-1",
+    client_id: "c-1",
+    requirement: "competency_check_135_293b",
+    status: "current",
+    completed_on: "2026-02-01",
+    expires_on: "2027-02-28",
+    type_designator: "C560",
+    notes: null,
+    document_id: null,
+    created_at: "2026-02-01T12:00:00Z",
+  });
+  assert.equal(known["Client"], "Skyline Aviation LLC");
+  assert.equal(known["Requirement"], "Competency check");
+  assert.equal(known["Status"], "Current");
+  assert.equal(known["Expires on"], "2027-02-28");
+
+  const unrecognized = byHeader({
+    id: "oq-2",
+    client_id: "c-1",
+    requirement: "some_future_requirement",
+    status: "current",
+    completed_on: null,
+    expires_on: null,
+    type_designator: "",
+    notes: null,
+    document_id: null,
+    created_at: "2026-02-01T12:00:00Z",
+  });
+  assert.equal(unrecognized["Requirement"], "some_future_requirement");
+});
+
+test("journal lines: the chart account resolves by name; a vanished account says so instead of blanking", () => {
+  const lookups = emptyLookups();
+  lookups.chartAccountNameById.set("ca-1", "Accounts receivable");
+  const byHeader = (row) =>
+    Object.fromEntries(JOURNAL_LINE_HEADER.map((h, i) => [h, journalLineValues(row, lookups)[i]]));
+
+  const known = byHeader({
+    id: "jl-1",
+    entry_id: "je-1",
+    chart_account_id: "ca-1",
+    side: "debit",
+    amount_cents: 350000,
+    line_no: 1,
+  });
+  assert.equal(known["Account"], "Accounts receivable");
+  assert.equal(known["Side"], "Debit");
+  assert.equal(known["Amount"], "3500.00");
+
+  const orphan = byHeader({
+    id: "jl-2",
+    entry_id: "je-1",
+    chart_account_id: "ca-gone",
+    side: "credit",
+    amount_cents: 350000,
+    line_no: 2,
+  });
+  assert.equal(orphan["Account"], "Unknown account");
+});
+
+test("bank transactions: category/treatment reuse the expense vocabulary; the bank account resolves by label", () => {
+  const lookups = emptyLookups();
+  lookups.clientNameById.set("c-1", "Skyline Aviation LLC");
+  lookups.bankAccountLabelById.set("ba-1", "Chase checking …4521");
+  lookups.tripById.set("t-1", {
+    starts_on: "2026-03-01",
+    aircraft_ident: "N123AB",
+    client_id: "c-1",
+  });
+  const values = bankTransactionValues(
+    {
+      id: "bt-1",
+      bank_account_id: "ba-1",
+      posted_on: "2026-03-04",
+      description: "DELTA AIR LINES",
+      amount_cents: -45000,
+      review_state: "reviewed",
+      suggested_category: "airline",
+      category: "airline",
+      treatment: "rebill",
+      trip_id: "t-1",
+      expense_id: null,
+      notes: null,
+    },
+    lookups
+  );
+  const byHeader = Object.fromEntries(BANK_TRANSACTION_HEADER.map((h, i) => [h, values[i]]));
+  assert.equal(byHeader["Bank account"], "Chase checking …4521");
+  assert.equal(byHeader["Category"], "Airline");
+  assert.equal(byHeader["Treatment"], "Rebill to client");
+  assert.equal(byHeader["Client"], "Skyline Aviation LLC");
+  assert.equal(byHeader["Amount"], "-450.00");
+  // Negative amount must survive the CSV formula guard as a plain number.
+  assert.equal(csvField(byHeader["Amount"]), "-450.00");
 });

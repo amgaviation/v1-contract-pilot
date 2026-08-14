@@ -30,12 +30,12 @@ export default function OnboardingLayout({
       // default (12.6px at 90% scaling), well under the 16px below which iOS
       // Safari zooms on focus. See app/globals.css.
       className="v1-nozoom-fields"
-      style={{ minHeight: "100vh", background: "var(--gray-2)" }}
+      style={{ minHeight: "100vh", background: "var(--canvas)" }}
     >
       <Box
         style={{
-          borderBottom: "1px solid var(--gray-a5)",
-          background: "var(--color-background)",
+          borderBottom: "1px solid var(--hair)",
+          background: "var(--paper)",
         }}
       >
         {/* ONE MEASURE, DECLARED ONCE. This was Container size="2" — 688px,

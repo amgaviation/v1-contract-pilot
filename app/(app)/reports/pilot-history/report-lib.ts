@@ -112,7 +112,7 @@ export function todayIso(): string {
 }
 
 export type ReportWindow = {
-  key: "all-time" | "last-12-months";
+  key: "all-time" | "last-12-months" | "last-90-days";
   /** Inclusive "YYYY-MM-DD" bounds, compared lexically (ISO dates sort).
    *  `from: null` on the all-time window means "no lower bound at all",
    *  which is a different thing from "bounded at the earliest entry" — the
@@ -171,6 +171,30 @@ export function allTimeWindow(today: string): ReportWindow {
     throw new Error(`allTimeWindow: not an ISO date: ${today}`);
   }
   return { key: "all-time", from: null, to: today, label: "Everything on file" };
+}
+
+/**
+ * The last 90 CALENDAR days, ending today (inclusive) — the third window
+ * underwriter pilot-history questionnaires typically ask for alongside
+ * last-12-months and all-time. Same to-date convention as
+ * lastTwelveCalendarMonths: today counts as one of the 90, so the window
+ * is [today - 89 days, today], and the page/PDF print the actual date
+ * range beside the label for the same "two people would read the phrase
+ * two different ways" reason lastTwelveCalendarMonths's header gives.
+ *
+ * Calendar days, not months — 90 days is the reg-adjacent unit these forms
+ * use (see 61.57(a)'s own 90-day currency window), so shifting by whole
+ * days rather than approximating with 3 calendar months keeps this exact
+ * rather than off by a few days either way.
+ */
+export function lastNinetyCalendarDays(today: string): ReportWindow {
+  if (!ISO_DATE_RE.test(today)) {
+    throw new Error(`lastNinetyCalendarDays: not an ISO date: ${today}`);
+  }
+  const [y, m, d] = today.split("-").map(Number);
+  const fromDate = new Date(Date.UTC(y!, m! - 1, d! - 89));
+  const from = `${fromDate.getUTCFullYear()}-${pad2(fromDate.getUTCMonth() + 1)}-${pad2(fromDate.getUTCDate())}`;
+  return { key: "last-90-days", from, to: today, label: "Last 90 days" };
 }
 
 function entryInWindow(entryDate: string, window: ReportWindow): boolean {
@@ -643,6 +667,8 @@ export type PilotHistoryReportData =
       compiledOn: string;
       allTime: PilotHistoryFigures;
       lastTwelveMonths: PilotHistoryFigures;
+      /** Last 90 calendar days, to date — see lastNinetyCalendarDays. */
+      lastNinetyDays: PilotHistoryFigures;
       /**
        * The span the figures actually cover — the earliest and latest
        * entry that WAS COUNTED, not the earliest and latest on file. The
@@ -927,6 +953,7 @@ export function computePilotHistoryReport(
       byTailKey,
       lastTwelveCalendarMonths(today)
     ),
+    lastNinetyDays: buildFigures(entries, byTailKey, lastNinetyCalendarDays(today)),
     earliestEntryDate,
     latestEntryDate,
     futureDatedEntryCount,

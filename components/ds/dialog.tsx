@@ -101,15 +101,22 @@ export function Dialog({
   footer?: React.ReactNode;
   className?: string;
 }) {
+  // A fixed "i-dialog-title" id meant every Dialog on a page shared one id
+  // — a list of N rows each rendering its own confirm dialog put N copies
+  // of id="i-dialog-title" in the DOM, and aria-labelledby resolves to the
+  // FIRST match in the document regardless of which dialog is open, so a
+  // screen reader could announce row 1's title while row 5's dialog was
+  // the one actually showing. useId() gives every instance its own.
+  const titleId = React.useId();
   return (
     <DialogShell
       open={open}
       onOpenChange={onOpenChange}
       className={className}
-      labelledBy="i-dialog-title"
+      labelledBy={titleId}
     >
       <div className="i-dialog-head">
-        <h2 className="i-heading i-t4" id="i-dialog-title">
+        <h2 className="i-heading i-t4" id={titleId}>
           {title}
         </h2>
       </div>

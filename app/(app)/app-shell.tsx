@@ -83,6 +83,16 @@ export function AppShell({
   // with no second stylesheet and no component-level override.
   return (
     <Box
+      // .v1-nozoom-fields (app/globals.css): every field at the app's
+      // default size="2" renders at 13px (--text-2), below iOS Safari's
+      // 16px focus-zoom threshold. Without this the day grid, the leg
+      // editor, expense forms and invoice line editors — the exact
+      // between-legs capture moments the product is built for — all
+      // zoomed the viewport on tap and left the pilot pinch-zooming back
+      // out. The two signed-out shells ((auth) and (onboarding)) already
+      // carry this class; this was the one authenticated surface that did
+      // not.
+      className="v1-nozoom-fields"
       data-appearance={theme.appearance}
       data-accent={theme.accent}
       data-density={theme.density}
@@ -116,17 +126,39 @@ export function AppShell({
           <Box data-appearance="dark" asChild>
             <Box
               style={{
-                borderBottom: "1px solid var(--gray-a5)",
+                borderBottom: "1px solid var(--hair)",
                 background: theme.chromeBackground,
               }}
             >
-              <Flex align="center" gap="2" px="3" pt="3">
+              <Flex align="center" justify="between" gap="2" px="3" pt="3">
                 <Link
                   href={DASHBOARD_PATH}
                   aria-label={`${BRAND.name} — ${BRAND.descriptor}`}
                 >
                   <Logo />
                 </Link>
+                {/* The only Sign out control reachable below `md` — the
+                    desktop header carrying it is hidden at this width (see
+                    the header's own comment), and Settings offers only
+                    "Sign out other devices", which explicitly preserves
+                    THIS session. Without this, a pilot on a shared or
+                    borrowed device — the primary persona's own daily
+                    reality — had no way to end their session on a phone or
+                    an iPad in portrait. A form, not a link, for the same
+                    reason the desktop one is: signing out mutates session
+                    state, and a GET a prefetcher can fire would end the
+                    session behind the pilot's back. */}
+                <form action={signOutAction}>
+                  <Button
+                    type="submit"
+                    size="2"
+                    variant="soft"
+                    color="gray"
+                    style={{ flexShrink: 0 }}
+                  >
+                    Sign out
+                  </Button>
+                </form>
               </Flex>
               <NavStrip sections={sections} />
             </Box>
@@ -145,7 +177,7 @@ export function AppShell({
                 direction="column"
                 height="100%"
                 style={{
-                  borderRight: "1px solid var(--gray-a5)",
+                  borderRight: "1px solid var(--hair)",
                   // Painted explicitly rather than left to Radix's
                   // automatic hasBackground, because the token the rail
                   // wants is not the same one in both modes. In LIGHT
@@ -199,8 +231,11 @@ export function AppShell({
               sticky section strip is already occupying the top of the
               screen, and stacking a second sticky bar under it spent
               ~40px of a 640px-tall phone screen on an email address. The
-              same email and the same Sign out button are reachable from
-              Settings, which is the last entry in the strip. */}
+              email is not repeated below `md` (Settings' "Profile &
+              security" panel shows it), but Sign out itself is — the
+              phone top bar above carries its own copy of the same form,
+              because Settings only offers "Sign out other devices",
+              which explicitly preserves this one. */}
           <Flex
             asChild
             align="center"
@@ -214,7 +249,7 @@ export function AppShell({
               top: 0,
               zIndex: 1,
               background: theme.chromeBackground,
-              borderBottom: "1px solid var(--gray-a4)",
+              borderBottom: "1px solid var(--hair)",
             }}
           >
             <header>

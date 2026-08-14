@@ -1,6 +1,6 @@
 import LoadingPanel from "../loading-panel";
 
-// 6 columns: Dates, Client, Route, Tail, Days, Value.
+// 7 columns: Dates, Client, Aircraft, Days, Value, Status, Billing.
 export default function Loading() {
-  return <LoadingPanel label="your trips" shape="table" columns={6} />;
+  return <LoadingPanel label="your trips" shape="table" columns={7} />;
 }

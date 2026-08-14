@@ -55,21 +55,5 @@ export function isLiveMode(): boolean {
   return key.startsWith("sk_live_") || key.startsWith("rk_live_");
 }
 
-/**
- * The single price the product sells today (decision #10, solo flat rate;
- * the per-seat business plan is deferred). Read from env rather than
- * hardcoded so test and live price IDs never cross — PLAN: "Price IDs
- * from env config".
- */
-export function getSoloPriceId(): string {
-  const priceId = process.env.STRIPE_PRICE_ID_SOLO;
-  if (!priceId) {
-    throw new Error(
-      "STRIPE_PRICE_ID_SOLO is unset — no price to check out with. Set it in the Vercel project (and .env.local for development)."
-    );
-  }
-  return priceId;
-}
-
 /** Card-required trial length, in days (decision #6). */
 export const TRIAL_PERIOD_DAYS = 7;

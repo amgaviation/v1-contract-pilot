@@ -93,6 +93,10 @@ export type PilotHistoryPdfProps = {
   registeredAircraftCount: number;
   allTime: PilotHistoryFigures;
   lastTwelveMonths: PilotHistoryFigures;
+  /** Last 90 calendar days, to date — see report-lib.ts's
+   *  lastNinetyCalendarDays. Underwriter questionnaires typically ask for
+   *  this alongside last-12-months and all-time. */
+  lastNinetyDays: PilotHistoryFigures;
   recordedDates: RecordedDate[];
   hasUnattributedDates: boolean;
   /** Resolved document-kind labels, so a tenant who renamed a kind sees
@@ -156,18 +160,33 @@ const styles = StyleSheet.create({
     fontSize: 7,
     lineHeight: 1.4,
   },
+
+  attestation: {
+    marginTop: 24,
+    paddingTop: 10,
+  },
+  signatureRow: { flexDirection: "row", marginTop: 26 },
+  signatureBlock: { flex: 1, marginRight: 24 },
+  signatureLine: {
+    borderTopWidth: 0.75,
+    borderTopColor: PDF_PALETTE.ink,
+    marginBottom: 3,
+    paddingTop: 3,
+  },
 });
 
 function hours(value: number): string {
   return value.toFixed(1);
 }
 
-function TwoColumnTable({
+function ThreeColumnTable({
   rows,
   recentLabel,
+  ninetyLabel,
 }: {
-  rows: { label: string; allTime: string; recent: string; strong?: boolean }[];
+  rows: { label: string; allTime: string; recent: string; ninety: string; strong?: boolean }[];
   recentLabel: string;
+  ninetyLabel: string;
 }) {
   return (
     <View>
@@ -175,6 +194,7 @@ function TwoColumnTable({
         <Text style={[styles.colLabel, styles.headText]}> </Text>
         <Text style={[styles.colNum, styles.headText]}>All time</Text>
         <Text style={[styles.colNum, styles.headText]}>{recentLabel}</Text>
+        <Text style={[styles.colNum, styles.headText]}>{ninetyLabel}</Text>
       </View>
       {rows.map((row) => (
         <View style={styles.row} key={row.label}>
@@ -185,6 +205,7 @@ function TwoColumnTable({
             {row.allTime}
           </Text>
           <Text style={[styles.colNum, styles.muted]}>{row.recent}</Text>
+          <Text style={[styles.colNum, styles.muted]}>{row.ninety}</Text>
         </View>
       ))}
     </View>
@@ -294,34 +315,37 @@ export function PilotHistoryPdf({
   registeredAircraftCount,
   allTime,
   lastTwelveMonths,
+  lastNinetyDays,
   recordedDates,
   hasUnattributedDates,
   kindLabels,
 }: PilotHistoryPdfProps) {
   const a = allTime.hours;
   const r = lastTwelveMonths.hours;
+  const n = lastNinetyDays.hours;
 
   const rows = [
-    { label: "Total time (aircraft)", allTime: hours(a.total), recent: hours(r.total), strong: true },
-    { label: "PIC", allTime: hours(a.pic), recent: hours(r.pic), strong: true },
-    { label: "SIC", allTime: hours(a.sic), recent: hours(r.sic), strong: true },
-    { label: "Solo", allTime: hours(a.solo), recent: hours(r.solo) },
-    { label: "Dual received", allTime: hours(a.dualReceived), recent: hours(r.dualReceived) },
-    { label: "Instructor given", allTime: hours(a.instructorGiven), recent: hours(r.instructorGiven) },
-    { label: "Cross country", allTime: hours(a.crossCountry), recent: hours(r.crossCountry) },
-    { label: "Night", allTime: hours(a.night), recent: hours(r.night) },
-    { label: "Instrument — actual", allTime: hours(a.instrumentActual), recent: hours(r.instrumentActual) },
-    { label: "Instrument — simulated", allTime: hours(a.instrumentSimulated), recent: hours(r.instrumentSimulated) },
-    { label: "Instrument — total", allTime: hours(totalInstrument(a)), recent: hours(totalInstrument(r)) },
-    { label: "Simulator (not aircraft time)", allTime: hours(a.simulator), recent: hours(r.simulator), strong: true },
-    { label: "Takeoffs", allTime: String(totalTakeoffs(a)), recent: String(totalTakeoffs(r)) },
-    { label: "Landings", allTime: String(totalLandings(a)), recent: String(totalLandings(r)) },
+    { label: "Total time (aircraft)", allTime: hours(a.total), recent: hours(r.total), ninety: hours(n.total), strong: true },
+    { label: "PIC", allTime: hours(a.pic), recent: hours(r.pic), ninety: hours(n.pic), strong: true },
+    { label: "SIC", allTime: hours(a.sic), recent: hours(r.sic), ninety: hours(n.sic), strong: true },
+    { label: "Solo", allTime: hours(a.solo), recent: hours(r.solo), ninety: hours(n.solo) },
+    { label: "Dual received", allTime: hours(a.dualReceived), recent: hours(r.dualReceived), ninety: hours(n.dualReceived) },
+    { label: "Instructor given", allTime: hours(a.instructorGiven), recent: hours(r.instructorGiven), ninety: hours(n.instructorGiven) },
+    { label: "Cross country", allTime: hours(a.crossCountry), recent: hours(r.crossCountry), ninety: hours(n.crossCountry) },
+    { label: "Night", allTime: hours(a.night), recent: hours(r.night), ninety: hours(n.night) },
+    { label: "Instrument — actual", allTime: hours(a.instrumentActual), recent: hours(r.instrumentActual), ninety: hours(n.instrumentActual) },
+    { label: "Instrument — simulated", allTime: hours(a.instrumentSimulated), recent: hours(r.instrumentSimulated), ninety: hours(n.instrumentSimulated) },
+    { label: "Instrument — total", allTime: hours(totalInstrument(a)), recent: hours(totalInstrument(r)), ninety: hours(totalInstrument(n)) },
+    { label: "Simulator (not aircraft time)", allTime: hours(a.simulator), recent: hours(r.simulator), ninety: hours(n.simulator), strong: true },
+    { label: "Takeoffs", allTime: String(totalTakeoffs(a)), recent: String(totalTakeoffs(r)), ninety: String(totalTakeoffs(n)) },
+    { label: "Landings", allTime: String(totalLandings(a)), recent: String(totalLandings(r)), ninety: String(totalLandings(n)) },
     {
       label: "Night landings",
       allTime: String(a.nightLandingsFullStop + a.nightLandingsTouchGo),
       recent: String(r.nightLandingsFullStop + r.nightLandingsTouchGo),
+      ninety: String(n.nightLandingsFullStop + n.nightLandingsTouchGo),
     },
-    { label: "Logbook entries", allTime: String(a.entryCount), recent: String(r.entryCount) },
+    { label: "Logbook entries", allTime: String(a.entryCount), recent: String(r.entryCount), ninety: String(n.entryCount) },
   ];
 
   return (
@@ -390,7 +414,13 @@ export function PilotHistoryPdf({
             {unattributedEntriesNote(unattributedEntryCount)}
           </Text>
         ) : null}
-        <TwoColumnTable rows={rows} recentLabel={lastTwelveMonths.window.label} />
+        <ThreeColumnTable
+          rows={rows}
+          recentLabel={lastTwelveMonths.window.label}
+          ninetyLabel={`${lastNinetyDays.window.label} (${formatDate(
+            lastNinetyDays.window.from ?? lastNinetyDays.window.to
+          )} – ${formatDate(lastNinetyDays.window.to)})`}
+        />
 
         <Text style={styles.h2}>Turbine and retractable gear</Text>
         <FlagLine label="Turbine time" figure={allTime.turbine} recent={lastTwelveMonths.turbine} />
@@ -476,6 +506,26 @@ export function PilotHistoryPdf({
             than attributed.
           </Text>
         ) : null}
+
+        {/* ATTESTATION BLOCK: two blank rule lines and their labels, and
+            nothing else — no attestation TEXT above the lines, because any
+            sentence this document supplied ("I certify that...") would be
+            this product asserting what the airman is attesting to, which
+            is exactly the kind of claim THE LINE (this file's header)
+            forbids. The party requesting the document supplies its own
+            attestation language; this is just where a pen goes. */}
+        <View style={styles.attestation}>
+          <View style={styles.signatureRow}>
+            <View style={styles.signatureBlock}>
+              <View style={styles.signatureLine} />
+              <Text style={styles.muted}>Signature of airman</Text>
+            </View>
+            <View style={styles.signatureBlock}>
+              <View style={styles.signatureLine} />
+              <Text style={styles.muted}>Date</Text>
+            </View>
+          </View>
+        </View>
 
         {/* THE NEUTRAL FOOTER. One sentence, and nothing else — same
             string on the screen, in this document and in the CSV, from one

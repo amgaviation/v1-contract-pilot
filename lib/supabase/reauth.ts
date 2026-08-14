@@ -49,6 +49,29 @@ import type { Database } from "@/lib/supabase/database.types";
  * this client only ever touches /auth: an unpinned client is a footgun
  * waiting for the next person who reaches for it.
  */
+/**
+ * RECOVERY-PROOF COOKIE — the short-lived proof that the current session
+ * was minted by completing an emailed password-recovery link, not by
+ * riding a session that was already open.
+ *
+ * WHY THIS EXISTS. `supabase.auth.getUser()` proves a session exists; it
+ * says nothing about how it was minted. Without this gate, anyone holding
+ * a live session — a stolen cookie, an unattended laptop — could navigate
+ * straight to /reset-password and set a new password with no challenge at
+ * all, silently defeating the re-authentication guarantee the rest of this
+ * file exists to provide. GOTRUE_SECURITY_UPDATE_PASSWORD_REQUIRE_-
+ * REAUTHENTICATION is a project setting this repo cannot read or rely on
+ * (see the header above), so the check has to happen here too.
+ *
+ * Set once, in app/auth/confirm/route.ts, right after a recovery token
+ * verifies. Required and cleared in app/(auth)/reset-password/actions.ts.
+ * httpOnly + a short TTL, the same shape as connect-actions.ts's OAuth
+ * state cookie: the value carries no information (the session already says
+ * who the user is) — it is a plain marker, not a token to verify.
+ */
+export const RECOVERY_PROOF_COOKIE = "pw_recovery_proof";
+export const RECOVERY_PROOF_MAX_AGE_SECONDS = 600; // 10 minutes
+
 export type ReauthResult =
   /** The password matched. */
   | "ok"

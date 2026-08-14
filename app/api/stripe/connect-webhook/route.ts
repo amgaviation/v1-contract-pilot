@@ -314,6 +314,79 @@ export async function POST(request: NextRequest) {
     if (accountError) throw new Error(`accounts.select: ${accountError.message}`);
     const account = (accountData ?? null) as ResolvedAccount;
 
+    // DEAUTHORIZATION. A pilot can revoke the platform's OAuth grant from
+    // their OWN Stripe dashboard at any time, outside this product
+    // entirely. Nothing about that action fails loudly: connect_account_id
+    // stays set, Settings keeps saying Stripe is connected, and link
+    // generation starts failing with the generic "Couldn't create a
+    // Stripe payment link. Try again." — a condition no retry fixes.
+    // Handled here, before the payment-decision path below, because this
+    // event carries no checkout session at all.
+    if (event.type === "account.application.deauthorized") {
+      if (!account) {
+        // Already detached — a duplicate delivery, or the pilot unlinked
+        // through Settings (connect_account_unlink) first. Nothing to do.
+        await finish({ outcome: "ignored", detail: "deauthorized: no account attached to this connected account" });
+        return NextResponse.json({ received: true, outcome: "ignored" });
+      }
+
+      // Mirrors pilot.connect_account_unlink's writes exactly
+      // (supabase/migrations/20260810010000_connect_link_hardening.sql) —
+      // that RPC cannot be called from here: it is SECURITY DEFINER,
+      // owner-gated on auth.uid(), and this route has no user session,
+      // only the service-role client. protect_account_billing_columns
+      // (the trigger that owns connect_account_id) explicitly allows any
+      // write from current_user = 'service_role' unconditionally, so no
+      // pilot.allow_connect_write flag needs setting here.
+      const { error: unlinkError } = await supabase
+        .from("accounts")
+        .update({ connect_account_id: null } as never)
+        .eq("id", account.id);
+      if (unlinkError) {
+        throw new Error(`accounts.update (deauthorize ${account.id}): ${unlinkError.message}`);
+      }
+
+      const { error: linksError } = await supabase
+        .from("invoices")
+        .update({
+          stripe_payment_link_id: null,
+          stripe_payment_link_url: null,
+          stripe_payment_link_livemode: null,
+          stripe_payment_link_amount_cents: null,
+        } as never)
+        .eq("account_id", account.id)
+        .not("stripe_payment_link_id", "is", null);
+      if (linksError) {
+        throw new Error(`invoices.update (deauthorize ${account.id}): ${linksError.message}`);
+      }
+
+      // Any half-finished onboarding is meaningless once the grant is
+      // gone — same reasoning as connect_account_unlink's own cleanup.
+      const { error: oauthError } = await supabase
+        .from("connect_oauth_states")
+        .delete()
+        .eq("account_id", account.id);
+      if (oauthError) {
+        throw new Error(`connect_oauth_states.delete (deauthorize ${account.id}): ${oauthError.message}`);
+      }
+
+      console.error(
+        `Connect event ${event.id}: account ${account.id} deauthorized the platform's Stripe grant from their own dashboard — connect_account_id cleared, payment links retired, oauth state cleared. Settings will show "not connected" on next load.`
+      );
+      // 'ignored' is the closest of the CHECK-constrained outcomes — this
+      // event carries no money and none of the other four values fit
+      // ('recorded'/'duplicate'/'needs_review'/'refused' are all about a
+      // specific payment). `detail` carries the real story for anyone
+      // reading the ledger. account_id is set so the row is visible to
+      // the tenant it concerns, same rule as every other outcome here.
+      await finish({
+        account_id: account.id,
+        outcome: "ignored",
+        detail: "Stripe grant deauthorized from the connected account's own dashboard — disconnected here too",
+      });
+      return NextResponse.json({ received: true, outcome: "deauthorized" });
+    }
+
     const read = readConnectPaymentEvent(
       toConnectSessionEvent(event, connectedAccountId, session)
     );

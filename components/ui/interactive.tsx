@@ -33,9 +33,22 @@ function sizeOf(size?: string): Step | undefined {
 }
 
 /* ── ALERT DIALOG ────────────────────────────────────────────────────── */
-const AlertCtx = React.createContext<{ open: boolean; setOpen: (v: boolean) => void }>({
+const AlertCtx = React.createContext<{
+  open: boolean;
+  setOpen: (v: boolean) => void;
+  /** One id per AlertDialog.Root instance (React.useId(), generated here
+   *  rather than a fixed "i-alert-title" string) — Title and Content both
+   *  read it off context so they agree on the SAME id without either
+   *  hardcoding one. A fixed string meant a list of N rows each with its
+   *  own confirm dialog put N copies of id="i-alert-title" in the DOM, and
+   *  aria-labelledby resolves to the FIRST match in the document, so a
+   *  screen reader announced row 1's title no matter which row's dialog
+   *  was actually open. */
+  titleId: string;
+}>({
   open: false,
   setOpen: () => {},
+  titleId: "i-alert-title",
 });
 
 function AlertRoot({
@@ -49,6 +62,7 @@ function AlertRoot({
 }) {
   const [uncontrolled, setUncontrolled] = React.useState(false);
   const open = controlled ?? uncontrolled;
+  const titleId = React.useId();
   const setOpen = React.useCallback(
     (v: boolean) => {
       if (controlled === undefined) setUncontrolled(v);
@@ -56,7 +70,9 @@ function AlertRoot({
     },
     [controlled, onOpenChange]
   );
-  return <AlertCtx.Provider value={{ open, setOpen }}>{children}</AlertCtx.Provider>;
+  return (
+    <AlertCtx.Provider value={{ open, setOpen, titleId }}>{children}</AlertCtx.Provider>
+  );
 }
 
 function cloneWithClick(children: React.ReactNode, onAfter: () => void) {
@@ -87,9 +103,9 @@ const _AlertDialogParts = {
     children?: React.ReactNode;
     maxWidth?: string;
   }) {
-    const { open, setOpen } = React.useContext(AlertCtx);
+    const { open, setOpen, titleId } = React.useContext(AlertCtx);
     return (
-      <DialogShell open={open} onOpenChange={setOpen} labelledBy="i-alert-title">
+      <DialogShell open={open} onOpenChange={setOpen} labelledBy={titleId}>
         <div className="i-dialog-body" style={maxWidth ? { maxWidth } : undefined}>
           {children}
         </div>
@@ -97,8 +113,9 @@ const _AlertDialogParts = {
     );
   },
   Title: function AlertTitle({ children }: { children?: React.ReactNode }) {
+    const { titleId } = React.useContext(AlertCtx);
     return (
-      <h2 className="i-heading i-t4" id="i-alert-title">
+      <h2 className="i-heading i-t4" id={titleId}>
         {children}
       </h2>
     );
@@ -116,8 +133,15 @@ const _AlertDialogParts = {
     const { setOpen } = React.useContext(AlertCtx);
     return cloneWithClick(children, () => setOpen(false));
   },
+  // Radix's Action closed the dialog on click, on top of running the
+  // child's own onClick — call sites (the reminder send, the share-link
+  // rotate) still assume that. Rendering the child verbatim left the
+  // dialog open indefinitely after its mutation ran, so the success/error
+  // note that lands elsewhere on the page rendered BEHIND the still-open
+  // modal. cloneWithClick restores the close, same as Cancel.
   Action: function AlertAction({ children }: { children?: React.ReactNode }) {
-    return <>{children}</>;
+    const { setOpen } = React.useContext(AlertCtx);
+    return cloneWithClick(children, () => setOpen(false));
   },
 };
 
@@ -158,14 +182,45 @@ const _TabsParts = {
   List: function TabsList({
     children,
     color: _color,
+    "aria-label": ariaLabel,
+    "aria-labelledby": ariaLabelledBy,
     ...rest
-  }: { children?: React.ReactNode; color?: string } & Record<string, unknown>) {
+  }: {
+    children?: React.ReactNode;
+    color?: string;
+    "aria-label"?: string;
+    "aria-labelledby"?: string;
+  } & Record<string, unknown>) {
+    // A tablist with no accessible name announces as "tab list, N items" and
+    // nothing else. Every real call site passes aria-label (see
+    // docs/design/INSTRUMENT.md's Tabs entry); this default only catches the
+    // one that does not — components/ds/tabs.tsx makes its `label` prop
+    // required for the same reason, but the seam's compound API has no
+    // single prop to require it on, so it falls back here instead of
+    // shipping silently unlabelled.
+    const labelProps =
+      ariaLabel || ariaLabelledBy
+        ? { "aria-label": ariaLabel, "aria-labelledby": ariaLabelledBy }
+        : { "aria-label": "Tabs" };
     return (
-      <div className="i-tabs" role="tablist" {...(rest as Record<string, never>)}>
+      <div
+        className="i-tabs"
+        role="tablist"
+        {...labelProps}
+        {...(rest as Record<string, never>)}
+      >
         {children}
       </div>
     );
   },
+  /**
+   * Roving tabindex with Left/Right/Home/End activation, ported from
+   * components/ds/tabs.tsx — this seam's compound Root/List/Trigger/Content
+   * API has no single place to hold an ordered items array the way that
+   * component does, so the order comes from the DOM at keydown time: every
+   * `[role="tab"]` inside the nearest tablist ancestor, in the order they
+   * render, which is also the order a sighted user reads them in.
+   */
   Trigger: function TabsTrigger({
     value,
     children,
@@ -175,16 +230,46 @@ const _TabsParts = {
   }) {
     const ctx = React.useContext(TabsCtx);
     const selected = ctx.value === value;
+
+    function onKeyDown(e: React.KeyboardEvent<HTMLButtonElement>) {
+      const list = e.currentTarget.closest('[role="tablist"]');
+      if (!list) return;
+      const tabs = Array.from(list.querySelectorAll<HTMLElement>('[role="tab"]'));
+      const index = tabs.indexOf(e.currentTarget);
+      if (index === -1) return;
+      const map: Record<string, number> = {
+        ArrowRight: index + 1,
+        ArrowLeft: index - 1,
+        Home: 0,
+        End: tabs.length - 1,
+      };
+      const target = map[e.key];
+      if (target === undefined) return;
+      e.preventDefault();
+      // Wrap, so ArrowRight on the last tab returns to the first.
+      const next = (target + tabs.length) % tabs.length;
+      const el = tabs[next];
+      const nextValue = el?.dataset.tabsValue;
+      if (!el || !nextValue) return;
+      ctx.setValue(nextValue);
+      el.focus();
+    }
+
     return (
       <button
         type="button"
         role="tab"
+        id={`tab-${value}`}
+        aria-controls={`panel-${value}`}
         aria-selected={selected}
-        // Roving tabindex, matching components/ds/tabs.tsx: only the selected
-        // tab sits in the page's tab order.
+        data-tabs-value={value}
+        // Roving tabindex: only the selected tab sits in the page's tab
+        // order, and the arrow/Home/End handler above moves both focus and
+        // selection between the rest — matching components/ds/tabs.tsx.
         tabIndex={selected ? 0 : -1}
         className="i-tab"
         onClick={() => ctx.setValue(value)}
+        onKeyDown={onKeyDown}
       >
         {children}
       </button>
@@ -208,7 +293,13 @@ const _TabsParts = {
     const active = ctx.value === value;
     if (!active && !forceMount) return null;
     return (
-      <div role="tabpanel" hidden={!active} style={active ? style : { display: "none" }}>
+      <div
+        role="tabpanel"
+        id={`panel-${value}`}
+        aria-labelledby={`tab-${value}`}
+        hidden={!active}
+        style={active ? style : { display: "none" }}
+      >
         {children}
       </div>
     );
@@ -311,6 +402,7 @@ const RadioCtx = React.createContext<{
   name: string;
   value?: string;
   setValue: (v: string) => void;
+  disabled?: boolean;
 }>({ name: "", setValue: () => {} });
 
 function RadioGroupRoot({
@@ -318,6 +410,7 @@ function RadioGroupRoot({
   defaultValue,
   onValueChange,
   name,
+  disabled,
   children,
   ...rest
 }: {
@@ -325,6 +418,12 @@ function RadioGroupRoot({
   defaultValue?: string;
   onValueChange?: (v: string) => void;
   name?: string;
+  /** Spreading onto a plain <div role="radiogroup"> used to drop this
+   *  silently — a `disabled={!canEdit}` RadioGroup rendered fully
+   *  interactive for a read-only viewer, whose picks then reverted on
+   *  next render with no error. Threaded through context instead so every
+   *  RadioItem's underlying <input disabled> actually reflects it. */
+  disabled?: boolean;
   children?: React.ReactNode;
 } & Record<string, unknown>) {
   const generated = React.useId();
@@ -338,10 +437,12 @@ function RadioGroupRoot({
     [value, onValueChange]
   );
   return (
-    <RadioCtx.Provider value={{ name: name ?? generated, value: current, setValue }}>
+    <RadioCtx.Provider value={{ name: name ?? generated, value: current, setValue, disabled }}>
       {/* role=radiogroup so the set is announced as one control even though
-          the radios are plain inputs scattered through the markup. */}
-      <div role="radiogroup" {...(rest as Record<string, never>)}>
+          the radios are plain inputs scattered through the markup.
+          aria-disabled mirrors the state onto the group itself, alongside
+          the real disabled attribute each RadioItem's <input> now carries. */}
+      <div role="radiogroup" aria-disabled={disabled || undefined} {...(rest as Record<string, never>)}>
         {children}
       </div>
     </RadioCtx.Provider>
@@ -356,7 +457,12 @@ function RadioItem({
   const ctx = React.useContext(RadioCtx);
   return (
     <label
-      style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", cursor: "pointer" }}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "var(--space-2)",
+        cursor: ctx.disabled ? "not-allowed" : "pointer",
+      }}
       {...(rest as Record<string, never>)}
     >
       <input
@@ -365,6 +471,7 @@ function RadioItem({
         name={ctx.name}
         value={value}
         checked={ctx.value === value}
+        disabled={ctx.disabled}
         onChange={() => ctx.setValue(value)}
       />
       <span>{children}</span>

@@ -171,6 +171,17 @@ async function refreshSession(
     // cookie here — redirecting it to /login would silently break
     // provisioning and Stripe would just see 307s.
     path.startsWith("/api/stripe/") ||
+    // The daily reminders cron (vercel.json) is also machine-to-machine and
+    // carries no session — Vercel Cron sends `Authorization: Bearer
+    // $CRON_SECRET`, which the route compares in constant time. That is
+    // stronger than a cookie here; redirecting it to /login would silently
+    // kill the entire scheduled-reminders feature (a 307/200 login page,
+    // with no [reminders] log line and no error anywhere) while the manual
+    // "Run due reminders now" button keeps working because it rides the
+    // pilot's session — the exact silent-failure shape reminders-panel.tsx
+    // warns about. Every route named in vercel.json's crons[] must be on
+    // this allow-list; see tests/cron-allowlist.test.mjs.
+    normalizedPath === "/api/reminders/run" ||
     // The client-facing invoice share link (app/invoice/[token]/page.tsx,
     // deliberately OUTSIDE the (app) route group) is this product's one
     // page meant to be opened by someone with NO account at all — a

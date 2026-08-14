@@ -35,7 +35,7 @@ const LOGTEN_ALIASES: Record<string, string> = {
   dualreceivedtime: "dual_received_time",
   simulatortime: "simulator_time",
   simulatortype: "simulator_device_type",
-  daytakeoffs: "ignore",
+  daytakeoffs: "day_takeoffs",
   daylandingsfullstop: "day_landings_full_stop",
   daylandingstouchandgo: "day_landings_touch_go",
   nighttakeoffs: "night_takeoffs",

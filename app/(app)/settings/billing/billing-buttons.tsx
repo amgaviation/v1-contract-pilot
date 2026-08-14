@@ -6,6 +6,7 @@ import type { PlanTier } from "@/lib/entitlements";
 import {
   changePlan,
   openBillingPortal,
+  resubscribe,
   setCancelAtPeriodEnd,
   type BillingActionState,
 } from "./actions";
@@ -70,6 +71,71 @@ export function ChangePlanButtons({
             color={direction === "Upgrade" ? undefined : "gray"}
           >
             {pending ? "Confirming with Stripe…" : `${direction} — ${annualLabel}`}
+          </Button>
+        ) : null}
+        {state.error ? (
+          <Text size="1" color="red">
+            {state.error}
+          </Text>
+        ) : null}
+      </Flex>
+    </form>
+  );
+}
+
+/**
+ * The resubscribe control for ONE target tier — what a canceled or
+ * incomplete_expired account sees in place of ChangePlanButtons, because
+ * changePlan's stripe.subscriptions.update() hard-fails on a subscription
+ * Stripe considers dead. Same two-button-one-form shape as
+ * ChangePlanButtons; the server action starts a brand-new Checkout session
+ * for the SAME Stripe customer instead of updating the old subscription.
+ */
+export function ResubscribeButtons({
+  tier,
+  monthlyLabel,
+  annualLabel,
+  disabled,
+}: {
+  tier: PlanTier;
+  monthlyLabel: string | null;
+  annualLabel: string | null;
+  disabled?: boolean;
+}) {
+  const [state, formAction, pending] = useActionState(resubscribe, initialState);
+
+  if (monthlyLabel === null && annualLabel === null) {
+    return (
+      <Text size="1" color="gray">
+        Not available yet.
+      </Text>
+    );
+  }
+
+  return (
+    <form action={formAction}>
+      <input type="hidden" name="tier" value={tier} />
+      <Flex direction="column" gap="2">
+        {monthlyLabel !== null ? (
+          <Button
+            type="submit"
+            name="interval"
+            value="monthly"
+            disabled={disabled || pending}
+            variant="solid"
+          >
+            {pending ? "Starting checkout…" : `Resubscribe — ${monthlyLabel}`}
+          </Button>
+        ) : null}
+        {annualLabel !== null ? (
+          <Button
+            type="submit"
+            name="interval"
+            value="annual"
+            disabled={disabled || pending}
+            variant="soft"
+          >
+            {pending ? "Starting checkout…" : `Resubscribe — ${annualLabel}`}
           </Button>
         ) : null}
         {state.error ? (

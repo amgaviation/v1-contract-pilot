@@ -1,5 +1,6 @@
 import "server-only";
 import type Stripe from "stripe";
+import { getStripe } from "./server";
 import { createServiceClient } from "@/lib/supabase/service-role";
 import { tierForPriceId, type PlanTier } from "@/lib/entitlements";
 
@@ -109,7 +110,20 @@ export async function provisionAccountFromCheckout(
     .maybeSingle();
 
   if (existing) {
-    return { accountId: (existing as { id: string }).id, created: false };
+    const accountId = (existing as { id: string }).id;
+    // The membership can be missing even though the account exists: the
+    // FIRST delivery may have created the account row, then failed on the
+    // member insert below (transient DB error, pool exhaustion) and
+    // thrown — which 500s the webhook and gets Stripe to retry. Without
+    // this check, the retry hits this short-circuit and returns
+    // immediately, the event is marked processed, and Stripe stops
+    // redelivering: the paying customer is left permanently outside their
+    // own tenant (RLS makes the account invisible with no membership row).
+    // So every pass through this branch re-verifies the owner membership
+    // exists and repairs it if not, rather than trusting that "account
+    // exists" implies "membership exists".
+    await ensureOwnerMembership(supabase, accountId, userId);
+    return { accountId, created: false };
   }
 
   // Onboarding prefill lives in the signing-up user's auth metadata
@@ -191,25 +205,67 @@ export async function provisionAccountFromCheckout(
   // The membership is what makes the account reachable through RLS — the
   // account row is invisible to its own owner until this row exists, so a
   // failure here would strand a paying customer outside their own tenant.
+  await ensureOwnerMembership(supabase, accountId, userId);
+
+  return { accountId, created: true };
+}
+
+/**
+ * Verifies the (accountId, userId) owner membership exists and inserts it
+ * if not. Called on EVERY path through provisionAccountFromCheckout — both
+ * the fresh-account insert above and the `existing` short-circuit — so a
+ * membership insert that failed on an earlier delivery (leaving the
+ * account row without its owner row) gets repaired on the next retry
+ * instead of the retry returning early and Stripe giving up on redelivery.
+ * Throws on a genuine insert failure so the webhook 500s and Stripe tries
+ * again, same as the original insert this replaces.
+ */
+async function ensureOwnerMembership(
+  supabase: ReturnType<typeof createServiceClient>,
+  accountId: string,
+  userId: string
+): Promise<void> {
+  const { data: membership } = await supabase
+    .from("account_members")
+    .select("id")
+    .eq("account_id", accountId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (membership) return;
+
   const { error: memberError } = await supabase
     .from("account_members")
     .insert({ account_id: accountId, user_id: userId, role: "owner" } as never);
 
-  if (memberError) {
+  // A unique-violation here means a concurrent delivery won the race and
+  // inserted the same (account_id, user_id) row first — not a real
+  // failure, so it is not thrown.
+  if (memberError && memberError.code !== "23505") {
     throw new Error(
-      `Created account ${accountId} but failed to add owner ${userId}: ${memberError.message}`
+      `Account ${accountId} exists but failed to add/repair owner ${userId}: ${memberError.message}`
     );
   }
-
-  return { accountId, created: true };
 }
 
 /**
  * Syncs billing state from a subscription lifecycle event. Returns false
  * when no account matches yet — which is normal, not an error: a
  * customer.subscription.created can arrive before the
- * checkout.session.completed that provisions the tenant, and Stripe will
- * redeliver.
+ * checkout.session.completed that provisions the tenant.
+ *
+ * Stripe does NOT redeliver an acknowledged event on its own — returning
+ * false is not itself what keeps this safe. The route (handleEvent in
+ * app/api/stripe/webhook/route.ts) is what makes it safe: it throws on a
+ * `false` return for a subscription event less than ~1 hour old, which
+ * turns the response into a 500 and makes Stripe redeliver for real. Past
+ * that window it acks anyway, on the theory that a subscription which
+ * still matches no account after an hour never will (a dashboard-created
+ * test object, or an event for a different Stripe account). The system
+ * stays correct in the normal case regardless, because
+ * provisionAccountFromCheckout re-fetches the live subscription at
+ * checkout time — a pre-provisioning subscription event's state is always
+ * superseded by that re-fetch, whether or not it is ever redelivered.
  */
 export async function syncSubscriptionState(
   subscription: Stripe.Subscription,
@@ -242,22 +298,7 @@ export async function syncSubscriptionState(
 
   if (!accountId) return false;
 
-  // plan_tier moves ONLY when the event's price maps to a tier. A null
-  // mapping (no price on the payload, or an unmapped price — see
-  // tierFromSubscription) leaves the existing tier standing, so a
-  // malformed or misconfigured event can degrade the STATUS sync's
-  // company but never silently re-tier a paying account.
-  const tier = tierFromSubscription(subscription);
   const incoming = new Date(eventCreatedAt * 1000).toISOString();
-  const update: Record<string, unknown> = {
-    stripe_subscription_id: subscription.id,
-    status: mapStatus(subscription.status),
-    trial_ends_at: trialEndsAt(subscription),
-    // Advance the watermark to this event's created time in the SAME write
-    // that applies its state, so the two can never separate.
-    last_billing_event_at: incoming,
-  };
-  if (tier) update.plan_tier = tier;
 
   // ORDERING SAFETY IS THE WHERE CLAUSE (Finding 4). The webhook's
   // isSuperseded guard only sees events whose processed_at is already set,
@@ -272,9 +313,9 @@ export async function syncSubscriptionState(
   // whichever writes last. The column is NOT NULL DEFAULT '-infinity'
   // (migration 20260812310000), so a strict `.lt` needs no null branch and
   // a brand-new row's first real event always applies.
-  const { error } = await supabase
+  const { error, count } = await supabase
     .from("accounts")
-    .update(update as never)
+    .update(buildSubscriptionUpdate(subscription, incoming) as never, { count: "exact" })
     .eq("id", accountId)
     .lt("last_billing_event_at", incoming);
 
@@ -283,7 +324,65 @@ export async function syncSubscriptionState(
       `Failed to sync subscription ${subscription.id}: ${error.message}`
     );
   }
-  // Zero rows updated is NOT an error here: it means a newer (or equal)
-  // event already set the watermark and this one was correctly dropped.
+
+  // Zero rows updated normally means a genuinely newer event already set
+  // the watermark and this one was correctly dropped. But Stripe's
+  // event.created has ONE-SECOND granularity, so two DISTINCT events for
+  // the same subscription minted in the same second (an upgrade
+  // immediately followed by a proration, or dashboard edits in quick
+  // succession) tie on the watermark — and a strict `.lt` drops BOTH the
+  // stale one and the genuinely newer one on a tie, keeping whichever
+  // happened to commit first. So on a zero-row miss, check whether the
+  // stored watermark is an exact tie (not a genuine "newer already won")
+  // and, if so, re-retrieve the subscription LIVE and reapply with `.lte`
+  // — the live object is authoritative regardless of which same-second
+  // event this was, so it is safe to let it win the tie unconditionally.
+  if (count === 0) {
+    const { data: current } = await supabase
+      .from("accounts")
+      .select("last_billing_event_at")
+      .eq("id", accountId)
+      .maybeSingle();
+    const storedWatermark = (current as { last_billing_event_at: string } | null)
+      ?.last_billing_event_at;
+
+    if (storedWatermark === incoming) {
+      const live = await getStripe().subscriptions.retrieve(subscription.id);
+      const { error: tieError } = await supabase
+        .from("accounts")
+        .update(buildSubscriptionUpdate(live, incoming) as never)
+        .eq("id", accountId)
+        .lte("last_billing_event_at", incoming);
+      if (tieError) {
+        throw new Error(
+          `Failed to reconcile same-second tie for subscription ${subscription.id}: ${tieError.message}`
+        );
+      }
+    }
+  }
+
   return true;
+}
+
+/** The account-row fields one subscription lifecycle event applies. */
+function buildSubscriptionUpdate(
+  subscription: Stripe.Subscription,
+  incomingWatermark: string
+): Record<string, unknown> {
+  // plan_tier moves ONLY when the event's price maps to a tier. A null
+  // mapping (no price on the payload, or an unmapped price — see
+  // tierFromSubscription) leaves the existing tier standing, so a
+  // malformed or misconfigured event can degrade the STATUS sync's
+  // company but never silently re-tier a paying account.
+  const tier = tierFromSubscription(subscription);
+  const update: Record<string, unknown> = {
+    stripe_subscription_id: subscription.id,
+    status: mapStatus(subscription.status),
+    trial_ends_at: trialEndsAt(subscription),
+    // Advance the watermark to this event's created time in the SAME write
+    // that applies its state, so the two can never separate.
+    last_billing_event_at: incomingWatermark,
+  };
+  if (tier) update.plan_tier = tier;
+  return update;
 }

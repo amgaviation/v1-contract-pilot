@@ -69,11 +69,20 @@ export default function LinesEditor({
   lines,
   editable,
   rebillable,
+  categoryLabels,
 }: {
   invoiceId: string;
   lines: LineRow[];
   editable: boolean;
   rebillable: RebillableExpense[];
+  /**
+   * The tenant's own expense-category vocabulary (lib/custom-options.ts),
+   * resolved server-side via loadOptionLabels("expense_category") — the
+   * same source createInvoiceDraft/addRebillExpenseLine now write onto the
+   * line itself. Falls back to labels.ts's static map for any key it
+   * doesn't cover, same as those server actions do.
+   */
+  categoryLabels: Record<string, string>;
 }) {
   if (lines.length === 0 && !editable) {
     return <Text color="gray">No line items.</Text>;
@@ -111,7 +120,12 @@ export default function LinesEditor({
               <Text weight="bold">Rebillable expenses</Text>
               <Flex direction="column" gap="2" mt="2">
                 {rebillable.map((expense) => (
-                  <RebillRow key={expense.id} invoiceId={invoiceId} expense={expense} />
+                  <RebillRow
+                    key={expense.id}
+                    invoiceId={invoiceId}
+                    expense={expense}
+                    categoryLabels={categoryLabels}
+                  />
                 ))}
               </Flex>
             </Box>
@@ -480,18 +494,21 @@ function AddLineForm({ invoiceId }: { invoiceId: string }) {
 function RebillRow({
   invoiceId,
   expense,
+  categoryLabels,
 }: {
   invoiceId: string;
   expense: RebillableExpense;
+  categoryLabels: Record<string, string>;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [added, setAdded] = useState(false);
+  const label = categoryLabels[expense.category] ?? categoryLabel(expense.category);
 
   return (
     <Flex align="center" gap="4">
       <Text color="gray" style={{ flex: 1 }}>
-        {categoryLabel(expense.category)} {expense.vendor ? `— ${expense.vendor}` : ""} (
+        {label} {expense.vendor ? `— ${expense.vendor}` : ""} (
         {formatDate(expense.incurred_on)}) ·{" "}
         <span className="tnum">{formatCents(expense.amount_cents)}</span>
       </Text>
@@ -499,7 +516,7 @@ function RebillRow({
         variant="outline"
         size="2"
         disabled={pending || added}
-        aria-label={`Add to invoice — ${categoryLabel(expense.category)}${
+        aria-label={`Add to invoice — ${label}${
           expense.vendor ? ` — ${expense.vendor}` : ""
         } (${formatDate(expense.incurred_on)})`}
         onClick={() => {

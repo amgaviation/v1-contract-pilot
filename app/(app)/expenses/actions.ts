@@ -209,9 +209,7 @@ async function uploadReceipt(
   supabase: Awaited<ReturnType<typeof createClient>>,
   accountId: string,
   expenseId: string,
-  file: File,
-  /** The object this one replaces, removed once the new one is in place. */
-  previousPath?: string | null
+  file: File
 ): Promise<{ path: string | null; error: string | null }> {
   if (file.size === 0) return { path: null, error: null };
   if (file.size > MAX_RECEIPT_BYTES) {
@@ -233,7 +231,16 @@ async function uploadReceipt(
   // storage API treats "/" as a separator, so an unsanitised filename
   // could push the object outside its expense folder.
   const safeName = file.name.replace(/[^\w.\-]+/g, "_").slice(-120) || "receipt";
-  const path = `${accountId}/${expenseId}/${safeName}`;
+  // A timestamp prefix (fixed after review) guarantees this upload can
+  // never land on the SAME object key as whatever the expense already
+  // points at, even when the pilot re-attaches a file with an identical
+  // name. That used to matter because `upsert` overwrites an identical key
+  // in place: replacing receipt.jpg with a new receipt.jpg rewrote the old
+  // object's bytes before the caller had any row update, success or
+  // failure, to react to. With a unique key, the old object is untouched
+  // until the caller (updateExpense) has confirmed the row update that
+  // will make it safe to remove.
+  const path = `${accountId}/${expenseId}/${Date.now()}-${safeName}`;
 
   const { error } = await supabase.storage
     .from(RECEIPT_BUCKET)
@@ -244,21 +251,24 @@ async function uploadReceipt(
     return { path: null, error: "Couldn't upload that receipt. Try again." };
   }
 
-  // `upsert` only overwrites when the sanitised filename is byte-identical,
-  // so attaching b.jpg over a.jpg repoints the row and strands a.jpg —
-  // still readable to anyone in the account, and billing storage forever.
-  // Removed only AFTER the replacement is safely written, so a failed
-  // upload never destroys the receipt the pilot already had.
-  if (previousPath && previousPath !== path) {
-    const { error: removeError } = await supabase.storage
-      .from(RECEIPT_BUCKET)
-      .remove([previousPath]);
-    if (removeError) {
-      console.error("[storage] replaced receipt remove", removeError.message);
-    }
-  }
-
   return { path, error: null };
+}
+
+/**
+ * Removes a receipt object, logging rather than surfacing failure — same
+ * posture as deleteExpense's own storage cleanup below: the row-level
+ * outcome (which the caller has already decided) is the thing worth
+ * reporting to the pilot, not a lingering object in a private bucket.
+ */
+async function removeReceiptObject(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  path: string,
+  context: string
+): Promise<void> {
+  const { error } = await supabase.storage.from(RECEIPT_BUCKET).remove([path]);
+  if (error) {
+    console.error(`[storage] ${context}`, error.message);
+  }
 }
 
 export async function createExpense(
@@ -377,13 +387,7 @@ export async function updateExpense(
   const file = formData.get("receipt");
   let receiptPath: string | null = null;
   if (file instanceof File && file.size > 0) {
-    const { path, error: uploadError } = await uploadReceipt(
-      supabase,
-      account.id,
-      id,
-      file,
-      previousPath
-    );
+    const { path, error: uploadError } = await uploadReceipt(supabase, account.id, id, file);
     if (uploadError) return { error: uploadError, values: echo(formData) };
     receiptPath = path;
   }
@@ -399,16 +403,40 @@ export async function updateExpense(
     .eq("id", id)
     .eq("account_id", account.id);
 
-  if (updateError) {
-    return {
-      error: friendlyDbError(updateError, "expenses.update"),
-      values: echo(formData),
-    };
-  }
-  // PostgREST returns 200 with no error for a write that matched nothing,
-  // so "no error" is not "it saved".
-  if (count === 0) {
+  // The replacement (if any) was uploaded under a key that can never
+  // collide with `previousPath` — see uploadReceipt — so the OLD object is
+  // still exactly what it was before this request, no matter what happens
+  // to the row update. That matters because this update has real,
+  // reachable failure paths: expenses_protect_billed_trip on a billed
+  // rebill expense, the invoice_lines composite FK on an invoiced
+  // expense's treatment change, a concurrent delete (count === 0). On any
+  // of those the row still points at the OLD receipt — which, unlike
+  // before this fix, still exists — instead of "View receipt" failing
+  // forever for a rebilled, invoiced expense's audit evidence. The just
+  // uploaded object is the one cleaned up instead, since nothing will ever
+  // point at it.
+  if (updateError || count === 0) {
+    if (receiptPath) {
+      await removeReceiptObject(supabase, receiptPath, "orphaned receipt remove after failed update");
+    }
+    if (updateError) {
+      return {
+        error: friendlyDbError(updateError, "expenses.update"),
+        values: echo(formData),
+      };
+    }
+    // PostgREST returns 200 with no error for a write that matched
+    // nothing, so "no error" is not "it saved".
     return { error: "That expense no longer exists.", values: echo(formData) };
+  }
+
+  // Only now — with the row durably pointing at the new object — is the
+  // previous one safe to remove. `upsert` only overwrote in place when the
+  // sanitised filename was byte-identical, so a stale previous object
+  // would otherwise sit there, still readable to anyone in the account,
+  // billing storage forever.
+  if (receiptPath && previousPath && previousPath !== receiptPath) {
+    await removeReceiptObject(supabase, previousPath, "replaced receipt remove");
   }
 
   revalidatePath("/expenses");
