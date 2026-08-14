@@ -32,20 +32,31 @@
 -- ===========================================================================
 
 create table if not exists pilot.sample_connect_accounts (
-  -- One row per user. The auth user is the natural key here rather than
-  -- pilot.accounts.id, because the sample is a per-person demo and does not
-  -- model the multi-seat account the real product does.
-  user_id uuid primary key references auth.users (id) on delete cascade,
+  -- The auth user is the natural key here rather than pilot.accounts.id,
+  -- because the sample is a per-person demo and does not model the
+  -- multi-seat account the real product does.
+  user_id uuid not null references auth.users (id) on delete cascade,
 
   -- The V2 account id (acct_…). Text, not uuid — Stripe's format.
   stripe_account_id text not null,
 
   -- Which Stripe mode minted it. A test-mode acct_ id is meaningless to a
-  -- live-mode key and vice versa; recording it makes a mode mix-up legible
-  -- instead of presenting as "account not found".
+  -- live-mode key and vice versa.
+  --
+  -- PART OF THE PRIMARY KEY, NOT JUST A RECORDED FACT. Keying on user_id
+  -- alone looks tidier and quietly bricks the sample the day a deployment
+  -- switches from a test key to a live one: the lookup returns the user's
+  -- TEST account, every live-mode call fails with "account not found", and
+  -- because there is no update or delete policy (see below) the user cannot
+  -- replace it. They would be stuck until somebody edited this table by
+  -- hand. Keying on (user_id, livemode) lets the same person hold one
+  -- account per mode, which is also what you want while developing — a test
+  -- merchant and a live merchant are genuinely different merchants.
   livemode boolean not null default false,
 
   created_at timestamptz not null default now(),
+
+  constraint sample_connect_accounts_pkey primary key (user_id, livemode),
 
   -- One Stripe account maps to at most one user, so a mis-scoped write shows
   -- up as a constraint violation rather than two dashboards fighting over the
@@ -83,5 +94,12 @@ create policy sample_connect_accounts_insert
 -- browser: the account this platform created is the account it must keep
 -- talking to. Starting over means deleting the row with service-role access,
 -- which is a considered act rather than a stray PATCH.
+--
+-- This is only safe BECAUSE the primary key includes livemode. With
+-- user_id alone, "no way to change the row" plus "the row holds a test-mode
+-- id" would equal "this user can never use the sample in live mode", and an
+-- immutability rule that traps people is not discipline, it is a bug.
+-- Switching modes now creates a second row rather than needing to edit the
+-- first.
 
 grant select, insert on pilot.sample_connect_accounts to authenticated;

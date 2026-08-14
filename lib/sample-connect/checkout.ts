@@ -206,10 +206,33 @@ export async function getPlatformSubscriptionStatus(
       // Same key as checkout: the connected account IS the customer.
       customer_account: accountId,
       status: "all",
-      limit: 1,
+      // Enough to see past cancelled ones. `limit: 1` plus `status: 'all'`
+      // returns only the NEWEST subscription, which reports "not subscribed"
+      // for an account whose latest subscription is cancelled while an
+      // earlier one is still running — and then offers them a second
+      // checkout for a plan they already pay for.
+      limit: 20,
     });
 
-    const subscription = subscriptions.data[0];
+    const priceId = platformPriceId();
+
+    // ONLY THIS SAMPLE'S PLAN COUNTS. An account can carry subscriptions
+    // this sample knows nothing about — including, on this very platform,
+    // the product's own real plans. Reporting one of those as "subscribed"
+    // to the sample plan would be a straightforwardly wrong answer, and
+    // reporting it as unsubscribed would hide a live one.
+    const isSamplePlan = (subscription: (typeof subscriptions.data)[number]) =>
+      priceId ? subscription.items.data.some((item) => item.price?.id === priceId) : true;
+
+    const relevant = subscriptions.data.filter(isSamplePlan);
+
+    // Prefer a subscription that is actually running. Falling back to the
+    // most recent one keeps a useful status ("canceled", "past_due") on the
+    // dashboard rather than an empty state that implies nothing ever
+    // happened.
+    const subscription =
+      relevant.find((s) => s.status === "active" || s.status === "trialing") ?? relevant[0];
+
     if (!subscription) return { status: null, currentPeriodEnd: null };
 
     // `current_period_end` moved onto the subscription item in recent API

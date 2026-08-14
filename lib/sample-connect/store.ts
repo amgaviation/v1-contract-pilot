@@ -30,7 +30,23 @@ type SampleAccountRow = {
   livemode: boolean;
 };
 
-/** The Stripe account belonging to this user, or null if they have none yet. */
+/**
+ * Which Stripe mode the configured key is in.
+ *
+ * Every read and write below is scoped by this. A test-mode `acct_…` is
+ * meaningless to a live-mode key — the API answers "account not found" — so
+ * a mapping made in one mode must never be handed to the other. Scoping the
+ * lookup means switching keys presents as "you have no account yet, onboard
+ * again", which is the truth, instead of a broken account nobody can replace.
+ */
+function currentLivemode(): boolean {
+  return (process.env.STRIPE_SECRET_KEY ?? "").startsWith("sk_live_");
+}
+
+/**
+ * The Stripe account belonging to this user IN THE CURRENT MODE, or null if
+ * they have none yet.
+ */
 export async function getSampleAccountId(userId: string): Promise<string | null> {
   const supabase = await createClient();
 
@@ -40,6 +56,10 @@ export async function getSampleAccountId(userId: string): Promise<string | null>
     .from("sample_connect_accounts" as any)
     .select("stripe_account_id")
     .eq("user_id", userId)
+    // ← Mode-scoped. See currentLivemode() above for why this is not
+    //   optional. The table's primary key is (user_id, livemode), so a user
+    //   can legitimately hold one account per mode.
+    .eq("livemode", currentLivemode())
     .maybeSingle();
 
   if (error) {
@@ -69,14 +89,17 @@ export async function getSampleAccountId(userId: string): Promise<string | null>
 export async function saveSampleAccountId(params: {
   userId: string;
   stripeAccountId: string;
-  livemode: boolean;
 }): Promise<{ error: string | null }> {
   const supabase = await createClient();
 
   const row: SampleAccountRow = {
     user_id: params.userId,
     stripe_account_id: params.stripeAccountId,
-    livemode: params.livemode,
+    // Taken from the key that just created the account rather than passed in
+    // by the caller: the two can only disagree by mistake, and a row whose
+    // livemode does not match the account it names is unreadable forever
+    // (the lookup filters on exactly this column).
+    livemode: currentLivemode(),
   };
 
   const { error } = await supabase

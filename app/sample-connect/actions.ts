@@ -49,12 +49,11 @@ export async function startSampleOnboarding() {
     // Persist the mapping BEFORE redirecting. If the redirect happened first
     // and the write failed, the next click would create a SECOND Stripe
     // account for the same user — orphaning the first with no way back to it.
+    // The mode is derived inside saveSampleAccountId from the key that just
+    // created the account, so it cannot disagree with reality.
     const saved = await saveSampleAccountId({
       userId: user.id,
       stripeAccountId: accountId,
-      // Test-mode keys mint test-mode accounts; recording which makes a mode
-      // mix-up legible later.
-      livemode: (process.env.STRIPE_SECRET_KEY ?? "").startsWith("sk_live_"),
     });
     if (saved.error) throw new Error(saved.error);
   }
