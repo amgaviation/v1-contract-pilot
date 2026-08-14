@@ -113,7 +113,7 @@ function LegFieldGrid({
           defaultValue={initial("night_hours")}
         />
         <Text size="1" color="gray">
-          14 CFR 1.1: civil twilight to civil twilight — not the 61.57(b) takeoff/landing window below
+          Civil twilight to civil twilight. Not the same window as the takeoff/landing counts below. (14 CFR 1.1)
         </Text>
       </Flex>
       <Flex direction="column" gap="1">
@@ -129,7 +129,7 @@ function LegFieldGrid({
           defaultValue={initial("instrument_actual_hours")}
         />
         <Text size="1" color="gray">
-          14 CFR 61.51(b)(3)(ii) — actual and simulated are logged separately
+          Log actual and simulated instrument time separately. (14 CFR 61.51(b)(3)(ii))
         </Text>
       </Flex>
       <Flex direction="column" gap="1">
@@ -221,7 +221,7 @@ function LegFieldGrid({
           defaultValue={initial("night_takeoffs", "0")}
         />
         <Text size="1" color="gray">
-          61.57(b): 1 hr after sunset – 1 hr before sunrise
+          1 hour after sunset to 1 hour before sunrise. (61.57(b))
         </Text>
       </Flex>
       <Flex direction="column" gap="1">
@@ -237,7 +237,7 @@ function LegFieldGrid({
           defaultValue={initial("night_landings_full_stop", "0")}
         />
         <Text size="1" color="gray">
-          Counts for 61.57(b): 1 hr after sunset – 1 hr before sunrise (not the same window as Night above)
+          Counts toward 61.57(b) currency: 1 hour after sunset to 1 hour before sunrise. Not the same window as Night above.
         </Text>
       </Flex>
       <Flex direction="column" gap="1">
@@ -385,7 +385,7 @@ function DeleteLegButton({
         <AlertDialog.Content maxWidth="440px">
           <AlertDialog.Title>Remove this leg?</AlertDialog.Title>
           <AlertDialog.Description size="2">
-            This removes the leg — its block time and its FAR 61.57 currency counts (night
+            This removes the leg. Its block time and its FAR 61.57 currency counts (night
             takeoffs, full-stop and touch-and-go night landings, approaches, holds) go with
             it. This can&rsquo;t be undone. If you just need to fix a typo, cancel and use Edit
             instead.

@@ -174,7 +174,7 @@ export default function SharePanel({
               <AlertDialog.Content maxWidth="420px">
                 <AlertDialog.Title>Replace this client link?</AlertDialog.Title>
                 <AlertDialog.Description size="2">
-                  The link you already sent stops working immediately, if your client
+                  The link you already sent stops working immediately. If your client
                   has it bookmarked or in their inbox, it will 404 for them. You&rsquo;ll
                   get a new link to send instead.
                 </AlertDialog.Description>

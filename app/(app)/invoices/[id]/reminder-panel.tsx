@@ -208,7 +208,7 @@ export default function ReminderPanel({
             <Box mt="2">
               {lateFee.raised.map((fee) => (
                 <Text as="div" size="1" color="gray" key={fee.id}>
-                  {fee.amount} raised {fee.when},{" "}
+                  {fee.amount} raised {fee.when}:{" "}
                   <RadixLink asChild>
                     <NextLink href={`/invoices/${fee.id}`}>
                       {fee.number ?? "draft invoice"}

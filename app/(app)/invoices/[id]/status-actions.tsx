@@ -57,8 +57,8 @@ function NoteTooLong({ value }: { value: string }) {
   return (
     <Text as="div" size="1" color="red" mt="1">
       {over.toLocaleString()} character{over === 1 ? "" : "s"} over the{" "}
-      {MAX_CUSTOM_MESSAGE_CHARS.toLocaleString()}-character limit. Shorten it,
-      nothing will be sent until you do.
+      {MAX_CUSTOM_MESSAGE_CHARS.toLocaleString()}-character limit. Shorten it.
+      Nothing will be sent until you do.
     </Text>
   );
 }
@@ -458,9 +458,9 @@ export default function StatusActions({
               </AlertDialog.Root>
               <Text as="div" size="1" color="gray" mt="2">
                 {automaticChase === "live"
-                  ? "Reminders for this client also go out on their own, see the Reminders panel below for what is scheduled, and to pause it for this invoice."
+                  ? "Reminders for this client also go out on their own. See the Reminders panel below for what is scheduled, and to pause it for this invoice."
                   : automaticChase === "paused"
-                    ? `Automatic reminders are paused for this invoice, so chasing it is up to you. ${clientName}’s other open invoices are still chased on their schedule, see the Reminders panel below.`
+                    ? `Automatic reminders are paused for this invoice, so chasing it is up to you. ${clientName}’s other open invoices are still chased on their schedule. See the Reminders panel below.`
                     : "You choose when to chase. Nothing goes out automatically for this client."}
               </Text>
             </>
