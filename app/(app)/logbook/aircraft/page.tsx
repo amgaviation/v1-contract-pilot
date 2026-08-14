@@ -180,7 +180,7 @@ export default async function AircraftPage() {
               </Callout.Icon>
               <Callout.Text>
                 We couldn&rsquo;t check which tails you&rsquo;ve flown but not added
-                yet — so this page isn&rsquo;t offering any. You can still add one by
+                yet, so this page isn&rsquo;t offering any. You can still add one by
                 hand.
               </Callout.Text>
             </Callout.Root>
@@ -212,7 +212,7 @@ export default async function AircraftPage() {
                 </Callout.Root>
               ) : byType.length === 0 ? (
                 <Text size="2" color="gray">
-                  Nothing to group yet — log a flight, or import your logbook.
+                  Nothing to group yet. Log a flight, or import your logbook.
                 </Text>
               ) : (
                 <Table.Root variant="ghost">

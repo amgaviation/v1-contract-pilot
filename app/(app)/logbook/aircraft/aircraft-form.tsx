@@ -161,7 +161,7 @@ export default function AircraftForm({
               defaultValue={initial("tail_number", values.tail_number)}
             />
             <Text size="1" color="gray">
-              Write it however you like — N447SP, N-447SP and n447sp are the same
+              Write it however you like: N447SP, N-447SP, and n447sp are the same
               airframe here.
             </Text>
           </Flex>
@@ -184,7 +184,7 @@ export default function AircraftForm({
               defaultValue={initial("type_designator", values.type_designator)}
             />
             <Text size="1" color="gray">
-              Optional — C560, BE40, PC12.
+              Optional: C560, BE40, PC12.
             </Text>
           </Flex>
         </Grid>
@@ -296,7 +296,7 @@ export default function AircraftForm({
             Worth setting on a taildragger. Under 14 CFR 61.57(a)(1)(ii), if the
             airplane to be flown is an airplane with a tailwheel, the three required
             takeoffs and landings must have been made to a full stop in a tailwheel
-            airplane. Leaving this unrecorded is fine — nothing here will assume
+            airplane. Leaving this unrecorded is fine. Nothing here will assume
             tricycle.
           </Text>
         </Flex>
