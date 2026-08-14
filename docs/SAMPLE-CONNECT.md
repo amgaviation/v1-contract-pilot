@@ -100,6 +100,11 @@ Stripe Dashboard → Connect. The sample creates accounts itself through the V2
 API, so there is no OAuth client id and no redirect URI to register — that is
 the production integration's requirement, not this one.
 
+**Do this before creating the webhook destinations.** Until the account is set
+up as a Connect platform, the destination form warns *"Your account is not set
+up as a Connect platform"* and Connect events are not delivered, whichever
+scope you pick.
+
 ### 4. Webhooks
 
 Two endpoints, **two different payload styles**, two different secrets.
@@ -112,8 +117,33 @@ stripe listen \
   --forward-thin-to localhost:3000/api/stripe/sample-connect/webhook-thin
 ```
 
-In the dashboard: *Events from* → **Connected accounts**, *Show advanced
-options* → *Payload style* → **Thin**.
+In the dashboard: *Events from* → **Your account** (not "Connected accounts" —
+see below), *Show advanced options* → *Payload style* → **Thin**.
+
+> **The V2 routing rule, which is the opposite of what you'd guess.** Stripe's
+> dashboard says it plainly: *"Accounts v2 events route differently than v1.
+> Events for v2 accounts that belong directly to your platform are delivered to
+> **Your account** destinations — not **Connected accounts** as in v1. Events
+> for v2 accounts that belong to your connected accounts (such as their
+> customers and recipients) are delivered to **Connected accounts**
+> destinations. To receive both, create two separate destinations."*
+>
+> This sample creates v2 accounts as the platform, so they belong directly to
+> it and their events land on the **platform** scope. Choose "Connected
+> accounts" and this endpoint silently receives nothing.
+>
+> The production integration in this same repo needs the **opposite** setting
+> (`/api/stripe/connect-webhook` genuinely is "events on connected accounts"),
+> because it handles V1-style direct charges on Standard accounts. Both are
+> correct. Don't reconcile them.
+
+Both sample endpoints therefore sit on the **Your account** scope: the thin one
+above and the snapshot one below.
+
+If the dashboard warns *"Your account is not set up as a Connect platform"*,
+enable Connect first at
+[dashboard.stripe.com/connect](https://dashboard.stripe.com/connect) — until
+then no Connect events of any scope are delivered.
 
 **Subscription events — snapshot:**
 

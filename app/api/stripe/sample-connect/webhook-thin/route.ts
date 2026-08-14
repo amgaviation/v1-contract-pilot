@@ -27,7 +27,7 @@ import { getSampleStripe } from "@/lib/sample-connect/client";
  *
  * ── SETTING THIS UP ───────────────────────────────────────────────────────
  * Dashboard → Developers → Webhooks → Add destination:
- *   1. Events from:      **Connected accounts**
+ *   1. Events from:      **Your account**   ← yes, really. See below.
  *   2. Show advanced options → Payload style: **Thin**
  *   3. Events: type "v2" to filter, then select
  *        v2.core.account[requirements].updated
@@ -35,6 +35,33 @@ import { getSampleStripe } from "@/lib/sample-connect/client";
  *        v2.core.account[configuration.customer].capability_status_updated
  *   4. URL: https://your-domain.com/api/stripe/sample-connect/webhook-thin
  *   5. Copy the signing secret into SAMPLE_CONNECT_THIN_WEBHOOK_SECRET
+ *
+ * ── WHY "YOUR ACCOUNT" AND NOT "CONNECTED ACCOUNTS" ───────────────────────
+ * This is the single most counter-intuitive thing about V2 accounts, and
+ * picking the obvious-looking option means this endpoint receives NOTHING.
+ * Stripe's own dashboard states the rule:
+ *
+ *   "Accounts v2 events route differently than v1. Events for v2 accounts
+ *    that belong directly to your platform are delivered to *Your account*
+ *    destinations — not *Connected accounts* as in v1. Events for v2
+ *    accounts that belong to your connected accounts (such as their
+ *    customers and recipients) are delivered to *Connected accounts*
+ *    destinations. To receive both, create two separate destinations."
+ *
+ * The accounts this sample creates (lib/sample-connect/accounts.ts calls
+ * `v2.core.accounts.create` as the platform) belong DIRECTLY to the
+ * platform. So their requirements and capability events arrive on the
+ * platform scope — "Your account".
+ *
+ * Note this is the OPPOSITE of the production integration in this same
+ * codebase: app/api/stripe/connect-webhook/route.ts genuinely does need
+ * "events on connected accounts", because it handles V1-style direct
+ * charges on Standard accounts. Both are right; they are different APIs.
+ * Do not "fix" one to match the other.
+ *
+ * You would only add a second, Connected-accounts-scoped destination if you
+ * started creating v2 accounts that belong to your connected accounts
+ * (their own customers or recipients). This sample does not.
  *
  * Locally, skip the dashboard and use the CLI:
  *
