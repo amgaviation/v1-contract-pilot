@@ -282,7 +282,7 @@ export default function ImportWorkspace() {
     if (rows.length === 0) {
       setConfirmError(
         heldForRole > 0
-          ? "Every included row needs a role (PIC/SIC) chosen before it can be imported — pick one per row, or use the default buttons above."
+          ? "Every included row needs a role (PIC/SIC) chosen before it can be imported. Pick one per row, or use the default buttons above."
           : "No rows are selected to import."
       );
       return;
@@ -495,7 +495,7 @@ export default function ImportWorkspace() {
                   <ExclamationTriangleIcon />
                 </Callout.Icon>
                 <Callout.Text>
-                  {`Showing the first ${PREVIEW_ROW_LIMIT} of ${result.valid.length} rows below — all ${result.valid.length} will be imported when you confirm, this table just isn't rendering every one.`}
+                  {`Showing the first ${PREVIEW_ROW_LIMIT} of ${result.valid.length} rows below. All ${result.valid.length} will be imported when you confirm; this table just isn't rendering every one.`}
                 </Callout.Text>
               </Callout.Root>
             ) : null}
@@ -747,7 +747,7 @@ export default function ImportWorkspace() {
             ? "Upload the CSV from ForeFlight's Logbook export (Logbook → Export)."
             : format === "logten"
               ? "Upload a CSV export from LogTen Pro."
-              : "Upload any CSV — you'll match its columns to logbook fields yourself on the next step. This is the path for any logbook that isn't ForeFlight or LogTen Pro."}
+              : "Upload any CSV. You'll match its columns to logbook fields yourself on the next step. This is the path for any logbook that isn't ForeFlight or LogTen Pro."}
         </Text>
         <Flex direction="column" gap="1">
           <Text as="label" size="1" color="gray" htmlFor={fileInputId}>

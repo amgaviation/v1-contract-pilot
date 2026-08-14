@@ -43,7 +43,7 @@ export default function SiteHeader() {
         <Flex align="center" justify="between" py="3" gap="4" wrap="wrap">
           <NextLink
             href="/"
-            aria-label={`${BRAND.name} — ${BRAND.descriptor}`}
+            aria-label={`${BRAND.name}, ${BRAND.descriptor}`}
             style={{ display: "flex", alignItems: "center" }}
           >
             <img src="/brand/navy.svg" alt="" height={22} width={38} />

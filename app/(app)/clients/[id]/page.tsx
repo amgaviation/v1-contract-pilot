@@ -260,7 +260,7 @@ export default async function EditClientPage({
         <Card mb="4">
           <Text size="2" color="gray">
             This client is archived. Their trips and invoices are
-            untouched — they just won&rsquo;t appear when you pick a client
+            untouched. They just won&rsquo;t appear when you pick a client
             for new work.
           </Text>
         </Card>
@@ -314,7 +314,7 @@ export default async function EditClientPage({
                 {openTripsTruncated ? (
                   <RadixLink asChild size="1">
                     <NextLink href={`/trips?client=${id}&billing_state=unbilled`}>
-                      Showing the {OPEN_TRIPS_LIMIT} most recent — view all
+                      Showing the {OPEN_TRIPS_LIMIT} most recent, view all
                     </NextLink>
                   </RadixLink>
                 ) : null}
@@ -349,7 +349,7 @@ export default async function EditClientPage({
                 ))}
                 {outstandingInvoicesTruncated ? (
                   <Text size="1" color="gray">
-                    Showing the {OUTSTANDING_INVOICES_LIMIT} soonest due — more are
+                    Showing the {OUTSTANDING_INVOICES_LIMIT} soonest due. More are
                     outstanding.
                   </Text>
                 ) : null}
@@ -383,7 +383,7 @@ export default async function EditClientPage({
             {client.cancellation_policy_note}
           </Text>
           <Text as="p" size="1" color="gray" mt="1">
-            Recorded for reference only — never applied automatically.
+            Recorded for reference only, never applied automatically.
             Add a cancellation fee line on the invoice yourself if this
             client owes one.
           </Text>

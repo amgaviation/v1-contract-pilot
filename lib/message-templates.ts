@@ -76,7 +76,7 @@ export function messageTemplateProblem(
   allowed: readonly MessagePlaceholder[]
 ): string | null {
   if (text.length > MAX_MESSAGE_TEMPLATE_CHARS) {
-    return `Keep it under ${MAX_MESSAGE_TEMPLATE_CHARS} characters — this is the opening line, not the whole message.`;
+    return `Keep it under ${MAX_MESSAGE_TEMPLATE_CHARS} characters. This is the opening line, not the whole message.`;
   }
   const unknown = unknownPlaceholders(text, allowed);
   if (unknown.length > 0) {

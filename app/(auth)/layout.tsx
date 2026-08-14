@@ -51,7 +51,7 @@ export default function AuthLayout({
         <Flex direction="column" justify="between" gap="8" height="100%">
           <NextLink
             href="/"
-            aria-label={`${BRAND.name} — ${BRAND.descriptor}`}
+            aria-label={`${BRAND.name}, ${BRAND.descriptor}`}
             style={{ display: "flex", alignItems: "center" }}
           >
             <img src="/brand/white.svg" alt="" height={24} width={41} />

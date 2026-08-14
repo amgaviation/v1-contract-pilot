@@ -125,7 +125,7 @@ export async function startCheckout(
       // contact route anywhere (lib/entitlements.ts's priority_support
       // comment), so the old copy pointed a visitor at maximum intent
       // toward a channel that does not exist.
-      error: "Couldn't start checkout — please try again in a moment.",
+      error: "Couldn't start checkout. Try again in a moment.",
     };
   }
 

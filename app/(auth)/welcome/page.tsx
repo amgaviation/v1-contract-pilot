@@ -50,7 +50,7 @@ export default async function WelcomePage({
     return (
       <Flex direction="column" gap="6">
         <AuthHeading title="Setting up your account">
-          Payment confirmed. We&rsquo;re provisioning now — this usually takes
+          Payment confirmed. We&rsquo;re provisioning now, which usually takes
           a few seconds.
         </AuthHeading>
         {/* A plain link, not a client poller: one deliberate refresh is
@@ -91,7 +91,7 @@ export default async function WelcomePage({
 
       {checkout === "cancelled" ? (
         <Callout.Root color="gray" size="1">
-          <Callout.Text>Checkout cancelled — nothing was charged.</Callout.Text>
+          <Callout.Text>Checkout cancelled. Nothing was charged.</Callout.Text>
         </Callout.Root>
       ) : null}
 

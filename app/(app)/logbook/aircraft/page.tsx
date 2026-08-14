@@ -145,7 +145,7 @@ export default async function AircraftPage() {
   return (
     <PageShell
       title="Your aircraft"
-      subtitle="The airframes behind your hours — so your logbook can answer “how much time in type?”"
+      subtitle="The airframes behind your hours, so your logbook can answer “how much time in type?”"
       action={
         <Button asChild variant="outline">
           <NextLink href="/logbook">Back to logbook</NextLink>

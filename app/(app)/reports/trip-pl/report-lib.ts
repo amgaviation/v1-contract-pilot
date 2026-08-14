@@ -517,7 +517,7 @@ export function assembleTripPL(input: {
     if (seenTripIds.has(raw.trip_id)) {
       return {
         ok: false,
-        reason: `trip ${raw.trip_id} appears twice in the aggregation — refusing to total a fanned-out join`,
+        reason: `trip ${raw.trip_id} appears twice in the aggregation, refusing to total a fanned-out join`,
       };
     }
     seenTripIds.add(raw.trip_id);
@@ -556,7 +556,7 @@ export function assembleTripPL(input: {
       if (!Number.isFinite(value)) {
         return {
           ok: false,
-          reason: `trip ${raw.trip_id}: ${name} did not arrive as a number — refusing to print a figure derived from it`,
+          reason: `trip ${raw.trip_id}: ${name} did not arrive as a number, refusing to print a figure derived from it`,
         };
       }
     }
@@ -570,7 +570,7 @@ export function assembleTripPL(input: {
     if (draftDayMoneyCents > invoicedDayMoneyCents) {
       return {
         ok: false,
-        reason: `trip ${raw.trip_id}: draft day money exceeds total invoiced day money — refusing to print figures that don't reconcile`,
+        reason: `trip ${raw.trip_id}: draft day money exceeds total invoiced day money, refusing to print figures that don't reconcile`,
       };
     }
 
@@ -590,7 +590,7 @@ export function assembleTripPL(input: {
         // screen says the grouping is short.
         return {
           ok: false,
-          reason: `trip ${raw.trip_id} references client ${clientId} which the clients read didn't return — refusing to print a partial per-client rollup`,
+          reason: `trip ${raw.trip_id} references client ${clientId} which the clients read didn't return, refusing to print a partial per-client rollup`,
         };
       }
       clientName = found;
@@ -691,7 +691,7 @@ export function assembleTripPL(input: {
     ) {
       return {
         ok: false,
-        reason: `client ${u.client_id}: unattributed line figures did not arrive as numbers — refusing to print a rollup derived from them`,
+        reason: `client ${u.client_id}: unattributed line figures did not arrive as numbers, refusing to print a rollup derived from them`,
       };
     }
 
@@ -702,7 +702,7 @@ export function assembleTripPL(input: {
       // revenue line with no owner.
       return {
         ok: false,
-        reason: `client ${u.client_id} has unattributed invoice lines but the clients read didn't return it — refusing to print a partial per-client rollup`,
+        reason: `client ${u.client_id} has unattributed invoice lines but the clients read didn't return it, refusing to print a partial per-client rollup`,
       };
     }
 

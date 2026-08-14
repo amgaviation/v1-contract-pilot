@@ -58,7 +58,7 @@ export function ChangePlanButtons({
             variant={direction === "Upgrade" ? "solid" : "soft"}
             color={direction === "Upgrade" ? undefined : "gray"}
           >
-            {pending ? "Confirming with Stripe…" : `${direction} — ${monthlyLabel}`}
+            {pending ? "Confirming with Stripe…" : `${direction}: ${monthlyLabel}`}
           </Button>
         ) : null}
         {annualLabel !== null ? (
@@ -70,7 +70,7 @@ export function ChangePlanButtons({
             variant="soft"
             color={direction === "Upgrade" ? undefined : "gray"}
           >
-            {pending ? "Confirming with Stripe…" : `${direction} — ${annualLabel}`}
+            {pending ? "Confirming with Stripe…" : `${direction}: ${annualLabel}`}
           </Button>
         ) : null}
         {state.error ? (
@@ -124,7 +124,7 @@ export function ResubscribeButtons({
             disabled={disabled || pending}
             variant="solid"
           >
-            {pending ? "Starting checkout…" : `Resubscribe — ${monthlyLabel}`}
+            {pending ? "Starting checkout…" : `Resubscribe: ${monthlyLabel}`}
           </Button>
         ) : null}
         {annualLabel !== null ? (
@@ -135,7 +135,7 @@ export function ResubscribeButtons({
             disabled={disabled || pending}
             variant="soft"
           >
-            {pending ? "Starting checkout…" : `Resubscribe — ${annualLabel}`}
+            {pending ? "Starting checkout…" : `Resubscribe: ${annualLabel}`}
           </Button>
         ) : null}
         {state.error ? (

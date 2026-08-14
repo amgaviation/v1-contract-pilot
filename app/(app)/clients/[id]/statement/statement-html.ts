@@ -102,7 +102,7 @@ function rowHtml(row: StatementRow): string {
 
 export function renderStatementHtml(input: StatementHtmlInput): string {
   const { account, client, period, rows, totals, generatedOn } = input;
-  const periodLabel = `${formatDate(period.from)} – ${formatDate(period.to)}`;
+  const periodLabel = `${formatDate(period.from)} to ${formatDate(period.to)}`;
 
   const body =
     rows.length === 0
@@ -171,7 +171,7 @@ export function renderStatementHtml(input: StatementHtmlInput): string {
 </head>
 <body>
 <div class="screen-bar">
-  <span class="muted">This page is formatted for printing — use your browser&#39;s print dialog to print it or save it as a PDF.</span>
+  <span class="muted">This page is formatted for printing. Use your browser&#39;s print dialog to print it or save it as a PDF.</span>
   <button type="button" onclick="window.print()">Print</button>
 </div>
 <h1>Statement of account</h1>

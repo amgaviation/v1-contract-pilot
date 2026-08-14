@@ -368,7 +368,7 @@ function describeRun(summary: ReminderRunSummary): string[] {
   }
   if (summary.failed > 0) {
     lines.push(
-      `${summary.failed} couldn't be sent — the invoice screen shows what the mail service said. Nothing was marked as sent.`
+      `${summary.failed} couldn't be sent. The invoice screen shows what the mail service said. Nothing was marked as sent.`
     );
   }
   for (const blocked of summary.blocked) {
@@ -480,6 +480,6 @@ export async function quoteLateFeeForInvoice(
   return {
     error: null,
     amountCents: quote.amountCents,
-    explanation: `${formatCents(quote.amountCents)} — ${quote.explanation}`,
+    explanation: `${formatCents(quote.amountCents)}, ${quote.explanation}`,
   };
 }

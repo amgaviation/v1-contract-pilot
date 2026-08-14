@@ -207,7 +207,7 @@ function FormBody({
             id="je-memo"
             name="memo"
             required
-            placeholder="e.g. Owner draw — August"
+            placeholder="e.g. Owner draw, August"
             value={memo}
             onChange={(e) => setMemo(e.target.value)}
           />

@@ -50,7 +50,7 @@ export async function createVendorLink(
   const daysRaw = String(formData.get("days_valid") ?? "90").trim();
   const days = Number(daysRaw);
   if (!Number.isInteger(days) || days < 1 || days > 365) {
-    return { error: "Choose how long the link should work — 1 to 365 days." };
+    return { error: "Choose how long the link should work: 1 to 365 days." };
   }
 
   await requireAccount("/clients");

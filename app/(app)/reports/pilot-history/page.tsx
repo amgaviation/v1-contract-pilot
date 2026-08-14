@@ -133,7 +133,7 @@ export default async function PilotHistoryReportPage() {
                 save that. Try again." — a sentence about writing, on a page
                 that only reads, that threw away the one thing the pilot
                 needed to know. */}
-            <Callout.Text>{`Sorry — ${report.error}.`}</Callout.Text>
+            <Callout.Text>{`Sorry, ${report.error}.`}</Callout.Text>
           </Callout.Root>
         </Card>
       ) : data && !data.ok ? (
@@ -299,7 +299,7 @@ export default async function PilotHistoryReportPage() {
                in turbine/retractable/multi time, none of which is time in
                one registration. Naming the wrong instrument beside a figure
                is the kind of error a professional reader spots instantly. */
-            caption={`Per registered airframe — the figure an owner, or their insurer, asks for a specific aeroplane. ${
+            caption={`Per registered airframe, the figure an owner, or their insurer, asks for a specific aeroplane. ${
               data.registeredAircraftCount === 0
                 ? "You have no aircraft on file yet."
                 : `${data.registeredAircraftCount} aircraft on file.`
@@ -482,21 +482,21 @@ function hourRows(
     },
     { label: "Night", allTime: a.night, recent: r.night, ninety: n.night, decimals: 1 },
     {
-      label: "Instrument — actual",
+      label: "Instrument (actual)",
       allTime: a.instrumentActual,
       recent: r.instrumentActual,
       ninety: n.instrumentActual,
       decimals: 1,
     },
     {
-      label: "Instrument — simulated",
+      label: "Instrument (simulated)",
       allTime: a.instrumentSimulated,
       recent: r.instrumentSimulated,
       ninety: n.instrumentSimulated,
       decimals: 1,
     },
     {
-      label: "Instrument — total",
+      label: "Instrument (total)",
       note: "Actual and simulated added together, for a form that asks for one figure.",
       allTime: totalInstrument(a),
       recent: totalInstrument(r),

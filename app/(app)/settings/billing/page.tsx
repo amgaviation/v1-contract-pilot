@@ -76,7 +76,7 @@ export const metadata = { title: "Billing" };
 
 /** Which of the two Stripe reads a card depends on, said once. */
 const STRIPE_UNREACHABLE =
-  "We couldn't reach Stripe just now, so the details below are incomplete. This is not a statement about your subscription — reload in a moment, or open the billing portal.";
+  "We couldn't reach Stripe just now, so the details below are incomplete. This is not a statement about your subscription. Reload in a moment, or open the billing portal.";
 
 export default async function BillingPage({
   searchParams,
@@ -205,7 +205,7 @@ export default async function BillingPage({
         <Callout.Root color="amber">
           <Callout.Text>
             {state === "read-only"
-              ? "The change you just tried needs an active subscription. This account is read-only until it's resubscribed — every record stays viewable and exportable in the meantime. Pick a plan below to start making changes again."
+              ? "The change you just tried needs an active subscription. This account is read-only until it's resubscribed; every record stays viewable and exportable in the meantime. Pick a plan below to start making changes again."
               : "This account is read-only. Every record stays viewable and exportable; pick a plan below to start making changes again."}
           </Callout.Text>
         </Callout.Root>
@@ -656,7 +656,7 @@ export default async function BillingPage({
                 </Text>
                 <Text size="2" color="gray">
                   {facts?.cancelAtPeriodEnd
-                    ? "Your subscription is set to end at the close of the current period. Resuming withdraws that — no new charge, no gap, and the date above goes back to being a renewal."
+                    ? "Your subscription is set to end at the close of the current period. Resuming withdraws that: no new charge, no gap, and the date above goes back to being a renewal."
                     : "Cancelling stops the NEXT charge. You keep everything you've paid for until the end of the current period, and after that the account goes read-only: every record stays viewable and exportable, and nothing is deleted."}
                 </Text>
                 <CancelResumeButton

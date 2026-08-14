@@ -27,8 +27,8 @@ export default function DayTypesPanel({
             read wearing an empty state's clothes. */}
         {dayTypes.length === 0 ? (
           <EmptyState title="No day types yet">
-            A day type is what one day of work is called on a trip — flight day,
-            travel day, standby — and how it bills. Add the ones you use below and
+            A day type is what one day of work is called on a trip (flight day,
+            travel day, standby) and how it bills. Add the ones you use below and
             they become the picker on every trip&rsquo;s day grid.
           </EmptyState>
         ) : (

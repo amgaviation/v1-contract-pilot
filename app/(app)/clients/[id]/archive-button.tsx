@@ -70,7 +70,7 @@ export default function ArchiveButton({
           <AlertDialog.Content maxWidth="420px">
             <AlertDialog.Title>Archive this client?</AlertDialog.Title>
             <AlertDialog.Description size="2">
-              Their trips and invoices are untouched — they just won&rsquo;t
+              Their trips and invoices are untouched. They just won&rsquo;t
               appear when you pick a client for new work. You can restore
               them any time.
             </AlertDialog.Description>

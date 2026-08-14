@@ -59,7 +59,7 @@ export async function createJournalEntry(
   }
   if (!memo) {
     return {
-      error: "Give the entry a memo — six months from now it has to explain itself.",
+      error: "Give the entry a memo. Six months from now it has to explain itself.",
       values: echo,
     };
   }

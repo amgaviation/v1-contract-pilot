@@ -239,7 +239,7 @@ export default async function ExpensesPage() {
                   <ExclamationTriangleIcon />
                 </Callout.Icon>
                 <Callout.Text>
-                  {`Totals above may be partial — there are more than ${EXPENSES_LIMIT} expenses and only the first ${EXPENSES_LIMIT} were totaled.`}
+                  {`Totals above may be partial. There are more than ${EXPENSES_LIMIT} expenses and only the first ${EXPENSES_LIMIT} were totaled.`}
                 </Callout.Text>
               </Callout.Root>
             </Box>
@@ -256,7 +256,7 @@ export default async function ExpensesPage() {
                 </Callout.Icon>
                 <Callout.Text>
                   Couldn&rsquo;t check for imported transactions awaiting
-                  review. This is not a statement that there are none —
+                  review. This is not a statement that there are none,
                   reload, or check{" "}
                   <NextLink href="/expenses/transactions">
                     the review queue
@@ -275,7 +275,7 @@ export default async function ExpensesPage() {
                     </Text>
                     <Text as="div" color="gray" className="tnum">
                       {unreviewedTransactions} transaction{unreviewedTransactions === 1 ? "" : "s"} from a bank
-                      statement import {unreviewedTransactions === 1 ? "hasn't" : "haven't"} been categorized yet —
+                      statement import {unreviewedTransactions === 1 ? "hasn't" : "haven't"} been categorized yet,
                       nothing here is in your books until you review each one.
                     </Text>
                   </Box>
@@ -326,7 +326,7 @@ export default async function ExpensesPage() {
                     {mileageFailed
                       ? "Couldn't load your mileage total."
                       : `${mileageTotalMiles.toFixed(1)} mi logged at the standard mileage rate${
-                          mileageTruncated ? " (partial — see the mileage log)" : ""
+                          mileageTruncated ? " (partial, see the mileage log)" : ""
                         }`}
                   </Text>
                 </Flex>
@@ -367,7 +367,7 @@ export default async function ExpensesPage() {
                     <ExclamationTriangleIcon />
                   </Callout.Icon>
                   <Callout.Text>
-                    {`${milesWithoutRate} miles are not in the figure above — there's no IRS standard rate on file for their tax year. Add it in Settings and this recomputes.`}
+                    {`${milesWithoutRate} miles are not in the figure above. There's no IRS standard rate on file for their tax year. Add it in Settings and this recomputes.`}
                   </Callout.Text>
                 </Callout.Root>
               ) : null}

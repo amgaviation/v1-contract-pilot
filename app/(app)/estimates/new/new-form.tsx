@@ -127,7 +127,7 @@ export default function NewEstimateForm({
             </Select.Root>
             <Text size="1" color="gray">
               {clients.length === 0
-                ? "No active clients yet — add one before drafting an estimate."
+                ? "No active clients yet. Add one before you can draft an estimate."
                 : "Who this quote is for"}
             </Text>
           </Flex>
@@ -143,8 +143,8 @@ export default function NewEstimateForm({
               onChange={(e) => setValidUntil(e.target.value)}
             />
             <Text size="1" color="gray">
-              How long the quoted price stands — optional, but a quote with no
-              expiry is a price you&rsquo;re holding open indefinitely
+              How long the quoted price stands. Optional, but a quote with no
+              expiry holds the price open indefinitely
             </Text>
           </Flex>
           <Flex direction="column" gap="1">
@@ -159,7 +159,7 @@ export default function NewEstimateForm({
               onChange={(e) => setTaxRate(e.target.value)}
             />
             <Text size="1" color="gray">
-              State sales/service tax, if any — applied to taxable lines only
+              State sales or service tax, if any. Applies to taxable lines only
             </Text>
           </Flex>
         </Grid>
@@ -227,7 +227,7 @@ export default function NewEstimateForm({
         </Grid>
 
         <Text as="div" size="1" color="gray" mt="4">
-          An estimate is a quote, not an invoice — no payment can be recorded
+          An estimate is a quote, not an invoice. No payment can be recorded
           against it, and nothing goes to the client until you send it. It gets
           its permanent number when sent.
         </Text>
@@ -300,7 +300,7 @@ function LineRow({
         <TextField.Root
           id={`line-description-${line.key}`}
           name="line_description"
-          placeholder={index === 0 ? "e.g. Flight day — CE-560XL" : "Description"}
+          placeholder={index === 0 ? "e.g. Flight day, CE-560XL" : "Description"}
           value={line.description}
           onChange={(e) => onChange({ description: e.target.value })}
           size="2"

@@ -65,7 +65,7 @@ import {
 export const metadata = {
   title: "Pricing",
   description:
-    `Three plans for the independent contract pilot — Solo, Pro and ` +
+    `Three plans for the independent contract pilot: Solo, Pro and ` +
     `Business. Your own records are in every plan, and every plan starts ` +
     `with a ${TRIAL_PERIOD_DAYS}-day free trial.`,
 };
@@ -81,13 +81,13 @@ function priceLine(tier: PlanTier): {
     return {
       amount: copy.monthly,
       per: "/seat/month",
-      annual: `${copy.annual}/seat/year on annual — two months free`,
+      annual: `${copy.annual}/seat/year on annual, two months free`,
     };
   }
   return {
     amount: copy.monthly,
     per: "/month",
-    annual: `${copy.annual}/year on annual — two months free`,
+    annual: `${copy.annual}/year on annual, two months free`,
   };
 }
 
@@ -182,7 +182,7 @@ export default function PricingPage() {
                       </Text>
                       {tier === "business" ? (
                         <Text size="1" color="gray">
-                          Two-seat minimum — {BUSINESS_MINIMUM_MONTHLY}/month
+                          Two-seat minimum: {BUSINESS_MINIMUM_MONTHLY}/month
                           covers both seats.
                         </Text>
                       ) : null}
@@ -373,19 +373,19 @@ function buildFaq(): { q: string; a: string }[] {
   return [
     {
       q: "What happens when the trial ends?",
-      a: `After ${TRIAL_PERIOD_DAYS} days the card you started with is charged for the plan you picked — ${TIER_PRICE_COPY.solo.monthly}, ${TIER_PRICE_COPY.pro.monthly}, or ${TIER_PRICE_COPY.business.monthly} per seat a month. Cancel before it ends and nothing is charged.`,
+      a: `After ${TRIAL_PERIOD_DAYS} days the card you started with is charged for the plan you picked: ${TIER_PRICE_COPY.solo.monthly}, ${TIER_PRICE_COPY.pro.monthly}, or ${TIER_PRICE_COPY.business.monthly} per seat a month. Cancel before it ends and nothing is charged.`,
     },
     {
       q: "What happens if I downgrade or cancel?",
-      a: "Nothing is deleted. Downgrading closes the screens your new plan doesn't include — those come straight back the moment you upgrade — but every record you already created stays in the account-wide export the whole time, on any plan. Cancelling puts the account in read-only: everything stays viewable and exportable there too. A pilot's logbook is a legal record; a lapsed card will never be the thing that destroys one.",
+      a: "Nothing is deleted. Downgrading closes the screens your new plan doesn't include (those come straight back the moment you upgrade), but every record you already created stays in the account-wide export the whole time, on any plan. Cancelling puts the account in read-only: everything stays viewable and exportable there too. A pilot's logbook is a legal record; a lapsed card will never be the thing that destroys one.",
     },
     {
       q: "Can I get my data out?",
-      a: "On every plan. The account-wide export in Settings writes one CSV per record type — clients, trips, trip days, trip legs, estimates, invoices, payments, expenses, mileage and documents — the logbook exports in full, every report downloads, and uploaded receipt and document files download from their own pages.",
+      a: "On every plan. The account-wide export in Settings writes one CSV per record type: clients, trips, trip days, trip legs, estimates, invoices, payments, expenses, mileage, and documents. The logbook exports in full, every report downloads, and uploaded receipt and document files download from their own pages.",
     },
     {
       q: "I subscribed when there was one plan. What changes for me?",
-      a: `Nothing you didn't ask for. Existing accounts keep their ${TIER_PRICE_COPY.solo.monthly} price — the ladder is additive, and nobody is migrated or asked to choose again. If ${BRAND.name}'s newer business surfaces are worth it to you, upgrading is there; if not, ignore this page.`,
+      a: `Nothing you didn't ask for. Existing accounts keep their ${TIER_PRICE_COPY.solo.monthly} price: the ladder is additive, and nobody is migrated or asked to choose again. If ${BRAND.name}'s newer business surfaces are worth it to you, upgrading is there; if not, ignore this page.`,
     },
     {
       q: "Do the higher plans decide whether I'm current or legal to fly?",

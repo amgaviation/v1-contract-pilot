@@ -198,7 +198,7 @@ export default function OperatorQualificationRow({
           <Box style={{ flex: "1 1 220px" }}>
             <Text as="div" size="2" weight="medium">
               {label}
-              {typeDesignator ? ` — ${typeDesignator}` : null}
+              {typeDesignator ? `, ${typeDesignator}` : null}
             </Text>
             {regCite ? (
               <Text as="div" size="1" color="gray">

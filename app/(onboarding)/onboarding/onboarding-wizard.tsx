@@ -55,7 +55,7 @@ const STEPS = [
   {
     short: "Certificate",
     title: "Your certificate",
-    hint: "For your own records — never shared or shown to clients.",
+    hint: "For your own records. Never shared or shown to clients.",
   },
   {
     short: "Rates",
@@ -240,7 +240,7 @@ export default function OnboardingWizard({
                       <TextField.Slot>$</TextField.Slot>
                     </TextField.Root>
                   </Field>
-                  <Field span={6} id="default_travel_day_rate" label="Travel day rate" hint="Often half to full day rate — your call">
+                  <Field span={6} id="default_travel_day_rate" label="Travel day rate" hint="Often half to full day rate, your call">
                     <TextField.Root id="default_travel_day_rate" name="default_travel_day_rate" inputMode="decimal" placeholder="600" disabled={pending} defaultValue={initial("default_travel_day_rate")}>
                       <TextField.Slot>$</TextField.Slot>
                     </TextField.Root>

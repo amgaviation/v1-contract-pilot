@@ -94,13 +94,13 @@ export default function OperatorQualificationsPanel({
 
   const sectionCopy: Record<string, string> = {
     [COMPETENCY_CHECK_REQUIREMENT]:
-      "135.293(b) is keyed to class (single-engine airplane, other than turbojet) or type " +
-      "(helicopter, multiengine airplane, turbojet airplane, powered-lift) — one competency " +
-      `check per class/type you fly for ${clientName}.`,
+      `You need one competency check per aircraft class or type you fly for ${clientName}. ` +
+      "Class means single-engine airplane, other than turbojet; type means helicopter, " +
+      "multiengine airplane, turbojet airplane, or powered-lift. (14 CFR 135.293(b))",
     [IPC_REQUIREMENT]:
-      "135.297(e): if you're assigned more than one type for this operator, your IPC rotates " +
-      "through your types (one flight check per 6-month period, not one per type per period). " +
-      "Record each check by the type it was flown in — only the type currently providing your " +
+      "If you're assigned more than one type for this operator, your IPC rotates through your " +
+      "types under 135.297(e). It is one flight check per 6-month period, not one per type. " +
+      "Record each check by the type it was flown in. Only the type currently providing your " +
       "live 6-month coverage is weighed against the window below; older type rows show as " +
       "rotation history, not a lapse. This panel still does not determine whether your rotation " +
       "itself satisfies 297(e); that is on you and your chief pilot to track.",
@@ -115,10 +115,10 @@ export default function OperatorQualificationsPanel({
             <Callout.Text>
               {clientName}&rsquo;s operating rule is set to{" "}
               {clientOperatingRule === "unspecified" ? "not yet specified" : "Part 91 only"} on
-              the form above, so the Part 135 checks (135.293 written test and competency check,
-              135.297 IPC, 135.299 line check) are hidden — those regs bind Part 135 operations
-              only. Set the operating rule to Part 135 or Both above if this client ever gives you
-              Part 135 work.
+              the form above, so the Part 135 checks are hidden here: the 135.293 written test and
+              competency check, the 135.297 IPC, and the 135.299 line check. Those regs bind
+              Part 135 operations only. Set the operating rule to Part 135 or Both above if this
+              client ever gives you Part 135 work.
             </Callout.Text>
           </Callout.Root>
         )}

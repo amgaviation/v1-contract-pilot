@@ -58,7 +58,7 @@ export default async function ExpensePage({
           <Card size="3">
             <Flex justify="between" align="center" gap="4">
               <Text color="gray">
-                A receipt is attached. It&rsquo;s stored privately — the link
+                A receipt is attached. It&rsquo;s stored privately. The link
                 below works for one minute.
               </Text>
               <ReceiptLink path={expense.receipt_path} />

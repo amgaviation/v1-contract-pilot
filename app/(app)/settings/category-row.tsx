@@ -196,7 +196,7 @@ export default function CategoryRow({
             ) : null}
             {archived ? (
               <Text as="div" size="1" color="gray">
-                Retired — not offered on new records, still shown on the ones already
+                Retired, not offered on new records, still shown on the ones already
                 filed under it.
               </Text>
             ) : null}

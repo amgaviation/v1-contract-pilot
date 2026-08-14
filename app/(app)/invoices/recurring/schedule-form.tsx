@@ -332,7 +332,7 @@ function ScheduleRowView({
       <Table.Cell>
         <Text color="gray">
           {formatDate(schedule.anchor_date)}
-          {schedule.end_date ? ` – ${formatDate(schedule.end_date)}` : ""}
+          {schedule.end_date ? ` to ${formatDate(schedule.end_date)}` : ""}
         </Text>
       </Table.Cell>
       <Table.Cell>
@@ -357,7 +357,7 @@ function ScheduleRowView({
             <AlertDialog.Content maxWidth="440px">
               <AlertDialog.Title>Delete this schedule?</AlertDialog.Title>
               <AlertDialog.Description size="2">
-                {clientName} — {schedule.description} ({formatCents(schedule.amount_cents)}{" "}
+                {clientName}, {schedule.description} ({formatCents(schedule.amount_cents)}{" "}
                 {CADENCE_LABEL[schedule.cadence]?.toLowerCase()}). Invoices already created from it
                 are unaffected; this only stops future ones.
               </AlertDialog.Description>
@@ -409,7 +409,7 @@ export default function ScheduleManager({
         </Callout.Icon>
         <Callout.Text>
           <Text as="div" size="2">
-            A schedule never sends anything by itself. It only records a cadence — the app tells
+            A schedule never sends anything by itself. It only records a cadence. The app tells
             you when a period is due, and every invoice it creates is a draft you review before
             sending, the same as any other invoice.
           </Text>
@@ -423,7 +423,7 @@ export default function ScheduleManager({
               Add a client first
             </Text>
             <Text size="2" color="gray" align="center">
-              A recurring schedule bills exactly one client — the owner, operator, or
+              A recurring schedule bills exactly one client: the owner, operator, or
               management company on a retainer or a committed-rate contract.
             </Text>
             <Button asChild>
@@ -442,7 +442,7 @@ export default function ScheduleManager({
               No recurring schedules yet
             </Text>
             <Text size="2" color="gray" align="center">
-              A schedule is for the billing that repeats on a cadence — a monthly retainer or a
+              A schedule is for the billing that repeats on a cadence: a monthly retainer or a
               committed-rate contract you re-bill by hand today. It records the cadence only:
               every invoice it creates is a draft you review before sending.
               {clients.length === 0

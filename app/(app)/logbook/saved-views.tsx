@@ -126,7 +126,7 @@ export default function SavedViews({
     // this is the sentence it always claimed the form said.
     if (fromValue !== "" && toValue !== "" && fromValue > toValue) {
       setRangeError(
-        "That range runs backwards — the From date is after the To date. Swap them and try again."
+        "That range runs backwards. The From date is after the To date. Swap them and try again."
       );
       return;
     }

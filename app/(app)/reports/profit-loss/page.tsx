@@ -437,7 +437,7 @@ export default async function ProfitLossReportPage({
                   <ExclamationTriangleIcon />
                 </Callout.Icon>
                 <Callout.Text>
-                  {`${report.mileageMilesWithoutRate} miles are not in the figure above — there's no IRS standard rate on file for their tax year. Add it in Settings and this recomputes.`}
+                  {`${report.mileageMilesWithoutRate} miles are not in the figure above. There's no IRS standard rate on file for their tax year. Add it in Settings and this recomputes.`}
                 </Callout.Text>
               </Callout.Root>
             ) : null}

@@ -218,7 +218,7 @@ export const DEFAULT_INVOICE_TEMPLATE =
   "Invoice {{invoice_number}} is attached, for {{amount_due}}, due {{due_date}}.";
 
 export const DEFAULT_REMINDER_TEMPLATE =
-  "A quick follow-up on Invoice {{invoice_number}}, for {{amount_due}}, which was due {{due_date}} — {{days_overdue}} ago. A copy is attached.";
+  "A quick follow-up on Invoice {{invoice_number}}, for {{amount_due}}, which was due {{due_date}}, {{days_overdue}} ago. A copy is attached.";
 
 export type InvoiceMessageInput = {
   accountName: string;
@@ -448,7 +448,7 @@ export function buildReminderMessage(
   const overdue = input.daysOverdue > 0;
 
   const subject = overdue
-    ? `Reminder: ${ref} from ${input.accountName} — ${formatCents(
+    ? `Reminder: ${ref} from ${input.accountName}, ${formatCents(
         input.balanceDueCents
       )} outstanding`
     : `Reminder: ${ref} from ${input.accountName}`;
@@ -482,7 +482,7 @@ export function buildReminderMessage(
         input.balanceDueCents
       )}, which was due ${
         input.dueOn ? formatDate(input.dueOn) : "earlier"
-      } — ${input.daysOverdue} ${dayWord} ago. A copy is attached.`
+      }, ${input.daysOverdue} ${dayWord} ago. A copy is attached.`
     );
   } else {
     lines.push(

@@ -297,7 +297,7 @@ function parseTripForm(formData: FormData): ParsedTrip {
   if (tripSpanDays > 370) {
     return {
       values: null,
-      error: `That's a ${tripSpanDays}-day trip — check the end date's year.`,
+      error: `That's a ${tripSpanDays}-day trip. Check the end date's year.`,
     };
   }
 
@@ -651,7 +651,7 @@ export async function markTripCompleted(
   if (!count) {
     return {
       error:
-        "That trip couldn't be marked flown — it may already be completed, or canceled.",
+        "That trip couldn't be marked flown. It may already be completed, or canceled.",
     };
   }
 
@@ -843,7 +843,7 @@ function parseLegForm(
     return {
       values: null,
       error:
-        "Full-stop landings can't exceed the day landings — the full-stop count is how many of them came to a stop.",
+        "Full-stop landings can't exceed the day landings. The full-stop count is how many of them came to a stop.",
     };
   }
 
@@ -1143,7 +1143,7 @@ export async function saveTripDays(
       if (parsedRate === undefined) {
         issues.push("The rate must be an amount like 1500 or 1500.00.");
       } else if (parsedRate === null) {
-        issues.push("Enter a rate — use 0 if this day doesn't bill.");
+        issues.push("Enter a rate. Use 0 if this day doesn't bill.");
       } else if (parsedRate < 0) {
         issues.push("The rate can't be negative.");
       } else {

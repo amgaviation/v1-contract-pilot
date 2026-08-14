@@ -518,7 +518,7 @@ export default async function InvoicePage({
           : null,
       lateFee: {
         policy: describeLateFeePolicy(lateFeePolicy),
-        quote: quote ? `${formatCents(quote.amountCents)} — ${quote.explanation}` : null,
+        quote: quote ? `${formatCents(quote.amountCents)}, ${quote.explanation}` : null,
         raised: fees.map((fee) => ({
           id: fee.fee_invoice_id,
           number: feeNumbers.get(fee.fee_invoice_id) ?? null,
@@ -582,7 +582,7 @@ export default async function InvoicePage({
                 </Callout.Icon>
                 <Callout.Text>
                   {friendlyDbError(rebillableError, "invoice.rebillable")} Rebillable
-                  expenses couldn&rsquo;t be loaded for this client — nothing is
+                  expenses couldn&rsquo;t be loaded for this client. Nothing is
                   offered to attach below. Reload before issuing this invoice, or
                   the receipts tagged rebill for it will go unbilled.
                 </Callout.Text>

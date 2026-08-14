@@ -200,7 +200,7 @@ export function estimateRefusalMessage(
     return "This estimate's status has changed since this page loaded. Reload to see where it stands.";
   }
   if (message.includes("its number cannot change")) {
-    return "This estimate has been sent — its number is permanent.";
+    return "This estimate has been sent. Its number is permanent.";
   }
   return null;
 }

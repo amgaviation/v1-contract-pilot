@@ -208,7 +208,7 @@ function LengthNote() {
     <Text size="1" color="gray">
       Up to {MAX_MESSAGE_TEMPLATE_CHARS.toLocaleString()} characters each.
       Longer than that is refused with a message rather than trimmed for
-      you — a bill should never open with a sentence that stops mid-word.
+      you: a bill should never open with a sentence that stops mid-word.
     </Text>
   );
 }
@@ -232,7 +232,7 @@ function PlaceholderKey({
       <Flex direction="column" gap="1">
         {placeholders.map((placeholder) => (
           <Text as="div" size="1" color="gray" key={placeholder.key}>
-            <Code variant="ghost">{placeholder.token}</Code> —{" "}
+            <Code variant="ghost">{placeholder.token}</Code>:{" "}
             {placeholder.description}
           </Text>
         ))}

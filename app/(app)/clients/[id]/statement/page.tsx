@@ -88,8 +88,8 @@ export default async function ClientStatementPage({
       title="Statement"
       subtitle={
         statement
-          ? `${statement.client.name} · invoices issued ${formatDate(period.from)} – ${formatDate(period.to)}`
-          : "Couldn't load this statement — see below."
+          ? `${statement.client.name} · invoices issued ${formatDate(period.from)} to ${formatDate(period.to)}`
+          : "Couldn't load this statement. See below."
       }
       action={
         <Flex gap="2" wrap="wrap">
@@ -160,8 +160,8 @@ export default async function ClientStatementPage({
             </Callout.Icon>
             <Callout.Text>
               {friendlyDbError(result.error, "client-statement.load")} This
-              statement couldn&rsquo;t be assembled, so nothing is shown —
-              a partial statement would misstate what&rsquo;s outstanding.
+              statement couldn&rsquo;t be assembled, so nothing is shown.
+              A partial statement would misstate what&rsquo;s outstanding.
             </Callout.Text>
           </Callout.Root>
         </Card>
@@ -233,8 +233,8 @@ export default async function ClientStatementPage({
                 <Text size="2" color="gray" align="center">
                   Nothing was issued to {statement.client.name} between{" "}
                   {formatDate(period.from)} and {formatDate(period.to)}.
-                  Drafts and voided invoices are never part of a statement —
-                  if you expected activity here, widen the date range.
+                  Drafts and voided invoices are never part of a statement.
+                  If you expected activity here, widen the date range.
                 </Text>
               </Flex>
             ) : (
@@ -366,7 +366,7 @@ export default async function ClientStatementPage({
 
             <Box mt="4">
               <Text as="p" size="1" color="gray">
-                Covers invoices issued {formatDate(period.from)} –{" "}
+                Covers invoices issued {formatDate(period.from)} to{" "}
                 {formatDate(period.to)} (sent, partially paid, or paid).
                 Drafts and voided invoices are excluded. &ldquo;Paid to
                 date&rdquo; reflects every payment recorded through{" "}

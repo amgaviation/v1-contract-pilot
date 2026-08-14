@@ -467,10 +467,10 @@ function explainValidationFailure(problem: string, values: LogbookEntryFlightFie
     const field = overTotal[1] ?? "";
     const name = label[field] ?? field.replace(/_/g, " ");
     const value = values[field as keyof LogbookEntryFlightFields];
-    return `The ${name} on this flight (${String(value)}) is greater than its total time (${values.total_time}), which can't be right — each of those is a portion of the same flight. Fix it in ForeFlight and re-import, or add this flight by hand.`;
+    return `The ${name} on this flight (${String(value)}) is greater than its total time (${values.total_time}), which can't be right. Each of those is a portion of the same flight. Fix it in ForeFlight and re-import, or add this flight by hand.`;
   }
   if (problem === "simulator time without a device type") {
-    return "This row logs simulator time but doesn't say what kind of device it was (FFS, FTD or ATD), which the logbook needs in order to record it.";
+    return "This row logs simulator time but doesn't say what kind of device it was (FFS, FTD or ATD), which the logbook needs to record it.";
   }
   if (problem === "approach type without an approach count") {
     return "This row names an approach type but records zero approaches.";
@@ -499,7 +499,7 @@ export async function confirmImport(payload: ConfirmImportPayload): Promise<Conf
   }
   if (payload.rows.length + payload.rejected.length > MAX_ROWS_PER_CONFIRM) {
     return {
-      error: `That file has more than ${MAX_ROWS_PER_CONFIRM.toLocaleString()} rows — split it and import in parts.`,
+      error: `That file has more than ${MAX_ROWS_PER_CONFIRM.toLocaleString()} rows. Split it and import in parts.`,
     };
   }
   const fileName = payload.fileName.trim().slice(0, 255) || "import.csv";
@@ -570,7 +570,7 @@ export async function confirmImport(payload: ConfirmImportPayload): Promise<Conf
         .delete()
         .eq("id", batchId)
         .eq("account_id", account.id);
-      return { error: "Couldn't complete that import. Nothing was added to your logbook — check the file and try again." };
+      return { error: "Couldn't complete that import. Nothing was added to your logbook. Check the file and try again." };
     }
 
     const reason = friendlyDbError(error as { code?: string; message?: string } | null, message);
@@ -587,7 +587,7 @@ export async function confirmImport(payload: ConfirmImportPayload): Promise<Conf
       batchId,
       imported: importedSoFar,
       partial: true,
-      partialMessage: `${importedSoFar} row${importedSoFar === 1 ? "" : "s"} were saved to your logbook before the import stopped. ${reason} The remaining rows were not attempted — re-export just the rows after this point and import them separately.`,
+      partialMessage: `${importedSoFar} row${importedSoFar === 1 ? "" : "s"} were saved to your logbook before the import stopped. ${reason} The remaining rows were not attempted. Re-export just the rows after this point and import them separately.`,
     };
   };
 

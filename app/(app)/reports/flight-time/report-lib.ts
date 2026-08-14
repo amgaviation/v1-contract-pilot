@@ -180,28 +180,28 @@ export function flightTimeWindows(today: string): FlightTimeWindow[] {
       from: previousDayIso(previousDayIso(today)),
       to: today,
       label: "Last three calendar days",
-      citation: "135.267(b) — any 24 consecutive hours",
+      citation: "135.267(b): any 24 consecutive hours",
     },
     {
       key: "quarter",
       from: qStart,
       to: today,
       label: `Calendar quarter (${quarterLabel(today)}), to date`,
-      citation: "135.267(a)(1) — any calendar quarter",
+      citation: "135.267(a)(1): any calendar quarter",
     },
     {
       key: "twoQuarters",
       from: prevQStart,
       to: today,
       label: `Two consecutive quarters (${quarterLabel(prevQStart)}–${quarterLabel(today)}), to date`,
-      citation: "135.267(a)(2) — any two consecutive calendar quarters",
+      citation: "135.267(a)(2): any two consecutive calendar quarters",
     },
     {
       key: "year",
       from: `${today.slice(0, 4)}-01-01`,
       to: today,
       label: `Calendar year (${today.slice(0, 4)}), to date`,
-      citation: "135.267(a)(3) — any calendar year",
+      citation: "135.267(a)(3): any calendar year",
     },
   ];
 }

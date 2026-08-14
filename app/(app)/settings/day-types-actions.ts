@@ -544,7 +544,7 @@ export async function deleteDayType(id: string): Promise<{ error: string | null 
     if (error.code === "23514") {
       return {
         error:
-          "This is one of the starting day types and cannot be deleted. Archive it instead — archived types stay on the trips that already use them.",
+          "This is one of the starting day types and cannot be deleted. Archive it instead; archived types stay on the trips that already use them.",
       };
     }
     return { error: friendlyDbError(error, "day_types.delete") };

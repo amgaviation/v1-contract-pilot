@@ -59,7 +59,7 @@ const ROLES = [
 // menu item, and the server has to re-check the times regardless. Picking
 // it on a real flight comes back with a sentence saying exactly why it
 // was refused, which is the same answer with less machinery.
-const ROLE_NONE_LABEL = "No role — simulator session";
+const ROLE_NONE_LABEL = "No role (simulator session)";
 
 // Radix Select.Item forbids an empty-string value, so the "no selection"
 // options below use this sentinel and are translated back to "" before
@@ -93,7 +93,7 @@ const APPROACH_TYPES = [
 const APPROACH_CONDITIONS = [
   { value: NONE, label: "Unknown / not recorded" },
   { value: "actual", label: "Actual instrument conditions" },
-  { value: "simulated", label: "Simulated — view-limiting device" },
+  { value: "simulated", label: "Simulated (view-limiting device)" },
   { value: "neither", label: "Neither (e.g. flown visually)" },
 ];
 
@@ -380,7 +380,7 @@ export default function LogbookEntryForm({
               label="Day takeoffs"
               step="1"
               defaultValue={initial("day_takeoffs", "0")}
-              hint="61.57(a): every aircraft carrying persons, or certificated for more than 1 pilot crewmember — not day-only"
+              hint="61.57(a): every aircraft carrying persons, or certificated for more than 1 pilot crewmember, not day-only"
             />
             <LabeledNumber
               name="day_landings_full_stop"
@@ -420,7 +420,7 @@ export default function LogbookEntryForm({
               label="Approaches"
               step="1"
               defaultValue={initial("approaches_count", "0")}
-              hint="Instrument approaches in actual or simulated instrument conditions — counts for 61.57(c). A Visual-tagged approach below does not."
+              hint="Instrument approaches in actual or simulated instrument conditions count for 61.57(c). A Visual-tagged approach below does not."
             />
             <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
               <Text as="label" htmlFor={approachId} size="1" color="gray">

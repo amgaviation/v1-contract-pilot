@@ -181,7 +181,7 @@ export default async function EstimatesPage({
   const errorText = firstError
     ? friendlyDbError(firstError, "estimates.select")
     : missingTotalsCount > 0
-      ? `The totals for ${missingTotalsCount} of these estimates couldn't be loaded, so the list isn't shown — a figure that couldn't be found must not appear as $0.00. Reload to try again.`
+      ? `The totals for ${missingTotalsCount} of these estimates couldn't be loaded, so the list isn't shown. A figure that couldn't be found must not appear as $0.00. Reload to try again.`
       : null;
 
   return (
@@ -189,7 +189,7 @@ export default async function EstimatesPage({
       title="Estimates"
       subtitle={
         errorText
-          ? "Some figures below couldn't load — see the notice."
+          ? "Some figures below couldn't load. See the notice."
           : `${estimates.length} estimate${estimates.length === 1 ? "" : "s"}${
               awaitingCount ? ` · ${awaitingCount} awaiting an answer` : ""
             }${expiredIds.size ? ` · ${expiredIds.size} expired` : ""}`
@@ -248,7 +248,7 @@ export default async function EstimatesPage({
                 </Button>
               }
             >
-              Quote the trip before it&rsquo;s booked — day rates, travel days, per
+              Quote the trip before it&rsquo;s booked: day rates, travel days, per
               diem. When the client accepts, the estimate becomes a draft invoice
               without retyping a number.
             </EmptyState>

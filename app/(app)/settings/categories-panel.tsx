@@ -29,7 +29,7 @@ const DOMAIN_COPY: Record<
   expense_category: {
     title: "Expense categories",
     blurb:
-      "What you file a cost under. Rename any of these to whatever you actually call it — a pilot who files every ride as \"Uber & Lyft\" should see that word, not ours.",
+      "What you file a cost under. Rename any of these to whatever you actually call it: a pilot who files every ride as \"Uber & Lyft\" should see that word, not ours.",
     where: "Shown when you add an expense, and on every expense you have already filed.",
   },
   trip_kind: {
@@ -110,7 +110,7 @@ export default function CategoriesPanel({
           <Callout.Text>
             {canRetireAny
               ? "You can rename, reorder and retire any of these. "
-              : "You can rename and reorder any of these. Retiring one isn't offered because every option here is a built-in — they're what your existing records are already filed under, so the database refuses to hide them; rename instead, and the new name shows everywhere including on past records. "}
+              : "You can rename and reorder any of these. Retiring one isn't offered because every option here is a built-in: they're what your existing records are already filed under, so the database refuses to hide them. Rename instead; the new name shows everywhere, including on past records. "}
             Adding a brand-new category isn&rsquo;t available yet — the three lists
             themselves are fixed in the database, so a new one couldn&rsquo;t be
             saved onto an expense, trip or document even if this screen offered it.

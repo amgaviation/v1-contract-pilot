@@ -86,7 +86,7 @@ export async function confirmTransaction(formData: FormData): Promise<ConfirmTra
   const tripId = tripIdRaw === "" ? null : tripIdRaw;
   if (tripId !== null && !UUID_RE.test(tripId)) return { error: "That trip isn't valid." };
   if (treatment === "rebill" && !tripId) {
-    return { error: "Pick the trip this gets rebilled to — an expense can't be rebilled to nobody." };
+    return { error: "Pick the trip this gets rebilled to. An expense can't be rebilled to nobody." };
   }
   const notes = String(formData.get("notes") ?? "").trim().slice(0, 2000) || null;
 
@@ -109,7 +109,7 @@ export async function confirmTransaction(formData: FormData): Promise<ConfirmTra
     return { error: "That transaction has already been reviewed." };
   }
   if (row.amount_cents >= 0) {
-    return { error: "This transaction is a deposit or refund, not an expense — mark it dismissed instead." };
+    return { error: "This transaction is a deposit or refund, not an expense, mark it dismissed instead." };
   }
 
   // ONE CALL, ONE TRANSACTION (20260810040000).

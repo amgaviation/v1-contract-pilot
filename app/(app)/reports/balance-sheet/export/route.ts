@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "This balance sheet does not balance, which should be impossible — refusing to export rather than shipping figures that don't tie. Contact support.",
+          "This balance sheet does not balance, which should be impossible. Refusing to export rather than shipping figures that don't tie. Contact support.",
       },
       { status: 500 }
     );
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
 
   const rows: string[] = [];
   rows.push(csvRow(["Balance sheet as of", asOf]));
-  rows.push(csvRow(["Basis", "Accrual — receivables count when invoiced; the P&L reports cash-basis income"]));
+  rows.push(csvRow(["Basis", "Accrual: receivables count when invoiced; the P&L reports cash-basis income"]));
   rows.push(csvRow([]));
 
   const writeSection = (section: BalanceSheetSection) => {

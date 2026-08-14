@@ -228,7 +228,7 @@ function LockedHeader({
           </Text>
           <TextArea id="notes-locked" name="notes" rows={2} defaultValue={estimate.notes ?? ""} />
           <Text size="1" color="gray">
-            This estimate is out of draft — revise it to change what the client
+            This estimate is out of draft. Revise it to change what the client
             sees. Notes are yours and stay editable.
           </Text>
         </Flex>

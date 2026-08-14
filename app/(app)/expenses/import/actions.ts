@@ -70,7 +70,7 @@ export type CreateBankAccountResult = { error: string | null; account?: BankAcco
 export async function createBankAccount(formData: FormData): Promise<CreateBankAccountResult> {
   const { account } = await requireEntitlement("bank_import", "/expenses/import");
   const label = String(formData.get("label") ?? "").trim().slice(0, 200);
-  if (!label) return { error: "Give this account a name — e.g. \"Chase checking\"." };
+  if (!label) return { error: "Give this account a name, e.g. \"Chase checking\"." };
   const kindRaw = String(formData.get("kind") ?? "");
   if (!(KINDS as readonly string[]).includes(kindRaw)) return { error: "Pick an account type." };
   const kind = kindRaw as BankAccountRow["kind"];
@@ -187,7 +187,7 @@ export async function confirmBankImport(payload: ConfirmBankImportPayload): Prom
   }
   if (payload.rows.length + payload.rejected.length > MAX_ROWS_PER_CONFIRM) {
     return {
-      error: `That file has more than ${MAX_ROWS_PER_CONFIRM.toLocaleString()} rows — split it and import in parts.`,
+      error: `That file has more than ${MAX_ROWS_PER_CONFIRM.toLocaleString()} rows. Split it and import in parts.`,
     };
   }
   const fileName = payload.fileName.trim().slice(0, 255) || "statement";
@@ -234,7 +234,7 @@ export async function confirmBankImport(payload: ConfirmBankImportPayload): Prom
         await supabase.from("bank_source_files").delete().eq("id", sourceFileId).eq("account_id", account.id);
       }
       await supabase.from("bank_import_batches").delete().eq("id", batchId).eq("account_id", account.id);
-      return { error: "Couldn't complete that import. Nothing was added — check the file and try again." };
+      return { error: "Couldn't complete that import. Nothing was added. Check the file and try again." };
     }
 
     const reason = friendlyDbError(error as { code?: string; message?: string } | null, message);
@@ -251,7 +251,7 @@ export async function confirmBankImport(payload: ConfirmBankImportPayload): Prom
       batchId,
       imported: importedSoFar,
       partial: true,
-      partialMessage: `${importedSoFar} transaction${importedSoFar === 1 ? "" : "s"} were saved before the import stopped. ${reason} The remaining rows were not attempted — re-export just the rows after this point and import them separately.`,
+      partialMessage: `${importedSoFar} transaction${importedSoFar === 1 ? "" : "s"} were saved before the import stopped. ${reason} The remaining rows were not attempted. Re-export just the rows after this point and import them separately.`,
     };
   };
 

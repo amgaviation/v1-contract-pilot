@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "There are more payments, deductible expenses, or logged drives in this year than the export can safely total in one file. Contact support — exporting a silently partial total would misstate your quarterly figures.",
+          "There are more payments, deductible expenses, or logged drives in this year than the export can safely total in one file. Contact support. Exporting a silently partial total would misstate your quarterly figures.",
       },
       { status: 500 }
     );
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
       "Mileage drives",
       "Mileage miles",
       "Mileage rate (cents/mile)",
-      "Mileage amount (informational — not in net profit)",
+      "Mileage amount (informational, not in net profit)",
     ])
   );
   for (const pf of report.periods) {

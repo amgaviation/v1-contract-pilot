@@ -167,7 +167,7 @@ export default async function JournalPage() {
   return (
     <PageShell
       title="Journal"
-      subtitle="Every ledger entry — derived from your records automatically, plus your own."
+      subtitle="Every ledger entry, derived from your records automatically, plus your own."
       action={
         <Flex gap="2">
           {/* Plain <a href download>, not a client-side link — it's a file

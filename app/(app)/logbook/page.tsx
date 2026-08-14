@@ -349,8 +349,8 @@ export default async function LogbookPage({
               </Callout.Icon>
               <Callout.Text>
                 {filtered
-                  ? "The totals for this view couldn't be loaded, so they aren't shown — the entries below are still complete and correct."
-                  : "Your career totals couldn't be loaded, so they aren't shown — the entries below are still complete and correct."}
+                  ? "The totals for this view couldn't be loaded, so they aren't shown. The entries below are still complete and correct."
+                  : "Your career totals couldn't be loaded, so they aren't shown. The entries below are still complete and correct."}
               </Callout.Text>
             </Callout.Root>
           ) : null}
@@ -529,7 +529,7 @@ export default async function LogbookPage({
                   </Button>
                 }
               >
-                {`Nothing in your logbook matches ${filterLabel}. Your other entries are still there — this view just doesn't include any of them.`}
+                {`Nothing in your logbook matches ${filterLabel}. Your other entries are still there. This view just doesn't include any of them.`}
               </EmptyState>
             ) : entries.length === 0 && totalCount > 0 ? (
               // Empty because of WHERE YOU ARE, not because there is

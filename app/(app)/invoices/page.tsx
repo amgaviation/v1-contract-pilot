@@ -63,9 +63,9 @@ const LIST_LIMIT = 1000;
 /** The buckets an accountant and a chasing pilot both think in. */
 const AGING_BUCKETS = [
   { key: "current", label: "Not yet due", from: -Infinity, to: 0 },
-  { key: "d1_30", label: "1–30 days", from: 1, to: 30 },
-  { key: "d31_60", label: "31–60 days", from: 31, to: 60 },
-  { key: "d61_90", label: "61–90 days", from: 61, to: 90 },
+  { key: "d1_30", label: "1-30 days", from: 1, to: 30 },
+  { key: "d31_60", label: "31-60 days", from: 31, to: 60 },
+  { key: "d61_90", label: "61-90 days", from: 61, to: 90 },
   { key: "d90", label: "90+ days", from: 91, to: Infinity },
 ] as const;
 
@@ -250,7 +250,7 @@ export default async function InvoicesPage({
       title="Invoices"
       subtitle={
         firstError
-          ? "Some figures below couldn't load — see the notice."
+          ? "Some figures below couldn't load, see the notice."
           : `${invoices.length} invoice${invoices.length === 1 ? "" : "s"}${
               overdueCount ? ` · ${overdueCount} past due` : ""
             }`
@@ -286,7 +286,7 @@ export default async function InvoicesPage({
             <RadixLink asChild>
               <NextLink href="/invoices/recurring">Review the queue</NextLink>
             </RadixLink>
-            .
+           .
           </Callout.Text>
         </Callout.Root>
       ) : null}
@@ -377,7 +377,7 @@ export default async function InvoicesPage({
               }
             >
               Draft one from a client and the trips you&rsquo;ve already flown for
-              them — the flight days, travel days, and rebilled expenses fill
+              them: the flight days, travel days, and rebilled expenses fill
               themselves in.
             </EmptyState>
           ) : (

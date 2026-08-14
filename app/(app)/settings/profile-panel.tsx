@@ -197,7 +197,7 @@ export default function ProfilePanel({
                 Change your password
               </Text>
               <Text size="2" color="gray">
-                {`Your current password is required — a signed-in browser alone isn't enough to set a new one. At least ${MIN_PASSWORD_LENGTH} characters.`}
+                {`Your current password is required; a signed-in browser alone isn't enough to set a new one. At least ${MIN_PASSWORD_LENGTH} characters.`}
               </Text>
             </Flex>
 
@@ -261,7 +261,7 @@ export default function ProfilePanel({
                 Sign out everywhere else
               </Text>
               <Text size="2" color="gray">
-                Ends your session on every other device and browser — a phone left at an
+                Ends your session on every other device and browser: a phone left at an
                 FBO, a shared dispatch machine, a laptop you no longer have. This browser
                 stays signed in.
               </Text>

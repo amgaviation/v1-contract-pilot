@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "This period has more rows than the export can safely total in one file. Narrow the date range or contact support — exporting a silently partial total would misstate your figures.",
+          "This period has more rows than the export can safely total in one file. Narrow the date range or contact support. Exporting a silently partial total would misstate your figures.",
       },
       { status: 500 }
     );
@@ -180,7 +180,7 @@ export async function GET(request: NextRequest) {
   );
   rows.push(
     csvRow([
-      "Mileage (excluded from expenses — standard mileage rate is an alternative to, not additive with, actual vehicle expenses)",
+      "Mileage (excluded from expenses: standard mileage rate is an alternative to, not additive with, actual vehicle expenses)",
       report.mileageCount,
       centsToDollarsString(report.mileageTotalCents),
     ])

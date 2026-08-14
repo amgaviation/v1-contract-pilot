@@ -379,7 +379,7 @@ export default async function TripPage({
               This trip is canceled
               {trip.canceled_at ? ` (recorded ${formatDate(trip.canceled_at.slice(0, 10))})` : ""}
               {trip.cancellation_notice_from
-                ? ` — notice from ${trip.cancellation_notice_from}`
+                ? `, notice from ${trip.cancellation_notice_from}`
                 : ""}
               .
             </Text>

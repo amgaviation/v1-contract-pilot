@@ -156,7 +156,7 @@ export async function loadSalesTaxReport(
     for (;;) {
       if (offset >= SALES_TAX_LIMIT * MAX_LEDGER_PAGES) {
         return failed(
-          "this period's invoices carry more payment rows than the report can read completely — narrow the date range; a running sum over half a ledger would misplace tax across periods"
+          "this period's invoices carry more payment rows than the report can read completely. Narrow the date range; a running sum over half a ledger would misplace tax across periods"
         );
       }
       const page = rowsOf<SalesTaxPaymentRow>(

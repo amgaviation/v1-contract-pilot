@@ -340,7 +340,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                 {accounts.map((a) => (
                   <Select.Item key={a.id} value={a.id}>
                     {a.label}
-                    {a.last4 ? ` ···${a.last4}` : ""} — {KIND_LABEL[a.kind]}
+                    {a.last4 ? ` ···${a.last4}` : ""}, {KIND_LABEL[a.kind]}
                   </Select.Item>
                 ))}
               </Select.Content>
@@ -354,7 +354,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
             <Card variant="surface">
               <Flex direction="column" gap="3">
                 <Text size="2" color="gray">
-                  A label only — never a full account number or any credential. Last 4 is optional, exactly as
+                  A label only, never a full account number or any credential. Last 4 is optional, exactly as
                   printed on the statement.
                 </Text>
                 <Flex gap="3" wrap="wrap">
@@ -399,7 +399,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
         <Flex direction="column" gap="3">
           <Text weight="medium">2. Upload a statement</Text>
           <Text size="2" color="gray">
-            CSV, OFX, or QFX — whatever your bank's online portal lets you download. Nothing is written until you
+            CSV, OFX, or QFX, whatever your bank's online portal lets you download. Nothing is written until you
             review and confirm below.
           </Text>
           <input
@@ -429,7 +429,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
           <Flex direction="column" gap="3">
             <Text weight="medium">3. Match your file's columns</Text>
             <Text size="2" color="gray">
-              We guessed based on the header names — check them, especially Amount vs. Debit/Credit.
+              We guessed based on the header names, check them, especially Amount vs. Debit/Credit.
             </Text>
             <Text as="label" size="2">
               <Flex gap="2" align="center">
@@ -437,14 +437,14 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                   checked={firstRowIsData}
                   onCheckedChange={(checked) => toggleFirstRowIsData(checked === true)}
                 />
-                The first row above is a transaction, not column headers — some
+                The first row above is a transaction, not column headers, some
                 banks (Wells Fargo among them) export CSVs with no header row at all.
               </Flex>
             </Text>
             {firstRowIsData ? (
               <Callout.Root color="amber" size="1">
                 <Callout.Text>
-                  Every row below — including the first — is treated as a
+                  Every row below, including the first, is treated as a
                   transaction. There&rsquo;s no header text to guess column names
                   from, so map each one by hand.
                 </Callout.Text>
@@ -540,7 +540,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                     This statement is for an account ending{" "}
                     ···{parseResult.statementAccountId.slice(-4)}, but you picked{" "}
                     {selectedAccount.label} ···{selectedAccount.last4}. Importing it
-                    would file these transactions against the wrong account — and a
+                    would file these transactions against the wrong account, and a
                     later import of the right statement wouldn&rsquo;t catch it as a
                     duplicate. Check the account above before continuing.
                   </Callout.Text>
@@ -553,7 +553,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                   ···{parseResult.statementAccountId.slice(-4)}, but{" "}
                   {selectedAccount.label} has no last 4 on file, so we can&rsquo;t
                   confirm it&rsquo;s the same account. Double-check the statement
-                  yourself before importing — a later import of the right
+                  yourself before importing. A later import of the right
                   statement wouldn&rsquo;t catch a mismatch as a duplicate.
                 </Callout.Text>
               </Callout.Root>
@@ -574,9 +574,9 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                   .{" "}
                   {parseResult.signInterpretation.decisive
                     ? "That matches this statement's own pattern."
-                    : "This statement is too evenly split to be sure — check it against your card before importing."}{" "}
+                    : "This statement is too evenly split to be sure, check it against your card before importing."}{" "}
                   <RadixLink href="#" onClick={(e) => { e.preventDefault(); invertSignReading(); }}>
-                    That&rsquo;s backwards — swap them
+                    That&rsquo;s backwards, swap them
                   </RadixLink>
                   {parseResult.signInterpretation.overridden ? " (swapped)" : ""}
                 </Callout.Text>
@@ -624,7 +624,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                 </Table.Root>
                 {parseResult.valid.length > 500 ? (
                   <Text size="1" color="gray">
-                    Showing the first 500 of {parseResult.valid.length} rows — every row is still included in the
+                    Showing the first 500 of {parseResult.valid.length} rows, every row is still included in the
                     import.
                   </Text>
                 ) : null}
@@ -712,7 +712,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                   </Text>
                   <Text as="div" size="1" mb="1">
                     Two charges on the same day, at the same place, for the same
-                    amount look identical to us — so if these are genuinely
+                    amount look identical to us, so if these are genuinely
                     separate (two crew meals, a toll paid both ways), add the
                     missing one as an expense by hand.
                   </Text>
@@ -722,7 +722,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                     .map((d) => (
                       <Text as="div" size="1" key={`dup-${d.rowNumber}`}>
                         Row {d.rowNumber}
-                        {d.sourceRow ? ` — ${Object.values(d.sourceRow).slice(0, 3).join(" · ")}` : ""}
+                        {d.sourceRow ? `, ${Object.values(d.sourceRow).slice(0, 3).join(" · ")}` : ""}
                       </Text>
                     ))}
                 </Callout.Text>
@@ -753,7 +753,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                   </Text>
                   <Text as="div" size="1" mb="1">
                     A likely cause is re-importing the same statement range in a
-                    different format (CSV, then later OFX/QFX) — the file&rsquo;s
+                    different format (CSV, then later OFX/QFX). The file&rsquo;s
                     wording differs enough that we can&rsquo;t tell it&rsquo;s the same
                     charge automatically. Check the review queue for a real
                     duplicate before confirming either one as an expense.
@@ -761,7 +761,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                   {confirmResult.possibleRematches!.slice(0, 10).map((r) => (
                     <Text as="div" size="1" key={`rematch-${r.rowNumber}`}>
                       Row {r.rowNumber}
-                      {r.sourceRow ? ` — ${Object.values(r.sourceRow).slice(0, 3).join(" · ")}` : ""}
+                      {r.sourceRow ? `, ${Object.values(r.sourceRow).slice(0, 3).join(" · ")}` : ""}
                     </Text>
                   ))}
                   {confirmResult.possibleRematches!.length > 10 ? (

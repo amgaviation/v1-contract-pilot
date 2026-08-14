@@ -107,7 +107,7 @@ export default function ProductMock() {
             <Box className="v1-m-mock-dot" />
             <Box className="v1-m-mock-dot" />
             <Text size="1" color="gray" ml="2">
-              {BRAND.name} — Overview
+              {BRAND.name}: Overview
             </Text>
           </Flex>
 

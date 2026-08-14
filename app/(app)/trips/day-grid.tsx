@@ -316,8 +316,8 @@ export default function DayGrid({
         <Box mb="3">
           <Text size="1" color="gray">
             {billedOn
-              ? `This trip is billed on ${billedOn}. Its day rows are frozen here — correcting them would leave the trip and that invoice disagreeing about what was flown. Remove it from the invoice first.`
-              : "This trip is on an invoice. Its day rows are frozen here — correcting them would leave the trip and the invoice that has already gone out disagreeing about what was flown."}
+              ? `This trip is billed on ${billedOn}. Its day rows are frozen here. Correcting them would leave the trip and that invoice disagreeing about what was flown. Remove it from the invoice first.`
+              : "This trip is on an invoice. Its day rows are frozen here. Correcting them would leave the trip and the invoice that has already gone out disagreeing about what was flown."}
           </Text>
         </Box>
         <ReadOnlyGrid dates={dates} existingByDate={existingByDate} dayTypeById={dayTypeById} allDayTypes={dayTypes} />
@@ -632,7 +632,7 @@ function ReadOnlyGrid({
                   },
                   allDayTypes
                 )
-              : "— not counted —";
+              : "(not counted)";
             return (
               <Table.Row key={date}>
                 <Table.Cell style={{ whiteSpace: "nowrap" }}>

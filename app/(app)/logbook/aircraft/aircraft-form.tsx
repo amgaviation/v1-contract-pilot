@@ -265,7 +265,7 @@ export default function AircraftForm({
             label="Turbine powered"
             submittedValue={submitted?.is_turbine}
             storedValue={values.is_turbine}
-            hint="Turbine time is its own line on a pilot-history form and an open-pilot warranty. Leaving it unrecorded is fine — nothing here will assume piston."
+            hint="Turbine time is its own line on a pilot-history form and an open-pilot warranty. Leaving it unrecorded is fine. Nothing here will assume piston."
           />
           <TriStateField
             name="is_retractable"

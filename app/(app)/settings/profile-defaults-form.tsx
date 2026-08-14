@@ -207,7 +207,7 @@ export default function ProfileDefaultsForm({
                 <TextField.Slot>$</TextField.Slot>
               </TextField.Root>
               <Text size="1" color="gray" style={{ fontStyle: "italic" }}>
-                Often half to full day rate — your call
+                Often half to full day rate, your call
               </Text>
             </Flex>
             <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
@@ -248,7 +248,7 @@ export default function ProfileDefaultsForm({
 
           <Box>
             <Text size="1" color="gray">
-              These seed new clients and new trips — records you&rsquo;ve
+              These seed new clients and new trips. Records you&rsquo;ve
               already created keep the rates they were saved with.
             </Text>
           </Box>

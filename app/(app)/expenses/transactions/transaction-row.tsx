@@ -103,7 +103,7 @@ export default function TransactionRow({
       <Table.Row>
         <Table.Cell colSpan={5}>
           <Text size="2" color="gray">
-            {done === "confirmed" ? "Saved as an expense." : "Dismissed — not an expense."}
+            {done === "confirmed" ? "Saved as an expense." : "Dismissed, not an expense."}
           </Text>
         </Table.Cell>
       </Table.Row>
@@ -213,7 +213,7 @@ export default function TransactionRow({
                     {txn.duplicates.map((d, i) => (
                       <Text as="div" size="1" key={`${d.incurredOn}-${i}`}>
                         {formatCents(d.amountCents)} on {formatDate(d.incurredOn)}
-                        {d.vendor ? ` — ${d.vendor}` : ""}
+                        {d.vendor ? `, ${d.vendor}` : ""}
                         {d.treatment === "rebill" ? " (rebilled to a client)" : ""}
                         {d.fromBank ? " (from another statement)" : " (entered by hand)"}
                       </Text>
@@ -240,7 +240,7 @@ export default function TransactionRow({
                       onClick={() => setAcknowledgedDuplicate(true)}
                       disabled={pending}
                     >
-                      It&rsquo;s a different charge — record it anyway
+                      It&rsquo;s a different charge, record it anyway
                     </Button>
                     <Button type="button" variant="soft" onClick={handleIgnore} disabled={pending}>
                       Dismiss as a duplicate

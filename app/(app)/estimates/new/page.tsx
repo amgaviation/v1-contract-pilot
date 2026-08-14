@@ -28,7 +28,7 @@ export default async function NewEstimatePage() {
   return (
     <PageShell
       title="New estimate"
-      subtitle="Quote the work before it's flown — day rates, travel days, per diem. It stays a draft until you send it."
+      subtitle="Quote the work before it's flown: day rates, travel days, per diem. It stays a draft until you send it."
     >
       <NewEstimateForm action={createEstimateDraft} clients={clients} />
     </PageShell>

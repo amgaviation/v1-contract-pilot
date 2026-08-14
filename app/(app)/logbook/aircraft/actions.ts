@@ -101,7 +101,7 @@ type Parsed =
 function parse(formData: FormData): Parsed {
   const tailNumber = String(formData.get("tail_number") ?? "").trim();
   if (tailNumber.length < 2 || tailNumber.length > 12) {
-    return { ok: false, error: "A registration is between 2 and 12 characters — N447SP, G-ABCD." };
+    return { ok: false, error: "A registration is between 2 and 12 characters, for example N447SP or G-ABCD." };
   }
   if (tailKey(tailNumber) === "") {
     return { ok: false, error: "That registration has no letters or numbers in it." };
@@ -117,7 +117,7 @@ function parse(formData: FormData): Parsed {
     return {
       ok: false,
       error:
-        "The ICAO type designator is 2 to 4 letters or digits — C560 for a Citation V, BE40 for a Beechjet. Leave it blank if you're not sure.",
+        "The ICAO type designator is 2 to 4 letters or digits, for example C560 for a Citation V or BE40 for a Beechjet. Leave it blank if you're not sure.",
     };
   }
 
@@ -126,7 +126,7 @@ function parse(formData: FormData): Parsed {
     return {
       ok: false,
       error:
-        "A type rating is 2 to 10 letters, digits or hyphens — CE-500 for the Citation series, B-737, LR-JET. Leave it blank if you don't hold one.",
+        "A type rating is 2 to 10 letters, digits or hyphens, for example CE-500 for the Citation series, B-737, or LR-JET. Leave it blank if you don't hold one.",
     };
   }
 
@@ -197,7 +197,7 @@ export async function createAircraft(
       const existing = (data as { tail_number: string } | null)?.tail_number;
       return {
         error: existing
-          ? `You already have this aircraft — it's in your fleet as ${existing}.`
+          ? `You already have this aircraft. It's in your fleet as ${existing}.`
           : "You already have this aircraft.",
         values: echo(formData),
       };

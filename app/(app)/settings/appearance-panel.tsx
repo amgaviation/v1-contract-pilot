@@ -188,7 +188,7 @@ export default function AppearancePanel({
                   ))}
                 </RadioGroup.Root>
                 <Text size="1" color="gray">
-                  The section rail stays dark in both — in dark mode it sits a step
+                  The section rail stays dark in both. In dark mode it sits a step
                   above the page so the two never blur together.
                 </Text>
               </Flex>
@@ -255,7 +255,7 @@ export default function AppearancePanel({
                 </Text>
               ) : dirty ? (
                 <Text size="1" color="amber">
-                  Not saved yet — the preview above is showing your choice. Save to
+                  Not saved yet. The preview above is showing your choice. Save to
                   apply it to the whole account.
                 </Text>
               ) : null}

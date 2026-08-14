@@ -144,7 +144,7 @@ export default function ReceiptScan({
     if (!file) {
       setStatus({
         phase: "failed",
-        message: "No photo is selected any more — pick the receipt again.",
+        message: "No photo is selected any more, pick the receipt again.",
       });
       return;
     }
@@ -195,7 +195,7 @@ export default function ReceiptScan({
         setStatus({
           phase: "failed",
           message:
-            "Nothing readable came off that photo. Fill the fields in below — a flatter, closer, better-lit shot usually scans.",
+            "Nothing readable came off that photo. Fill the fields in below. A flatter, closer, better-lit shot usually scans.",
         });
         return;
       }
@@ -223,7 +223,7 @@ export default function ReceiptScan({
         message:
           cause instanceof engine.ReceiptOcrError
             ? cause.message
-            : "The scan didn't finish. Fill the fields in below — nothing was lost.",
+            : "The scan didn't finish. Fill the fields in below. Nothing was lost.",
       });
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
@@ -267,7 +267,7 @@ export default function ReceiptScan({
           ) : null}
           <Text size="1" color="gray">
             {scanning
-              ? status.message + (status.fraction === null ? "" : ` — ${Math.round(status.fraction * 100)}%`)
+              ? status.message + (status.fraction === null ? "" : `, ${Math.round(status.fraction * 100)}%`)
               : "Fills in the date, amount, vendor and category for you. Runs on this device; the first scan downloads about 6 MB."}
           </Text>
         </Flex>
@@ -275,7 +275,7 @@ export default function ReceiptScan({
 
       {fileName && !scannable ? (
         <Text as="div" size="1" color="gray" mt="3">
-          {`${fileName} will be attached. PDFs are stored as-is — type the amounts below.`}
+          {`${fileName} will be attached. PDFs are stored as-is, type the amounts below.`}
         </Text>
       ) : null}
 
@@ -338,5 +338,5 @@ function describe(extraction: ReceiptExtraction): string {
   if (extraction.gallons !== null) extras.push(`${extraction.gallons} gal`);
   if (extraction.airportIdents.length > 0) extras.push(extraction.airportIdents.join(", "));
 
-  return `Read ${list}${extras.length > 0 ? ` — also saw ${extras.join(" · ")}.` : "."}`;
+  return `Read ${list}${extras.length > 0 ? `, also saw ${extras.join(" · ")}.` : "."}`;
 }

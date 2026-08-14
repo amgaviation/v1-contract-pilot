@@ -112,7 +112,7 @@ export default function DayTypeRow({
             </Text>
             {archived ? (
               <Text size="1" color="gray">
-                Archived — hidden from pickers, still used on past trips
+                Archived, hidden from pickers, still used on past trips
               </Text>
             ) : null}
           </Flex>

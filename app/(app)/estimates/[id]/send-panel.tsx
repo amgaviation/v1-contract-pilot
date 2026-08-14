@@ -25,8 +25,8 @@ function NoteTooLong({ value }: { value: string }) {
   return (
     <Text as="div" size="1" color="red" mt="1">
       {over.toLocaleString()} character{over === 1 ? "" : "s"} over the{" "}
-      {MAX_CUSTOM_MESSAGE_CHARS.toLocaleString()}-character limit. Shorten it —
-      nothing will be sent until you do.
+      {MAX_CUSTOM_MESSAGE_CHARS.toLocaleString()}-character limit. Shorten it.
+      Nothing will be sent until you do.
     </Text>
   );
 }
@@ -61,7 +61,7 @@ export default function SendPanel({
         <>
           <Text as="div" size="1" color="gray" mb="3">
             Goes to {clientEmail} with the PDF attached. You can send it again any
-            time — this doesn&rsquo;t change the estimate or its status.
+            time. This doesn&rsquo;t change the estimate or its status.
           </Text>
           <AlertDialog.Root>
             <AlertDialog.Trigger>
@@ -73,7 +73,7 @@ export default function SendPanel({
               <AlertDialog.Title>Email this quote to {clientName}?</AlertDialog.Title>
               <AlertDialog.Description size="2">
                 It goes to {clientEmail} with the PDF attached, marked as an
-                estimate — no payment is requested. Use &ldquo;Preview PDF&rdquo;
+                estimate. No payment is requested. Use &ldquo;Preview PDF&rdquo;
                 above to see exactly what they&rsquo;ll get first.
               </AlertDialog.Description>
 

@@ -130,7 +130,7 @@ export default function ReminderPanel({
             />
             <Text size="2">
               {suppressed
-                ? "Paused — no scheduled reminder will go out for this invoice."
+                ? "Paused. No scheduled reminder will go out for this invoice."
                 : `Follow ${clientName}'s schedule for this invoice.`}
             </Text>
           </Flex>
@@ -208,7 +208,7 @@ export default function ReminderPanel({
             <Box mt="2">
               {lateFee.raised.map((fee) => (
                 <Text as="div" size="1" color="gray" key={fee.id}>
-                  {fee.amount} raised {fee.when} —{" "}
+                  {fee.amount} raised {fee.when},{" "}
                   <RadixLink asChild>
                     <NextLink href={`/invoices/${fee.id}`}>
                       {fee.number ?? "draft invoice"}
@@ -239,7 +239,7 @@ export default function ReminderPanel({
                       It says what it makes (a draft), what it does not touch
                       (this invoice), and who sends it (them). */}
                   <AlertDialog.Description size="2">
-                    This creates a SEPARATE draft invoice for {lateFee.quote} — it
+                    This creates a SEPARATE draft invoice for {lateFee.quote}. It
                     does not change this invoice, which stays exactly as your
                     client received it. Nothing is sent: you review the draft and
                     send it yourself, like any other invoice. Only do this if the

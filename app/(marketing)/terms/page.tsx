@@ -48,7 +48,7 @@ export default function TermsPage() {
               <InfoCircledIcon />
             </Callout.Icon>
             <Callout.Text>
-              <Text weight="medium">Placeholder — pending review by aviation counsel.</Text>{" "}
+              <Text weight="medium">Placeholder, pending review by aviation counsel.</Text>{" "}
               Nothing on this page is a binding agreement. {BRAND.name} has
               not yet published Terms of Service, and no version of this
               text has been reviewed or approved by counsel or by the
@@ -58,8 +58,8 @@ export default function TermsPage() {
 
           <Text size="2" color="gray">
             When this page is published for real, it will cover the terms
-            of using {BRAND.name} — including billing, the trial, and
-            cancellation — and creating an account will ask you to accept
+            of using {BRAND.name} (including billing, the trial, and
+            cancellation), and creating an account will ask you to accept
             it explicitly. Until then, this URL exists so it has a stable
             address; it does not yet describe any agreement you are bound
             by.

@@ -138,7 +138,7 @@ export function AppShell({
               <Flex align="center" justify="between" gap="2" px="3" pt="3">
                 <Link
                   href={DASHBOARD_PATH}
-                  aria-label={`${BRAND.name} — ${BRAND.descriptor}`}
+                  aria-label={`${BRAND.name}: ${BRAND.descriptor}`}
                 >
                   <Logo />
                 </Link>
@@ -210,7 +210,7 @@ export function AppShell({
                 <Box p="4">
                   <Link
                     href={DASHBOARD_PATH}
-                    aria-label={`${BRAND.name} — ${BRAND.descriptor}`}
+                    aria-label={`${BRAND.name}: ${BRAND.descriptor}`}
                   >
                     {/* Wordmark auto-inverts to white here — globals.css's
                         .radix-themes.dark rule, live on this subtree. */}
@@ -343,7 +343,7 @@ export function AppShell({
                     <Callout.Root color="amber">
                       <Callout.Text>
                         Your subscription has ended, so this account is
-                        read-only — everything stays viewable and
+                        read-only. Everything stays viewable and
                         exportable, and nothing is deleted. Reading and
                         export still work; resubscribe to make changes
                         again. <Link href="/settings/billing">Go to Billing</Link>.

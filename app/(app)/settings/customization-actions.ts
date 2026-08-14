@@ -386,7 +386,7 @@ export async function setCustomOptionArchived(
     if (row?.is_builtin) {
       return {
         error:
-          "This is one of the built-in options and can't be retired — it's what your " +
+          "This is one of the built-in options and can't be retired. It's what your " +
           "existing records are already filed under. Rename it instead; the new name " +
           "shows everywhere, including on past records.",
       };
@@ -409,7 +409,7 @@ export async function setCustomOptionArchived(
     if (error.code === "P0001") {
       return {
         error:
-          "This is one of the built-in options and can't be retired — it's what your " +
+          "This is one of the built-in options and can't be retired. It's what your " +
           "existing records are already filed under. Rename it instead.",
       };
     }

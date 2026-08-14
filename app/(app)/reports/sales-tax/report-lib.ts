@@ -215,7 +215,7 @@ export type SalesTaxRow = {
  * ISO string — same words, each surface's own date form.
  */
 export function correctionNote(previouslyCountedOn: string): string {
-  return `Payment corrected — previously counted ${previouslyCountedOn}`;
+  return `Payment corrected, previously counted ${previouslyCountedOn}`;
 }
 
 export type SalesTaxAssembly =
@@ -329,7 +329,7 @@ export function assembleSalesTaxReport(input: {
       // a filing preparer.
       return {
         ok: false,
-        reason: `invoice ${invoiceId} has payments but no invoice row — refusing to total a partial join`,
+        reason: `invoice ${invoiceId} has payments but no invoice row, refusing to total a partial join`,
       };
     }
     // Void invoices are excluded outright, matching profit-loss's income
@@ -344,7 +344,7 @@ export function assembleSalesTaxReport(input: {
       // cannot be computed — refuse, never guess.
       return {
         ok: false,
-        reason: `invoice ${invoiceId} has payments but no totals row — refusing to place its tax without a total`,
+        reason: `invoice ${invoiceId} has payments but no totals row, refusing to place its tax without a total`,
       };
     }
 
@@ -384,7 +384,7 @@ export function assembleSalesTaxReport(input: {
     if (Math.round((taxable * invoice.tax_rate_bps) / 10000) !== totals.tax_cents) {
       return {
         ok: false,
-        reason: `invoice ${invoiceId}: taxable subtotal x rate does not reproduce tax_cents — refusing to print figures that don't reconcile`,
+        reason: `invoice ${invoiceId}: taxable subtotal x rate does not reproduce tax_cents, refusing to print figures that don't reconcile`,
       };
     }
 

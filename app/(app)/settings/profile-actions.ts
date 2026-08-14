@@ -77,7 +77,7 @@ function passwordUpdateMessage(message: string): string {
     return (
       "This project requires an emailed one-time code to change a password from " +
       "inside the app, which this screen can't collect yet. Sign out and use " +
-      "“Forgot password” instead — that flow sets a new password end to end."
+      "“Forgot password” instead. That flow sets a new password end to end."
     );
   }
   if (lower.includes("same") && lower.includes("password")) {
@@ -265,7 +265,7 @@ export async function changePassword(
     error: null,
     notice:
       "Password changed. You're still signed in here. If you changed it because it may have " +
-      "leaked, use “Sign out everywhere else” below — that's what makes every other device " +
+      "leaked, use “Sign out everywhere else” below. That's what makes every other device " +
       "certain to be signed out.",
   };
 }

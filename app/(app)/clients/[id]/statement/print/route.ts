@@ -64,7 +64,7 @@ export async function GET(
     return NextResponse.json(
       {
         error:
-          "This period has more invoices than a single statement can safely total. Narrow the date range — printing a silently partial statement would misstate what's outstanding.",
+          "This period has more invoices than a single statement can safely total. Narrow the date range. Printing a silently partial statement would misstate what's outstanding.",
       },
       { status: 500 }
     );
