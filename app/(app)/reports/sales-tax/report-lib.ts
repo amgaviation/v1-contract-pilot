@@ -215,7 +215,7 @@ export type SalesTaxRow = {
  * ISO string — same words, each surface's own date form.
  */
 export function correctionNote(previouslyCountedOn: string): string {
-  return `Payment corrected, previously counted ${previouslyCountedOn}`;
+  return `Payment corrected. The tax was previously counted on ${previouslyCountedOn}.`;
 }
 
 export type SalesTaxAssembly =

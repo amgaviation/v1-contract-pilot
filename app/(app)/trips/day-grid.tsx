@@ -334,11 +334,11 @@ export default function DayGrid({
       {existingDays.length === 0 && seed.seeded ? (
         <Box mb="3">
           <Text size="1" color="gray">
-            Seeded from this trip&apos;s day counts — check it before saving.
+            Seeded from this trip&apos;s day counts. Check it before saving.
             Which dates are travel versus flight days (travel first and
             last, flight in between), and where a half day lands, is a
             guess based on the counts alone, not this trip&apos;s real
-            day-by-day record — verify every row.
+            day-by-day record. Verify every row.
             {seed.approximate
               ? " Some days didn't fit the trip's dates and were left blank."
               : ""}
@@ -554,8 +554,8 @@ export default function DayGrid({
           Running total: {formatCents(liveTotalCents)}
         </Text>
         <Text as="div" size="1" color="gray">
-          Updates as you edit below, before you save. Day rows only — per
-          diem, the contract minimum and rebilled expenses aren&rsquo;t
+          Updates as you edit below, before you save. Day rows only.
+          Per diem, the contract minimum and rebilled expenses aren&rsquo;t
           included, so this won&rsquo;t match the invoice total.
         </Text>
       </Box>

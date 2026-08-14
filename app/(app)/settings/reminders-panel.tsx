@@ -151,7 +151,7 @@ export default function RemindersPanel({
                 refresh. */}
             <Text size="1" color="gray">
               Sends anything that is due right now, exactly as the daily run
-              would. Safe to press twice — a reminder that has already gone out
+              would. Safe to press twice: a reminder that has already gone out
               is never sent again.
             </Text>
             {lines ? (

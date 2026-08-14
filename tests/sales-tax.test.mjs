@@ -148,7 +148,7 @@ test("formatBps renders bps as a human rate without trailing zeros", () => {
 test("the correction note names the date the tax was previously counted", () => {
   assert.equal(
     correctionNote("2026-01-15"),
-    "Payment corrected — previously counted 2026-01-15"
+    "Payment corrected. The tax was previously counted on 2026-01-15."
   );
 });
 

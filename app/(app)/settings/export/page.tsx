@@ -259,7 +259,7 @@ export default async function ExportPage() {
           expenses and documents CSVs say whether a file is on record; the
           files themselves stay downloadable one at a time from their own
           pages. Also not included: internal bookkeeping trails with no
-          data of your own in them — bank-import batch/source-file records
+          data of your own in them, such as bank-import batch/source-file records
           and payment-reminder send logs.
         </Text>
       </Flex>

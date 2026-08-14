@@ -99,7 +99,7 @@ export default function AppearancePanel({
               </Text>
               <Text size="1" color="gray">
                 Used for the current section marker, buttons and links. These are the
-                colours that stay readable with white text on them — that is why the
+                colours that stay readable with white text on them, which is why the
                 list is short rather than a colour picker.
               </Text>
               <RadioGroup.Root

@@ -480,6 +480,6 @@ export async function quoteLateFeeForInvoice(
   return {
     error: null,
     amountCents: quote.amountCents,
-    explanation: `${formatCents(quote.amountCents)}, ${quote.explanation}`,
+    explanation: `${formatCents(quote.amountCents)}: ${quote.explanation}`,
   };
 }

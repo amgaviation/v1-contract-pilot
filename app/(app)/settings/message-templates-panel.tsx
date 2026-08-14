@@ -149,7 +149,7 @@ export default function MessageTemplatesPanel({
             <Text size="1" color="gray">
               The amount due, the payment link, any receipts attached, your
               invoice notes and your business name are added automatically
-              underneath, and can&rsquo;t be edited here — they have to match
+              underneath, and can&rsquo;t be edited here: they have to match
               the invoice. The subject line is set for you too, so your client
               can find the message by invoice number.
             </Text>

@@ -518,7 +518,7 @@ export default async function InvoicePage({
           : null,
       lateFee: {
         policy: describeLateFeePolicy(lateFeePolicy),
-        quote: quote ? `${formatCents(quote.amountCents)}, ${quote.explanation}` : null,
+        quote: quote ? `${formatCents(quote.amountCents)}: ${quote.explanation}` : null,
         raised: fees.map((fee) => ({
           id: fee.fee_invoice_id,
           number: feeNumbers.get(fee.fee_invoice_id) ?? null,

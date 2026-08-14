@@ -214,7 +214,7 @@ function LockedHeader({
           </Text>
           <TextField.Root id="notes-locked" name="notes" defaultValue={invoice.notes ?? ""} />
           <Text size="1" color="gray">
-            This is issued, only notes and delivery status can still change.
+            This is issued. Only notes and delivery status can still change.
           </Text>
         </Flex>
         <Flex mt="2" role="alert" aria-live="polite">

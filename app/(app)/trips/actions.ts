@@ -595,7 +595,7 @@ export async function updateTrip(
       ? `This trip's dates overlap another trip on your calendar (${formatDateRange(
           overlap.starts_on,
           overlap.ends_on
-        )}) — check you haven't double-booked or double-entered it.`
+        )}). Check you haven't double-booked or double-entered it.`
       : null,
   };
 }

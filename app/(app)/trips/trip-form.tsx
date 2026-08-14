@@ -463,7 +463,7 @@ export default function TripForm({
               value={cancellationNoticeFrom}
             />
             <Text size="1" color="gray">
-              Who called off the trip — supports a cancellation fee line if
+              Who called off the trip. Supports a cancellation fee line if
               this contract has one. The cancellation timestamp itself is
               recorded automatically when status is set to Canceled.
             </Text>
@@ -523,7 +523,7 @@ export default function TripForm({
             </Select.Root>
             <input type="hidden" name="operating_rule" value={operatingRule} />
             <Text size="1" color="gray">
-              Which part this specific trip is flown under — fills in from the client, always
+              Which part this specific trip is flown under. Fills in from the client, always
               overridable per trip.
             </Text>
           </Flex>
