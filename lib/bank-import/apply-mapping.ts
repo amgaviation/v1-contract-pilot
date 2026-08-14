@@ -209,7 +209,7 @@ export function applyCsvMapping(params: {
       // as a genuinely unstorable row (the DB CHECK is amount_cents <> 0),
       // aborting the whole confirm instead of being skipped by itself.
       if (amountCents === 0) {
-        reject('Amount is $0.00 — a zero-amount row has nothing to import.');
+        reject('Amount is $0.00. A zero-amount row has nothing to import.');
         return;
       }
       signSelfDeclared = declaresOwnSign(raw);
@@ -233,7 +233,7 @@ export function applyCsvMapping(params: {
       const debitPresent = debitRaw !== "" && debitVal !== undefined && debitVal !== 0;
       const creditPresent = creditRaw !== "" && creditVal !== undefined && creditVal !== 0;
       if (debitPresent && creditPresent) {
-        reject(`Both debit ("${debitRaw}") and credit ("${creditRaw}") are populated on the same row — a bank line is one or the other, never both.`);
+        reject(`Both debit ("${debitRaw}") and credit ("${creditRaw}") are populated on the same row. A bank line is one or the other, never both.`);
         return;
       }
       if (!debitPresent && !creditPresent) {

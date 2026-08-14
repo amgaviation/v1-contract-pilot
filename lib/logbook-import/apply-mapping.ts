@@ -202,7 +202,7 @@ export function applyMapping(params: {
     // plain `number` below.
     if (totalTime === undefined || totalTime === null) {
       reject(
-        `Total time isn't a valid number of hours (at most one decimal place, up to 999.9 — "H:MM" and hundredths that land on a tenth are also accepted): "${totalRaw}".`
+        `Total time isn't a valid number of hours (at most one decimal place, up to 999.9; "H:MM" and hundredths that land on a tenth are also accepted): "${totalRaw}".`
       );
       return;
     }
@@ -347,7 +347,7 @@ export function applyMapping(params: {
       const residual = v - typedLandings;
       if (residual < 0) {
         reject(
-          `Landings total (${v}) is less than the typed landings on this row (${typedLandings}: ${dayFullStop} day full-stop + ${dayTouchGo} day touch-and-go + ${nightFullStop} night full-stop + ${nightTouchGo} night touch-and-go) — the source file contradicts itself.`
+          `Landings total (${v}) is less than the typed landings on this row (${typedLandings}: ${dayFullStop} day full-stop + ${dayTouchGo} day touch-and-go + ${nightFullStop} night full-stop + ${nightTouchGo} night touch-and-go). The source file contradicts itself.`
         );
         return;
       }
