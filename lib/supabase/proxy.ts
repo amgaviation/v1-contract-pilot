@@ -207,7 +207,12 @@ async function refreshSession(
     // development — but a public route rendering product chrome should not
     // be one edit away from existing in production.
     (process.env.NODE_ENV === "development" &&
-      normalizedPath === "/layout-harness");
+      (normalizedPath === "/layout-harness" ||
+        // The INSTRUMENT specimen sheet — app/(dev)/design-harness. Same
+        // reasoning and the same two guards as the layout harness above: the
+        // page itself calls notFound() off development, and this line only
+        // lets that guard be reached.
+        normalizedPath === "/design-harness"));
   if (!user && !isAuthSurface) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";

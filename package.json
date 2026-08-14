@@ -18,8 +18,8 @@
     "bank-import:verify": "node --experimental-strip-types scripts/bank-import-verify.mjs",
     "foreflight-import:verify": "node scripts/foreflight-import-verify.mjs",
     "test:unit": "node --test --experimental-strip-types --import ./scripts/lib/ts-extensionless-loader.mjs \"tests/*.test.mjs\"",
-    "predev": "node scripts/sync-ocr-assets.mjs",
-    "prebuild": "node scripts/sync-ocr-assets.mjs",
+    "predev": "node scripts/sync-ocr-assets.mjs && node scripts/generate-design-css.mjs",
+    "prebuild": "node scripts/sync-ocr-assets.mjs && node scripts/generate-design-css.mjs",
     "receipt-ocr:verify": "node scripts/receipt-ocr-verify.mjs",
     "estimates:verify": "node scripts/estimates-verify.mjs",
     "aircraft:verify": "node scripts/aircraft-verify.mjs",
@@ -28,7 +28,9 @@
     "currency:verify": "node scripts/currency-verify.mjs",
     "accounting:verify": "node scripts/accounting-verify.mjs",
     "reminders:verify": "node scripts/reminders-verify.mjs",
-    "layout:verify": "node scripts/layout-verify.mjs"
+    "layout:verify": "node scripts/layout-verify.mjs",
+    "design:css": "node scripts/generate-design-css.mjs",
+    "design:css:check": "node scripts/generate-design-css.mjs --check"
   },
   "dependencies": {
     "@radix-ui/colors": "^3.0.0",
