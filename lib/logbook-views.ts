@@ -412,7 +412,7 @@ export function saveLogbookView(
     return {
       ok: false,
       error:
-        "There's nothing to save yet — narrow the logbook by aircraft, type, role or dates first.",
+        "There's nothing to save yet. Narrow the logbook by aircraft, type, role or dates first.",
     };
   }
 

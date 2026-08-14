@@ -152,7 +152,7 @@ test("an unpaid session is ignored — ACH completes before the money moves", ()
   // would see invoices marked paid from bank debits that can still fail.
   const read = readConnectPaymentEvent(event({}, { paymentStatus: "unpaid" }));
   assert.equal(read.kind, "ignored");
-  assert.match(read.detail, /not paid yet/);
+  assert.match(read.detail, /not paid yet/i);
 });
 
 test("a link minted before this feature is ignored, not failed", () => {
@@ -691,7 +691,7 @@ test("INITIATED: an authorised bank debit is surfaced without being recorded", (
   // there is nothing to do. The third matters most — the natural reaction
   // to "pending" is to chase the client or type it in by hand, and both of
   // those cost somebody money.
-  assert.match(read.detail, /not paid yet/);
+  assert.match(read.detail, /not paid yet/i);
   assert.match(read.detail, /business days/);
   assert.match(read.detail, /\$4,500\.00/);
   assert.match(read.detail, /nothing to chase/);
@@ -704,7 +704,7 @@ test("INITIATED: a card-only link is never described as a bank payment", () => {
   const read = readConnectPaymentEvent(event({}, { paymentStatus: "unpaid" }));
   assert.equal(read.kind, "ignored");
   assert.equal(read.async.state, "initiated");
-  assert.match(read.detail, /not paid yet/);
+  assert.match(read.detail, /not paid yet/i);
   assert.doesNotMatch(read.detail, /ACH/);
   assert.equal(offersBankDebit(["card", "link"]), false);
   assert.equal(offersBankDebit(["card", "us_bank_account"]), true);
@@ -720,7 +720,7 @@ test("INITIATED: an unattributable pending debit stays a plain log line", () => 
   assert.equal(read.kind, "ignored");
   assert.equal(read.async, undefined);
   assert.equal(read.declared, undefined);
-  assert.match(read.detail, /not paid yet/);
+  assert.match(read.detail, /not paid yet/i);
 });
 
 test("INITIATED → SUCCEEDED: settlement is the event that records the money", () => {
@@ -863,7 +863,7 @@ test("a pending debit in another currency states no dollar figure", () => {
   assert.equal(read.kind, "ignored");
   assert.equal(read.async.amountCents, null);
   assert.doesNotMatch(read.detail, /\$/);
-  assert.match(read.detail, /not paid yet/);
+  assert.match(read.detail, /not paid yet/i);
 });
 
 // ---------------------------------------------------------------------------

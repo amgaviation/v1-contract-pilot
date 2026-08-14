@@ -162,7 +162,7 @@ test("clients: W-9 status and dates land in the columns the header names", () =>
   assert.equal(byHeader["W-9 status"], "On file");
   assert.equal(byHeader["W-9 requested on"], "2026-01-05");
   assert.equal(byHeader["W-9 received on"], "2026-01-12");
-  assert.equal(byHeader["Operating rule"], "Both — varies by trip");
+  assert.equal(byHeader["Operating rule"], "Both: varies by trip");
   assert.equal(byHeader["Contact email"], "ops@skyline.example");
 });
 

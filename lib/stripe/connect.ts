@@ -446,7 +446,7 @@ export async function deactivatePaymentLink(params: {
  * re-improvised at three call sites.
  */
 export const LINK_STILL_LIVE_WARNING =
-  "We couldn't confirm with Stripe that the old payment link was switched off. It may still accept a card payment — deactivate it under Payment Links in your Stripe Dashboard.";
+  "We couldn't confirm with Stripe that the old payment link was switched off. It may still accept a card payment. Deactivate it under Payment Links in your Stripe Dashboard.";
 
 // A `currentUserId()` helper used to live here, documented as being "for
 // the OAuth `state` cookie/session check". Nothing ever imported it — the

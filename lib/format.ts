@@ -168,5 +168,5 @@ export function formatDateRange(
 ): string {
   if (!start && !end) return "—";
   if (!end || start === end) return formatDate(start);
-  return `${formatDate(start)} – ${formatDate(end)}`;
+  return `${formatDate(start)} to ${formatDate(end)}`;
 }

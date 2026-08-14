@@ -77,7 +77,7 @@ export const CLIENT_OPERATING_RULES: readonly {
   { value: "unspecified", label: "Not yet specified" },
   { value: "part_91", label: "Part 91 only" },
   { value: "part_135", label: "Part 135 only" },
-  { value: "both", label: "Both — varies by trip" },
+  { value: "both", label: "Both: varies by trip" },
 ];
 
 export const CLIENT_OPERATING_RULE_LABEL: Record<ClientOperatingRule, string> =
