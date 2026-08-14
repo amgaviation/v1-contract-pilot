@@ -52,7 +52,7 @@ const SOURCE_TYPE_LABEL: Record<string, string> = {
  */
 export function sourceReference(sourceType: string, sourceId: string | null): string {
   const label = SOURCE_TYPE_LABEL[sourceType] ?? sourceType;
-  return sourceId ? `${label} — ${sourceId}` : label;
+  return sourceId ? `${label}: ${sourceId}` : label;
 }
 
 export const GENERAL_LEDGER_HEADER = [

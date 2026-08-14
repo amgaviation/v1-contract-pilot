@@ -95,7 +95,7 @@ async function displayFor(
       // Tiered/metered prices have no single unit_amount. Nothing this
       // product sells is shaped that way, so treat it as unconfigured
       // rather than invent a figure.
-      console.error(`[stripe] price ${id} has no unit_amount — not displayable.`);
+      console.error(`[stripe] price ${id} has no unit_amount. Not displayable.`);
       return null;
     }
     const per = interval === "monthly" ? "month" : "year";

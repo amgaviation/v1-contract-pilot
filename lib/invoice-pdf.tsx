@@ -250,11 +250,11 @@ export function InvoicePdf({
       {(receipts ?? []).map((receipt, i) => (
         <Page size="LETTER" style={styles.page} key={`receipt-${i}`}>
           <Text style={styles.label}>
-            Receipt{invoice.invoice_number ? ` — Invoice ${invoice.invoice_number}` : ""}
+            Receipt{invoice.invoice_number ? `: Invoice ${invoice.invoice_number}` : ""}
           </Text>
           <Text style={styles.receiptCaption}>
             {receipt.description}
-            {receipt.amountCents !== null ? ` — ${formatCents(receipt.amountCents)}` : ""}
+            {receipt.amountCents !== null ? `: ${formatCents(receipt.amountCents)}` : ""}
           </Text>
           {receipt.imageDataUri ? (
             /* eslint-disable-next-line jsx-a11y/alt-text -- react-pdf's

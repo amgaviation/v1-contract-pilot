@@ -108,13 +108,13 @@ export function matchTrip(
       return {
         kind: "one",
         trip: sameAircraft[0]!,
-        because: `${shown} is on the receipt and you flew it on one trip — but the scan couldn't read a date, so check this is the right one.`,
+        because: `${shown} is on the receipt and you flew it on one trip, but the scan couldn't read a date, so check this is the right one.`,
       };
     }
     return {
       kind: "several",
       trips: sameAircraft,
-      because: `${sameAircraft.length} trips flew ${shown}, and the scan couldn't read a date — pick the right one.`,
+      because: `${sameAircraft.length} trips flew ${shown}, and the scan couldn't read a date: pick the right one.`,
     };
   }
 
@@ -137,7 +137,7 @@ export function matchTrip(
     return {
       kind: "one",
       trip: overlapping[0]!,
-      because: `${shown} on ${day} — that's this trip.`,
+      because: `${shown} on ${day}: that's this trip.`,
     };
   }
   if (overlapping.length === 0) {
@@ -146,13 +146,13 @@ export function matchTrip(
       trips: sameAircraft,
       because:
         sameAircraft.length === 1
-          ? `You flew ${shown}, but not on ${day} — this receipt doesn't fall in that trip, so pick one yourself.`
-          : `You flew ${shown}, but not on ${day} — pick the trip this belongs to.`,
+          ? `You flew ${shown}, but not on ${day}; this receipt doesn't fall in that trip, so pick one yourself.`
+          : `You flew ${shown}, but not on ${day}: pick the trip this belongs to.`,
     };
   }
   return {
     kind: "several",
     trips: overlapping,
-    because: `${overlapping.length} trips flew ${shown} around ${day} — pick the right one.`,
+    because: `${overlapping.length} trips flew ${shown} around ${day}: pick the right one.`,
   };
 }

@@ -521,8 +521,8 @@ export function readConnectPaymentEvent(event: ConnectSessionEvent): ReadResult 
     return {
       kind: "ignored",
       detail: declaredInvoiceNumber
-        ? `Session ${session.id} names invoice ${declaredInvoiceNumber} but carries no invoice metadata — its payment link predates automatic recording, so this payment must be recorded by hand.`
-        : `Session ${session.id} carries no invoice metadata — either a payment link minted before automatic recording, or a checkout on this Stripe account that has nothing to do with this product. Nothing was recorded either way.`,
+        ? `Session ${session.id} names invoice ${declaredInvoiceNumber} but carries no invoice metadata. Its payment link predates automatic recording, so this payment must be recorded by hand.`
+        : `Session ${session.id} carries no invoice metadata: either a payment link minted before automatic recording, or a checkout on this Stripe account that has nothing to do with this product. Nothing was recorded either way.`,
     };
   }
 

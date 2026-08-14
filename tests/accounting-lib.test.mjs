@@ -301,12 +301,12 @@ test("sourceReference: manual has no id, derived entries carry the source row's 
   assert.equal(sourceReference("manual", null), "Manual entry");
   assert.equal(
     sourceReference("invoice_issued", "inv-123"),
-    "Invoice issued — inv-123"
+    "Invoice issued: inv-123"
   );
   // An unrecognized source type still produces something rather than
   // throwing — same "fall back to the raw value" posture as the other
   // export label maps in this product.
-  assert.equal(sourceReference("something_new", "x"), "something_new — x");
+  assert.equal(sourceReference("something_new", "x"), "something_new: x");
 });
 
 test("centsToDollarsString: integer cents, never float drift", () => {

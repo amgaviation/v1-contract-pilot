@@ -333,7 +333,7 @@ export async function readReceipt(
     release();
     if (cause instanceof ReceiptOcrError) throw cause;
     throw new ReceiptOcrError(
-      "Couldn't start the reader. Check your connection and try again — the first scan downloads about 6 MB."
+      "Couldn't start the reader. Check your connection and try again. The first scan downloads about 6 MB."
     );
   }
 
@@ -352,7 +352,7 @@ export async function readReceipt(
     if (signal?.aborted) throw new ReceiptOcrError("Scan cancelled.");
     if (cause instanceof ReceiptOcrError) throw cause;
     throw new ReceiptOcrError(
-      "The reader failed partway through. Check your connection and try again — the first scan downloads about 6 MB."
+      "The reader failed partway through. Check your connection and try again. The first scan downloads about 6 MB."
     );
   } finally {
     signal?.removeEventListener("abort", abort);
