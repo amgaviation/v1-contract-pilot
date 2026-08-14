@@ -67,9 +67,16 @@ function contentSecurityPolicy(): string {
   const connectSrc = ["'self'", supabaseHttp, supabaseWs].filter(Boolean).join(" ");
   const imgSrc = ["'self'", "data:", supabaseHttp].filter(Boolean).join(" ");
 
+  // Development only: React's dev build reconstructs component stacks with
+  // eval(), so `next dev` under this CSP renders a page that never hydrates
+  // (the layout CI job runs its browser probes against dev and caught
+  // exactly that). React never uses eval() in production builds — its own
+  // console message says so — so the production policy stays eval-free.
+  const scriptEval = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
+
   return [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'",
+    `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${scriptEval}`,
     "style-src 'self' 'unsafe-inline'",
     `img-src ${imgSrc}`,
     "font-src 'self' data:",
