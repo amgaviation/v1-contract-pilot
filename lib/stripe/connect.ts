@@ -46,7 +46,7 @@ function connectClientId(): string {
   const id = process.env.STRIPE_CONNECT_CLIENT_ID;
   if (!id) {
     throw new Error(
-      "STRIPE_CONNECT_CLIENT_ID is unset — Stripe Connect onboarding cannot run. Set it in the Vercel project (and .env.local for development) from the platform's Connect settings (dashboard.stripe.com/settings/connect)."
+      "STRIPE_CONNECT_CLIENT_ID is unset. Stripe Connect onboarding cannot run. Set it in the Vercel project (and .env.local for development) from the platform's Connect settings (dashboard.stripe.com/settings/connect)."
     );
   }
   return id;
@@ -108,7 +108,7 @@ export async function exchangeConnectCode(code: string): Promise<ConnectExchange
   const livemode = response.livemode ?? isLiveMode();
   if (livemode !== isLiveMode()) {
     throw new Error(
-      `Stripe OAuth grant livemode (${livemode}) does not match this deployment's key mode (${isLiveMode()}) — refusing to link.`
+      `Stripe OAuth grant livemode (${livemode}) does not match this deployment's key mode (${isLiveMode()}). Refusing to link.`
     );
   }
   return { connectAccountId, livemode };

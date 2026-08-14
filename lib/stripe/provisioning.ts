@@ -69,7 +69,7 @@ function tierFromSubscription(sub: Stripe.Subscription): PlanTier | null {
   const match = tierForPriceId(priceId);
   if (!match) {
     console.error(
-      `Subscription ${sub.id} carries price ${priceId}, which maps to no STRIPE_PRICE_ID_* env var — plan_tier left unchanged. Check the six price env vars against the Stripe dashboard.`
+      `Subscription ${sub.id} carries price ${priceId}, which maps to no STRIPE_PRICE_ID_* env var; plan_tier left unchanged. Check the six price env vars against the Stripe dashboard.`
     );
     return null;
   }
@@ -92,7 +92,7 @@ export async function provisionAccountFromCheckout(
   const userId = session.client_reference_id;
   if (!userId) {
     throw new Error(
-      `Checkout session ${session.id} has no client_reference_id — cannot link it to a Supabase user.`
+      `Checkout session ${session.id} has no client_reference_id. Cannot link it to a Supabase user.`
     );
   }
   const customerId =

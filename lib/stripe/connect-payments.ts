@@ -560,7 +560,7 @@ export function readConnectPaymentEvent(event: ConnectSessionEvent): ReadResult 
       declared,
       detail: `A client paid this invoice in ${String(
         session.currency
-      ).toUpperCase()}, but payments in this product are recorded in USD — so it was not recorded automatically. Check the amount that reached your Stripe balance and record it by hand.`,
+      ).toUpperCase()}, but payments in this product are recorded in USD, so it was not recorded automatically. Check the amount that reached your Stripe balance and record it by hand.`,
     };
   }
 
@@ -572,7 +572,7 @@ export function readConnectPaymentEvent(event: ConnectSessionEvent): ReadResult 
     return {
       kind: "refused",
       declared,
-      detail: `A client paid this invoice through its payment link, but Stripe sent no payment_intent with it — so it was not recorded automatically, because without that id a redelivery of the same event would record the money a second time (a duplicate). Check your Stripe balance and record the payment by hand.`,
+      detail: `A client paid this invoice through its payment link, but Stripe sent no payment_intent with it, so it was not recorded automatically, because without that id a redelivery of the same event would record the money a second time (a duplicate). Check your Stripe balance and record the payment by hand.`,
     };
   }
 
@@ -614,13 +614,13 @@ function pendingPaymentDetail(amountCents: number | null, bank: boolean): string
   const amount = amountCents === null ? "" : ` of ${formatCentsPlain(amountCents)}`;
   if (bank) {
     return (
-      `Bank payment (ACH) initiated${amount} — not paid yet. Your client has authorised the debit; ` +
+      `Bank payment (ACH) initiated${amount}. Not paid yet. Your client has authorised the debit; ` +
       `ACH takes a few business days to settle, and this invoice is marked paid automatically when it does. ` +
       `Nothing has been recorded and the balance is unchanged, so there is nothing to do and nothing to chase.`
     );
   }
   return (
-    `A payment${amount} was started on this invoice but is not paid yet — the money has not moved. ` +
+    `A payment${amount} was started on this invoice but is not paid yet. The money has not moved. ` +
     `It is recorded automatically if Stripe confirms it settled, and nothing is recorded until then.`
   );
 }
@@ -643,7 +643,7 @@ function failedPaymentDetail(amountCents: number | null, bank: boolean): string 
   const amount = amountCents === null ? "" : ` ${formatCentsPlain(amountCents)}`;
   const what = bank ? `bank payment (ACH)` : `payment`;
   return (
-    `The ${what}${amount} started on this invoice FAILED — the client's bank did not complete it, ` +
+    `The ${what}${amount} started on this invoice FAILED. The client's bank did not complete it, ` +
     `so no money arrived and nothing was recorded. The balance is unchanged. ` +
     `That payment link has been used up, so generate a new one if they still want to pay online.`
   );
@@ -818,7 +818,7 @@ export function resolveAutoPayment(input: {
       kind: "refused",
       detail: `Invoice ${claim.declaredInvoiceNumber ?? invoice.id} is ${invoice.status}, so a payment cannot be recorded against it. The client paid ${formatCentsPlain(
         claim.amountCents
-      )} through a link that should have been deactivated — check Stripe and refund them.`,
+      )} through a link that should have been deactivated. Check Stripe and refund them.`,
     };
   }
 
@@ -878,7 +878,7 @@ export function resolveAutoPayment(input: {
         )} for this invoice${linkNote}, and a payment of ${formatCentsPlain(
           match.amount_cents
         )} dated ${match.paid_on} is already recorded by hand${
-          sameAmount ? "" : " — close enough, after Stripe's fee, to look like the same money"
+          sameAmount ? "" : " (close enough, after Stripe's fee, to look like the same money)"
         }. It was not recorded twice. If those are two different payments, record the second one yourself.`,
       };
     }

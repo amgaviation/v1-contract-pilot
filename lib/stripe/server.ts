@@ -23,7 +23,7 @@ export function getStripe(): Stripe {
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) {
     throw new Error(
-      "STRIPE_SECRET_KEY is unset — billing cannot run. Set it in the Vercel project (and .env.local for development)."
+      "STRIPE_SECRET_KEY is unset. Billing cannot run. Set it in the Vercel project (and .env.local for development)."
     );
   }
 
