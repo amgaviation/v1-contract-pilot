@@ -1,22 +1,16 @@
 import NextLink from "next/link";
 import {
-  Badge,
-  Box,
-  Button,
-  Callout,
-  Card,
-  Flex,
-  Grid,
-  Separator,
-  Table,
-  Text,
-  VisuallyHidden,
-} from "@/components/ui";
-import {
-  CheckCircledIcon,
-  CircleIcon,
-  ExclamationTriangleIcon,
-} from "@radix-ui/react-icons";
+  LAlert,
+  LCard,
+  LEmpty,
+  LPill,
+  LStat,
+  LTable,
+  LTd,
+  LTh,
+  lButtonClass,
+} from "@/components/ledger";
+import { cn } from "@/lib/ledger/cn";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
@@ -24,10 +18,7 @@ import { countOf } from "@/lib/supabase/rows";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import { formatCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
-import { STAT_ROW_LAYOUT } from "@/components/ui/skeletons";
-import EmptyState from "@/components/ui/empty-state";
-import { EXPIRY_LADDER_BADGE, type ExpiryBadge } from "../documents/expiry-badge";
-import PageShell from "../page-shell";
+import { EXPIRY_LADDER_BADGE, type ExpiryBadge, type ExpiryTone } from "../documents/expiry-badge";
 import {
   clientLabel,
   clientRowsShortfallCents,
@@ -48,6 +39,26 @@ export const metadata = { title: "Overview" };
 
 function pluralize(count: number, noun: string) {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+// The expiry ladder (../documents/expiry-badge.ts) speaks INSTRUMENT's Radix
+// Badge colour vocabulary ("red"/"amber"/"green"/"gray") because it is
+// shared with the not-yet-migrated documents screen — see that file's
+// header on why there must be exactly one ladder→tone mapping. Ledger's
+// LPill has its own tone vocabulary, so this is the one translation point
+// that vocabulary needs on this screen. A straight, restrained dictionary:
+// red→crit, amber→warn, green→good, gray→neutral.
+function ladderToPillTone(tone: ExpiryTone): "crit" | "warn" | "good" | "neutral" {
+  switch (tone) {
+    case "red":
+      return "crit";
+    case "amber":
+      return "warn";
+    case "green":
+      return "good";
+    default:
+      return "neutral";
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -158,9 +169,9 @@ function buildRoute(legs: LegRow[]): string | null {
 }
 
 // The ladder vocabulary is shared with the documents screen and lives in
-// app/(app)/documents/expiry-badge.ts, whose tones ARE Radix Badge colours
-// — so there is nothing to translate here. That file's header explains why
-// it must stay the only definition.
+// app/(app)/documents/expiry-badge.ts — see ladderToPillTone above for the
+// one translation this screen needs on top of it now that its badges are
+// Ledger LPills, not Radix Badges.
 const LADDER_FALLBACK: ExpiryBadge = { tone: "gray", label: "—" };
 
 const READY_TO_INVOICE_LIMIT = 6;
@@ -689,7 +700,7 @@ export default async function OverviewPage() {
    *
    *   "Owed to you"        work done that hasn't turned into money yet —
    *                        live, actionable, and the reason to open this
-   *                        screen. Rendered a size larger.
+   *                        screen.
    *   "This calendar year"  what has already happened — a running total
    *                        for the tax conversation, not a to-do.
    *
@@ -754,15 +765,8 @@ export default async function OverviewPage() {
   ];
 
   const KPI_GROUPS = [
-    {
-      id: "owed" as const,
-      label: "Owed to you",
-      // The live pair carries the bigger type. One step, not three — this
-      // is a working tool, and a hero number would push the second pair
-      // off the fold on a phone.
-      size: "7" as const,
-    },
-    { id: "year" as const, label: `This calendar year`, size: "6" as const },
+    { id: "owed" as const, label: "Owed to you" },
+    { id: "year" as const, label: `This calendar year` },
   ];
 
   // -----------------------------------------------------------------------
@@ -890,9 +894,10 @@ export default async function OverviewPage() {
       // ordering below was already deliberate and documented; the badge is
       // what makes it legible, so a pilot can see that a lapsed
       // qualification outranks a late invoice rather than having to infer
-      // it from position. Colour follows the same judgement.
+      // it from position. Tone follows the same judgement, translated to
+      // Ledger's pill vocabulary (crit/warn/neutral).
       band: "Invoice" as const,
-      tone: "amber" as const,
+      tone: "warn" as const,
       label: `${invoice?.invoice_number ?? "Invoice"} past due`,
       detail: `${
         invoice?.client_id ? clientName.get(invoice.client_id) ?? "Unknown client" : "Unknown client"
@@ -925,10 +930,10 @@ export default async function OverviewPage() {
     return [
       {
         id: `operator-qual-${row.source_id}`,
-        // Red, and first. A lapsed 135.293/.297/.299 check is the ability
+        // Crit, and first. A lapsed 135.293/.297/.299 check is the ability
         // to fly for that operator at all — a harder stop than money.
         band: "Qualification" as const,
-        tone: "red" as const,
+        tone: "crit" as const,
         label: row.item_label,
         detail:
           row.ladder_stage === "overdue"
@@ -957,10 +962,10 @@ export default async function OverviewPage() {
       {
         id: `reminder-failed-${row.invoice_id}-${row.rule_key}`,
         band: "Reminder" as const,
-        // Red: a chase the pilot believes is happening and is not. An
-        // unconfirmed send is amber instead, because the honest state is a
+        // Crit: a chase the pilot believes is happening and is not. An
+        // unconfirmed send is warn instead, because the honest state is a
         // question rather than a fault, and only the pilot can answer it.
-        tone: row.outcome === "unknown" ? ("amber" as const) : ("red" as const),
+        tone: row.outcome === "unknown" ? ("warn" as const) : ("crit" as const),
         label:
           row.outcome === "unknown"
             ? `Reminder not confirmed · ${invoice.invoice_number ?? "Invoice"}`
@@ -987,7 +992,7 @@ export default async function OverviewPage() {
         {
           id: "unassigned-receipts",
           band: "Receipts" as const,
-          tone: "amber" as const,
+          tone: "warn" as const,
           label: `${pluralize(unassignedCount, "receipt")} unassigned`,
           detail: "Won't be billed or deducted",
           action: "Sort",
@@ -1000,7 +1005,7 @@ export default async function OverviewPage() {
   const w9ItemsAll = w9Clients.map((c) => ({
     id: `w9-${c.id}`,
     band: "Paperwork" as const,
-    tone: "gray" as const,
+    tone: "neutral" as const,
     label: `W-9 outstanding · ${c.name}`,
     detail:
       c.w9_status === "requested"
@@ -1141,55 +1146,61 @@ export default async function OverviewPage() {
   const stepsDone = GETTING_STARTED_STEPS.filter((s) => s.done).length;
 
   return (
-    <PageShell
-      title="Overview"
-      subtitle={
-        errors.length
-          ? "Some figures below couldn't load. See the notice."
-          : `${pluralize(readyCount, "trip")} flown and logged but not yet invoiced. ${
-              overdue.length
-                ? `${pluralize(overdue.length, "invoice")} past due.`
-                : "No invoices past due."
-            }${
-              unmarkedTripCount
-                ? ` ${pluralize(unmarkedTripCount, "trip")} still marked Scheduled. Mark them flown to invoice them.`
-                : ""
-            }`
-      }
-      action={
-        <Flex gap="3">
-          <Button asChild variant="outline">
-            <NextLink href="/trips/new">Log a trip</NextLink>
-          </Button>
-          <Button asChild>
-            <NextLink href="/invoices/new">Create invoice</NextLink>
-          </Button>
-        </Flex>
-      }
-    >
+    // The root wrapper leaves INSTRUMENT's type entirely: font-ledger,
+    // Ledger's body scale, Ledger's ink token. The shell around this slot
+    // still paints INSTRUMENT's canvas — that swap is a later migration
+    // phase (see this file's task header) — so this subtree's own cards
+    // carry the Ledger look on whatever ground sits behind them.
+    <div className="flex flex-col gap-5 font-ledger text-body text-ink">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-h1 font-bold tracking-tight">Overview</h1>
+          <p className="text-body-s text-ink-3">
+            {errors.length
+              ? "Some figures below couldn't load. See the notice."
+              : `${pluralize(readyCount, "trip")} flown and logged but not yet invoiced. ${
+                  overdue.length
+                    ? `${pluralize(overdue.length, "invoice")} past due.`
+                    : "No invoices past due."
+                }${
+                  unmarkedTripCount
+                    ? ` ${pluralize(unmarkedTripCount, "trip")} still marked Scheduled. Mark them flown to invoice them.`
+                    : ""
+                }`}
+          </p>
+        </div>
+        <div className="flex shrink-0 gap-3">
+          <NextLink href="/trips/new" className={lButtonClass({ variant: "outline" })}>
+            Log a trip
+          </NextLink>
+          {/* THE ONE FILLED ACCENT BUTTON on this screen — every other
+              action, including the per-row "Draft invoice" buttons below,
+              is outline or quiet. */}
+          <NextLink href="/invoices/new" className={lButtonClass({ variant: "primary" })}>
+            Create invoice
+          </NextLink>
+        </div>
+      </div>
+
       {errors.length > 0 ? (
-        <Callout.Root color="red">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>
+        <LAlert tone="crit" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+          <span>
             {`Couldn't load: ${errors.map((e) => e.context).join(", ")}. `}
             {friendlyDbError(errors[0]?.error, "overview")}
-          </Callout.Text>
-        </Callout.Root>
+          </span>
+        </LAlert>
       ) : null}
 
       {truncatedAggregates.length > 0 ? (
-        <Callout.Root color="amber">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>
+        <LAlert tone="warn" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+          <span>
             {`Figures using ${truncatedAggregates.join(
               ", "
             )} may be partial: there are more than ${AGGREGATE_LIMIT} rows and only the first ${AGGREGATE_LIMIT} were totaled.`}
-          </Callout.Text>
-        </Callout.Root>
+          </span>
+        </LAlert>
       ) : null}
 
       {/* NEEDS ATTENTION — promoted to a full-width card directly under the
@@ -1208,29 +1219,29 @@ export default async function OverviewPage() {
           healthy account with attentionCount === 0 gets no card here at
           all — an empty "all clear" ahead of everything else would be the
           same reassuring-zero this file's other comments warn against,
-          just moved to the top of the page instead of the bottom. */}
+          just moved to the top of the page instead of the bottom.
+
+          A subtle crit left edge, not a loud banner — this is a working
+          tool a pilot opens every day, and NEEDS_ATTENTION.length can be
+          entirely W-9 paperwork with nothing urgent in it. */}
       {errors.length > 0 || NEEDS_ATTENTION.length > 0 ? (
-        <Card>
-          <Flex direction="column" gap="1" mb="3">
-            <Text size="4" weight="medium">
-              Needs attention
-            </Text>
-            <Text size="2" color="gray">
-              {pluralize(attentionCount, "item")}
-            </Text>
-          </Flex>
+        <LCard className="border-l-2 border-l-crit">
+          <div className="mb-3 flex flex-col gap-1">
+            <h2 className="text-h3 font-semibold">Needs attention</h2>
+            <p className="text-body-s text-ink-3">{pluralize(attentionCount, "item")}</p>
+          </div>
 
           {/* U1: a failed read is not "nothing needs attention". The card
               above is gated to render for exactly this case even though
               NEEDS_ATTENTION itself may be empty — see that gate's
               comment. */}
           {errors.length ? (
-            <Flex align="center" justify="center" py="5">
-              <Text size="2" color="gray" align="center">
+            <div className="flex items-center justify-center py-5">
+              <p className="text-center text-body-s text-ink-3">
                 Couldn&rsquo;t load. See the notice above. This is not a
                 statement that nothing needs attention.
-              </Text>
-            </Flex>
+              </p>
+            </div>
           ) : (
             // A real ordered list, not a stack of rows. The order IS the
             // information here — qualifications, then overdue invoices,
@@ -1238,57 +1249,37 @@ export default async function OverviewPage() {
             // the slot arithmetic above) — and an <ol> is what tells a
             // screen reader "this is 1 of 6, in priority order" instead of
             // presenting six unrelated panels.
-            // The explicit reset is required — see the getting-started
-            // list above for why `asChild` does not bring Radix's with it.
-            <Flex
-              direction="column"
-              asChild
-              style={{ listStyle: "none", margin: 0, padding: 0 }}
-            >
-              <ol>
-                {NEEDS_ATTENTION.map((item, index) => (
-                  <Flex
-                    key={item.id}
-                    asChild
-                    justify="between"
-                    align="center"
-                    gap="3"
-                    py="2"
-                    wrap="wrap"
+            <ol className="m-0 list-none divide-y divide-hair p-0">
+              {NEEDS_ATTENTION.map((item, index) => (
+                <li
+                  key={item.id}
+                  className="flex flex-wrap items-center justify-between gap-3 py-2.5"
+                >
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="tnum-l text-caption text-ink-3" aria-hidden>
+                        {index + 1}
+                      </span>
+                      <LPill tone={item.tone}>{item.band}</LPill>
+                      <span className="font-medium">{item.label}</span>
+                    </div>
+                    <span className="text-caption text-ink-3">{item.detail}</span>
+                  </div>
+                  <NextLink
+                    href={item.href}
+                    aria-label={`${item.action}, ${item.label}`}
+                    className={lButtonClass({ variant: "outline", size: "sm" })}
                   >
-                    <li>
-                      <Flex direction="column" gap="1" minWidth="0">
-                        <Flex align="center" gap="2" wrap="wrap">
-                          <Text size="1" color="gray" className="tnum" aria-hidden>
-                            {index + 1}
-                          </Text>
-                          <Badge color={item.tone}>{item.band}</Badge>
-                          <Text weight="medium">{item.label}</Text>
-                        </Flex>
-                        <Text size="1" color="gray" className="tnum">
-                          {item.detail}
-                        </Text>
-                      </Flex>
-                      <Button
-                        asChild
-                        variant="outline"
-                        size="1"
-                        aria-label={`${item.action}, ${item.label}`}
-                      >
-                        <NextLink href={item.href}>{item.action}</NextLink>
-                      </Button>
-                    </li>
-                  </Flex>
-                ))}
-              </ol>
-            </Flex>
+                    {item.action}
+                  </NextLink>
+                </li>
+              ))}
+            </ol>
           )}
           {attentionMoreCount > 0 ? (
-            <Text size="1" color="gray">
-              {`+${attentionMoreCount} more`}
-            </Text>
+            <p className="mt-2 text-caption text-ink-3">{`+${attentionMoreCount} more`}</p>
           ) : null}
-        </Card>
+        </LCard>
       ) : null}
 
       {/* Day-one orientation — the KPI cards below are correctly $0.00
@@ -1296,135 +1287,104 @@ export default async function OverviewPage() {
           say what to do next. Said once here, since this is the screen
           every other one is reached from. */}
       {showGettingStarted ? (
-        <Card>
-          <Flex direction="column" gap="3" py="2">
-            <Flex direction="column" gap="1">
-              <Text size="4" weight="medium">
-                Getting started
-              </Text>
-              <Text size="2" color="gray">
+        <LCard>
+          <div className="flex flex-col gap-3 py-2">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-h3 font-semibold">Getting started</h2>
+              <p className="text-body-s text-ink-3">
                 {`${stepsDone} of ${GETTING_STARTED_STEPS.length} done. Log the trip once: its legs feed your logbook, its days feed the invoice, and its expenses file themselves against it. The figures below fill in from there.`}
-              </Text>
-            </Flex>
-            {/* The list reset is written out because Radix's is
-                class-scoped (`.rt-reset:where(ol, ul)`) and `asChild`
-                merges only `rt-Flex` onto the child — so without this the
-                UA sheet's 40px inline padding and 1em block margin stay,
-                and the rows sit indented inside an empty marker gutter
-                while everything else in the Card is flush. Same shape as
-                expenses/unassigned-queue.tsx and trips/leg-editor.tsx. */}
-            <Flex
-              direction="column"
-              gap="3"
-              asChild
-              style={{ listStyle: "none", margin: 0, padding: 0 }}
-            >
-              <ol>
-                {GETTING_STARTED_STEPS.map((step, index) => (
-                  <Flex key={step.id} asChild gap="3" align="start" justify="between" wrap="wrap">
-                    <li>
-                      <Flex gap="3" align="start">
-                        <Text color={step.done ? "green" : "gray"} aria-hidden>
-                          {step.done ? <CheckCircledIcon /> : <CircleIcon />}
-                        </Text>
-                        <Flex direction="column" gap="1">
-                          <Text size="2" weight="medium">
-                            {`${index + 1}. ${step.label}`}
-                            <Text as="span" size="1" color={step.done ? "green" : "gray"}>
-                              {step.done ? " · Done" : " · Not done yet"}
-                            </Text>
-                          </Text>
-                          <Text size="1" color="gray">
-                            {step.detail}
-                          </Text>
-                        </Flex>
-                      </Flex>
-                      <Button
-                        asChild
-                        size="1"
-                        variant={step.done ? "outline" : "solid"}
-                        aria-label={`${step.cta}, step ${index + 1}, ${step.label}`}
-                      >
-                        <NextLink href={step.href}>{step.done ? "Review" : step.cta}</NextLink>
-                      </Button>
-                    </li>
-                  </Flex>
-                ))}
-              </ol>
-            </Flex>
-          </Flex>
-        </Card>
+              </p>
+            </div>
+            <ol className="m-0 flex list-none flex-col gap-3 p-0">
+              {GETTING_STARTED_STEPS.map((step, index) => (
+                <li
+                  key={step.id}
+                  className="flex flex-wrap items-start justify-between gap-3"
+                >
+                  <div className="flex items-start gap-3">
+                    {step.done ? (
+                      <CheckCircleIcon className="mt-0.5 shrink-0 text-good" />
+                    ) : (
+                      <CircleIcon className="mt-0.5 shrink-0 text-ink-3" />
+                    )}
+                    <div className="flex flex-col gap-1">
+                      <div className="text-body-s">
+                        <span className="font-medium">{`${index + 1}. ${step.label}`}</span>
+                        <span
+                          className={cn(
+                            "text-caption",
+                            step.done ? "text-good" : "text-ink-3"
+                          )}
+                        >
+                          {step.done ? " · Done" : " · Not done yet"}
+                        </span>
+                      </div>
+                      <p className="text-caption text-ink-3">{step.detail}</p>
+                    </div>
+                  </div>
+                  {/* Outline, not filled — "Create invoice" above is the
+                      one accent button on this screen; a not-done step is
+                      distinguished by its icon and copy, not by a second
+                      filled button competing with it. */}
+                  <NextLink
+                    href={step.href}
+                    aria-label={`${step.done ? "Review" : step.cta}, step ${index + 1}, ${step.label}`}
+                    className={lButtonClass({ variant: "outline", size: "sm" })}
+                  >
+                    {step.done ? "Review" : step.cta}
+                  </NextLink>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </LCard>
       ) : !onboardingCountsOk && isDayOne && !errors.length ? (
         // A failed count is not "you haven't started". With nothing else
         // on this screen to look at either, say which of the two it is
         // rather than leaving a pilot with four $0.00 cards and no
         // explanation at all.
-        <Callout.Root color="amber">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>
+        <LAlert tone="warn" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+          <span>
             {`We couldn't check how far along your setup is (${onboardingErrors
               .map((e) => e.context)
               .join(", ")}), so the getting-started steps aren't shown. This is not a statement that you haven't started.`}
-          </Callout.Text>
-        </Callout.Root>
+          </span>
+        </LAlert>
       ) : null}
 
       {/* Row 1 — the money, in two named groups rather than one flat row
           of four identical cards. See KPI_GROUPS above for the reasoning;
-          every figure keeps the single source it already had.
-
-          The breakpoints and gaps come from STAT_ROW_LAYOUT, which
-          components/ui/skeletons.tsx's StatRowSkeleton reads too — the
-          loading shape and the real shape are one definition, so the next
-          change to this row cannot leave the skeleton behind and reflow
-          the whole page on hydration. */}
-      <Grid columns={STAT_ROW_LAYOUT.groups} gap={STAT_ROW_LAYOUT.groupGap}>
+          every figure keeps the single source it already had. Each group
+          is one LCard, its KPIs rendered as LStat figures in a row — the
+          Ledger shape for "several related numbers, one card". */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {KPI_GROUPS.map((group) => (
-          <Flex key={group.id} direction="column" gap="2" asChild>
-            <section aria-label={group.label}>
-              <Text size="1" color="gray" weight="medium">
-                {group.label}
-              </Text>
-              <Grid columns={STAT_ROW_LAYOUT.cards} gap={STAT_ROW_LAYOUT.cardGap}>
+          <section key={group.id} aria-label={group.label}>
+            <LCard className="flex h-full flex-col gap-4">
+              <p className="text-caption font-semibold text-ink-3">{group.label}</p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {KPIS.filter((kpi) => kpi.group === group.id).map((kpi) => (
-                  <Card key={kpi.id} asChild>
-                    {/* The whole card is the link. A figure a pilot can't
-                        follow to the records behind it is a poster, not a
-                        dashboard — and the destination is always the
-                        screen that owns that number's source. */}
-                    <NextLink
-                      href={kpi.href}
-                      style={{ textDecoration: "none", color: "inherit" }}
-                    >
-                      <Flex direction="column" gap="1">
-                        <Text size="1" color="gray">
-                          {kpi.label}
-                        </Text>
-                        {/* tabular-nums on every figure on this screen —
-                            the .tnum class exists because a column of
-                            proportional digits is a legibility bug, and
-                            that applies to the counts underneath as much
-                            as to the dollars above. */}
-                        <Text size={group.size} weight="bold" className="tnum">
-                          {kpi.value}
-                        </Text>
-                        <Text size="1" color="gray" className="tnum">
-                          {kpi.sub}
-                        </Text>
-                        <Text size="1" color="gray">
-                          {moneyOk ? kpi.hint : "This is not a statement that it is zero."}
-                        </Text>
-                      </Flex>
-                    </NextLink>
-                  </Card>
+                  // The whole stat is the link. A figure a pilot can't
+                  // follow to the records behind it is a poster, not a
+                  // dashboard — and the destination is always the screen
+                  // that owns that number's source.
+                  <NextLink
+                    key={kpi.id}
+                    href={kpi.href}
+                    className="-m-2 flex flex-col gap-1 rounded-control p-2 transition-colors hover:bg-sunk"
+                  >
+                    <LStat label={kpi.label} figure={kpi.value} sub={kpi.sub} />
+                    <p className="text-caption text-ink-3">
+                      {moneyOk ? kpi.hint : "This is not a statement that it is zero."}
+                    </p>
+                  </NextLink>
                 ))}
-              </Grid>
-            </section>
-          </Flex>
+              </div>
+            </LCard>
+          </section>
         ))}
-      </Grid>
+      </div>
 
       {/* Row 2 — UNBILLED MONEY, BY CLIENT, paired with READY TO INVOICE.
           The lead module: the one question this screen exists to answer is
@@ -1446,331 +1406,298 @@ export default async function OverviewPage() {
           md both stack full width, this one first. The document-
           expirations panel, which is informational rather than
           actionable, stays below this pair. */}
-      <Grid columns={{ initial: "1", md: "3fr 2fr" }} gap="4">
-        <Card>
-        <Flex direction="column" gap="1" mb="3">
-          <Text size="4" weight="medium">
-            Unbilled money, by client
-          </Text>
-          {/* The computed sentence when there is one — the roadmap's own
-              "N unbilled trip days and $X in unbilled reimbursables across
-              M clients". It is withheld (null) both when nothing is
-              unbilled and when the breakdown came back partial, because in
-              the second case its client count would be wrong; the standing
-              description takes over rather than a half-true figure. */}
-          <Text size="2" color="gray" className="tnum">
-            {unbilledSentence ??
-              "Every completed trip you haven’t invoiced yet, grouped by who you’d bill it to."}
-          </Text>
-        </Flex>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-[3fr_2fr]">
+        <LCard>
+          <div className="mb-3 flex flex-col gap-1">
+            <h2 className="text-h3 font-semibold">Unbilled money, by client</h2>
+            {/* The computed sentence when there is one — the roadmap's own
+                "N unbilled trip days and $X in unbilled reimbursables across
+                M clients". It is withheld (null) both when nothing is
+                unbilled and when the breakdown came back partial, because in
+                the second case its client count would be wrong; the standing
+                description takes over rather than a half-true figure. */}
+            <p className="tnum-l text-body-s text-ink-3">
+              {unbilledSentence ??
+                "Every completed trip you haven’t invoiced yet, grouped by who you’d bill it to."}
+            </p>
+          </div>
 
-        {/* A failed read is not "you're caught up" — the single most
-            expensive false statement this module could make, since being
-            caught up is exactly what a pilot wants to be told. Gated on
-            the same page-wide `errors` as every other panel here. */}
-        {errors.length ? (
-          <Flex direction="column" align="center" gap="3" py="5">
-            <Text size="2" color="gray" align="center">
-              Couldn&rsquo;t load your unbilled work. See the notice above.
-              This is not a statement that you are caught up.
-            </Text>
-          </Flex>
-        ) : readyCount === 0 && showGettingStarted ? (
-          // FIRST RUN. "You're caught up" and "every completed trip on file
-          // has been invoiced" are both TRUE on an account with no trips at
-          // all — vacuously, which is the kind of true that reads as a lie.
-          // The Getting started panel directly above this one is
-          // simultaneously saying 0 of 4 steps are done, so the screen would
-          // congratulate and nag about the same empty account in adjacent
-          // cards, and offer "Log a trip" twice. Gated on the SAME signal
-          // that panel is gated on (no trips, no invoices), so the two
-          // cannot get out of step. No CTA here: step 2 up there is the CTA.
-          <EmptyState title="Nothing unbilled yet">
-            Once you log a trip and mark it flown, its billable days and
-            rebillable receipts appear here, grouped by the client
-            you&rsquo;d bill them to.
-          </EmptyState>
-        ) : readyCount === 0 ? (
-          <EmptyState
-            title="Nothing unbilled. You’re caught up"
-            action={
-              <Button asChild variant="outline">
-                <NextLink href="/trips/new">Log a trip</NextLink>
-              </Button>
-            }
-          >
-            Every completed trip on file has been invoiced. When you mark the
-            next one flown, its billable days and rebillable receipts show up
-            here, grouped by the client you&rsquo;d bill them to.
-          </EmptyState>
-        ) : (
-          <>
-            {/* PHONE LAYOUT — up to md. Not a nicety: a contract pilot reads
-                this between legs, standing in an FBO, and Radix's Table.Root
-                puts the whole <table> inside a ScrollArea. At ~375px the
-                seven-column table shows the Client column and hides the two
-                cells the module exists for — the unbilled amount and the
-                Draft invoice button — behind a horizontal scroll whose
-                scrollbar is an auto-hiding overlay. "What do I bill, for
-                whom, one tap" would degrade to a list of client names.
+          {/* A failed read is not "you're caught up" — the single most
+              expensive false statement this module could make, since being
+              caught up is exactly what a pilot wants to be told. Gated on
+              the same page-wide `errors` as every other panel here. */}
+          {errors.length ? (
+            <div className="flex flex-col items-center gap-3 py-10">
+              <p className="text-center text-body-s text-ink-3">
+                Couldn&rsquo;t load your unbilled work. See the notice above.
+                This is not a statement that you are caught up.
+              </p>
+            </div>
+          ) : readyCount === 0 && showGettingStarted ? (
+            // FIRST RUN. "You're caught up" and "every completed trip on file
+            // has been invoiced" are both TRUE on an account with no trips at
+            // all — vacuously, which is the kind of true that reads as a lie.
+            // The Getting started panel directly above this one is
+            // simultaneously saying 0 of 4 steps are done, so the screen would
+            // congratulate and nag about the same empty account in adjacent
+            // cards, and offer "Log a trip" twice. Gated on the SAME signal
+            // that panel is gated on (no trips, no invoices), so the two
+            // cannot get out of step. No CTA here: step 2 up there is the CTA.
+            <LEmpty title="Nothing unbilled yet">
+              Once you log a trip and mark it flown, its billable days and
+              rebillable receipts appear here, grouped by the client
+              you&rsquo;d bill them to.
+            </LEmpty>
+          ) : readyCount === 0 ? (
+            <LEmpty
+              title="Nothing unbilled. You’re caught up"
+              action={
+                <NextLink
+                  href="/trips/new"
+                  className={lButtonClass({ variant: "outline" })}
+                >
+                  Log a trip
+                </NextLink>
+              }
+            >
+              Every completed trip on file has been invoiced. When you mark the
+              next one flown, its billable days and rebillable receipts show up
+              here, grouped by the client you&rsquo;d bill them to.
+            </LEmpty>
+          ) : (
+            <>
+              {/* PHONE LAYOUT — up to md. Not a nicety: a contract pilot reads
+                  this between legs, standing in an FBO, and a seven-column
+                  table on a ~375px screen shows the Client column and hides
+                  the two cells the module exists for — the unbilled amount
+                  and the Draft invoice button — behind a horizontal scroll.
+                  "What do I bill, for whom, one tap" would degrade to a list
+                  of client names.
 
-                So the phone gets the same three answers stacked, in that
-                order, with the secondary figures on one gray line beneath —
-                the shape the "Ready to invoice" list already uses on this
-                screen. Both layouts read unbilledDisplayRows, so they cannot
-                disagree; the table below is the md+ view of these same
-                cells. */}
-            <Box display={{ initial: "block", md: "none" }}>
-              <Flex direction="column" gap="3" asChild>
-                <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                  So the phone gets the same three answers stacked, in that
+                  order, with the secondary figures on one line beneath — the
+                  shape the "Ready to invoice" list already uses on this
+                  screen. Both layouts read unbilledDisplayRows, so they cannot
+                  disagree; the table below is the md+ view of these same
+                  cells. */}
+              <div className="md:hidden">
+                <ul className="m-0 flex list-none flex-col gap-3 p-0">
                   {unbilledDisplayRows.map((row) => (
-                    <li key={row.key}>
-                      <Flex direction="column" gap="2">
-                        <Flex justify="between" align="start" gap="3">
-                          <Flex direction="column">
-                            <Text weight="medium">{row.label}</Text>
-                            {row.waiting === null ? null : (
-                              <Text size="1" color="gray" className="tnum">
-                                {`Oldest ${pluralize(row.waiting, "day")} ago`}
-                              </Text>
-                            )}
-                          </Flex>
-                          <Text weight="bold" className="tnum">
-                            {row.total}
-                          </Text>
-                        </Flex>
-                        <Text size="1" color="gray" className="tnum">
-                          {`${pluralize(row.trips, "trip")} · ${row.days} ${
-                            row.days === "1" ? "day" : "days"
-                          } · ${row.dayMoney} day money · ${
-                            row.reimbursables
-                          } reimbursables`}
-                        </Text>
-                        <Flex>
-                          <Button
-                            asChild
-                            size="2"
-                            variant={row.clientId ? "solid" : "outline"}
-                            aria-label={`${draftAction(row.clientId)}, ${row.label}`}
-                          >
-                            <NextLink href={draftHref(row.clientId)}>
-                              {draftAction(row.clientId)}
-                            </NextLink>
-                          </Button>
-                        </Flex>
-                      </Flex>
+                    <li key={row.key} className="flex flex-col gap-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex flex-col">
+                          <span className="font-medium">{row.label}</span>
+                          {row.waiting === null ? null : (
+                            <span className="tnum-l text-caption text-ink-3">
+                              {`Oldest ${pluralize(row.waiting, "day")} ago`}
+                            </span>
+                          )}
+                        </div>
+                        <span className="tnum-l font-bold">{row.total}</span>
+                      </div>
+                      <span className="tnum-l text-caption text-ink-3">
+                        {`${pluralize(row.trips, "trip")} · ${row.days} ${
+                          row.days === "1" ? "day" : "days"
+                        } · ${row.dayMoney} day money · ${
+                          row.reimbursables
+                        } reimbursables`}
+                      </span>
+                      <div>
+                        <NextLink
+                          href={draftHref(row.clientId)}
+                          aria-label={`${draftAction(row.clientId)}, ${row.label}`}
+                          className={lButtonClass({ variant: "outline", size: "sm" })}
+                        >
+                          {draftAction(row.clientId)}
+                        </NextLink>
+                      </div>
                     </li>
                   ))}
                 </ul>
-              </Flex>
-              {/* The same reconciliation total the table's <tfoot> carries,
-                  in the stacked shape. A pilot who can add the column up on
-                  a laptop should be able to on a phone. */}
-              <Separator my="3" size="4" />
-              <Flex justify="between" align="start" gap="3">
-                <Flex direction="column">
-                  <Text weight="bold">Total unbilled</Text>
-                  <Text size="1" color="gray" className="tnum">
-                    {`${pluralize(readyCount, "trip")} · ${formatDays(
-                      Number(unbilledSummary.billable_days)
-                    )} days · ${formatCents(
-                      Number(unbilledSummary.day_value_cents)
-                    )} day money · ${formatCents(
-                      Number(unbilledSummary.rebill_expense_cents)
-                    )} reimbursables`}
-                  </Text>
-                </Flex>
-                <Text weight="bold" className="tnum">
-                  {formatCents(unbilledCents)}
-                </Text>
-              </Flex>
-            </Box>
+                {/* The same reconciliation total the table's <tfoot> carries,
+                    in the stacked shape. A pilot who can add the column up on
+                    a laptop should be able to on a phone. */}
+                <hr className="my-3 border-0 border-t border-hair" />
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col">
+                    <span className="font-bold">Total unbilled</span>
+                    <span className="tnum-l text-caption text-ink-3">
+                      {`${pluralize(readyCount, "trip")} · ${formatDays(
+                        Number(unbilledSummary.billable_days)
+                      )} days · ${formatCents(
+                        Number(unbilledSummary.day_value_cents)
+                      )} day money · ${formatCents(
+                        Number(unbilledSummary.rebill_expense_cents)
+                      )} reimbursables`}
+                    </span>
+                  </div>
+                  <span className="tnum-l font-bold">{formatCents(unbilledCents)}</span>
+                </div>
+              </div>
 
-            {/* TABLE LAYOUT — md and up, where seven columns fit without a
-                scroll and the column ranking is readable at a glance. */}
-            <Box display={{ initial: "none", md: "block" }}>
-            <Table.Root variant="surface">
-              {/* VisuallyHidden as a COMPONENT, never an `rt-` class — see
-                  the document-expirations table below for why. */}
-              <caption>
-                <VisuallyHidden>Unbilled money by client</VisuallyHidden>
-              </caption>
-              <Table.Header>
-                <Table.Row>
-                  <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell justify="end">Trips</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell justify="end">Days</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell justify="end">Day money</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell justify="end">Reimbursables</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell justify="end">Unbilled</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>
-                    <VisuallyHidden>Action</VisuallyHidden>
-                  </Table.ColumnHeaderCell>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
-                {unbilledDisplayRows.map((row) => (
-                  <Table.Row key={row.key}>
-                    <Table.RowHeaderCell>
-                      <Flex direction="column">
-                        <Text weight="medium">{row.label}</Text>
-                        {row.waiting === null ? null : (
-                          <Text size="1" color="gray" className="tnum">
-                            {`Oldest ${pluralize(row.waiting, "day")} ago`}
-                          </Text>
-                        )}
-                      </Flex>
-                    </Table.RowHeaderCell>
-                    <Table.Cell justify="end" className="tnum">
-                      {row.trips}
-                    </Table.Cell>
-                    <Table.Cell justify="end" className="tnum">
-                      {row.days}
-                    </Table.Cell>
-                    <Table.Cell justify="end" className="tnum">
-                      {row.dayMoney}
-                    </Table.Cell>
-                    <Table.Cell justify="end" className="tnum">
-                      {row.reimbursables}
-                    </Table.Cell>
-                    <Table.Cell justify="end" className="tnum">
-                      <Text weight="bold">{row.total}</Text>
-                    </Table.Cell>
-                    <Table.Cell>
-                      {/* One tap into the EXISTING draft flow, which is
-                          single-client by construction — which is why a
-                          row per client is the right shape and a batch
-                          button was never going to be. The no-client
-                          bucket goes to /trips instead: there is no
-                          client to draft against, and offering the draft
-                          flow anyway would open something that cannot
-                          include these trips. */}
-                      <Button
-                        asChild
-                        size="1"
-                        variant={row.clientId ? "solid" : "outline"}
-                        aria-label={`${draftAction(row.clientId)}, ${row.label}`}
-                      >
-                        <NextLink href={draftHref(row.clientId)}>
-                          {draftAction(row.clientId)}
-                        </NextLink>
-                      </Button>
-                    </Table.Cell>
-                  </Table.Row>
-                ))}
-              </Table.Body>
-              {/* THE RECONCILIATION ROW, in a real <tfoot>. Not a summary
-                  flourish: it is the same figure as the "Unbilled work" card
-                  above, from the same derivation chain, printed where a
-                  pilot can add the column up and check it.
+              {/* TABLE LAYOUT — md and up, where seven columns fit without a
+                  scroll and the column ranking is readable at a glance. */}
+              <div className="hidden md:block">
+                <LTable>
+                  <caption>
+                    <span className="sr-only">Unbilled money by client</span>
+                  </caption>
+                  <thead>
+                    <tr>
+                      <LTh>Client</LTh>
+                      <LTh numeric>Trips</LTh>
+                      <LTh numeric>Days</LTh>
+                      <LTh numeric>Day money</LTh>
+                      <LTh numeric>Reimbursables</LTh>
+                      <LTh numeric>Unbilled</LTh>
+                      <LTh>
+                        <span className="sr-only">Action</span>
+                      </LTh>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {unbilledDisplayRows.map((row) => (
+                      <tr key={row.key}>
+                        <LTd>
+                          <div className="flex flex-col">
+                            <span className="font-medium">{row.label}</span>
+                            {row.waiting === null ? null : (
+                              <span className="tnum-l text-caption text-ink-3">
+                                {`Oldest ${pluralize(row.waiting, "day")} ago`}
+                              </span>
+                            )}
+                          </div>
+                        </LTd>
+                        <LTd numeric>{row.trips}</LTd>
+                        <LTd numeric>{row.days}</LTd>
+                        <LTd numeric>{row.dayMoney}</LTd>
+                        <LTd numeric>{row.reimbursables}</LTd>
+                        <LTd numeric>
+                          <span className="font-bold">{row.total}</span>
+                        </LTd>
+                        <LTd>
+                          {/* One tap into the EXISTING draft flow, which is
+                              single-client by construction — which is why a
+                              row per client is the right shape and a batch
+                              button was never going to be. The no-client
+                              bucket goes to /trips instead: there is no
+                              client to draft against, and offering the draft
+                              flow anyway would open something that cannot
+                              include these trips. Outline, not filled — the
+                              one accent button on this screen is "Create
+                              invoice" in the page header. */}
+                          <NextLink
+                            href={draftHref(row.clientId)}
+                            aria-label={`${draftAction(row.clientId)}, ${row.label}`}
+                            className={lButtonClass({ variant: "outline", size: "sm" })}
+                          >
+                            {draftAction(row.clientId)}
+                          </NextLink>
+                        </LTd>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {/* THE RECONCILIATION ROW, in a real <tfoot>. Not a summary
+                      flourish: it is the same figure as the "Unbilled work"
+                      card above, from the same derivation chain, printed
+                      where a pilot can add the column up and check it.
 
-                  <tfoot> rather than a last <tbody> row because it IS the
-                  table's summary and assistive tech should say so — inside
-                  Table.Body it was announced as just another client, one a
-                  screen-reader user would reasonably try to draft an invoice
-                  for. Table.Root renders <table>{children}</table> (its
-                  ScrollArea wraps the table, not its rows), and Table.Row is
-                  a plain <tr>, so a raw <tfoot> composes here exactly as the
-                  raw <caption> above it already does. */}
-              <tfoot>
-                <Table.Row>
-                  <Table.RowHeaderCell>
-                    <Text weight="bold">Total unbilled</Text>
-                  </Table.RowHeaderCell>
-                  <Table.Cell justify="end" className="tnum">
-                    <Text weight="bold">{readyCount}</Text>
-                  </Table.Cell>
-                  <Table.Cell justify="end" className="tnum">
-                    <Text weight="bold">
-                      {formatDays(Number(unbilledSummary.billable_days))}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell justify="end" className="tnum">
-                    <Text weight="bold">
-                      {formatCents(Number(unbilledSummary.day_value_cents))}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell justify="end" className="tnum">
-                    <Text weight="bold">
-                      {formatCents(Number(unbilledSummary.rebill_expense_cents))}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell justify="end" className="tnum">
-                    <Text weight="bold">{formatCents(unbilledCents)}</Text>
-                  </Table.Cell>
-                  <Table.Cell />
-                </Table.Row>
-              </tfoot>
-            </Table.Root>
-            </Box>
+                      <tfoot> rather than a last row in <tbody> because it IS
+                      the table's summary and assistive tech should say so —
+                      inside the body it would be announced as just another
+                      client, one a screen-reader user would reasonably try
+                      to draft an invoice for. */}
+                  <tfoot>
+                    <tr>
+                      <LTd>
+                        <span className="font-bold">Total unbilled</span>
+                      </LTd>
+                      <LTd numeric>
+                        <span className="font-bold">{readyCount}</span>
+                      </LTd>
+                      <LTd numeric>
+                        <span className="font-bold">
+                          {formatDays(Number(unbilledSummary.billable_days))}
+                        </span>
+                      </LTd>
+                      <LTd numeric>
+                        <span className="font-bold">
+                          {formatCents(Number(unbilledSummary.day_value_cents))}
+                        </span>
+                      </LTd>
+                      <LTd numeric>
+                        <span className="font-bold">
+                          {formatCents(Number(unbilledSummary.rebill_expense_cents))}
+                        </span>
+                      </LTd>
+                      <LTd numeric>
+                        <span className="font-bold">{formatCents(unbilledCents)}</span>
+                      </LTd>
+                      <LTd />
+                    </tr>
+                  </tfoot>
+                </LTable>
+              </div>
 
-            {/* TWO DIFFERENT THINGS CAN PUT THE ROWS OUT OF STEP WITH THE
-                TOTAL, and they need different sentences — see
-                clientRowsState. A capped row set is a strict shortfall and
-                is named as one. Rows claiming MORE than the total cannot be
-                truncation; it means the three reads saw different instants,
-                and telling that pilot "the client list came back
-                incomplete" would be a false diagnosis attached to
-                arithmetic they can see is impossible ("$900.00 of the
-                $800.00 total"). Said out loud either way rather than left
-                as a silent discrepancy the pilot has to spot. */}
-            {unbilledBreakdown === "partial" ? (
-              <Flex mt="3">
-                <Text size="1" color="gray">
+              {/* TWO DIFFERENT THINGS CAN PUT THE ROWS OUT OF STEP WITH THE
+                  TOTAL, and they need different sentences — see
+                  clientRowsState. A capped row set is a strict shortfall and
+                  is named as one. Rows claiming MORE than the total cannot be
+                  truncation; it means the three reads saw different instants,
+                  and telling that pilot "the client list came back
+                  incomplete" would be a false diagnosis attached to
+                  arithmetic they can see is impossible ("$900.00 of the
+                  $800.00 total"). Said out loud either way rather than left
+                  as a silent discrepancy the pilot has to spot. */}
+              {unbilledBreakdown === "partial" ? (
+                <p className="mt-3 text-caption text-ink-3">
                   {`The rows above account for ${formatCents(
                     unbilledCents - unbilledShortfallCents
                   )} of the ${formatCents(
                     unbilledCents
                   )} total. The client list came back incomplete, so this breakdown is partial in its money, its trip counts and its days alike. The total row is not: it is one read that cannot be shortened.`}
-                </Text>
-              </Flex>
-            ) : unbilledBreakdown === "inconsistent" ? (
-              <Flex mt="3">
-                <Text size="1" color="gray">
+                </p>
+              ) : unbilledBreakdown === "inconsistent" ? (
+                <p className="mt-3 text-caption text-ink-3">
                   These rows and the total were read a moment apart and
                   don&rsquo;t reconcile. Something changed in between, most
                   likely an invoice issued or voided while this page loaded.
                   Reload to see one consistent picture.
-                </Text>
-              </Flex>
-            ) : null}
+                </p>
+              ) : null}
 
-            <Flex mt="3">
-              {/* Same discipline as the currency disclaimer two panels
-                  down: claim only what the figure is. Day money plus
-                  rebillable receipts is what lib/trip-value.ts has always
-                  meant by a trip's value, and createInvoiceDraft adds per
-                  diem and any contract minimum ON TOP of it — so this is
-                  not a prediction of the invoice total, and must not be
-                  written as one. */}
-              <Text size="1" color="gray">
-                Billable day money plus rebillable receipts, for completed
-                trips not yet on an issued invoice. It&rsquo;s the same figure as
-                &ldquo;Unbilled work&rdquo; above, which is why the total row
-                matches it. Per diem and any contract minimum are added when
-                the invoice is drafted, so a draft can come out higher than
-                the figures here.
-              </Text>
-            </Flex>
-          </>
-        )}
-        </Card>
+              <div className="mt-3">
+                {/* Same discipline as the currency disclaimer two panels
+                    down: claim only what the figure is. Day money plus
+                    rebillable receipts is what lib/trip-value.ts has always
+                    meant by a trip's value, and createInvoiceDraft adds per
+                    diem and any contract minimum ON TOP of it — so this is
+                    not a prediction of the invoice total, and must not be
+                    written as one. */}
+                <p className="text-caption text-ink-3">
+                  Billable day money plus rebillable receipts, for completed
+                  trips not yet on an issued invoice. It&rsquo;s the same figure as
+                  &ldquo;Unbilled work&rdquo; above, which is why the total row
+                  matches it. Per diem and any contract minimum are added when
+                  the invoice is drafted, so a draft can come out higher than
+                  the figures here.
+                </p>
+              </div>
+            </>
+          )}
+        </LCard>
 
         {/* READY TO INVOICE — paired with the unbilled-by-client table via
-            the Grid both cards sit in (see that Card's opening comment).
+            the grid both cards sit in (see that card's opening comment).
             Moved out of the bottom-of-page 2-up grid it used to share with
             "Needs attention", which is now a full-width card near the top
             of the page (see there for why); this panel's own content and
             gating are otherwise unchanged. */}
-        <Card>
-          <Flex direction="column" gap="1" mb="3">
-            <Text size="4" weight="medium">
-              Ready to invoice
-            </Text>
-            <Text size="2" color="gray">
-              {pluralize(readyCount, "trip")}
-            </Text>
-          </Flex>
+        <LCard>
+          <div className="mb-3 flex flex-col gap-1">
+            <h2 className="text-h3 font-semibold">Ready to invoice</h2>
+            <p className="text-body-s text-ink-3">{pluralize(readyCount, "trip")}</p>
+          </div>
 
           {/* U1/U2: a failed read must not render as "nothing to bill".
               Narrower than it used to be — the trip rows arrive priced from
@@ -1779,67 +1706,63 @@ export default async function OverviewPage() {
               but the gate stays page-wide (see moneyOk above), the same as
               the document-expirations panel. */}
           {errors.length ? (
-            <Flex direction="column" align="center" gap="3" py="5">
-              <Text size="2" color="gray" align="center">
+            <div className="flex flex-col items-center gap-3 py-10">
+              <p className="text-center text-body-s text-ink-3">
                 Couldn&rsquo;t load your unbilled trips. See the notice
                 above. This is not a statement that none are waiting.
-              </Text>
-            </Flex>
+              </p>
+            </div>
           ) : readyTrips.length === 0 ? (
-            <EmptyState
+            <LEmpty
               title="Nothing ready to invoice"
               action={
-                <Button asChild variant="outline">
-                  <NextLink href="/trips/new">Log a trip</NextLink>
-                </Button>
+                <NextLink
+                  href="/trips/new"
+                  className={lButtonClass({ variant: "outline" })}
+                >
+                  Log a trip
+                </NextLink>
               }
             >
               No completed trips are waiting to be billed.
-            </EmptyState>
+            </LEmpty>
           ) : (
             <>
-              <Flex direction="column">
+              <div className="flex flex-col divide-y divide-hair">
                 {readyTrips.map((trip) => (
                   <NextLink
                     key={trip.id}
                     href={`/trips/${trip.id}`}
-                    style={{ textDecoration: "none", color: "inherit" }}
+                    className="flex items-start justify-between gap-3 py-2.5"
                   >
-                    <Flex justify="between" align="start" py="2">
-                      <Flex direction="column">
-                        <Text weight="medium">{trip.client}</Text>
-                        <Text size="1" color="gray">
-                          {/* pluralizeDays, not pluralize: a billable day
-                              count is numeric(3,1) per row, so 6.5 is a
-                              real answer and "6.5 days" must not become
-                              "7 days". */}
-                          {[trip.route, trip.tail, pluralizeDays(trip.days), trip.dates]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </Text>
-                        <Text size="1" color="gray">
-                          {trip.detail}
-                        </Text>
-                      </Flex>
-                      <Text weight="bold" className="tnum">
-                        {formatCents(trip.amountCents)}
-                      </Text>
-                    </Flex>
+                    <div className="flex flex-col">
+                      <span className="font-medium">{trip.client}</span>
+                      <span className="text-caption text-ink-3">
+                        {/* pluralizeDays, not pluralize: a billable day
+                            count is numeric(3,1) per row, so 6.5 is a real
+                            answer and "6.5 days" must not become "7
+                            days". */}
+                        {[trip.route, trip.tail, pluralizeDays(trip.days), trip.dates]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                      <span className="text-caption text-ink-3">{trip.detail}</span>
+                    </div>
+                    <span className="tnum-l font-bold">{formatCents(trip.amountCents)}</span>
                   </NextLink>
                 ))}
-              </Flex>
+              </div>
               {readyCount > readyTrips.length ? (
-                <Text size="1" color="gray">
-                  {`+${readyCount - readyTrips.length} more`}
-                </Text>
+                <p className="mt-2 text-caption text-ink-3">{`+${readyCount - readyTrips.length} more`}</p>
               ) : null}
-              <Flex mt="3">
+              <div className="mt-3">
                 {soleClientId ? (
-                  <Button asChild>
-                    <NextLink href={`/invoices/new?client=${soleClientId}`}>
-                      {`Invoice ${pluralize(readyCount, "trip")}`}
-                    </NextLink>
-                  </Button>
+                  <NextLink
+                    href={`/invoices/new?client=${soleClientId}`}
+                    className={lButtonClass({ variant: "outline" })}
+                  >
+                    {`Invoice ${pluralize(readyCount, "trip")}`}
+                  </NextLink>
                 ) : (
                   // M12: /invoices/new drafts against exactly one client's
                   // trips, so a button offering to "Invoice N trips" here
@@ -1848,29 +1771,30 @@ export default async function OverviewPage() {
                   // of them. Relabeled to what it can actually do: open
                   // the drafting flow and let the pilot pick which
                   // client's batch to start.
-                  <Button asChild variant="outline">
-                    <NextLink href="/invoices/new">Start an invoice</NextLink>
-                  </Button>
+                  <NextLink
+                    href="/invoices/new"
+                    className={lButtonClass({ variant: "outline" })}
+                  >
+                    Start an invoice
+                  </NextLink>
                 )}
-              </Flex>
+              </div>
             </>
           )}
-        </Card>
-      </Grid>
+        </LCard>
+      </div>
 
       {/* Row 3 — document expirations. NOT a currency determination — see
           the query comment above on why this deliberately excludes
           day/night/instrument recency. */}
-      <Card>
-        <Flex direction="column" gap="1" mb="3">
-          <Text size="4" weight="medium">
-            Document expirations
-          </Text>
-          <Text size="2" color="gray">
+      <LCard>
+        <div className="mb-3 flex flex-col gap-1">
+          <h2 className="text-h3 font-semibold">Document expirations</h2>
+          <p className="text-body-s text-ink-3">
             Medical, flight review, passport, insurance and PIC proficiency
             check (61.58) dates from your documents
-          </Text>
-        </Flex>
+          </p>
+        </div>
 
         {/* U1: a failed read here is not "you have no documents on file" —
             it used to render exactly that, inviting a pilot to re-enter a
@@ -1879,61 +1803,60 @@ export default async function OverviewPage() {
             for the banner above (see its own comment) and the day-one
             card below — a query error is not "no data". */}
         {errors.length ? (
-          <Flex direction="column" align="center" gap="3" py="5">
-            <Text size="2" color="gray" align="center">
+          <div className="flex flex-col items-center gap-3 py-10">
+            <p className="text-center text-body-s text-ink-3">
               Couldn&rsquo;t load your document expirations. See the notice
               above. This is not a statement that you have none on file.
-            </Text>
-          </Flex>
+            </p>
+          </div>
         ) : expirationRows.length === 0 ? (
-          <EmptyState
+          <LEmpty
             title="No documents on file"
             action={
-              <Button asChild variant="outline">
-                <NextLink href="/documents">Add your documents</NextLink>
-              </Button>
+              <NextLink
+                href="/documents"
+                className={lButtonClass({ variant: "outline" })}
+              >
+                Add your documents
+              </NextLink>
             }
           >
             No document dates on file yet.
-          </EmptyState>
+          </LEmpty>
         ) : (
-          <Table.Root variant="surface">
-            {/* Radix ships VisuallyHidden as a COMPONENT (inline styles),
-                never as an `rt-VisuallyHidden` class — that class does not
-                exist in its stylesheet, so a caption carrying it rendered
-                as a stray centred line of visible text above the table. */}
+          <LTable>
             <caption>
-              <VisuallyHidden>Document expirations</VisuallyHidden>
+              <span className="sr-only">Document expirations</span>
             </caption>
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Document</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Expires</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell justify="end">Status</Table.ColumnHeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
+            <thead>
+              <tr>
+                <LTh>Document</LTh>
+                <LTh>Expires</LTh>
+                <LTh numeric>Status</LTh>
+              </tr>
+            </thead>
+            <tbody>
               {expirationRows.map((row) => {
                 const badge = EXPIRY_LADDER_BADGE[row.ladder_stage] ?? LADDER_FALLBACK;
                 return (
-                  <Table.Row key={row.source_id}>
-                    <Table.Cell>
-                      <Text weight="medium">{row.item_label}</Text>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Text color="gray">{formatDate(row.expires_on)}</Text>
-                    </Table.Cell>
-                    <Table.Cell justify="end">
-                      <Badge color={badge.tone}>{badge.label}</Badge>
-                    </Table.Cell>
-                  </Table.Row>
+                  <tr key={row.source_id}>
+                    <LTd>
+                      <span className="font-medium">{row.item_label}</span>
+                    </LTd>
+                    <LTd>
+                      <span className="text-ink-3">{formatDate(row.expires_on)}</span>
+                    </LTd>
+                    <LTd numeric>
+                      <LPill tone={ladderToPillTone(badge.tone)}>{badge.label}</LPill>
+                    </LTd>
+                  </tr>
                 );
               })}
-            </Table.Body>
-          </Table.Root>
+            </tbody>
+          </LTable>
         )}
 
-        <Flex mt="3">
+        <div className="mt-3">
           {/* Deliberately NOT the currency disclaimer. That copy opens
               "Currency is calculated from the entries you logged", which
               asserts a calculation this product does not yet perform —
@@ -1944,12 +1867,76 @@ export default async function OverviewPage() {
               CURRENCY_DISCLAIMER travels with IT, verbatim from
               lib/brand.ts. This panel claims only what it is — dates the
               pilot typed off their own documents. */}
-          <Text size="1" color="gray">
+          <p className="text-caption text-ink-3">
             These are the expiry dates you recorded on your own documents.
             Keeping them current is your responsibility.
-          </Text>
-        </Flex>
-      </Card>
-    </PageShell>
+          </p>
+        </div>
+      </LCard>
+    </div>
+  );
+}
+
+/* ── Inline icons ──────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. Three compact 16px outlines, defined once here rather than
+ * per call site, stroke="currentColor" so each inherits its caller's tone
+ * utility (text-good, text-ink-3, text-crit, text-warn). */
+
+function CheckCircleIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <circle cx="8" cy="8" r="6.25" />
+      <path d="M5.25 8.25 7.25 10.25 10.75 6" />
+    </svg>
+  );
+}
+
+function CircleIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+      className={className}
+    >
+      <circle cx="8" cy="8" r="6.25" />
+    </svg>
+  );
+}
+
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }
