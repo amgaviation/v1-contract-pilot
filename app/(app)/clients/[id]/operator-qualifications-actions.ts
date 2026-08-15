@@ -5,6 +5,10 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { friendlyDbError } from "@/lib/db-errors";
+import {
+  CLIENT_OPERATING_RULES,
+  type ClientOperatingRule,
+} from "@/lib/operating-rule";
 import type { Database } from "@/lib/supabase/database.types";
 import {
   OPERATOR_QUALIFICATION_REQUIREMENTS,
@@ -25,6 +29,7 @@ type ClientInsert = Database["pilot"]["Tables"]["clients"]["Insert"];
 export type OperatorFormState = {
   error: string | null;
   name?: string;
+  operatingRule?: ClientOperatingRule;
 };
 
 export type QualificationFormState = {
@@ -287,6 +292,17 @@ export async function createOperatorCounterparty(
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return { error: "Give the operator a name.", name: "" };
 
+  // CONSTRAINED TO THE KNOWN SET, never trusted from the post: it seeds
+  // pilot.clients.operating_rule, whose CHECK would reject anything else,
+  // and it decides whether the panel this form redirects to shows the
+  // 135.293/.297/.299 rows at all. Falling back to part_135 matches the
+  // form's own default; a post that omits the field entirely is the
+  // pilot's browser failing, not a request for an unclassified operator.
+  const postedRule = String(formData.get("operating_rule") ?? "");
+  const operatingRule = (CLIENT_OPERATING_RULES.some((r) => r.value === postedRule)
+    ? postedRule
+    : "part_135") as ClientOperatingRule;
+
   const { account } = await requireAccount("/clients");
   const supabase = await createClient();
 
@@ -296,6 +312,10 @@ export async function createOperatorCounterparty(
     // The whole point: created as somebody you do not bill. Reversible on
     // the client form above the moment that changes.
     you_invoice: false,
+    // Without this the row defaults to 'unspecified', includesPart135()
+    // reads that as not-135, and the panel this action redirects to hides
+    // the exact rows the pilot opened this form to fill in.
+    operating_rule: operatingRule,
   };
   const { data, error } = await supabase
     .from("clients")
@@ -304,13 +324,23 @@ export async function createOperatorCounterparty(
     .maybeSingle();
 
   if (error) {
-    return { error: friendlyDbError(error, "clients.insert"), name };
+    return {
+      error: friendlyDbError(error, "clients.insert"),
+      name,
+      operatingRule,
+    };
   }
   const created = data as { id: string } | null;
   // PostgREST returns no error for an insert that produced no readable
   // row. Reporting success and redirecting nowhere would be a lie, and
   // redirecting to an id we do not have is not possible.
-  if (!created) return { error: "Couldn't add that operator. Try again.", name };
+  if (!created) {
+    return {
+      error: "Couldn't add that operator. Try again.",
+      name,
+      operatingRule,
+    };
+  }
 
   revalidatePath("/clients");
   redirect(`/clients/${created.id}`);

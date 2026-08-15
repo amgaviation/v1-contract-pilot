@@ -216,9 +216,38 @@ as $$
 declare
   invoiced boolean;
 begin
+  -- FOR SHARE, AND THE INVARIANT DEPENDS ON IT.
+  --
+  -- A plain SELECT here left a race that neither trigger could see. Under
+  -- READ COMMITTED, with A doing "stop invoicing client X" and B inserting
+  -- an invoice for X:
+  --
+  --   A updates pilot.clients, taking FOR NO KEY UPDATE on X, and its
+  --   trigger counts billing rows and finds none, because B has not
+  --   committed.
+  --   B inserts. Its foreign key takes FOR KEY SHARE on X, which does NOT
+  --   conflict with FOR NO KEY UPDATE, because you_invoice is not a key
+  --   column. Its trigger reads the still-committed you_invoice = true and
+  --   allows the write.
+  --
+  -- Both commit and a billing document is attached to a client marked as
+  -- one you do not invoice, which is exactly the invariant the pickers and
+  -- the unfiltered A/R aging rely on.
+  --
+  -- FOR SHARE conflicts with FOR NO KEY UPDATE, so the two serialise in
+  -- whichever order they arrive, and the loser sees the winner's committed
+  -- state and refuses:
+  --   A first: B blocks on the lock, then reads you_invoice = false and
+  --     raises below.
+  --   B first: A blocks on its own UPDATE, then its count sees B's row and
+  --     clients_refuse_stop_invoicing() raises.
+  -- FOR SHARE rather than FOR UPDATE because this transaction only reads
+  -- the client; it must block the flag flipping under it, not claim the
+  -- right to write the row.
   select c.you_invoice into invoiced
   from pilot.clients c
-  where c.account_id = new.account_id and c.id = new.client_id;
+  where c.account_id = new.account_id and c.id = new.client_id
+  for share;
 
   -- No row found means the composite foreign key is about to reject this
   -- write anyway, or RLS hid the client from this caller. Either way the
