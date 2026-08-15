@@ -184,6 +184,54 @@ export function LAlert({ className, tone, ...props }: LAlertProps) {
   return <div className={cn(alertVariants({ tone }), className)} {...props} />;
 }
 
+/* ── Empty state ───────────────────────────────────────────────────── */
+
+/**
+ * The empty-state shape, ported from components/ui/empty-state.tsx for the
+ * first Ledger screen that needs one (Overview). Same split as that file:
+ * the SHAPE lives here, the WORDS stay at the call site — no default title,
+ * body or action, so a call site cannot ship "No records." and call it
+ * done. A failed read is still not an empty state; call sites keep their
+ * own LAlert for that branch and reach this component only once a read has
+ * succeeded.
+ */
+export function LEmpty({
+  title,
+  children,
+  action,
+  secondaryAction,
+  as = "h3",
+  className,
+}: {
+  title: string;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+  secondaryAction?: React.ReactNode;
+  /** Defaults to h3, right inside a card under the page's h1. A screen
+   *  whose empty state IS the panel heading passes "h2". */
+  as?: "h2" | "h3";
+  className?: string;
+}) {
+  const Heading = as;
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center gap-3 px-3 py-10 text-center",
+        className
+      )}
+    >
+      <Heading className="text-h3 font-semibold text-ink">{title}</Heading>
+      <p className="max-w-md text-body-s text-ink-2">{children}</p>
+      {action || secondaryAction ? (
+        <div className="mt-1 flex flex-wrap items-center justify-center gap-3">
+          {action}
+          {secondaryAction}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /* ── Rows (the list-line shape) ────────────────────────────────────── */
 
 /**
