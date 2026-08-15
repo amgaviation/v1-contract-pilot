@@ -143,7 +143,13 @@ export async function GET(request: NextRequest) {
     // query is not guaranteed comma-free (a copy-pasted "KTEB, KVNY" is a
     // plausible search), which would silently mis-parse the filter. Two
     // plain ilike queries have no such edge case.
-    const [clientsByName, invoicesByNumber, legsByFromIcao, legsByToIcao] = await Promise.all([
+    const [
+      clientsByName,
+      invoicesByNumber,
+      invoicesByBillTo,
+      legsByFromIcao,
+      legsByToIcao,
+    ] = await Promise.all([
       supabase
         .from("clients")
         .select("id, name, archived_at, contact_name")
@@ -154,6 +160,25 @@ export async function GET(request: NextRequest) {
         .from("invoices")
         .select("id, client_id, bill_to_name, invoice_number, status, issued_on, due_on")
         .ilike("invoice_number", pattern)
+        .order("created_at", { ascending: false })
+        .limit(PER_TYPE_LIMIT),
+      // THE ONLY WAY TO FIND A CLIENTLESS INVOICE BY WHO IT IS FOR.
+      //
+      // Pass 2 finds invoices through a matching client row, and the number
+      // match above finds them by number. An invoice raised with no client
+      // (20260815100000) has neither: no client row to match, and while it
+      // is still a draft no invoice number either, because the number is
+      // minted at issue. Its typed payer name is the one identifying value
+      // it has, so without this query the palette can never return it.
+      //
+      // A separate ilike rather than an `.or(...)`, for the same reason the
+      // leg ICAO match below is two queries: PostgREST splits an `or`
+      // argument on top-level commas and a typed payer name ("Gulfstream
+      // Ops, LLC") is not guaranteed comma-free.
+      supabase
+        .from("invoices")
+        .select("id, client_id, bill_to_name, invoice_number, status, issued_on, due_on")
+        .ilike("bill_to_name", pattern)
         .order("created_at", { ascending: false })
         .limit(PER_TYPE_LIMIT),
       supabase
@@ -173,6 +198,7 @@ export async function GET(request: NextRequest) {
     if (
       clientsByName.error ||
       invoicesByNumber.error ||
+      invoicesByBillTo.error ||
       legsByFromIcao.error ||
       legsByToIcao.error
     ) {
@@ -230,6 +256,7 @@ export async function GET(request: NextRequest) {
 
     const invoices = dedupeById([
       ...((invoicesByNumber.data ?? []) as InvoiceRow[]),
+      ...((invoicesByBillTo.data ?? []) as InvoiceRow[]),
       ...((invoicesByClient.data ?? []) as InvoiceRow[]),
     ]).slice(0, PER_TYPE_LIMIT);
 

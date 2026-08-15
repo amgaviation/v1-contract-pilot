@@ -719,6 +719,14 @@ export type InvoiceExportRow = Pick<
   | "id"
   | "client_id"
   | "bill_to_name"
+  | "bill_to_contact_name"
+  | "bill_to_email"
+  | "bill_to_address_line1"
+  | "bill_to_address_line2"
+  | "bill_to_city"
+  | "bill_to_state"
+  | "bill_to_postal_code"
+  | "bill_to_country"
   | "invoice_number"
   | "status"
   | "issued_on"
@@ -749,6 +757,24 @@ export const INVOICE_HEADER = [
   "Created on",
   "Invoice ID",
   "Client ID",
+  // THE TYPED BILL-TO BLOCK, and it has to be here rather than inferred.
+  //
+  // A clientless invoice (20260815100000) has no row in the clients export
+  // to join back to, so these nine columns are the ONLY record of who was
+  // billed. Exporting the name alone would leave an account-wide export
+  // that cannot answer "where did this invoice go", which is the one thing
+  // this file promises: every record type, on every plan. A linked invoice
+  // leaves them all blank by construction, since the check constraint
+  // forbids it carrying any of them.
+  "Bill to name",
+  "Bill to contact",
+  "Bill to email",
+  "Bill to address 1",
+  "Bill to address 2",
+  "Bill to city",
+  "Bill to state",
+  "Bill to postal code",
+  "Bill to country",
 ] as const;
 
 export function invoiceValues(row: InvoiceExportRow, lookups: Lookups): CsvValue[] {
@@ -776,6 +802,15 @@ export function invoiceValues(row: InvoiceExportRow, lookups: Lookups): CsvValue
     isoDate(row.created_at),
     row.id,
     row.client_id,
+    row.bill_to_name,
+    row.bill_to_contact_name,
+    row.bill_to_email,
+    row.bill_to_address_line1,
+    row.bill_to_address_line2,
+    row.bill_to_city,
+    row.bill_to_state,
+    row.bill_to_postal_code,
+    row.bill_to_country,
   ];
 }
 
@@ -1788,7 +1823,7 @@ export const EXPORT_ENTITIES: Record<string, EntitySpec> = {
     key: "invoices",
     table: "invoices",
     select:
-      "id, client_id, bill_to_name, invoice_number, status, issued_on, due_on, sent_at, tax_rate_bps, delivery_method, notes, created_at",
+      "id, client_id, bill_to_name, bill_to_contact_name, bill_to_email, bill_to_address_line1, bill_to_address_line2, bill_to_city, bill_to_state, bill_to_postal_code, bill_to_country, invoice_number, status, issued_on, due_on, sent_at, tax_rate_bps, delivery_method, notes, created_at",
     orderBy: [
       { column: "created_at", ascending: true },
       { column: "id", ascending: true },

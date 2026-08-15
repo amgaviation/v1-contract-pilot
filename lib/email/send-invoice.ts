@@ -125,11 +125,13 @@ export async function sendInvoiceEmail(
   const { data: invoiceRow, error: invoiceError } = await supabase
     .from("invoices")
     .select(
-      // bill_to_name/bill_to_email ride along for the clientless case
-      // (20260815100000). The address columns are NOT read here: the PDF
-      // builder below resolves the printed block itself, and reading them
-      // twice would be two sources for one address.
-      "id, client_id, bill_to_name, bill_to_email, notes, stripe_payment_link_url, stripe_payment_link_livemode"
+      // bill_to_name/bill_to_contact_name/bill_to_email ride along for the
+      // clientless case (20260815100000). The POSTAL columns are NOT read
+      // here: the PDF builder below resolves the printed block itself, and
+      // reading them twice would be two sources for one address. The
+      // contact is different in kind, because it addresses the mail rather
+      // than being printed on the document.
+      "id, client_id, bill_to_name, bill_to_contact_name, bill_to_email, notes, stripe_payment_link_url, stripe_payment_link_livemode"
     )
     .eq("id", invoiceId)
     .eq("account_id", accountId)
@@ -145,6 +147,7 @@ export async function sendInvoiceEmail(
   const invoice = invoiceRow as {
     client_id: string | null;
     bill_to_name: string | null;
+    bill_to_contact_name: string | null;
     bill_to_email: string | null;
     notes: string | null;
     stripe_payment_link_url: string | null;
@@ -292,7 +295,14 @@ export async function sendInvoiceEmail(
   const shared = {
     accountName: doc.accountName,
     clientName: billedName,
-    contactName: client?.contact_name ?? null,
+    // WHOEVER THE PILOT NAMED, whichever way they named them. On a linked
+    // invoice that is the client's contact; on a clientless one it is the
+    // contact typed onto the invoice, and passing null there addressed the
+    // greeting and every {{client_name}} substitution to the company while
+    // the PDF right next to it printed "Dispatch".
+    contactName: invoice.client_id
+      ? client?.contact_name ?? null
+      : invoice.bill_to_contact_name ?? null,
     invoiceNumber: doc.invoiceNumber,
     dueOn: doc.dueOn,
     totalCents: doc.totalCents,

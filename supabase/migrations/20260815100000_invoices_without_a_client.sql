@@ -180,15 +180,42 @@ comment on column pilot.invoices.bill_to_email is
 -- it, which is not a draft in progress, it is a document that cannot be sent
 -- and cannot be chased.
 --
--- Only bill_to_name is constrained. The address parts are optional in exactly
--- the way pilot.clients' own address columns are optional (all nullable there
--- too), so a pilot billing "Gulfstream Ops LLC" with no street address is as
--- valid here as it already was there.
+-- The address parts stay optional ON A CLIENTLESS INVOICE, in exactly the way
+-- pilot.clients' own address columns are optional (all nullable there too), so
+-- a pilot billing "Gulfstream Ops LLC" with no street address is as valid here
+-- as it already was there.
+--
+-- BUT A LINKED INVOICE MUST CARRY NONE OF THEM, and constraining bill_to_name
+-- alone was not enough to say so. A client-linked row with a null bill_to_name
+-- and, say, a typed bill_to_city passed the name-only check, and the two
+-- readers then disagreed about it: pilot.invoice_public coalesces field by
+-- field, so it would print the typed city, while resolveBillTo() takes the
+-- whole block from the client row and ignores the typed columns outright. The
+-- same invoice would show one address in the PDF and another on the public
+-- share link, with nothing anywhere reporting a problem.
+--
+-- The point of this constraint was always "exactly one source, as a property
+-- of the data". Naming only one of the nine columns left the other eight as a
+-- convention, which is precisely what a constraint exists not to be.
 --
 -- NOT VALID then VALIDATE: see the live-safety note in the header.
 alter table pilot.invoices
   add constraint invoices_bill_to_or_client
-  check ((client_id is null) = (bill_to_name is not null))
+  check (
+    case
+      when client_id is null then bill_to_name is not null
+      else
+        bill_to_name is null
+        and bill_to_contact_name is null
+        and bill_to_email is null
+        and bill_to_address_line1 is null
+        and bill_to_address_line2 is null
+        and bill_to_city is null
+        and bill_to_state is null
+        and bill_to_postal_code is null
+        and bill_to_country is null
+    end
+  )
   not valid;
 
 alter table pilot.invoices
