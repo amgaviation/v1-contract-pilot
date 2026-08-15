@@ -136,6 +136,17 @@ async function refreshSession(
     // /reset-password does its own session check (see its page).
     normalizedPath === "/forgot-password" ||
     normalizedPath === "/reset-password" ||
+    // EMAIL CONFIRMATION, both halves of it. A pilot who has just signed up
+    // has no session by definition (that is what the confirmation link is
+    // for), and /link-expired is reached by clicking a dead emailed link,
+    // which is the same state. Without these two lines both screens 307 to
+    // /login and the flow has no visible middle: the pilot is told to sign
+    // in to an account they have not confirmed yet. /check-email discloses
+    // nothing on its own; the address it names comes from an httpOnly
+    // cookie, so a visitor with no cookie is redirected to /signup by the
+    // page itself.
+    normalizedPath === "/check-email" ||
+    normalizedPath === "/link-expired" ||
     // app/robots.ts and app/sitemap.ts: crawler requests carry no session,
     // so without this an anonymous /robots.txt or /sitemap.xml request gets
     // 307'd to /login instead of served. The top-level proxy.ts matcher

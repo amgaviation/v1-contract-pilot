@@ -38,6 +38,30 @@ export async function GET(request: NextRequest) {
   // three call sites each carried was wrong.
   const next = safeNextPath(url.searchParams.get("next"));
 
+  // HOISTED, NOT CHANGED. This is character for character the expression
+  // that used to sit below the verification, and it is computed from the
+  // same three values: `type` and `code` come straight off the URL and are
+  // never reassigned, and `next` is the already-sanitised path from
+  // safeNextPath. None of the three is touched by verifyOtp,
+  // exchangeCodeForSession or anything else between here and its use, so
+  // hoisting it cannot change what it evaluates to. It is up here only so
+  // that the FAILURE branch can route by the same flow the success branch
+  // gates the cookie on, instead of a second, drifting derivation.
+  //
+  // WHY IT IS SAFE, restated because this is the security gate:
+  //   - `type === "recovery"` is the token_hash shape saying so directly.
+  //   - the PKCE `code` shape carries no type, so it qualifies only when it
+  //     resolves to next === "/reset-password", a destination that ONLY
+  //     forgot-password/actions.ts's resetPasswordForEmail ever sets.
+  // Signup and email-change now both set next=/welcome and next=/settings
+  // respectively (signup/actions.ts, settings/profile-actions.ts), neither
+  // of which is "/reset-password", so a code from either still cannot mint
+  // the proof. Nothing below widens this: the cookie is still written on
+  // `isRecovery` alone, and only after a verification that actually
+  // succeeded.
+  const isRecovery =
+    type === "recovery" || (Boolean(code) && next === "/reset-password");
+
   const supabase = await createClient();
 
   let failed = true;
@@ -53,9 +77,23 @@ export async function GET(request: NextRequest) {
   }
 
   if (failed) {
-    // Expired, already used, or absent. Send them back to ask for a fresh
-    // one rather than to a form that would fail confusingly on submit.
-    return NextResponse.redirect(new URL("/forgot-password?expired=1", url));
+    // Expired, already used, or absent. Send them somewhere they can get a
+    // fresh one, rather than to a form that would fail confusingly on
+    // submit, AND somewhere that matches the flow they were actually in.
+    //
+    // This used to be /forgot-password?expired=1 for every failure, which
+    // put a pilot whose SIGNUP link had expired on a password-reset form
+    // for an account they have not confirmed: the reset mail either never
+    // arrives or lands them in a second dead end, and nothing on the screen
+    // relates to what they were doing.
+    if (isRecovery) {
+      return NextResponse.redirect(new URL("/forgot-password?expired=1", url));
+    }
+    // email_change is not resendable without a session (see
+    // ../resend-actions.ts), so /link-expired sends that case back to
+    // Settings and the signup case to the resend control.
+    const flow = type === "email_change" ? "email-change" : "signup";
+    return NextResponse.redirect(new URL(`/link-expired?flow=${flow}`, url));
   }
 
   const response = NextResponse.redirect(new URL(next, url));
@@ -74,7 +112,10 @@ export async function GET(request: NextRequest) {
   // A code from any OTHER flow (signup confirmation, magic link, email
   // change) never carries next=/reset-password, so this cannot be used to
   // smuggle a non-recovery session past the gate.
-  const isRecovery = type === "recovery" || (Boolean(code) && next === "/reset-password");
+  //
+  // `isRecovery` itself is declared above, before the verification, purely
+  // so the failure branch can route by the same flow. See the comment at
+  // its declaration for why moving it cannot change its value.
   if (isRecovery) {
     response.cookies.set(RECOVERY_PROOF_COOKIE, "1", {
       httpOnly: true,
