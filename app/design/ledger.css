@@ -1,0 +1,167 @@
+/**
+ * LEDGER — the product's second design system, and the one it is migrating
+ * TO. Chosen 15 AUG 2026 from the "Second Approach" proposal: the modern
+ * fintech register (calm paper, confident tabular numerals, status pills,
+ * soft elevation), because a contract pilot is a business of one and this
+ * product is, above all, how they get paid.
+ *
+ * ── COEXISTENCE, THE ONE RULE THAT MAKES MIGRATION SAFE ────────────────
+ * This file imports Tailwind's THEME and UTILITIES layers only — never
+ * `tailwindcss/preflight`. Preflight is a global reset; importing it would
+ * restyle every un-migrated INSTRUMENT screen in the app at once. Without
+ * it, Tailwind utilities are purely additive: a screen changes appearance
+ * only when its own markup starts using them. Preflight gets turned on in
+ * the final migration phase, when no INSTRUMENT screen remains.
+ *
+ * ── TOKENS ─────────────────────────────────────────────────────────────
+ * The palette is declared twice below: literal values on `:root` (day) and
+ * on `[data-appearance="dark"]` (night), exactly the attribute mechanism
+ * app-shell.tsx already stamps for the tenant theme — so the existing
+ * appearance slot keeps working across both design systems during the
+ * migration. `@theme inline` then maps Tailwind's color names onto those
+ * vars, which is what makes `bg-card` day/night-aware with no dark:
+ * variant needed at call sites.
+ *
+ * This file is on scripts/verify-tokens.mjs's EXEMPT_FILES list (it may
+ * spell values out — it IS the token sheet), and its --ledger-* names are
+ * loaded into the verifier's declared-token set.
+ */
+
+@import "tailwindcss/theme" layer(theme);
+@import "tailwindcss/utilities" layer(utilities);
+
+/* The night side follows the tenant appearance attribute, not the OS.
+   A pilot picks day or night in Settings; the shell stamps it. */
+@custom-variant dark (&:where([data-appearance="dark"], [data-appearance="dark"] *));
+
+:root {
+  /* Ground */
+  --ledger-canvas: #fbfbfa;
+  --ledger-card: #ffffff;
+  --ledger-sunk: #f2f2f0;
+
+  /* Ink */
+  --ledger-ink: #191d1b;
+  --ledger-ink-2: #545a56;
+  --ledger-ink-3: #737a75;
+
+  /* Lines */
+  --ledger-hair: #e5e6e3;
+  --ledger-hair-strong: #d5d7d2;
+
+  /* Accent — indigo. Links, focus, primary actions, active state. */
+  --ledger-accent: #35509c;
+  --ledger-accent-ink: #ffffff;
+  --ledger-accent-soft: #e9edf8;
+
+  /* Semantics — money states first. Never decorative. */
+  --ledger-good: #1c7a52;
+  --ledger-good-soft: #e2f2ea;
+  --ledger-warn: #92600f;
+  --ledger-warn-soft: #f6ecd9;
+  --ledger-crit: #b03434;
+  --ledger-crit-soft: #f7e4e4;
+
+  --ledger-shadow-card: 0 1px 2px rgba(20, 24, 22, 0.04);
+  --ledger-shadow-raised: 0 1px 3px rgba(20, 24, 22, 0.07), 0 4px 12px rgba(20, 24, 22, 0.05);
+}
+
+[data-appearance="dark"] {
+  --ledger-canvas: #15171a;
+  --ledger-card: #1d2024;
+  --ledger-sunk: #191c1f;
+
+  --ledger-ink: #e9ebe9;
+  --ledger-ink-2: #b3b8b4;
+  --ledger-ink-3: #878d89;
+
+  --ledger-hair: #2b2f33;
+  --ledger-hair-strong: #3a3f44;
+
+  --ledger-accent: #8fa3d9;
+  --ledger-accent-ink: #14171f;
+  --ledger-accent-soft: #232c42;
+
+  --ledger-good: #4cc38a;
+  --ledger-good-soft: #1b2f26;
+  --ledger-warn: #d9a04b;
+  --ledger-warn-soft: #332a1a;
+  --ledger-crit: #e0716b;
+  --ledger-crit-soft: #362022;
+
+  --ledger-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --ledger-shadow-raised: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+@theme inline {
+  /* Wipe Tailwind's stock palette: a migrated screen can only name Ledger
+     colors, which is the same discipline tokens:verify enforced by regex —
+     here the constraint is structural instead of policed. */
+  --color-*: initial;
+
+  --color-canvas: var(--ledger-canvas);
+  --color-card: var(--ledger-card);
+  --color-sunk: var(--ledger-sunk);
+
+  --color-ink: var(--ledger-ink);
+  --color-ink-2: var(--ledger-ink-2);
+  --color-ink-3: var(--ledger-ink-3);
+
+  --color-hair: var(--ledger-hair);
+  --color-hair-strong: var(--ledger-hair-strong);
+
+  --color-accent: var(--ledger-accent);
+  --color-accent-ink: var(--ledger-accent-ink);
+  --color-accent-soft: var(--ledger-accent-soft);
+
+  --color-good: var(--ledger-good);
+  --color-good-soft: var(--ledger-good-soft);
+  --color-warn: var(--ledger-warn);
+  --color-warn-soft: var(--ledger-warn-soft);
+  --color-crit: var(--ledger-crit);
+  --color-crit-soft: var(--ledger-crit-soft);
+
+  --color-white: #ffffff;
+  --color-transparent: transparent;
+
+  /* One family, three working weights. Figures always tabular via the
+     `tnum-l` utility below. */
+  --font-ledger: var(--font-schibsted), ui-sans-serif, system-ui, sans-serif;
+
+  /* Type scale — designed dense enough that no 90% field-scaling hack is
+     needed: control text is 15px, which also clears iOS Safari's 16px
+     focus-zoom threshold at the browser's default zoom on the sizes the
+     app actually uses for inputs (size adjustments happen per-control,
+     deliberately, in the component layer). */
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+  --text-body-s: 0.84375rem;
+  --text-body-s--line-height: 1.25rem;
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.375rem;
+  --text-lead: 1.0625rem;
+  --text-lead--line-height: 1.5rem;
+  --text-h3: 1.25rem;
+  --text-h3--line-height: 1.625rem;
+  --text-h2: 1.5rem;
+  --text-h2--line-height: 1.875rem;
+  --text-h1: 1.875rem;
+  --text-h1--line-height: 2.25rem;
+  --text-figure: 1.75rem;
+  --text-figure--line-height: 2rem;
+
+  --radius-control: 0.5rem;
+  --radius-card: 0.75rem;
+
+  --shadow-card: var(--ledger-shadow-card);
+  --shadow-raised: var(--ledger-shadow-raised);
+}
+
+@layer utilities {
+  /* Ledger's tabular-figures class. Named apart from INSTRUMENT's `tnum`
+     so the verifier's dead-class check (which owns that exact name) keeps
+     policing the old system without a collision. */
+  .tnum-l {
+    font-variant-numeric: tabular-nums;
+  }
+}

@@ -139,6 +139,14 @@ const SCAN_DIRS = ["app", "components", "lib"];
  */
 const EXEMPT_FILES = new Set([
   join(ROOT, "app", "design", "tokens.css"),
+  // LEDGER's token sheet (docs/design/LEDGER.md) — the successor system's
+  // equivalent of tokens.css, and exempt for the identical reason: it IS
+  // the place values are spelled out. Screens migrated to Ledger consume
+  // these values as Tailwind utilities, which this scanner does not need
+  // to police: ledger.css wipes Tailwind's stock palette (`--color-*:
+  // initial`), so a non-token color utility has no definition to resolve
+  // to and visibly fails instead of silently shipping.
+  join(ROOT, "app", "design", "ledger.css"),
   join(ROOT, "lib", "ds", "props.ts"),
   join(ROOT, "app", "globals.css"),
   join(ROOT, "lib", "brand.ts"),
@@ -552,7 +560,11 @@ function collectDeclaredTokenNames() {
   const names = new Set();
   const tokensCss = readFileSync(join(ROOT, "app", "design", "tokens.css"), "utf8");
   const globalsCss = readFileSync(join(ROOT, "app", "globals.css"), "utf8");
-  for (const css of [tokensCss, globalsCss]) {
+  // Ledger's tokens join the declared set so a migrated screen (or the
+  // theme file itself) referencing var(--ledger-…) — or a Tailwind theme
+  // name like var(--color-accent) — is not reported as a dead reference.
+  const ledgerCss = readFileSync(join(ROOT, "app", "design", "ledger.css"), "utf8");
+  for (const css of [tokensCss, globalsCss, ledgerCss]) {
     for (const m of css.matchAll(/--([a-zA-Z][\w-]*)\s*:/g)) names.add(m[1]);
   }
   const fontsSrc = readFileSync(join(ROOT, "lib", "fonts.ts"), "utf8");
