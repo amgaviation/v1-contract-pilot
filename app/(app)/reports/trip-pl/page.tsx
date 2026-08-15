@@ -23,6 +23,10 @@ import { friendlyDbError } from "@/lib/db-errors";
 import PageShell from "../../page-shell";
 import { loadTripPLReport } from "./queries";
 import {
+  ItemMarginBarChart,
+  type ItemMarginDatum,
+} from "@/components/charts/item-margin-bar-chart";
+import {
   formatDayQuantity,
   formatMiles,
   resolveTripPLPeriod,
@@ -34,6 +38,40 @@ import {
 export const metadata = { title: "Trip profitability" };
 
 const YEAR_RANGE = 6;
+
+// A bar per client, not per trip: report.trips is capped at 1000 rows and
+// a trip's own label (aircraft tail, or "Trip") repeats across a pilot's
+// history in a way a client name doesn't, so a per-trip chart would be
+// both too tall to read and full of duplicate labels. Clients are also
+// the SMALLER, human-named axis — see the "By client" table this sits
+// above.
+const MAX_CHART_ITEMS = 12;
+
+/**
+ * The client rollup, already sorted by margin (report-lib.ts), narrowed
+ * to a chart-sized set. Clients with no trips this period (a guarantee
+ * invoiced with nothing flown) are dropped — their margin is always
+ * exactly 0 by construction, and a bar for that isn't "per-trip margin",
+ * it's noise. The kept set is chosen by LARGEST MAGNITUDE first (the
+ * biggest wins and losses are the story a diverging chart tells), then
+ * re-sorted by signed value for display so the bars read top-to-bottom
+ * from best to worst.
+ */
+function buildClientMarginChartData(
+  clients: { clientId: string | null; clientName: string; tripCount: number; marginCents: number }[]
+): ItemMarginDatum[] {
+  return clients
+    .filter((c) => c.tripCount > 0)
+    .slice()
+    .sort((a, b) => Math.abs(b.marginCents) - Math.abs(a.marginCents))
+    .slice(0, MAX_CHART_ITEMS)
+    .sort((a, b) => b.marginCents - a.marginCents)
+    .map((c) => ({
+      id: c.clientId ?? c.clientName,
+      label: c.clientName,
+      marginCents: c.marginCents,
+    }));
+}
 
 function yearOptions(selected: number, currentYear: number): number[] {
   const base = Math.max(selected, currentYear);
@@ -119,6 +157,19 @@ export default async function TripProfitabilityPage({
 
   const supabase = await createClient();
   const report = await loadTripPLReport(supabase, account.id, period);
+
+  // Fed from report.clients — the exact rows the "By client" table below
+  // renders, already assembled by assembleTripPL. No second read, no
+  // re-aggregation, so the chart can never disagree with the table it
+  // sits above.
+  const marginChartData = buildClientMarginChartData(report.clients);
+  const clientsWithTrips = report.clients.filter((c) => c.tripCount > 0).length;
+  const marginChartAriaLabel =
+    `Margin by client, ${period.label}` +
+    (clientsWithTrips > marginChartData.length
+      ? ` — top ${marginChartData.length} of ${clientsWithTrips} clients by margin size`
+      : "") +
+    `. ${marginChartData.map((d) => `${d.label}: ${formatCents(d.marginCents)}`).join("; ")}.`;
 
   const anyRebillActivity =
     report.totals.rebilledCostCents !== 0 || report.totals.rebillInvoicedCents !== 0;
@@ -467,6 +518,15 @@ export default async function TripProfitabilityPage({
               tops up. Money on invoices you haven&rsquo;t sent yet is
               listed separately underneath and is never date-filtered.
             </Text>
+
+            {/* A one-bar chart is noise, so this needs at least two
+                clients with actual trip activity — a period with a single
+                active client has nothing for a bar chart to compare. */}
+            {marginChartData.length >= 2 ? (
+              <Box mb="4">
+                <ItemMarginBarChart data={marginChartData} ariaLabel={marginChartAriaLabel} />
+              </Box>
+            ) : null}
 
             {report.clients.length === 0 ? (
               <Text size="2" color="gray">
