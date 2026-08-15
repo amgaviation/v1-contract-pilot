@@ -1,4 +1,5 @@
 import { formatCents, formatDate } from "@/lib/format";
+import type { SendFailureKind } from "@/lib/email/failure-kind";
 
 /**
  * WHEN A REMINDER IS DUE, AND WHETHER IT MAY GO OUT.
@@ -199,6 +200,167 @@ export function describeSchedule(policy: ReminderPolicy): string {
 }
 
 /* ===========================================================================
+ * THE LEDGER, READ BACK: which rungs are spent, and which may be tried again
+ * ======================================================================== */
+
+/**
+ * WHAT AN OUTCOME MEANS, and it is the whole basis of the retry rule.
+ *
+ *   'sent': handed to the mail service and an id came back.
+ *   'failed': DEFINITELY did not send. A refusal, a bad address, a missing
+ *               configuration, a connection that never opened. Retryable,
+ *               within the cap below.
+ *   'unknown': MAY have sent: the mail service stopped answering mid-request.
+ *               Never retried. Resend has no idempotency key on that endpoint
+ *               (lib/email/send.ts says so at the point where it matters), so
+ *               a retry here is a second chase in a client's inbox about one
+ *               invoice, which is worse than the rung being lost.
+ *   'skipped': deliberately not attempted. Superseded by a later rung, or
+ *               stale. Nothing to retry; the decision has already been taken.
+ */
+export type ReminderOutcome = "sent" | "failed" | "unknown" | "skipped";
+
+/** One ledger row, as much of it as any of this needs. */
+export type ReminderSendRow = {
+  rule_key: string;
+  outcome: string;
+  created_at?: string;
+};
+
+/**
+ * HOW MANY TIMES ONE RUNG MAY BE ATTEMPTED BEFORE IT IS GIVEN UP ON.
+ *
+ * Three, counting the first attempt: the original and two retries, on three
+ * consecutive nightly passes.
+ *
+ * WHY A CAP EXISTS AT ALL. A client whose address is permanently wrong, or an
+ * account whose sending domain is never verified, fails identically every
+ * night. Without a bound, that rung is retried for the life of the invoice:
+ * the overview queue fills with the same row, the log fills with the same 403,
+ * and the pilot is told nothing new on the four-hundredth attempt that they
+ * were not told on the first.
+ *
+ * WHY THREE. The failure this defect is about is transient: the mail service
+ * down for an hour, a domain briefly unverified, a network blip. Every one of
+ * those is measured in hours, so a second attempt the following night clears
+ * almost all of them and a third covers a fault that spans a weekend. Beyond
+ * that the failure is not transient, it is a condition the pilot has to fix,
+ * and once they fix it the LADDER is what chases the invoice: the next rung is
+ * three or four days out and goes out on its own. So the cost of giving up at
+ * three is at most one rung of one invoice, and the cost of not giving up is a
+ * queue nobody reads.
+ *
+ * The three attempts are not otherwise time-bounded, and they do not need to
+ * be: a before-due or on-due rung dies on its own the moment the invoice goes
+ * overdue (decideReminder's stale rule), and an after-due rung whose wording
+ * is dated by a day or two is still true.
+ */
+export const MAX_REMINDER_ATTEMPTS = 3;
+
+export type RungLedgerState = {
+  /** Rows recorded for this rung, of any outcome. */
+  rows: number;
+  /** Definite failures. Only these are retryable. */
+  failures: number;
+  /** Nothing further may ever be attempted for this rung. */
+  consumed: boolean;
+};
+
+/**
+ * The state of every rung this invoice has a row for, keyed by rule_key.
+ * 'manual' is not a rung and is excluded: it is a log of what a human did.
+ *
+ * A rung is CONSUMED when any row says sent, unknown or skipped, or when its
+ * definite failures have reached the cap. It is retryable only while every row
+ * on it is a definite failure and there are fewer than MAX_REMINDER_ATTEMPTS
+ * of them. The database holds the same line from underneath: the partial
+ * unique index invoice_reminder_sends_rung_once excludes only 'failed' rows,
+ * so a second 'sent' for one rung is refused even if this function is wrong.
+ */
+export function summarizeRungLedger(
+  rows: readonly ReminderSendRow[]
+): Map<string, RungLedgerState> {
+  const states = new Map<string, RungLedgerState>();
+  for (const row of rows) {
+    if (row.rule_key === MANUAL_RULE_KEY) continue;
+    const state = states.get(row.rule_key) ?? { rows: 0, failures: 0, consumed: false };
+    state.rows += 1;
+    if (row.outcome === "failed") state.failures += 1;
+    else state.consumed = true;
+    states.set(row.rule_key, state);
+  }
+  for (const state of states.values()) {
+    if (state.failures >= MAX_REMINDER_ATTEMPTS) state.consumed = true;
+  }
+  return states;
+}
+
+/**
+ * A SEND RESULT TO THE ROW THAT RECORDS IT, in one place.
+ *
+ * This is the whole of the retry decision, and it is here rather than at the
+ * call site so it can be tested without a mail service, a database or a
+ * session in the room. lib/email/send.ts is the only thing that knows which
+ * kind of failure happened; this is the only thing that says what that means
+ * for the ledger.
+ *
+ * The parameter is structural rather than an import of SendResult itself:
+ * that type lives in a `server-only` module, and a rule about what may be
+ * retried has to stay loadable by a plain test. A new failure kind added over
+ * there fails to assign at the call site in lib/reminders/run.ts, which is
+ * where anybody adding one would want to be stopped.
+ */
+export function outcomeForSendResult(
+  result: { ok: true } | { ok: false; kind: SendFailureKind }
+): ReminderOutcome {
+  if (result.ok) return "sent";
+  return result.kind === "unknown" ? "unknown" : "failed";
+}
+
+/** The rule_keys decideReminder must treat as spent. */
+export function consumedRungKeys(rows: readonly ReminderSendRow[]): string[] {
+  const keys: string[] = [];
+  for (const [key, state] of summarizeRungLedger(rows)) {
+    if (state.consumed) keys.push(key);
+  }
+  return keys;
+}
+
+/** Whether this rung's next attempt is a retry of a definite failure. */
+export function rungIsRetry(
+  states: Map<string, RungLedgerState>,
+  ruleKey: string
+): boolean {
+  const state = states.get(ruleKey);
+  return state !== undefined && state.failures > 0 && !state.consumed;
+}
+
+/**
+ * WHEN A REMINDER MAY LAST HAVE REACHED THIS CLIENT: the quiet period's input.
+ *
+ * 'sent' is proof. 'unknown' is not proof, and is counted anyway: the message
+ * may be sitting in the client's inbox, and the whole point of the quiet
+ * period is that one business does not write to one client twice in a week
+ * about one invoice. A failed row reached nobody and starts nothing, which is
+ * what keeps the scheduler from talking itself out of its own job.
+ *
+ * Rows of any rule_key count, 'manual' included: a human chase is exactly the
+ * thing the quiet period is protecting against following too closely.
+ */
+export function lastPossibleSendAt(
+  rows: readonly ReminderSendRow[]
+): string | null {
+  let latest: string | null = null;
+  for (const row of rows) {
+    if (row.outcome !== "sent" && row.outcome !== "unknown") continue;
+    const at = row.created_at;
+    if (!at) continue;
+    if (latest === null || at > latest) latest = at;
+  }
+  return latest;
+}
+
+/* ===========================================================================
  * THE DECISION
  * ======================================================================== */
 
@@ -259,16 +421,22 @@ export type ReminderInput = {
   dueOn: string | null;
   /** "YYYY-MM-DD" — supplied by the caller, never read from the clock here. */
   today: string;
-  /** rule_keys already recorded for this invoice (sent, failed or skipped). */
+  /**
+   * rule_keys that are spent for this invoice. NOT simply "every key with a
+   * row": a definite failure under the attempt cap leaves its rung available,
+   * which is the whole point of the retry. Callers compute this with
+   * consumedRungKeys above rather than by hand, so the invoice screen and the
+   * scheduled run cannot disagree about what is still owed.
+   */
   consumed: readonly string[];
   /**
-   * When a reminder last actually WENT OUT for this invoice, ISO instant or
-   * null.
+   * When a reminder may last have reached this client, ISO instant or null.
    *
-   * Only successful sends belong here. A skipped rung reached nobody, and a
-   * failed one reached nobody either — treating either as "recently chased"
+   * Sent and unknown rows both belong here; a skipped rung and a definite
+   * failure both reached nobody, and treating either as "recently chased"
    * would start a five-day quiet period on the strength of a message that was
    * never delivered, which is the scheduler talking itself out of its own job.
+   * See lastPossibleSendAt, which is how every caller computes it.
    */
   lastReminderAt: string | null;
   /**

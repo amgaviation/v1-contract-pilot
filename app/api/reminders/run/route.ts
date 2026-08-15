@@ -98,13 +98,14 @@ async function handle(request: NextRequest) {
     // as "1 error" is how a monitor learns to ignore the one number that would
     // have told it about a real database failure.
     console.log(
-      `[reminders] pass over ${accounts} account(s): ${summary.sent} sent, ${summary.failed} failed, ${summary.skipped} skipped, ${summary.blocked.length} blocked, ${summary.errors.length} error(s), ${summary.notices.length} notice(s)`
+      `[reminders] pass over ${accounts} account(s): ${summary.sent} sent, ${summary.failed} failed, ${summary.unknown} unknown, ${summary.skipped} skipped, ${summary.blocked.length} blocked, ${summary.errors.length} error(s), ${summary.notices.length} notice(s)`
     );
     return NextResponse.json({
       ran: true,
       accounts,
       sent: summary.sent,
       failed: summary.failed,
+      unknown: summary.unknown,
       skipped: summary.skipped,
       blocked: summary.blocked.length,
       errors: summary.errors,

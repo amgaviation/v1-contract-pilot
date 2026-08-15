@@ -3,7 +3,12 @@ import { buildInvoiceDocument } from "@/lib/invoice-document";
 import { isLiveMode } from "@/lib/stripe/server";
 import { resolvePreferences } from "@/lib/preferences";
 import { friendlyDbError } from "@/lib/db-errors";
-import { sendEmail, emailIsConfigured, looksLikeEmail } from "./send";
+import {
+  sendEmail,
+  emailIsConfigured,
+  looksLikeEmail,
+  type SendFailureKind,
+} from "./send";
 import {
   buildInvoiceMessage,
   buildReminderMessage,
@@ -40,9 +45,19 @@ import {
  * account in the pass.
  */
 
+/**
+ * THE FAILURE KIND TRAVELS WITH THE MESSAGE, unchanged, from lib/email/send.ts.
+ *
+ * Every refusal this function makes on its own account is 'refused': it is
+ * deciding not to call the mail service at all, so nothing was sent and it
+ * knows it. Only the transport can produce 'unknown', and only one caller acts
+ * on the difference (lib/reminders/run.ts, which retries a definite failure and
+ * never retries an indeterminate one). Interactive callers read `error` exactly
+ * as they always have.
+ */
 export type InvoiceEmailResult =
   | { ok: true; messageId: string }
-  | { ok: false; error: string };
+  | { ok: false; kind: SendFailureKind; error: string };
 
 export async function sendInvoiceEmail(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -100,6 +115,7 @@ export async function sendInvoiceEmail(
   if (!emailIsConfigured()) {
     return {
       ok: false,
+      kind: "refused",
       error:
         "Emailing isn't set up on this account yet, so nothing was sent. Download the PDF and send it yourself, or set the mail service up in the project's environment first.",
     };
@@ -117,6 +133,7 @@ export async function sendInvoiceEmail(
   if (invoiceError) {
     return {
       ok: false,
+      kind: "refused",
       error: `${friendlyDbError(invoiceError, "invoices.select")} Nothing was sent.`,
     };
   }
@@ -126,7 +143,9 @@ export async function sendInvoiceEmail(
     stripe_payment_link_url: string | null;
     stripe_payment_link_livemode: boolean | null;
   } | null;
-  if (!invoice) return { ok: false, error: "That invoice no longer exists." };
+  if (!invoice) {
+    return { ok: false, kind: "refused", error: "That invoice no longer exists." };
+  }
 
   const { data: clientRow, error: clientError } = await supabase
     .from("clients")
@@ -143,6 +162,7 @@ export async function sendInvoiceEmail(
   if (clientError) {
     return {
       ok: false,
+      kind: "refused",
       error: `${friendlyDbError(clientError, "clients.select")} Nothing was sent.`,
     };
   }
@@ -157,7 +177,11 @@ export async function sendInvoiceEmail(
     late_fee_note_on_reminders: boolean | null;
   } | null;
   if (!client) {
-    return { ok: false, error: "That invoice's client no longer exists." };
+    return {
+      ok: false,
+      kind: "refused",
+      error: "That invoice's client no longer exists.",
+    };
   }
   // WHERE THE MONEY PAPERWORK GOES. billing_email (20260814092000) is an
   // optional AP/accounting inbox, distinct from contact_email — a real
@@ -174,6 +198,7 @@ export async function sendInvoiceEmail(
   if (!looksLikeEmail(recipientEmail)) {
     return {
       ok: false,
+      kind: "refused",
       error: `${client.name} has no email address on file, so nothing was sent. Add one on the client's page and try again.`,
     };
   }
@@ -182,7 +207,7 @@ export async function sendInvoiceEmail(
     includeReceipts,
   });
   if (!built.ok) {
-    return { ok: false, error: `${built.error} Nothing was sent.` };
+    return { ok: false, kind: "refused", error: `${built.error} Nothing was sent.` };
   }
   const doc = built.document;
 
@@ -283,7 +308,7 @@ export async function sendInvoiceEmail(
     attachments: [{ filename: doc.filename, content: doc.buffer }],
   });
 
-  if (!result.ok) return { ok: false, error: result.error };
+  if (!result.ok) return { ok: false, kind: result.kind, error: result.error };
   return { ok: true, messageId: result.id };
 }
 

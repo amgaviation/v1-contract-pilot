@@ -413,10 +413,17 @@ export default async function OverviewPage() {
     //
     // Newest first and bounded: this panel shows a handful, and the invoice's
     // own reminder panel carries the full history per invoice.
+    //
+    // BOTH UNHAPPY OUTCOMES, not just the definite one (20260815090000).
+    // 'failed' is a send that did not happen and will be tried again;
+    // 'unknown' is one the mail service left unconfirmed, which is never
+    // retried and is therefore the one MORE in need of a human. Filtering to
+    // 'failed' alone would hide exactly the rows nothing else is going to
+    // pick up.
     supabase
       .from("invoice_reminder_sends")
-      .select("invoice_id, rule_key, detail, created_at")
-      .eq("outcome", "failed")
+      .select("invoice_id, rule_key, outcome, detail, created_at")
+      .in("outcome", ["failed", "unknown"])
       .order("created_at", { ascending: false })
       .limit(10),
   ]);
@@ -436,6 +443,7 @@ export default async function OverviewPage() {
   const reminderFailures = (reminderFailuresRes.data ?? []) as {
     invoice_id: string;
     rule_key: string;
+    outcome: string;
     detail: string | null;
     created_at: string;
   }[];
@@ -949,9 +957,14 @@ export default async function OverviewPage() {
       {
         id: `reminder-failed-${row.invoice_id}-${row.rule_key}`,
         band: "Reminder" as const,
-        // Red: a chase the pilot believes is happening and is not.
-        tone: "red" as const,
-        label: `Reminder didn't send · ${invoice.invoice_number ?? "Invoice"}`,
+        // Red: a chase the pilot believes is happening and is not. An
+        // unconfirmed send is amber instead, because the honest state is a
+        // question rather than a fault, and only the pilot can answer it.
+        tone: row.outcome === "unknown" ? ("amber" as const) : ("red" as const),
+        label:
+          row.outcome === "unknown"
+            ? `Reminder not confirmed · ${invoice.invoice_number ?? "Invoice"}`
+            : `Reminder didn't send · ${invoice.invoice_number ?? "Invoice"}`,
         detail: `${
           invoice.client_id ? clientName.get(invoice.client_id) ?? "Unknown client" : "Unknown client"
         } · ${formatDate(row.created_at)} · ${

@@ -1,9 +1,14 @@
 import "server-only";
 import { looksLikeEmail } from "./address";
+import type { SendFailureKind } from "./failure-kind";
 
 // Re-exported so callers have one import for "send mail", while the guard
-// itself stays in a module a plain Node test can load — see address.ts.
+// itself stays in a module a plain Node test can load (see address.ts). The
+// failure kind is re-exported for the same reason and with the same shape:
+// lib/reminders/policy.ts decides what may be retried and must be loadable
+// without this module's API key handling coming with it.
 export { looksLikeEmail };
+export type { SendFailureKind };
 
 /**
  * THE ONLY PLACE THIS PRODUCT SENDS MAIL.
@@ -31,9 +36,29 @@ export { looksLikeEmail };
  * an unhandled 500 and the pilot learns nothing.
  */
 
+/**
+ * WHY A FAILURE HAS A KIND, AND WHY EVERY CALLER THAT RETRIES MUST READ IT.
+ *
+ * `ok: false` covers two facts that are not the same fact, and the difference
+ * decides whether trying again is free or dangerous:
+ *
+ *   'refused': nothing was sent, and this file knows it. A 4xx/5xx from
+ *                Resend, an address that is not an address, a missing
+ *                configuration, a connection that never opened, a 2xx with no
+ *                id to show for it. Attempting the same send again costs
+ *                nothing and risks nothing.
+ *   'unknown': the request went out and the RESPONSE timed out, so the mail
+ *                may already be queued and this code cannot tell. Resend has
+ *                no idempotency key on this endpoint, so a retry here is a
+ *                second copy of the same chase in somebody's client's inbox.
+ *                Never retried automatically, anywhere.
+ *
+ * The `error` strings are unchanged and stay the user-facing account of what
+ * happened; the kind is for code, which cannot be asked to parse prose.
+ */
 export type SendResult =
   | { ok: true; id: string }
-  | { ok: false; error: string };
+  | { ok: false; kind: SendFailureKind; error: string };
 
 export type Attachment = {
   filename: string;
@@ -105,11 +130,12 @@ export function emailIsConfigured(): boolean {
 
 export async function sendEmail(message: Message): Promise<SendResult> {
   const config = readConfig();
-  if ("error" in config) return { ok: false, error: config.error };
+  if ("error" in config) return { ok: false, kind: "refused", error: config.error };
 
   if (!looksLikeEmail(message.to)) {
     return {
       ok: false,
+      kind: "refused",
       error: `"${message.to}" doesn't look like an email address, so nothing was sent.`,
     };
   }
@@ -159,12 +185,14 @@ export async function sendEmail(message: Message): Promise<SendResult> {
     if (cause instanceof Error && cause.name === "TimeoutError") {
       return {
         ok: false,
+        kind: "unknown",
         error:
           "The mail service didn't respond in time, so this may or may not have been sent. Check with your client before sending it again, and mark the invoice's status by hand if it did arrive.",
       };
     }
     return {
       ok: false,
+      kind: "refused",
       error:
         "Nothing was sent. The mail service couldn't be reached. Try again, or download the PDF and send it yourself.",
     };
@@ -186,6 +214,7 @@ export async function sendEmail(message: Message): Promise<SendResult> {
     }
     return {
       ok: false,
+      kind: "refused",
       error: detail
         ? `Nothing was sent. The mail service refused it (${response.status}): ${detail}`
         : `Nothing was sent. The mail service refused it (${response.status}).`,
@@ -205,6 +234,14 @@ export async function sendEmail(message: Message): Promise<SendResult> {
   if (!id) {
     return {
       ok: false,
+      // REFUSED, not unknown, and the distinction is worth stating. A 2xx
+      // means Resend accepted the request, so something may well be on its
+      // way, but the id is this product's only evidence of a send, and
+      // without one the row could not be written even if it wanted to be
+      // (the ledger's CHECK requires the id). It is treated as a definite
+      // non-send so the rung can be tried again; the error string still
+      // tells the pilot to check before sending by hand.
+      kind: "refused",
       error:
         "The mail service accepted the request but didn't confirm an id, so the send can't be treated as done. Check the invoice before sending again.",
     };

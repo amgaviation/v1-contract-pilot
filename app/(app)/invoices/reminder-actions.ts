@@ -368,7 +368,12 @@ function describeRun(summary: ReminderRunSummary): string[] {
   }
   if (summary.failed > 0) {
     lines.push(
-      `${summary.failed} couldn't be sent. The invoice screen shows what the mail service said. Nothing was marked as sent.`
+      `${summary.failed} couldn't be sent. Nothing reached your client and nothing was marked as sent. The invoice screen shows what the mail service said. Each one is tried again on the next few runs, so fixing the cause is usually all it takes.`
+    );
+  }
+  if (summary.unknown > 0) {
+    lines.push(
+      `${summary.unknown} may or may not have gone out. The mail service stopped answering part way through, so we can't tell you either way. Check with your client before sending one of these by hand. They are not tried again, because a second copy of the same chase is worse than a missed one.`
     );
   }
   for (const blocked of summary.blocked) {

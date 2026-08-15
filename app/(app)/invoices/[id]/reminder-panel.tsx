@@ -36,11 +36,25 @@ export type ReminderRungView = {
   label: string;
   /** The calendar day it comes due, already formatted. */
   when: string;
-  state: "sent" | "failed" | "skipped" | "upcoming";
+  /**
+   * FIVE STATES, AND THE THREE UNHAPPY ONES SAY DIFFERENT THINGS.
+   *
+   *   'retrying': it definitely did not send, and it is coming back on the
+   *     next run. Nothing reached the client.
+   *   'failed': it definitely did not send and the attempts are used up.
+   *     Nothing reached the client and nothing more will be tried for this
+   *     step.
+   *   'unknown': the mail service stopped answering part way through, so this
+   *     may or may not be in the client's inbox. It is never tried again,
+   *     because a second copy of one chase is worse than a missed one.
+   */
+  state: "sent" | "failed" | "retrying" | "unknown" | "skipped" | "upcoming";
   /** The mail service's words on a failure, or why it was skipped. */
   detail: string | null;
   /** When the row was written, already formatted. */
   at: string | null;
+  /** How many times sending this one has been attempted and refused. */
+  attempts: number | null;
 };
 
 export type LateFeeView = {
@@ -158,8 +172,42 @@ export default function ReminderPanel({
                     {rung.at ? ` · ${rung.at}` : ""}
                   </Text>
                   {rung.detail ? (
-                    <Text size="1" color={rung.state === "failed" ? "red" : "gray"}>
+                    <Text
+                      size="1"
+                      color={
+                        rung.state === "failed"
+                          ? "red"
+                          : rung.state === "retrying" || rung.state === "unknown"
+                            ? "amber"
+                            : "gray"
+                      }
+                    >
                       {rung.detail}
+                    </Text>
+                  ) : null}
+                  {/* WHAT HAPPENS NEXT, in the pilot's own terms. The line
+                      above is the mail service's words about the last
+                      attempt; this one says what this product is going to do
+                      about them, which is the part they can act on. */}
+                  {rung.state === "retrying" ? (
+                    <Text size="1" color="gray">
+                      Nothing reached {clientName}. This one is tried again on
+                      the next run.
+                    </Text>
+                  ) : rung.state === "failed" ? (
+                    <Text size="1" color="gray">
+                      Nothing reached {clientName} after{" "}
+                      {rung.attempts ?? 0} attempt
+                      {(rung.attempts ?? 0) === 1 ? "" : "s"}, so this step is
+                      being left alone. Later reminders in the schedule still
+                      go out.
+                    </Text>
+                  ) : rung.state === "unknown" ? (
+                    <Text size="1" color="gray">
+                      We can&rsquo;t tell whether this one reached{" "}
+                      {clientName}. Check with them before sending it again,
+                      and mark the invoice by hand if it did arrive. It
+                      won&rsquo;t be tried again on its own.
                     </Text>
                   ) : null}
                 </Flex>
@@ -292,14 +340,24 @@ export default function ReminderPanel({
 
 const STATE_LABEL: Record<ReminderRungView["state"], string> = {
   sent: "Sent",
-  failed: "Failed",
+  failed: "Didn't send",
+  retrying: "Trying again",
+  unknown: "Not confirmed",
   skipped: "Skipped",
   upcoming: "Scheduled",
 };
 
-const STATE_COLOR: Record<ReminderRungView["state"], "green" | "red" | "gray" | "blue"> = {
+const STATE_COLOR: Record<
+  ReminderRungView["state"],
+  "green" | "red" | "gray" | "blue" | "amber"
+> = {
   sent: "green",
+  // Red is for the one that is over: nothing reached the client and nothing
+  // more will. A retry is amber because it is still in progress, and an
+  // unconfirmed send is amber because it is a question rather than a fault.
   failed: "red",
+  retrying: "amber",
+  unknown: "amber",
   skipped: "gray",
   upcoming: "blue",
 };

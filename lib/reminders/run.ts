@@ -3,11 +3,19 @@ import { sendInvoiceEmail } from "@/lib/email/send-invoice";
 import { emailIsConfigured, looksLikeEmail } from "@/lib/email/send";
 import { friendlyDbError } from "@/lib/db-errors";
 import {
+  consumedRungKeys,
   decideReminder,
   describeHold,
+  describeRung,
+  lastPossibleSendAt,
   normalizeReminderPolicy,
+  outcomeForSendResult,
   reminderPolicyIsEmpty,
+  summarizeRungLedger,
   toCalendarDate,
+  MAX_REMINDER_ATTEMPTS,
+  type ReminderOutcome,
+  type ReminderSendRow,
   type Rung,
 } from "./policy";
 
@@ -56,7 +64,19 @@ export type ReminderBlocked = {
 export type ReminderRunSummary = {
   invoicesConsidered: number;
   sent: number;
+  /**
+   * Sends that DEFINITELY did not go out. Counted separately from `unknown`
+   * because only these are tried again: the rung stays available and the next
+   * pass picks it up, up to MAX_REMINDER_ATTEMPTS.
+   */
   failed: number;
+  /**
+   * Sends whose fate this product does not know: the mail service stopped
+   * answering mid-request, so the message may or may not be in the client's
+   * inbox. Never retried, and reported separately so nobody reads it as a
+   * failure that will fix itself.
+   */
+  unknown: number;
   skipped: number;
   /**
    * Conditions that stopped a send today and will simply be re-evaluated
@@ -91,6 +111,7 @@ const EMPTY_SUMMARY: ReminderRunSummary = {
   invoicesConsidered: 0,
   sent: 0,
   failed: 0,
+  unknown: 0,
   skipped: 0,
   blocked: [],
   errors: [],
@@ -288,30 +309,25 @@ export async function runDueRemindersForAccount(
     return summary;
   }
 
-  const consumedByInvoice = new Map<string, string[]>();
-  const lastReminderByInvoice = new Map<string, string>();
+  // THE ROWS ARE KEPT WHOLE, PER INVOICE, and the two questions asked of them
+  // are asked by lib/reminders/policy.ts rather than here.
+  //
+  // "Which rungs are spent" is no longer "every rung with a row": a rung whose
+  // only rows are DEFINITE failures, and fewer of them than the attempt cap,
+  // is still owed and is retried. That rule lives in consumedRungKeys so this
+  // pass and the invoice screen cannot drift apart about what is coming, and
+  // so the one place that decides whether a client gets chased again is a pure
+  // function with tests on it.
+  const rowsByInvoice = new Map<string, ReminderSendRow[]>();
   for (const row of (sendData ?? []) as {
     invoice_id: string;
     rule_key: string;
-    outcome: "sent" | "failed" | "skipped";
+    outcome: string;
     created_at: string;
   }[]) {
-    // EVERY row consumes its rung — including 'manual', which is excluded
-    // from the unique index and is not a rung, so it is skipped here rather
-    // than added to a ladder it does not belong to.
-    if (row.rule_key !== "manual") {
-      const keys = consumedByInvoice.get(row.invoice_id) ?? [];
-      keys.push(row.rule_key);
-      consumedByInvoice.set(row.invoice_id, keys);
-    }
-    // …but ONLY A SUCCESSFUL SEND starts a quiet period. A skipped rung and a
-    // refused send both reached nobody; counting either as "recently chased"
-    // would have the scheduler stand down because of its own failure.
-    if (row.outcome !== "sent") continue;
-    const prior = lastReminderByInvoice.get(row.invoice_id);
-    if (!prior || row.created_at > prior) {
-      lastReminderByInvoice.set(row.invoice_id, row.created_at);
-    }
+    const list = rowsByInvoice.get(row.invoice_id) ?? [];
+    list.push(row);
+    rowsByInvoice.set(row.invoice_id, list);
   }
 
   const viewedByInvoice = new Map<string, string | null>();
@@ -363,12 +379,14 @@ export async function runDueRemindersForAccount(
     invoice: InvoiceRow,
     entry: { row: ClientRow; policy: ReturnType<typeof normalizeReminderPolicy> }
   ): Promise<void> {
+    const ledger = rowsByInvoice.get(invoice.id) ?? [];
+    const rungStates = summarizeRungLedger(ledger);
     const decision = decideReminder({
       policy: entry.policy,
       dueOn: invoice.due_on,
       today,
-      consumed: consumedByInvoice.get(invoice.id) ?? [],
-      lastReminderAt: lastReminderByInvoice.get(invoice.id) ?? null,
+      consumed: consumedRungKeys(ledger),
+      lastReminderAt: lastPossibleSendAt(ledger),
       sentAt: invoice.sent_at,
       lastViewedAt: viewedByInvoice.get(invoice.id) ?? null,
       suppressed: invoice.reminders_suppressed === true,
@@ -502,9 +520,24 @@ export async function runDueRemindersForAccount(
       now
     );
 
+    // THE ROW SAYS WHICH OF THE THREE THINGS HAPPENED, and the third one is
+    // why this is not a boolean.
+    //
+    // 'failed' now means "nothing was sent, and we know it" and is the ONLY
+    // outcome that leaves the rung available to try again. 'unknown' means the
+    // mail service stopped answering mid-request: the message may already be
+    // with the client, that endpoint has no idempotency key, and a retry would
+    // put a second chase for one invoice in their inbox. So it consumes the
+    // rung exactly as a send does, and the pilot is told plainly that they are
+    // the one who can find out (the detail carries the mail service's words).
+    //
+    // Recording the two as one outcome is the defect this whole change exists
+    // to fix: it forced a choice between never retrying a transient refusal
+    // and sometimes double-chasing a client, and both of those are wrong.
+    const outcome: ReminderOutcome = outcomeForSendResult(sent);
     const record = await recordOutcome(supabase, accountId, invoice.id, {
       rung: decision.rung,
-      outcome: sent.ok ? "sent" : "failed",
+      outcome,
       detail: sent.ok ? null : sent.error,
       providerMessageId: sent.ok ? sent.messageId : null,
     });
@@ -523,13 +556,43 @@ export async function runDueRemindersForAccount(
         outcome: "skipped",
         detail: sent.ok
           ? "A later reminder in the same schedule came due at the same time and was sent instead of this one."
-          : "A later reminder in the same schedule came due at the same time and took precedence. Its send failed, and that rung's own row says why.",
+          : "A later reminder in the same schedule came due at the same time and took precedence. Its send did not go out, and that rung's own row says why.",
       });
       if (superseded.ok) summary.skipped += 1;
     }
 
-    if (sent.ok) summary.sent += 1;
+    if (outcome === "sent") summary.sent += 1;
+    else if (outcome === "unknown") summary.unknown += 1;
     else summary.failed += 1;
+
+    // GIVING UP IS THE ONE THING THAT MUST NOT BE SILENT.
+    //
+    // An ordinary failure needs no sentence of its own here: the count says it
+    // happened, the ledger row says what the mail service said, and the next
+    // pass tries again. The moment the attempts run out that stops being true
+    // and this rung is finished for good, so it is reported per invoice, by
+    // name, where a pilot and the cron log both see it. Everything below the
+    // cap is left to the counters and to the invoice's own panel.
+    //
+    // `record.ok` is part of the condition because an attempt that was not
+    // written was not counted: the rung is in exactly the state it was, and
+    // announcing that it has been given up on would be false.
+    if (outcome === "failed" && record.ok) {
+      const attempts = (rungStates.get(decision.rung.key)?.failures ?? 0) + 1;
+      if (attempts >= MAX_REMINDER_ATTEMPTS) {
+        summary.errors.push(
+          [
+            `${invoice.invoice_number ?? "An invoice"} for ${entry.row.name}:`,
+            `the ${describeRung(decision.rung).toLowerCase()} reminder has now`,
+            `failed ${attempts} times and will not be tried again.`,
+            sent.ok ? "" : sent.error,
+            "Later reminders in the schedule still go out.",
+          ]
+            .filter((part) => part !== "")
+            .join(" ")
+        );
+      }
+    }
 
     if (!record.ok && sent.ok) {
       // THE MAIL WENT OUT AND THE LEDGER DOES NOT KNOW IT. Two different
@@ -600,6 +663,7 @@ export async function runAllDueReminders(
       combined.invoicesConsidered += summary.invoicesConsidered;
       combined.sent += summary.sent;
       combined.failed += summary.failed;
+      combined.unknown += summary.unknown;
       combined.skipped += summary.skipped;
       combined.blocked.push(...summary.blocked);
       combined.errors.push(...summary.errors);
@@ -677,7 +741,7 @@ async function recordOutcome(
   invoiceId: string,
   entry: {
     rung: Rung;
-    outcome: "sent" | "failed" | "skipped";
+    outcome: ReminderOutcome;
     detail?: string | null;
     providerMessageId?: string | null;
   }
