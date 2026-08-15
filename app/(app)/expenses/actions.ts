@@ -67,6 +67,7 @@ const EXPENSE_FIELDS = [
   "amount",
   "treatment",
   "trip_id",
+  "client_id",
   "notes",
 ] as const;
 
@@ -126,6 +127,9 @@ function parseExpenseForm(formData: FormData): {
   const tripId = optionalUuid(formData, "trip_id");
   if (tripId === undefined) return { values: null, error: "That trip isn't valid." };
 
+  const clientId = optionalUuid(formData, "client_id");
+  if (clientId === undefined) return { values: null, error: "That client isn't valid." };
+
   const treatment = oneOf(formData, "treatment", TREATMENTS, "unassigned");
 
   // The database enforces this too (`treatment <> 'rebill' or trip_id is
@@ -148,8 +152,57 @@ function parseExpenseForm(formData: FormData): {
       amount_cents: amount,
       treatment,
       trip_id: tripId,
+      // Provisional. When a trip is named, the client is DERIVED from it
+      // server-side (resolveClientForTrip below) and whatever was posted
+      // here is discarded -- see that function for why the posted value is
+      // never trusted in that case.
+      client_id: clientId,
       notes: optional(formData, "notes"),
     },
+  };
+}
+
+/**
+ * Settles the trip-and-client question before the row is written.
+ *
+ * The database already refuses a disagreement: with both columns set, the
+ * composite FK to pilot.trips (account_id, id, client_id) admits only a
+ * pair that trip actually has. This function exists so the pilot never
+ * meets that constraint as an error. It reads the trip's OWN client and
+ * uses that, discarding whatever `client_id` the request carried, so:
+ *
+ *   * the form's derived-and-disabled Client field cannot drift from the
+ *     truth if a trip's client is changed in another tab;
+ *   * a hand-crafted POST naming a foreign or simply wrong client with a
+ *     valid trip is corrected rather than rejected, because there is
+ *     exactly one right answer and the trip is it;
+ *   * a trip with no client on it clears the field, which is the only
+ *     storable state for that pair.
+ *
+ * The read is RLS-scoped like every other, so a trip id from another
+ * account returns no row -- reported as an unknown trip rather than
+ * silently filed with no client.
+ */
+async function resolveClientForTrip(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  accountId: string,
+  values: ExpenseFields
+): Promise<{ values: ExpenseFields | null; error: string | null }> {
+  if (!values.trip_id) return { values, error: null };
+
+  const { data, error } = await supabase
+    .from("trips")
+    .select("client_id")
+    .eq("id", values.trip_id)
+    .eq("account_id", accountId)
+    .maybeSingle();
+
+  if (error) return { values: null, error: friendlyDbError(error, "trips.select") };
+  if (!data) return { values: null, error: "That trip no longer exists." };
+
+  return {
+    values: { ...values, client_id: (data as { client_id: string | null }).client_id },
+    error: null,
   };
 }
 
@@ -282,7 +335,16 @@ export async function createExpense(
   }
 
   const supabase = await createClient();
-  const payload: ExpenseInsert = { ...values, account_id: account.id };
+  const { values: filed, error: clientError } = await resolveClientForTrip(
+    supabase,
+    account.id,
+    values
+  );
+  if (clientError || !filed) {
+    return { error: clientError ?? "Couldn't read that form.", values: echo(formData) };
+  }
+
+  const payload: ExpenseInsert = { ...filed, account_id: account.id };
   const { data, error: insertError } = await supabase
     .from("expenses")
     .insert(payload as never)
@@ -360,6 +422,15 @@ export async function updateExpense(
 
   const supabase = await createClient();
 
+  const { values: filed, error: clientError } = await resolveClientForTrip(
+    supabase,
+    account.id,
+    values
+  );
+  if (clientError || !filed) {
+    return { error: clientError ?? "Couldn't read that form.", values: echo(formData) };
+  }
+
   // AUTHORIZE BEFORE TOUCHING STORAGE. Uploading first would let a POST
   // carrying any id write an object into the caller's own folder that no
   // expense row will ever reference — an unbounded storage-write
@@ -395,8 +466,8 @@ export async function updateExpense(
   // account_id filter is defence in depth, not the boundary — RLS is.
   // See the note in clients/actions.ts.
   const payload: ExpenseUpdate = receiptPath
-    ? { ...values, receipt_path: receiptPath }
-    : values;
+    ? { ...filed, receipt_path: receiptPath }
+    : filed;
   const { error: updateError, count } = await supabase
     .from("expenses")
     .update(payload as never, { count: "exact" })
@@ -507,10 +578,32 @@ export async function fileExpense(
   }
 
   const supabase = await createClient();
-  const payload: ExpenseUpdate = {
-    trip_id: UUID_RE.test(tripId) ? tripId : null,
-    treatment,
-  };
+  const filedTripId = UUID_RE.test(tripId) ? tripId : null;
+  const payload: ExpenseUpdate = { trip_id: filedTripId, treatment };
+
+  // Filing onto a trip settles the client the same way the form does. It
+  // is not optional here: a receipt that already names client A directly,
+  // filed onto a trip belonging to client B, is the exact pair the
+  // composite FK refuses -- so without this the queue's two-click fix would
+  // fail with a constraint error on precisely the receipts a pilot had
+  // already taken the trouble to attribute.
+  //
+  // Filing with NO trip deliberately leaves client_id alone rather than
+  // clearing it. "This receipt is client A's" is something the pilot said
+  // on purpose; deciding to deduct it rather than rebill it is not a
+  // retraction of that.
+  if (filedTripId) {
+    const { data: trip, error: tripError } = await supabase
+      .from("trips")
+      .select("client_id")
+      .eq("id", filedTripId)
+      .eq("account_id", account.id)
+      .maybeSingle();
+    if (tripError) return { error: friendlyDbError(tripError, "trips.select") };
+    if (!trip) return { error: "That trip no longer exists." };
+    payload.client_id = (trip as { client_id: string | null }).client_id;
+  }
+
   const { error, count } = await supabase
     .from("expenses")
     .update(payload as never, { count: "exact" })

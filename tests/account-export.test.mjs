@@ -20,7 +20,9 @@ const {
   operatorQualificationValues,
   journalLineValues,
   bankTransactionValues,
+  expenseValues,
   CLIENT_HEADER,
+  EXPENSE_HEADER,
   INVOICE_HEADER,
   INVOICE_PAYMENT_HEADER,
   ESTIMATE_HEADER,
@@ -195,6 +197,48 @@ test("trips: client resolves by name; a missing client is 'Unknown client', a nu
 
   const none = tripValues({ ...base, client_id: null }, lookups);
   assert.ok(!none.includes("Unknown client"));
+});
+
+test("expenses: the Client column reads the expense's own client, then the trip's", () => {
+  // 20260815130000 gave pilot.expenses its own client_id. This column used
+  // to resolve ONLY through the trip, so every cost attributed to a client
+  // without one -- training an operator required, gear for one owner's
+  // aircraft -- exported a blank Client in a file that goes to an
+  // accountant.
+  const lookups = emptyLookups();
+  lookups.clientNameById.set("c-1", "Skyline Aviation LLC");
+  lookups.tripById.set("t-1", { client_id: "c-1", aircraft_ident: "N123AB" });
+  const base = {
+    id: "e-1",
+    incurred_on: "2026-04-02",
+    category: "training",
+    vendor: "FlightSafety",
+    amount_cents: 480000,
+    treatment: "deduct",
+    receipt_path: null,
+    notes: null,
+  };
+  const byHeader = (values) =>
+    Object.fromEntries(EXPENSE_HEADER.map((h, i) => [h, values[i]]));
+
+  const direct = byHeader(
+    expenseValues({ ...base, trip_id: null, client_id: "c-1" }, lookups)
+  );
+  assert.equal(direct["Client"], "Skyline Aviation LLC");
+  assert.equal(direct["Tail number"], undefined, "no trip means no tail number");
+
+  // The whole history that predates the column: no client of its own, but
+  // sitting on a trip that has one.
+  const viaTrip = byHeader(
+    expenseValues({ ...base, trip_id: "t-1", client_id: null }, lookups)
+  );
+  assert.equal(viaTrip["Client"], "Skyline Aviation LLC");
+  assert.equal(viaTrip["Tail number"], "N123AB");
+
+  const neither = byHeader(
+    expenseValues({ ...base, trip_id: null, client_id: null }, lookups)
+  );
+  assert.equal(neither["Client"], "");
 });
 
 test("trip days: day type label resolves; a vanished day type says so instead of blanking", () => {

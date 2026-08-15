@@ -130,8 +130,19 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         body: [
           "Scanning a receipt reads the vendor, date, and amount where it can. It is a suggestion: check it before saving, because a misread total becomes a wrong number on an invoice.",
           "An expense filed against a trip and marked billable becomes an invoice line when you bill that trip, with the receipt attached to the invoice PDF.",
+          "A cost with no trip can still name a client, so training a client asked for or gear bought for one owner's aircraft counts toward what that client has cost you. Pick a trip and the client comes from the trip instead, because the two are never allowed to disagree.",
+          "Rebilling still needs a trip. A client on its own gives the charge nowhere to land, since the line goes on the invoice through the trip.",
         ],
-        keywords: ["receipt", "ocr", "scan", "rebill", "reimbursable", "billable"],
+        keywords: [
+          "receipt",
+          "ocr",
+          "scan",
+          "rebill",
+          "reimbursable",
+          "billable",
+          "client",
+          "attribute",
+        ],
       },
       {
         id: "bank-import",

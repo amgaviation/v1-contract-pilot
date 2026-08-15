@@ -1,7 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateRange } from "@/lib/format";
-import type { TripOption } from "./expense-form";
+import type { ClientOption, TripOption } from "./expense-form";
 
 type TripRow = {
   id: string;
@@ -62,6 +62,12 @@ export async function loadTripOptions(): Promise<{
       label: `${formatDateRange(trip.starts_on, trip.ends_on)}${
         trip.aircraft_ident ? ` · ${trip.aircraft_ident}` : ""
       }`,
+      // Carried so the form can DERIVE the expense's client from the trip
+      // rather than asking twice. The database refuses any other pairing
+      // (20260815130000's composite FK on (account_id, trip_id,
+      // client_id)), so a Client field the pilot could set independently of
+      // the trip would be a field that lies.
+      clientId: trip.client_id,
       clientName: client?.name ?? null,
       defaultTreatment: client?.default_expense_treatment ?? null,
       // Carried as fields rather than parsed back out of `label`: the
@@ -74,4 +80,35 @@ export async function loadTripOptions(): Promise<{
     };
   });
   return { trips, error: null };
+}
+
+/**
+ * Clients a trip-less cost can be attributed to, archived ones dropped.
+ *
+ * Archived is "don't offer this for new work", not "delete" -- an expense
+ * already attributed to a client the pilot has since archived keeps that
+ * attribution, and the form renders it by name from the trip or as
+ * "Client no longer listed" rather than pretending it has none.
+ *
+ * A failed read returns its message rather than an empty list, so a caller
+ * can say "couldn't load your clients" instead of showing a picker that
+ * reads as "you have none" and pushing the pilot into leaving the cost
+ * unattributed.
+ */
+export async function loadClientOptions(): Promise<{
+  clients: ClientOption[];
+  error: string | null;
+}> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("clients")
+    .select("id, name, archived_at")
+    .order("name", { ascending: true });
+
+  if (error) return { clients: [], error: error.message };
+
+  const clients = ((data ?? []) as { id: string; name: string; archived_at: string | null }[])
+    .filter((client) => !client.archived_at)
+    .map((client) => ({ id: client.id, name: client.name }));
+  return { clients, error: null };
 }
