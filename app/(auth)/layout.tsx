@@ -45,7 +45,7 @@ export default function AuthLayout({
       // On a phone the panel is a band sized to the mark and the form
       // takes the rest of the viewport; side by side, both fill it.
       rows={{ initial: "auto 1fr", md: "1fr" }}
-      minHeight="100vh"
+      minHeight="100dvh"
     >
       <Box className="v1-m-dark" p={{ initial: "4", md: "8" }}>
         <Flex direction="column" justify="between" gap="8" height="100%">

@@ -16,7 +16,7 @@ export default function NotFound() {
     <Flex
       align="center"
       justify="center"
-      minHeight="100vh"
+      minHeight="100dvh"
       p="4"
       style={{ background: "var(--canvas)" }}
     >

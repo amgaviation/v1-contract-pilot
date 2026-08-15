@@ -141,7 +141,7 @@ export default async function VendorPage({
   const page = data as unknown as VendorPage;
 
   return (
-    <Box style={{ minHeight: "100vh", background: "var(--canvas)" }}>
+    <Box style={{ minHeight: "100dvh", background: "var(--canvas)" }}>
       <Container size="3" p={{ initial: "4", sm: "6" }}>
         <Flex align="center" justify="between" mb="5">
           <Logo />
