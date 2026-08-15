@@ -12,12 +12,17 @@ import {
   Table,
   Text,
   TextField,
-  Select,
 } from "@/components/ui";
 import { formatCents, formatDateRange } from "@/lib/format";
 import type { InvoiceFormState } from "../actions";
+import BillToFields, {
+  EMPTY_BILL_TO,
+  TYPED_VALUE,
+  type BillToValues,
+  type ClientOption,
+} from "../bill-to-fields";
 
-export type ClientOption = { id: string; name: string };
+export type { ClientOption };
 
 export type TripOption = {
   id: string;
@@ -46,11 +51,24 @@ export type TripOption = {
 
 const initialState: InvoiceFormState = { error: null };
 
-// Radix Select forbids an empty-string item value, so the "no client
-// chosen" state is represented in the URL/component state as "" as
-// before, but the picker itself is only rendered once a client list
-// exists — the placeholder ("Choose a client") stands in for the blank
-// option instead of a sentinel item.
+/**
+ * WHAT THIS FORM STOPPED REQUIRING.
+ *
+ * It used to refuse to submit without BOTH a client and at least one selected
+ * trip. Neither was ever a database rule: createInvoiceDraft has always
+ * accepted an empty trip list and produced a header-only draft, and lines can
+ * be typed on the invoice screen. The two disabled conditions were the whole
+ * reason a pilot could not bill anything that was not a logged trip for a
+ * saved client.
+ *
+ * Both are gone. A bill-to is still required, because an invoice addressed to
+ * nobody cannot be sent, and that is now answerable two ways: a saved client,
+ * or details typed on the invoice itself.
+ *
+ * Radix Select forbids an empty-string item value, so "nothing chosen yet" is
+ * still the empty string in this component's state and the placeholder stands
+ * in for it; TYPED_VALUE (../bill-to-fields.tsx) is the clientless option.
+ */
 export default function DraftForm({
   action,
   clients,
@@ -99,10 +117,39 @@ export default function DraftForm({
     () => state.values?.tax_rate_percent ?? searchParams.get("tax_rate") ?? ""
   );
 
-  function pickClient(id: string) {
+  // WHO THIS BILLS. Seeded from the URL (which is what the page's trip read
+  // is keyed on) and, when the pilot picks the clientless option, held purely
+  // in component state.
+  const [selection, setSelection] = useState(() =>
+    selectedClientId !== "" ? selectedClientId : ""
+  );
+  const [billTo, setBillTo] = useState<BillToValues>(EMPTY_BILL_TO);
+
+  /**
+   * PICKING A CLIENT NAVIGATES; PICKING "no client" DOES NOT.
+   *
+   * The navigation exists for one reason: the server has to read THAT
+   * client's unbilled trips, and it reads them from `?client=`. The clientless
+   * option has no trips to read, so it needs no round trip, and not making one
+   * is what lets the typed address block survive being typed: a router.push
+   * remounts this component and resets both useActionState and every piece of
+   * state below, which is the same remount the tax rate is already carried
+   * through the URL to survive. Nine address fields in a query string would be
+   * the wrong answer to that problem.
+   */
+  function pickBillTo(next: string) {
+    setSelection(next);
+    if (next === TYPED_VALUE) {
+      // Trips belong to a client; none can be billed on a clientless invoice
+      // (invoice_lines_validate_trip refuses it), so any selection is dropped
+      // rather than silently submitted and rejected.
+      setSelectedTrips(new Set());
+      return;
+    }
     setSelectedTrips(new Set());
+    setBillTo(EMPTY_BILL_TO);
     const params = new URLSearchParams();
-    if (id) params.set("client", id);
+    if (next) params.set("client", next);
     if (taxRate.trim() !== "") params.set("tax_rate", taxRate);
     const qs = params.toString();
     router.push(qs ? `/invoices/new?${qs}` : "/invoices/new");
@@ -129,38 +176,27 @@ export default function DraftForm({
   return (
     <Card size="3">
       <form action={formAction}>
-        <input type="hidden" name="client_id" value={selectedClientId} />
+        {/* client_id and bill_to_mode are posted by BillToFields itself. */}
         {[...selectedTrips].map((id) => (
           <input key={id} type="hidden" name="trip_ids" value={id} />
         ))}
 
         <Grid columns={{ initial: "1", md: "3" }} gap="4">
           <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
-            <Text as="label" size="2" weight="medium" id="draft-client-label">
-              Client
-            </Text>
-            <Select.Root
-              value={selectedClientId || undefined}
-              onValueChange={(value) => pickClient(value)}
-            >
-              <Select.Trigger
-                id="draft-client"
-                aria-labelledby="draft-client-label"
-                placeholder="Choose a client"
-              />
-              <Select.Content>
-                {clients.map((client) => (
-                  <Select.Item key={client.id} value={client.id}>
-                    {client.name}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-            <Text size="1" color="gray">
-              {clients.length === 0
-                ? "No active clients yet. Add one before you can draft an invoice."
-                : "Who this invoice bills"}
-            </Text>
+            <BillToFields
+              clients={clients}
+              selection={selection}
+              onSelectionChange={pickBillTo}
+              values={billTo}
+              onValueChange={(field, next) =>
+                setBillTo((prev) => ({ ...prev, [field]: next }))
+              }
+              clientHint={
+                clients.length === 0
+                  ? "No active clients yet. Pick \u201cNo client\u201d and type the details, or add a client first."
+                  : undefined
+              }
+            />
           </Flex>
           <Flex direction="column" gap="1">
             <Text as="label" size="2" weight="medium" htmlFor="tax_rate_percent">
@@ -179,7 +215,7 @@ export default function DraftForm({
           </Flex>
         </Grid>
 
-        {selectedClientId ? (
+        {selection !== "" && selection !== TYPED_VALUE ? (
           <Flex direction="column" gap="3" mt="6">
             <Flex justify="between" align="center">
               <Text size="4" weight="bold">
@@ -301,20 +337,27 @@ export default function DraftForm({
         ) : null}
 
         {
-          // M15: a client chosen with zero trips selected used to still
-          // submit — createInvoiceDraft happily inserts a header-only
-          // draft and redirects to it, but the migration blocks SENDING
-          // an invoice with no line items, so that draft can never leave
-          // 'draft'. Blocked client-side with a visible reason (not just
-          // a disabled button — see status-actions.tsx's own comment on
-          // why a disabled control needs a reachable explanation) rather
-          // than only relying on the server, which would otherwise accept
-          // it silently and leave the pilot to discover the dead end
-          // later on the invoice screen.
+          // THIS USED TO BLOCK THE SUBMIT, and blocking it was the bug.
+          //
+          // The original reasoning: a header-only draft has no lines, the
+          // migration refuses to SEND an invoice with no lines, so a draft
+          // with nothing on it is a dead end the pilot only discovers later.
+          // The premise was right and the conclusion was wrong. Lines can be
+          // added by hand on the invoice screen (LinesEditor has done this
+          // since it shipped), so a header-only draft is not a dead end, it
+          // is the ordinary starting point for anything that is not a logged
+          // trip: a one-off ferry, a training day, a cancellation fee, a
+          // deposit.
+          //
+          // So it says what happens next instead of preventing it. The dead
+          // end the original comment worried about is still closed, by the
+          // send button on the invoice screen, which is where the invoice
+          // actually has lines or does not.
         }
-        {selectedClientId && trips.length > 0 && selectedTrips.size === 0 ? (
-          <Text as="div" size="1" color="amber" mt="3">
-            Select at least one trip before drafting this invoice.
+        {selection !== "" && selectedTrips.size === 0 ? (
+          <Text as="div" size="1" color="gray" mt="3">
+            No trips selected. You will get an empty invoice and add its lines
+            yourself on the next screen.
           </Text>
         ) : null}
 
@@ -329,7 +372,11 @@ export default function DraftForm({
         <Flex mt="4" gap="3">
           <Button
             type="submit"
-            disabled={pending || !selectedClientId || selectedTrips.size === 0}
+            // A bill-to is the only requirement: either a client is picked, or
+            // the clientless option is, in which case readBillTo checks the
+            // typed name server-side and says so if it is missing. Trips are
+            // no longer required at all.
+            disabled={pending || selection === ""}
           >
             {pending ? "Drafting…" : "Draft invoice"}
           </Button>

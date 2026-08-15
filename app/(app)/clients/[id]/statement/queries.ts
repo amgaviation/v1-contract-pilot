@@ -110,6 +110,15 @@ export async function buildClientStatement(
       .from("invoices")
       .select("id, invoice_number, status, issued_on, due_on")
       .eq("account_id", accountId)
+      // AN INVOICE WITH NO CLIENT CANNOT APPEAR HERE, and that is the
+      // intended outcome rather than a gap. `.eq("client_id", clientId)`
+      // never matches a null (20260815100000), so a clientless invoice is
+      // out of scope by the same predicate that scopes this to ONE client.
+      // A statement is a document sent to a named client listing what THEY
+      // owe; an invoice raised against typed details is not theirs, and
+      // including it would put a stranger's balance on somebody's statement.
+      // It still counts in receivables, aging and the overview queue, none
+      // of which group by client.
       .eq("client_id", clientId)
       .in("status", ["sent", "partial", "paid"])
       .gte("issued_on", period.from)

@@ -1,3 +1,5 @@
+import { billToListLabel } from "@/lib/invoice-bill-to";
+
 /**
  * Pure assembly for the sales tax report — no I/O, no Supabase, no Next
  * imports, so tests/sales-tax.test.mjs can exercise it directly (the same
@@ -149,7 +151,10 @@ export function formatBps(bps: number): string {
 export type SalesTaxInvoice = {
   id: string;
   invoice_number: string | null;
-  client_id: string;
+  /** Null since 20260815100000 when the invoice bills typed details. */
+  client_id: string | null;
+  /** The typed name, present exactly when client_id is null. */
+  bill_to_name: string | null;
   status: "draft" | "sent" | "partial" | "paid" | "void";
   issued_on: string | null;
   tax_rate_bps: number;
@@ -389,7 +394,11 @@ export function assembleSalesTaxReport(input: {
     }
 
     const invoiceNumber = invoice.invoice_number ?? "—";
-    const clientName = input.clientNames.get(invoice.client_id) ?? "Unknown client";
+    // Three states, three sentences. A clientless invoice is taxed exactly
+    // like any other and belongs on this return; only the name column differs,
+    // and calling it "Unknown client" would suggest a lookup failed when
+    // nothing did.
+    const clientName = billToListLabel(invoice, input.clientNames);
     for (const event of eventsInPeriod) {
       const sign = event.kind === "settled" ? 1 : -1;
       rows.push({

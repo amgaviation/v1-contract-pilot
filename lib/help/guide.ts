@@ -69,6 +69,28 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         keywords: ["day grid", "day rate", "billing", "legs", "duty day", "travel day"],
       },
       {
+        id: "invoice-without-a-client",
+        title: "Invoicing without a client",
+        summary: "Raise an invoice with the bill-to details typed in, no client record and no trip.",
+        href: "/invoices",
+        body: [
+          "On a new invoice, pick \u201cNo client, type the details\u201d and enter who it bills. You need a name; an address and an email are optional, though without an email you send the PDF yourself. Then add the lines by hand. No trip has to exist and no client record is created.",
+          "Use it for a one-off: a ferry flight for an operator you will not fly for again, a training day, a deposit, a cancellation fee.",
+          "What an invoice with no client does not get: rate cards, monthly minimums, an agreed late fee, and scheduled reminders. All four are settings that live on a client. You can still send a reminder by hand, and the invoice counts in your receivables, your aging and your reports exactly like any other.",
+          "It does not appear on any client statement, because a statement lists what one named client owes and this invoice is not theirs.",
+          "Recurring schedules and estimates still need a client. Both are standing arrangements with somebody, so the payer is worth a record.",
+        ],
+        keywords: [
+          "one off",
+          "ad hoc",
+          "no client",
+          "bill to",
+          "blank invoice",
+          "manual invoice",
+          "ferry",
+        ],
+      },
+      {
         id: "invoice-lifecycle",
         title: "Invoice statuses",
         summary: "Draft, sent, viewed, partly paid, paid, overdue: what moves an invoice between them.",

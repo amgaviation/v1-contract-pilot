@@ -424,11 +424,18 @@ export default function ScheduleManager({
             </Text>
             <Text size="2" color="gray" align="center">
               A recurring schedule bills exactly one client: the owner, operator, or
-              management company on a retainer or a committed-rate contract.
+              management company on a retainer or a committed-rate contract. The
+              arrangement repeats, so the payer is worth a record. A one-off invoice
+              needs no client at all.
             </Text>
-            <Button asChild>
-              <NextLink href="/clients/new">Add a client</NextLink>
-            </Button>
+            <Flex gap="3" wrap="wrap" justify="center">
+              <Button asChild>
+                <NextLink href="/clients/new">Add a client</NextLink>
+              </Button>
+              <Button asChild variant="outline">
+                <NextLink href="/invoices/new">Raise a one-off invoice</NextLink>
+              </Button>
+            </Flex>
           </Flex>
         </Card>
       ) : (

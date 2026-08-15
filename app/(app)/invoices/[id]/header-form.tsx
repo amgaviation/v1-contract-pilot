@@ -1,20 +1,68 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { Button, Card, Flex, Grid, Text, TextField, Select } from "@/components/ui";
+import { Button, Card, Flex, Grid, Text, TextField } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import { updateInvoiceHeader, updateInvoiceNotes, type InvoiceFormState } from "../actions";
+import BillToFields, {
+  TYPED_VALUE,
+  type BillToValues,
+  type ClientOption,
+} from "../bill-to-fields";
 
-export type ClientOption = { id: string; name: string };
+export type { ClientOption };
 
 type InvoiceForForm = {
   id: string;
-  client_id: string;
+  /** Null when this invoice bills the typed bill_to_* details instead. */
+  client_id: string | null;
+  bill_to_name: string | null;
+  bill_to_contact_name: string | null;
+  bill_to_email: string | null;
+  bill_to_address_line1: string | null;
+  bill_to_address_line2: string | null;
+  bill_to_city: string | null;
+  bill_to_state: string | null;
+  bill_to_postal_code: string | null;
+  bill_to_country: string | null;
   issued_on: string | null;
   due_on: string | null;
   tax_rate_bps: number;
   notes: string | null;
 };
+
+/** The stored bill-to columns as the form's controlled fields. */
+function storedBillTo(invoice: InvoiceForForm): BillToValues {
+  return {
+    name: invoice.bill_to_name ?? "",
+    contact_name: invoice.bill_to_contact_name ?? "",
+    email: invoice.bill_to_email ?? "",
+    address_line1: invoice.bill_to_address_line1 ?? "",
+    address_line2: invoice.bill_to_address_line2 ?? "",
+    city: invoice.bill_to_city ?? "",
+    state: invoice.bill_to_state ?? "",
+    postal_code: invoice.bill_to_postal_code ?? "",
+    country: invoice.bill_to_country ?? "",
+  };
+}
+
+/**
+ * The address block as it prints, for the read-only view of an issued
+ * invoice. Empty parts are dropped rather than rendered as blank lines.
+ */
+function billToLines(invoice: InvoiceForForm): string[] {
+  const cityLine = [invoice.bill_to_city, invoice.bill_to_state]
+    .filter((part) => part && part.trim() !== "")
+    .join(", ");
+  return [
+    invoice.bill_to_contact_name,
+    invoice.bill_to_address_line1,
+    invoice.bill_to_address_line2,
+    [cityLine, invoice.bill_to_postal_code].filter((part) => part && part.trim() !== "").join(" "),
+    invoice.bill_to_country,
+    invoice.bill_to_email,
+  ].filter((line): line is string => typeof line === "string" && line.trim() !== "");
+}
 
 const initialState: InvoiceFormState = { error: null };
 
@@ -60,10 +108,38 @@ function DraftHeader({
   // form.reset() restores it to its mount-time option even on a rejected
   // submit, silently reassigning the invoice to the wrong client. Fixed
   // by dropping `name` and posting the real value from a controlled
-  // hidden input instead.
-  const [clientId, setClientId] = useState(() => initial("client_id", invoice.client_id));
+  // hidden input instead. BillToFields keeps that shape.
+  const [selection, setSelection] = useState(() =>
+    submitted?.bill_to_mode === "typed"
+      ? TYPED_VALUE
+      : submitted?.client_id !== undefined && submitted.client_id !== ""
+        ? String(submitted.client_id)
+        : (invoice.client_id ?? TYPED_VALUE)
+  );
+  // The typed block is controlled for the same reason the picker is: a
+  // rejected submit must not silently discard a bill-to address the pilot
+  // just typed.
+  const [billTo, setBillTo] = useState<BillToValues>(() => storedBillTo(invoice));
   useEffect(() => {
-    if (submitted?.client_id !== undefined) setClientId(String(submitted.client_id));
+    if (!submitted) return;
+    setSelection(
+      submitted.bill_to_mode === "typed"
+        ? TYPED_VALUE
+        : submitted.client_id
+          ? String(submitted.client_id)
+          : TYPED_VALUE
+    );
+    setBillTo({
+      name: submitted.bill_to_name ?? "",
+      contact_name: submitted.bill_to_contact_name ?? "",
+      email: submitted.bill_to_email ?? "",
+      address_line1: submitted.bill_to_address_line1 ?? "",
+      address_line2: submitted.bill_to_address_line2 ?? "",
+      city: submitted.bill_to_city ?? "",
+      state: submitted.bill_to_state ?? "",
+      postal_code: submitted.bill_to_postal_code ?? "",
+      country: submitted.bill_to_country ?? "",
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitted]);
 
@@ -75,21 +151,16 @@ function DraftHeader({
           Billing details
         </Text>
         <Grid columns={{ initial: "1", md: "12" }} gap="3">
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 6" }}>
-            <Text as="label" size="2" weight="medium" id="client-label">
-              Client
-            </Text>
-            <Select.Root value={clientId} onValueChange={setClientId}>
-              <Select.Trigger aria-labelledby="client-label" />
-              <Select.Content>
-                {clients.map((client) => (
-                  <Select.Item key={client.id} value={client.id}>
-                    {client.name}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-            <input type="hidden" name="client_id" value={clientId} />
+          <Flex direction="column" gap="1" gridColumn={{ md: "span 12" }}>
+            <BillToFields
+              clients={clients}
+              selection={selection}
+              onSelectionChange={setSelection}
+              values={billTo}
+              onValueChange={(field, next) =>
+                setBillTo((prev) => ({ ...prev, [field]: next }))
+              }
+            />
           </Flex>
           <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
             <Text as="label" size="2" weight="medium" htmlFor="issued_on">
@@ -116,7 +187,9 @@ function DraftHeader({
               defaultValue={initial("due_on", invoice.due_on)}
             />
             <Text size="1" color="gray">
-              Defaults from the client&rsquo;s terms
+              {selection === TYPED_VALUE
+                ? "Defaults from your own terms in Settings, or 30 days"
+                : "Defaults from the client\u2019s terms"}
             </Text>
           </Flex>
           <Flex direction="column" gap="1" gridColumn={{ md: "span 4" }}>
@@ -178,7 +251,15 @@ function LockedHeader({
   clients: ClientOption[];
 }) {
   const [state, formAction, pending] = useActionState(updateInvoiceNotes, initialState);
-  const clientName = clients.find((c) => c.id === invoice.client_id)?.name ?? "—";
+  // An issued invoice's bill-to is frozen by invoices_protect_issued, so this
+  // shows what it actually carries: the client's name when it has one, the
+  // typed block when it does not. The typed block is printed in full here
+  // because, unlike a client, there is no other screen it can be read on.
+  const typed = invoice.client_id === null;
+  const clientName = typed
+    ? invoice.bill_to_name ?? "No client"
+    : clients.find((c) => c.id === invoice.client_id)?.name ?? "Unknown client";
+  const typedLines = typed ? billToLines(invoice) : [];
 
   return (
     <Card size="3">
@@ -188,9 +269,14 @@ function LockedHeader({
       <Grid columns={{ initial: "1", md: "12" }} gap="3">
         <Flex direction="column" gap="1" gridColumn={{ md: "span 6" }}>
           <Text size="1" color="gray">
-            Client
+            Bill to
           </Text>
           <Text weight="medium">{clientName}</Text>
+          {typedLines.map((line) => (
+            <Text key={line} size="1" color="gray">
+              {line}
+            </Text>
+          ))}
         </Flex>
         <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
           <Text size="1" color="gray">

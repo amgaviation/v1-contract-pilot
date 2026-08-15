@@ -9,6 +9,7 @@ import { formatCents, formatDate } from "@/lib/format";
 import { YOU_INVOICE_COLUMN } from "@/lib/counterparty";
 import { friendlyDbError } from "@/lib/db-errors";
 import { emailIsConfigured, looksLikeEmail } from "@/lib/email/send";
+import { billToEmail } from "@/lib/invoice-bill-to";
 import { loadPreferences } from "@/lib/preferences";
 import { loadOptionLabels } from "@/lib/custom-options-read";
 import PageShell from "../../page-shell";
@@ -44,7 +45,23 @@ export const metadata = { title: "Invoice" };
 
 type InvoiceRow = {
   id: string;
-  client_id: string;
+  /**
+   * Null since 20260815100000 when this invoice bills the typed bill_to_*
+   * block instead of a pilot.clients row. Everything on this screen that
+   * reads a CLIENT (the rebillable-expense picker, the reminder ladder, the
+   * late-fee policy) is skipped for one, and says so rather than rendering
+   * empty.
+   */
+  client_id: string | null;
+  bill_to_name: string | null;
+  bill_to_contact_name: string | null;
+  bill_to_email: string | null;
+  bill_to_address_line1: string | null;
+  bill_to_address_line2: string | null;
+  bill_to_city: string | null;
+  bill_to_state: string | null;
+  bill_to_postal_code: string | null;
+  bill_to_country: string | null;
   invoice_number: string | null;
   status: "draft" | "sent" | "partial" | "paid" | "void";
   issued_on: string | null;
@@ -221,18 +238,31 @@ export default async function InvoicePage({
   // own default rather than an empty control.
   const preferences = await loadPreferences(account.id);
 
-  // The client this invoice actually bills, for the send controls. Read off
-  // the list already fetched rather than issuing a sixth query.
-  const billedClient = clients.find((c) => c.id === invoice.client_id) ?? null;
+  // Whether this invoice bills a saved client at all. Every client-shaped
+  // read below keys off it, so there is one answer on this screen rather than
+  // six independent null checks that could drift apart.
+  const hasClient = invoice.client_id !== null;
 
-  // THE SAME PREFERENCE sendInvoiceEmail resolves (lib/email/send-invoice.ts):
-  // billing_email when it looks like a real address, contact_email
-  // otherwise. Computed once here so StatusActions' "Goes to {email}" and
+  // The client this invoice actually bills, for the send controls. Read off
+  // the list already fetched rather than issuing a sixth query. Null for a
+  // clientless invoice, which is a real state and not a short read.
+  const billedClient = hasClient
+    ? clients.find((c) => c.id === invoice.client_id) ?? null
+    : null;
+
+  // WHO THE SEND CONTROLS NAME. The client's name when there is one, the
+  // typed name when there is not.
+  const billedName = hasClient
+    ? billedClient?.name ?? "this client"
+    : invoice.bill_to_name ?? "this invoice";
+
+  // THE SAME ADDRESS sendInvoiceEmail resolves (lib/email/send-invoice.ts),
+  // through the same function, so StatusActions' "Goes to {email}" and
   // ReminderPanel's "has no email on file" can never name or gate on an
-  // address the actual send does not use.
-  const billedClientEmail = looksLikeEmail(billedClient?.billing_email)
-    ? (billedClient?.billing_email as string)
-    : (billedClient?.contact_email ?? null);
+  // address the actual send does not use: billing_email when it looks like a
+  // real one and contact_email otherwise for a client, the single typed
+  // address for a clientless invoice.
+  const billedClientEmail = billToEmail(invoice, billedClient, looksLikeEmail);
 
   // A failed totals/payments/overdue/clients query is not "no data" — a
   // sent, unpaid invoice must not render as a healthy $0.00 balance in
@@ -268,7 +298,13 @@ export default async function InvoicePage({
       { data: usedLines, error: usedLinesError },
       resolvedCategoryLabels,
     ] = await Promise.all([
-      supabase.from("trips").select("id").eq("client_id", invoice.client_id),
+      // A clientless invoice has no client's trips to rebill from. The query
+      // is skipped rather than sent with a null filter, and the picker below
+      // simply offers nothing, which is the truth: a rebillable expense
+      // belongs to a trip and a trip belongs to a client.
+      invoice.client_id !== null
+        ? supabase.from("trips").select("id").eq("client_id", invoice.client_id)
+        : Promise.resolve({ data: [] as { id: string }[], error: null }),
       supabase.from("invoice_lines").select("expense_id").not("expense_id", "is", null),
       loadOptionLabels("expense_category"),
     ]);
@@ -349,6 +385,12 @@ export default async function InvoicePage({
   // ---------------------------------------------------------------------
   const chaseable = invoice.status === "sent" || invoice.status === "partial";
   let reminderView: {
+    /**
+     * This invoice has no client, so the scheduled run never sees it
+     * (lib/reminders/run.ts filters client_id out explicitly). The panel says
+     * that in words instead of rendering a ladder that will never advance.
+     */
+    noClient: boolean;
     scheduleIsEmpty: boolean;
     rungs: ReminderRungView[];
     nextUp: string | null;
@@ -363,14 +405,21 @@ export default async function InvoicePage({
       { data: sendData },
       { data: feeData },
     ] = await Promise.all([
-      supabase
-        .from("clients")
-        .select(
-          "reminder_before_due, reminder_on_due, reminder_after_due, late_fee_flat_cents, late_fee_bps_per_month, late_fee_grace_days, archived_at"
-        )
-        .eq("id", invoice.client_id)
-        .eq("account_id", account.id)
-        .maybeSingle(),
+      // THE LADDER AND THE LATE FEE BOTH LIVE ON THE CLIENT, so an invoice
+      // with none has neither and this read is skipped. Not sent and
+      // discarded: a query filtered on a null id is a query that means
+      // nothing, and its failure would be indistinguishable from a client
+      // that has no schedule set.
+      invoice.client_id !== null
+        ? supabase
+            .from("clients")
+            .select(
+              "reminder_before_due, reminder_on_due, reminder_after_due, late_fee_flat_cents, late_fee_bps_per_month, late_fee_grace_days, archived_at"
+            )
+            .eq("id", invoice.client_id)
+            .eq("account_id", account.id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
       supabase
         .from("invoice_reminder_sends")
         .select("rule_key, outcome, detail, created_at")
@@ -525,6 +574,12 @@ export default async function InvoicePage({
       );
     }
 
+    // policyRow is null for a clientless invoice, so this normalises to "no
+    // policy agreed" and quoteLateFee below returns nothing. That is the
+    // correct answer rather than a degraded one: a late fee is a rate agreed
+    // with a particular client, and there is no client here to have agreed
+    // one. The panel prints NO_CLIENT_LATE_FEE_NOTICE instead of an empty
+    // policy line.
     const lateFeePolicy = normalizeLateFeePolicy({
       flatCents: policyRow?.late_fee_flat_cents,
       bpsPerMonth: policyRow?.late_fee_bps_per_month,
@@ -544,6 +599,7 @@ export default async function InvoicePage({
     });
 
     reminderView = {
+      noClient: !hasClient,
       scheduleIsEmpty: reminderPolicyIsEmpty(policy),
       rungs,
       nextUp:
@@ -665,7 +721,8 @@ export default async function InvoicePage({
             hasLines={lines.length > 0}
             canEmail={emailIsConfigured()}
             clientEmail={billedClientEmail}
-            clientName={billedClient?.name ?? "this client"}
+            clientName={billedName}
+            hasClient={hasClient}
             receiptCount={receiptCount}
             hasInvoiceTemplate={hasInvoiceTemplate}
             // THE TWO FACTS THE RUN ITSELF CHECKS, kept apart rather than
@@ -688,7 +745,8 @@ export default async function InvoicePage({
             <ReminderPanel
               invoiceId={invoice.id}
               clientId={invoice.client_id}
-              clientName={billedClient?.name ?? "this client"}
+              clientName={billedName}
+              noClient={reminderView.noClient}
               suppressed={invoice.reminders_suppressed === true}
               scheduleIsEmpty={reminderView.scheduleIsEmpty}
               rungs={reminderView.rungs}

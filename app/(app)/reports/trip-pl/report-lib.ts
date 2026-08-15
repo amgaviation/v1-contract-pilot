@@ -264,7 +264,14 @@ export type TripPLRawRow = {
 };
 
 export type UnattributedRawRow = {
-  client_id: string;
+  /**
+   * Null since 20260815100000: pilot.invoices.client_id is nullable, and
+   * pilot.client_unattributed_lines groups by it, so the function now emits a
+   * null-client group for invoice lines on clientless invoices. Real money,
+   * really unattributed to a trip, and it rolls up into the same no-client
+   * bucket the clientless TRIPS already use.
+   */
+  client_id: string | null;
   unattributed_line_cents: number;
   unattributed_line_count: number;
   draft_unattributed_line_cents: number;
@@ -478,7 +485,8 @@ export type TripPLAssembly =
  *  every diff view — an unreviewable source file is too high a price for
  *  a map key. */
 const NO_CLIENT_KEY = "~no-client~";
-const NO_CLIENT_LABEL = "No client on the trip";
+/** Covers both sources now: a trip with no client, and an invoice with none. */
+const NO_CLIENT_LABEL = "No client";
 
 /**
  * Joins the reads into per-trip rows, per-client rollups and a grand
@@ -695,18 +703,33 @@ export function assembleTripPL(input: {
       };
     }
 
-    const name = input.clientNames.get(u.client_id);
-    if (name === undefined) {
-      // invoices.client_id is NOT NULL with a composite FK, so this is a
-      // short clients read, same as above — refuse rather than print a
-      // revenue line with no owner.
-      return {
-        ok: false,
-        reason: `client ${u.client_id} has unattributed invoice lines but the clients read didn't return it, so this report won't print a partial per-client rollup`,
-      };
+    // A NULL CLIENT IS A REAL STATE, NOT A SHORT READ, and the difference
+    // decides whether this report prints at all. An invoice raised without a
+    // client (20260815100000) legitimately has none, so it goes to the same
+    // no-client bucket the clientless trips above use. Refusing on it instead
+    // would take the whole trip P&L down the first time a pilot billed a
+    // one-off, which is the failure this branch exists to avoid.
+    //
+    // A SET client_id that the clients read did not return is still a refusal:
+    // invoices.client_id carries a composite FK, so a missing name means the
+    // read came back short, and quietly relabelling it would split one
+    // client's revenue across two buckets with nothing on screen saying so.
+    const key = clientKey(u.client_id);
+    let name: string;
+    if (u.client_id === null) {
+      name = NO_CLIENT_LABEL;
+    } else {
+      const found = input.clientNames.get(u.client_id);
+      if (found === undefined) {
+        return {
+          ok: false,
+          reason: `client ${u.client_id} has unattributed invoice lines but the clients read didn't return it, so this report won't print a partial per-client rollup`,
+        };
+      }
+      name = found;
     }
 
-    let row = byClient.get(u.client_id);
+    let row = byClient.get(key);
     if (!row) {
       row = {
         clientId: u.client_id,
@@ -728,7 +751,7 @@ export function assembleTripPL(input: {
         draftUnattributedLineCount: 0,
         mileageMiles: 0,
       };
-      byClient.set(u.client_id, row);
+      byClient.set(key, row);
     }
     row.unattributedLineCents += cents;
     row.unattributedLineCount += count;

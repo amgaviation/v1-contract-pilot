@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/format";
+import { billToListLabel } from "@/lib/invoice-bill-to";
 import type { Database } from "@/lib/supabase/database.types";
 
 /**
@@ -38,7 +39,15 @@ type ClientRow = Pick<
 >;
 type InvoiceRow = Pick<
   Database["pilot"]["Tables"]["invoices"]["Row"],
-  "id" | "client_id" | "invoice_number" | "status" | "issued_on" | "due_on"
+  | "id"
+  | "client_id"
+  // 20260815100000: an invoice may bill typed details instead of a client,
+  // so the label below has a second source and needs the column to read it.
+  | "bill_to_name"
+  | "invoice_number"
+  | "status"
+  | "issued_on"
+  | "due_on"
 >;
 type TripRow = Pick<
   Database["pilot"]["Tables"]["trips"]["Row"],
@@ -134,7 +143,13 @@ export async function GET(request: NextRequest) {
     // query is not guaranteed comma-free (a copy-pasted "KTEB, KVNY" is a
     // plausible search), which would silently mis-parse the filter. Two
     // plain ilike queries have no such edge case.
-    const [clientsByName, invoicesByNumber, legsByFromIcao, legsByToIcao] = await Promise.all([
+    const [
+      clientsByName,
+      invoicesByNumber,
+      invoicesByBillTo,
+      legsByFromIcao,
+      legsByToIcao,
+    ] = await Promise.all([
       supabase
         .from("clients")
         .select("id, name, archived_at, contact_name")
@@ -143,8 +158,27 @@ export async function GET(request: NextRequest) {
         .limit(PER_TYPE_LIMIT),
       supabase
         .from("invoices")
-        .select("id, client_id, invoice_number, status, issued_on, due_on")
+        .select("id, client_id, bill_to_name, invoice_number, status, issued_on, due_on")
         .ilike("invoice_number", pattern)
+        .order("created_at", { ascending: false })
+        .limit(PER_TYPE_LIMIT),
+      // THE ONLY WAY TO FIND A CLIENTLESS INVOICE BY WHO IT IS FOR.
+      //
+      // Pass 2 finds invoices through a matching client row, and the number
+      // match above finds them by number. An invoice raised with no client
+      // (20260815100000) has neither: no client row to match, and while it
+      // is still a draft no invoice number either, because the number is
+      // minted at issue. Its typed payer name is the one identifying value
+      // it has, so without this query the palette can never return it.
+      //
+      // A separate ilike rather than an `.or(...)`, for the same reason the
+      // leg ICAO match below is two queries: PostgREST splits an `or`
+      // argument on top-level commas and a typed payer name ("Gulfstream
+      // Ops, LLC") is not guaranteed comma-free.
+      supabase
+        .from("invoices")
+        .select("id, client_id, bill_to_name, invoice_number, status, issued_on, due_on")
+        .ilike("bill_to_name", pattern)
         .order("created_at", { ascending: false })
         .limit(PER_TYPE_LIMIT),
       supabase
@@ -164,6 +198,7 @@ export async function GET(request: NextRequest) {
     if (
       clientsByName.error ||
       invoicesByNumber.error ||
+      invoicesByBillTo.error ||
       legsByFromIcao.error ||
       legsByToIcao.error
     ) {
@@ -192,7 +227,7 @@ export async function GET(request: NextRequest) {
       clientIds.length > 0
         ? supabase
             .from("invoices")
-            .select("id, client_id, invoice_number, status, issued_on, due_on")
+            .select("id, client_id, bill_to_name, invoice_number, status, issued_on, due_on")
             .in("client_id", clientIds)
             .order("created_at", { ascending: false })
             .limit(PER_TYPE_LIMIT)
@@ -221,6 +256,7 @@ export async function GET(request: NextRequest) {
 
     const invoices = dedupeById([
       ...((invoicesByNumber.data ?? []) as InvoiceRow[]),
+      ...((invoicesByBillTo.data ?? []) as InvoiceRow[]),
       ...((invoicesByClient.data ?? []) as InvoiceRow[]),
     ]).slice(0, PER_TYPE_LIMIT);
 
@@ -233,10 +269,16 @@ export async function GET(request: NextRequest) {
     // itself: the client name behind an invoice/trip that was found by
     // something OTHER than its client (invoice number, leg ICAO), and one
     // representative leg (earliest by date) per trip for the route label.
-    const namedClientIds = new Set([
-      ...invoices.map((i) => i.client_id),
-      ...trips.map((t) => t.client_id).filter((id): id is string => id !== null),
-    ]);
+    // Both sides filter nulls now: pilot.trips.client_id has always been
+    // nullable and pilot.invoices.client_id is since 20260815100000. A null in
+    // this set becomes `.in("id", [null])`, which matches nothing and wastes a
+    // round trip at best.
+    const namedClientIds = new Set(
+      [
+        ...invoices.map((i) => i.client_id),
+        ...trips.map((t) => t.client_id),
+      ].filter((id): id is string => id !== null)
+    );
     const tripIds = trips.map((t) => t.id);
 
     const [clientNamesResult, tripLegsResult] = await Promise.all([
@@ -286,7 +328,7 @@ export async function GET(request: NextRequest) {
       href: `/invoices/${inv.id}`,
       label: inv.invoice_number ?? "Draft invoice",
       sublabel: [
-        clientNameById.get(inv.client_id) ?? "Unknown client",
+        billToListLabel(inv, clientNameById),
         INVOICE_STATUS_LABEL[inv.status] ?? inv.status,
         inv.due_on ? `due ${formatDate(inv.due_on)}` : null,
       ]

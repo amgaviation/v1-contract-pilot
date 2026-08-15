@@ -1,6 +1,7 @@
 import { scheduleCMileageCents, type RatesByYear } from "@/lib/mileage";
 import "server-only";
 import type { createClient } from "@/lib/supabase/server";
+import { billToListLabel } from "@/lib/invoice-bill-to";
 import { yearBounds, currentTaxYear } from "../year-end/db";
 
 type Supa = Awaited<ReturnType<typeof createClient>>;
@@ -454,12 +455,20 @@ async function loadPeriodFigures(
   const { data: invoiceData, error: invoiceError } = invoiceIds.length
     ? await supabase
         .from("invoices")
-        .select("id, client_id, status")
+        .select("id, client_id, bill_to_name, status")
         .eq("account_id", accountId)
         .in("id", invoiceIds)
         .limit(INVOICE_LOOKUP_LIMIT)
     : { data: [] as never[], error: null };
-  const invoiceRows = (invoiceData ?? []) as { id: string; client_id: string; status: string }[];
+  const invoiceRows = (invoiceData ?? []) as {
+    id: string;
+    // Nullable since 20260815100000. Payments against a clientless invoice are
+    // income exactly like any other and are NOT dropped from this report; they
+    // roll up under the typed bill-to name instead of a client's.
+    client_id: string | null;
+    bill_to_name: string | null;
+    status: string;
+  }[];
   // Defect 9: an unbounded `.in()` silently truncates past the Data API
   // cap just like every list query in this file — cap it explicitly and
   // fold the truncation into the same on-screen callout paymentsTruncated
@@ -467,7 +476,7 @@ async function loadPeriodFigures(
   // rows to "Unknown client" while incomeTotalCents stays (deceptively)
   // right.
   const invoiceLookupTruncated = invoiceIds.length > 0 && invoiceRows.length === INVOICE_LOOKUP_LIMIT;
-  const invoiceClientById = new Map(invoiceRows.map((i) => [i.id, i.client_id]));
+  const invoiceById = new Map(invoiceRows.map((i) => [i.id, i]));
   // Defect 1: an invoice_payments row is never deleted when its parent
   // invoice transitions to 'void' (sent/partial -> void is a legal
   // transition — see app/(app)/overview/page.tsx's "Paid this year" KPI, which
@@ -481,9 +490,19 @@ async function loadPeriodFigures(
   const incomeMap = new Map<string, IncomeByClient>();
   for (const p of payments) {
     if (voidInvoiceIds.has(p.invoice_id)) continue;
-    const clientId = invoiceClientById.get(p.invoice_id) ?? null;
-    const name = (clientId && clientName.get(clientId)) || "Unknown client";
-    const key = clientId ?? `unknown:${p.invoice_id}`;
+    const invoice = invoiceById.get(p.invoice_id) ?? null;
+    const clientId = invoice?.client_id ?? null;
+    // FOUR CASES, and the two that used to collapse into "Unknown client" are
+    // now distinguishable. A clientless invoice groups under its typed name;
+    // an invoice whose lookup came back short still reads "Unknown client",
+    // which is the phrase this codebase reserves for a failed resolution.
+    const name = invoice
+      ? billToListLabel(invoice, clientName)
+      : "Unknown client";
+    // Clientless invoices are keyed per invoice rather than merged into one
+    // bucket: two one-off jobs for two different operators are two payers, and
+    // summing them under a single row would invent a customer.
+    const key = clientId ?? `no-client:${p.invoice_id}`;
     const existing = incomeMap.get(key);
     if (existing) {
       existing.totalCents += p.amount_cents;

@@ -74,6 +74,11 @@ export default async function PaymentInsightPanel({
 
   // Issued invoices only: a draft was never sent, so it has no
   // payment-behavior story; a void is not owed and not history.
+  //
+  // Clientless invoices (20260815100000) are excluded by the same
+  // `.eq("client_id", clientId)` that scopes this panel, and correctly so:
+  // this measures how promptly THIS client pays, and an invoice billed to
+  // typed details is not evidence about them.
   const invoicesResult = rowsOf<InsightInvoice>(
     await supabase
       .from("invoices")

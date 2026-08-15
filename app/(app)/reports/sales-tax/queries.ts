@@ -186,7 +186,7 @@ export async function loadSalesTaxReport(
     ? rowsOf<SalesTaxInvoice>(
         await supabase
           .from("invoices")
-          .select("id, invoice_number, client_id, status, issued_on, tax_rate_bps")
+          .select("id, invoice_number, client_id, bill_to_name, status, issued_on, tax_rate_bps")
           .eq("account_id", accountId)
           .in("id", candidateIds)
           .limit(SALES_TAX_LIMIT)

@@ -266,6 +266,21 @@ export async function runDueRemindersForAccount(
     .eq("account_id", accountId)
     .in("status", ["sent", "partial"])
     .not("due_on", "is", null)
+    // AN INVOICE WITH NO CLIENT IS NOT CHASED, STATED RATHER THAN IMPLIED.
+    //
+    // The schedule is a per-client column set (clients.reminder_before_due /
+    // reminder_on_due / reminder_after_due), so an invoice with no client has
+    // no ladder to walk and there is nothing to decide. The `.in()` below
+    // already excluded it, since SQL `in` never matches a null, but relying on
+    // that leaves the exclusion as a side effect of a filter written for a
+    // different purpose: widen the client set one day and a clientless invoice
+    // silently enters a pass that would then read its schedule off a client
+    // that is not there. Said outright instead, and said in words on the
+    // invoice's own reminder panel (lib/invoice-bill-to.ts's
+    // NO_CLIENT_REMINDER_NOTICE) so the pilot is never left believing a chase
+    // is coming. Sending a reminder BY HAND still works and goes to the
+    // address typed on the invoice.
+    .not("client_id", "is", null)
     .in("client_id", [...clients.keys()])
     .order("due_on", { ascending: true })
     .limit(MAX_INVOICES_PER_ACCOUNT);

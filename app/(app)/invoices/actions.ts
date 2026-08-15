@@ -97,14 +97,106 @@ function optional(formData: FormData, key: string): string | null {
   return value === "" ? null : value;
 }
 
+/**
+ * THE TYPED BILL-TO BLOCK, as the forms post it and as the column names read.
+ *
+ * One list, used three ways: to echo a rejected submission back to the form,
+ * to read the fields off FormData, and to build the update payload. Three
+ * hand-maintained copies of nine field names is how one of them quietly stops
+ * being saved.
+ *
+ * The form field names are the column names without the `bill_to_` prefix, so
+ * the mapping is mechanical and there is no lookup table to get wrong.
+ */
+const BILL_TO_FIELDS = [
+  "name",
+  "contact_name",
+  "email",
+  "address_line1",
+  "address_line2",
+  "city",
+  "state",
+  "postal_code",
+  "country",
+] as const;
+
 /** Fields updateInvoiceHeader's form submits — mirrors expenses/actions.ts's echo(). */
 const INVOICE_HEADER_FIELDS = [
   "client_id",
+  "bill_to_mode",
+  ...BILL_TO_FIELDS.map((field) => `bill_to_${field}`),
   "issued_on",
   "due_on",
   "tax_rate_percent",
   "notes",
 ] as const;
+
+/**
+ * WHO THIS INVOICE BILLS, decided once for both writers.
+ *
+ * The forms post a `bill_to_mode` of "client" or "typed" alongside the fields
+ * for both, because the alternative (infer the mode from which fields happen
+ * to be filled) makes an empty client picker and a cleared name indis-
+ * tinguishable from each other and from a form that failed to post.
+ *
+ * Returns either the payload columns to write or an error sentence. It never
+ * returns a half-filled shape: the check constraint invoices_bill_to_or_client
+ * (20260815100000) requires exactly one side, so a payload that set both would
+ * be rejected by Postgres with a message no pilot should have to read.
+ */
+type BillToPayload = {
+  client_id: string | null;
+  bill_to_name: string | null;
+  bill_to_contact_name: string | null;
+  bill_to_email: string | null;
+  bill_to_address_line1: string | null;
+  bill_to_address_line2: string | null;
+  bill_to_city: string | null;
+  bill_to_state: string | null;
+  bill_to_postal_code: string | null;
+  bill_to_country: string | null;
+};
+
+function readBillTo(formData: FormData): { payload: BillToPayload } | { error: string } {
+  const mode = String(formData.get("bill_to_mode") ?? "client").trim();
+
+  // EVERY bill_to_* column is written on every save, including the ones the
+  // chosen mode leaves empty. Writing only the side in use would leave a
+  // switch from typed back to a client with the old typed name still stored,
+  // which the check constraint then rejects on the next save with an error
+  // about a field the pilot cannot see.
+  const cleared: Omit<BillToPayload, "client_id"> = {
+    bill_to_name: null,
+    bill_to_contact_name: null,
+    bill_to_email: null,
+    bill_to_address_line1: null,
+    bill_to_address_line2: null,
+    bill_to_city: null,
+    bill_to_state: null,
+    bill_to_postal_code: null,
+    bill_to_country: null,
+  };
+
+  if (mode === "typed") {
+    const typed = { ...cleared };
+    for (const field of BILL_TO_FIELDS) {
+      typed[`bill_to_${field}` as keyof typeof cleared] = optional(
+        formData,
+        `bill_to_${field}`
+      );
+    }
+    if (typed.bill_to_name === null) {
+      return { error: "Enter who this invoice bills." };
+    }
+    return { payload: { client_id: null, ...typed } };
+  }
+
+  const clientId = String(formData.get("client_id") ?? "").trim();
+  if (!UUID_RE.test(clientId)) {
+    return { error: "Choose a client to bill, or switch to typing the details in." };
+  }
+  return { payload: { client_id: clientId, ...cleared } };
+}
 
 /**
  * `values` echoes what was submitted so a rejected form can repopulate
@@ -270,16 +362,21 @@ export async function createInvoiceDraft(
 ): Promise<InvoiceFormState> {
   const { account } = await requireAccount("/invoices/new");
 
-  const clientId = String(formData.get("client_id") ?? "").trim();
-  if (!UUID_RE.test(clientId)) {
-    return { error: "Choose a client to bill.", values: { client_id: clientId } };
+  // WHO IS BEING BILLED, decided before anything else and in ONE place
+  // (readBillTo above): a client, or the details typed on this invoice. This
+  // used to be an unconditional "Choose a client to bill." refusal, which is
+  // the restriction 20260815100000 exists to remove.
+  const billTo = readBillTo(formData);
+  if ("error" in billTo) {
+    return { error: billTo.error, values: echo(formData) };
   }
+  const clientId = billTo.payload.client_id;
 
   const taxBps = parsePercentToBps(String(formData.get("tax_rate_percent") ?? ""));
   if (taxBps === undefined) {
     return {
       error: "Tax rate must be a percent like 8.25, up to 25%.",
-      values: { client_id: clientId },
+      values: echo(formData),
     };
   }
 
@@ -292,7 +389,7 @@ export async function createInvoiceDraft(
 
   const invoicePayload: InvoiceInsert = {
     account_id: account.id,
-    client_id: clientId,
+    ...billTo.payload,
     tax_rate_bps: taxBps ?? 0,
   };
   const { data: invoiceData, error: invoiceError } = await supabase
@@ -304,13 +401,23 @@ export async function createInvoiceDraft(
   if (invoiceError) {
     return {
       error: friendlyDbError(invoiceError, "invoices.insert"),
-      values: { client_id: clientId },
+      values: echo(formData),
     };
   }
 
   const invoiceId = (invoiceData as { id: string }).id;
 
-  if (tripIds.length === 0) {
+  // NO TRIPS SELECTED IS A COMPLETE, VALID OUTCOME, and has been since this
+  // action was written: a header-only draft, with lines added by hand on the
+  // invoice screen. The form used to refuse to submit in that state, which is
+  // why nobody could raise an invoice for anything that was not a logged trip.
+  //
+  // A CLIENTLESS INVOICE ALWAYS TAKES THIS EXIT. A trip belongs to a client,
+  // so trip lines and a typed bill-to are mutually exclusive by construction:
+  // invoice_lines_validate_trip refuses a client's trip on an invoice with no
+  // client, and invoices_protect_issued re-checks the same thing at send. The
+  // trip work below is therefore skipped rather than attempted and rejected.
+  if (tripIds.length === 0 || clientId === null) {
     revalidatePath("/invoices");
     redirect(`/invoices/${invoiceId}`);
   }
@@ -1476,9 +1583,9 @@ export async function updateInvoiceHeader(
 
   const { account } = await requireAccount(`/invoices/${id}`);
 
-  const clientId = String(formData.get("client_id") ?? "").trim();
-  if (!UUID_RE.test(clientId)) {
-    return { error: "Choose a client to bill.", values: echo(formData) };
+  const billTo = readBillTo(formData);
+  if ("error" in billTo) {
+    return { error: billTo.error, values: echo(formData) };
   }
 
   const issuedOn = optional(formData, "issued_on");
@@ -1496,7 +1603,10 @@ export async function updateInvoiceHeader(
   }
 
   const payload: InvoiceUpdate = {
-    client_id: clientId,
+    // All ten columns, every time. See readBillTo's own note: writing only
+    // the side in use would leave the other side's stale values behind and
+    // the check constraint would reject the NEXT save, not this one.
+    ...billTo.payload,
     issued_on: issuedOn,
     due_on: dueOn,
     tax_rate_bps: taxBps ?? 0,

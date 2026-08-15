@@ -1,4 +1,5 @@
 import "server-only";
+import { billToListLabel } from "@/lib/invoice-bill-to";
 import type { createClient } from "@/lib/supabase/server";
 import { computeYearTotals, type RatesByYear } from "@/lib/mileage";
 import { reportsFrom, yearBounds, type ClientTaxFormRow } from "./db";
@@ -315,14 +316,21 @@ export async function loadYearEndReport(
   const { data: invoiceData, error: invoiceError } = invoiceIds.length
     ? await supabase
         .from("invoices")
-        .select("id, client_id, invoice_number, status")
+        .select("id, client_id, bill_to_name, invoice_number, status")
         .eq("account_id", accountId)
         .in("id", invoiceIds)
     : { data: [] as never[], error: null };
   const invoiceById = new Map(
     ((invoiceData ?? []) as {
       id: string;
-      client_id: string;
+      // Nullable since 20260815100000. Money received against a clientless
+      // invoice is income and stays in this report; it simply carries the
+      // typed bill-to name rather than a client's. It is excluded from the
+      // 1099-NEC reconciliation further down, and that exclusion is correct
+      // rather than incidental: a 1099 is issued by a payer this product has
+      // a client record for, and there is none here to reconcile against.
+      client_id: string | null;
+      bill_to_name: string | null;
       invoice_number: string | null;
       status: string;
     }[]).map((i) => [i.id, i])
@@ -341,7 +349,7 @@ export async function loadYearEndReport(
     const invoice = invoiceById.get(payment.invoice_id);
     if (invoice?.status === "void") continue;
     const clientId = invoice?.client_id ?? null;
-    const name = (clientId && clientName.get(clientId)) || "Unknown client";
+    const name = invoice ? billToListLabel(invoice, clientName) : "Unknown client";
     paymentRows.push({
       id: payment.id,
       paidOn: payment.paid_on,
@@ -351,7 +359,9 @@ export async function loadYearEndReport(
       clientName: name,
       invoiceNumber: invoice?.invoice_number ?? null,
     });
-    const key = clientId ?? `unknown:${payment.invoice_id}`;
+    // Per invoice, not one merged bucket: two one-off jobs for two different
+    // operators are two payers. Same rule as profit-loss/queries.ts.
+    const key = clientId ?? `no-client:${payment.invoice_id}`;
     const existing = incomeMap.get(key);
     if (existing) {
       existing.totalCents += payment.amount_cents;
@@ -444,14 +454,15 @@ export async function loadYearEndReport(
   const { data: lineInvoiceData, error: lineInvoiceError } = lineInvoiceIds.length
     ? await supabase
         .from("invoices")
-        .select("id, client_id, invoice_number, status")
+        .select("id, client_id, bill_to_name, invoice_number, status")
         .eq("account_id", accountId)
         .in("id", lineInvoiceIds)
     : { data: [] as never[], error: null };
   const lineInvoiceById = new Map(
     ((lineInvoiceData ?? []) as {
       id: string;
-      client_id: string;
+      client_id: string | null;
+      bill_to_name: string | null;
       invoice_number: string | null;
       status: string;
     }[]).map((i) => [i.id, i])
@@ -471,7 +482,7 @@ export async function loadYearEndReport(
       category: e.category,
       vendor: e.vendor,
       expenseAmountCents: e.amount_cents,
-      clientName: invoice ? clientName.get(invoice.client_id) ?? null : null,
+      clientName: invoice ? billToListLabel(invoice, clientName) : null,
       invoiceId: invoice?.id ?? null,
       invoiceNumber: invoice?.invoice_number ?? null,
       invoiceStatus: invoice?.status ?? null,
