@@ -427,11 +427,24 @@ export default async function PublicInvoicePage({
           </Table.Root>
 
           <Flex direction="column" gap="1" align="end" mb="4">
+            {/* BALANCE DUE IS THE SOLE EMPHASIZED LINE. Bolding both Total
+                and Balance due on a partially paid invoice put two
+                equal-weight figures in front of a check-writer whose only
+                question is "what do I owe now" — Total now renders like
+                Subtotal/Tax/Paid, and Balance due's amount steps up one
+                type size beyond the shared `emphasize` bold (still tnum)
+                so it reads as the answer, not just as more bold text next
+                to bold text. */}
             <TotalsLine label="Subtotal" value={invoice.totals.subtotal_cents} />
             <TotalsLine label="Tax" value={invoice.totals.tax_cents} />
-            <TotalsLine label="Total" value={invoice.totals.total_cents} emphasize />
+            <TotalsLine label="Total" value={invoice.totals.total_cents} />
             <TotalsLine label="Paid" value={invoice.totals.amount_paid_cents} />
-            <TotalsLine label="Balance due" value={invoice.totals.balance_due_cents} emphasize />
+            <TotalsLine
+              label="Balance due"
+              value={invoice.totals.balance_due_cents}
+              emphasize
+              size="4"
+            />
           </Flex>
 
           {invoice.invoice.notes ? (
@@ -577,17 +590,22 @@ function TotalsLine({
   label,
   value,
   emphasize = false,
+  size,
 }: {
   label: string;
   value: number;
   emphasize?: boolean;
+  /** One extra step of size on the amount alone, layered on top of
+   *  `emphasize`'s bold — used only for Balance due, so the figure a
+   *  check-writer needs outranks the merely-bold ones around it. */
+  size?: string;
 }) {
   return (
     <Flex gap="4" minWidth="220px" justify="between">
       <Text color="gray" weight={emphasize ? "bold" : "regular"}>
         {label}
       </Text>
-      <Text weight={emphasize ? "bold" : "regular"} className="tnum">
+      <Text size={size} weight={emphasize ? "bold" : "regular"} className="tnum">
         {formatCents(value)}
       </Text>
     </Flex>
