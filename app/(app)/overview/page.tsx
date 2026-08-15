@@ -19,6 +19,12 @@ import { countOf } from "@/lib/supabase/rows";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import { formatCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+// Restored after the Phase-2 merge: PRs #61/#63 landed billToListLabel /
+// isInvoicedCounterparty call sites into this page in parallel with the
+// Ledger rewrite, and the rewrite's import block won the textual merge
+// while their usage lines stayed — main type-failed until these two lines.
+import { billToListLabel } from "@/lib/invoice-bill-to";
+import { isInvoicedCounterparty } from "@/lib/counterparty";
 import { EXPIRY_LADDER_BADGE, type ExpiryBadge, type ExpiryTone } from "../documents/expiry-badge";
 import {
   clientLabel,
