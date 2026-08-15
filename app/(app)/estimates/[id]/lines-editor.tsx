@@ -1,17 +1,9 @@
 "use client";
 
 import { useActionState, useEffect, useState, useTransition } from "react";
-import {
-  AlertDialog,
-  Box,
-  Button,
-  Checkbox,
-  Flex,
-  Select,
-  Table,
-  Text,
-  TextField,
-} from "@/components/ui";
+import { LButton, LTable, LTd, LTh } from "@/components/ledger";
+import { LConfirmDialog } from "@/components/ledger/dialog";
+import { LCheckbox, LInput, LSelect } from "@/components/ledger/forms";
 import { formatCents, centsToInput } from "@/lib/format";
 import {
   addEstimateLine,
@@ -49,24 +41,29 @@ export default function LinesEditor({
   editable: boolean;
 }) {
   if (lines.length === 0 && !editable) {
-    return <Text color="gray">No line items.</Text>;
+    return <p className="text-ink-2">No line items.</p>;
   }
 
   return (
-    <Box>
-      <Table.Root variant="ghost">
-        <Table.Header>
-          <Table.Row>
-            <Table.ColumnHeaderCell>Type</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell>Description</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell justify="end">Qty</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell justify="end">Unit</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell justify="end">Amount</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell>Taxable</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell />
-          </Table.Row>
-        </Table.Header>
-        <Table.Body>
+    <div>
+      <LTable>
+        <caption>
+          <span className="sr-only">Estimate lines</span>
+        </caption>
+        <thead>
+          <tr>
+            <LTh>Type</LTh>
+            <LTh>Description</LTh>
+            <LTh numeric>Qty</LTh>
+            <LTh numeric>Unit</LTh>
+            <LTh numeric>Amount</LTh>
+            <LTh>Taxable</LTh>
+            <LTh>
+              <span className="sr-only">Actions</span>
+            </LTh>
+          </tr>
+        </thead>
+        <tbody>
           {lines.map((line) =>
             editable ? (
               <EditableRow key={line.id} estimateId={estimateId} line={line} />
@@ -74,44 +71,36 @@ export default function LinesEditor({
               <ReadOnlyRow key={line.id} line={line} />
             )
           )}
-        </Table.Body>
-      </Table.Root>
+        </tbody>
+      </LTable>
 
       {editable ? (
-        <Box mt="5">
-          <Text weight="bold">Add a line</Text>
+        <div className="mt-5">
+          <p className="font-bold text-ink">Add a line</p>
           <AddLineForm estimateId={estimateId} />
-        </Box>
+        </div>
       ) : null}
-    </Box>
+    </div>
   );
 }
 
 function ReadOnlyRow({ line }: { line: EstimateLineRow }) {
   return (
-    <Table.Row>
-      <Table.Cell>
-        <Text color="gray">{ESTIMATE_LINE_TYPE_LABEL[line.line_type]}</Text>
-      </Table.Cell>
-      <Table.Cell>
-        <Text>{line.description}</Text>
-      </Table.Cell>
-      <Table.Cell justify="end">
-        <Text className="tnum">{line.quantity}</Text>
-      </Table.Cell>
-      <Table.Cell justify="end">
-        <Text className="tnum">{formatCents(line.unit_amount_cents)}</Text>
-      </Table.Cell>
-      <Table.Cell justify="end">
-        <Text weight="medium" className="tnum">
-          {formatCents(line.amount_cents)}
-        </Text>
-      </Table.Cell>
-      <Table.Cell>
-        <Text color="gray">{line.taxable ? "Yes" : "No"}</Text>
-      </Table.Cell>
-      <Table.Cell />
-    </Table.Row>
+    <tr>
+      <LTd>
+        <span className="text-ink-2">{ESTIMATE_LINE_TYPE_LABEL[line.line_type]}</span>
+      </LTd>
+      <LTd>{line.description}</LTd>
+      <LTd numeric>{line.quantity}</LTd>
+      <LTd numeric>{formatCents(line.unit_amount_cents)}</LTd>
+      <LTd numeric>
+        <span className="font-medium">{formatCents(line.amount_cents)}</span>
+      </LTd>
+      <LTd>
+        <span className="text-ink-2">{line.taxable ? "Yes" : "No"}</span>
+      </LTd>
+      <LTd />
+    </tr>
   );
 }
 
@@ -120,6 +109,7 @@ function EditableRow({ estimateId, line }: { estimateId: string; line: EstimateL
   const [state, formAction, pending] = useActionState(updateEstimateLine, initialLineState);
   const [deletePending, startDelete] = useTransition();
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   // A rejected submit must show and re-post what the pilot typed, not the
   // line's stored (pre-edit) values — React 19 resets an uncontrolled form
@@ -135,10 +125,11 @@ function EditableRow({ estimateId, line }: { estimateId: string; line: EstimateL
   // the same fallback or an unchecked box silently re-checks itself on the
   // error render.
   const taxableChecked = submitted ? submitted.taxable === "on" : line.taxable;
-  // Controlled + hidden input, not defaultChecked: Radix's Checkbox
-  // restores its FIRST-MOUNT checked value on the native form "reset"
-  // React 19 fires after every dispatch — see the invoice lines editor's
-  // comment for the full mechanism.
+  // Controlled + hidden input, not a native defaultChecked: the native
+  // form "reset" React 19 fires after every dispatch would otherwise
+  // restore the FIRST-MOUNT checked value — see the invoice lines editor's
+  // comment for the full mechanism (ported unchanged; only the checkbox's
+  // skin changed from Radix to LCheckbox).
   const [taxable, setTaxable] = useState(taxableChecked);
   useEffect(() => {
     setTaxable(taxableChecked);
@@ -147,164 +138,136 @@ function EditableRow({ estimateId, line }: { estimateId: string; line: EstimateL
 
   if (!editing) {
     return (
-      <Table.Row>
-        <Table.Cell>
-          <Text color="gray">{ESTIMATE_LINE_TYPE_LABEL[line.line_type]}</Text>
-        </Table.Cell>
-        <Table.Cell>
-          <Text>{line.description}</Text>
-        </Table.Cell>
-        <Table.Cell justify="end">
-          <Text className="tnum">{line.quantity}</Text>
-        </Table.Cell>
-        <Table.Cell justify="end">
-          <Text className="tnum">{formatCents(line.unit_amount_cents)}</Text>
-        </Table.Cell>
-        <Table.Cell justify="end">
-          <Text weight="medium" className="tnum">
-            {formatCents(line.amount_cents)}
-          </Text>
-        </Table.Cell>
-        <Table.Cell>
-          <Text color="gray">{line.taxable ? "Yes" : "No"}</Text>
-        </Table.Cell>
-        <Table.Cell justify="end">
-          <Flex gap="3" justify="end">
-            <Button
-              variant="ghost"
-              size="1"
+      <tr>
+        <LTd>
+          <span className="text-ink-2">{ESTIMATE_LINE_TYPE_LABEL[line.line_type]}</span>
+        </LTd>
+        <LTd>{line.description}</LTd>
+        <LTd numeric>{line.quantity}</LTd>
+        <LTd numeric>{formatCents(line.unit_amount_cents)}</LTd>
+        <LTd numeric>
+          <span className="font-medium">{formatCents(line.amount_cents)}</span>
+        </LTd>
+        <LTd>
+          <span className="text-ink-2">{line.taxable ? "Yes" : "No"}</span>
+        </LTd>
+        <LTd>
+          <div className="flex justify-end gap-3">
+            <LButton
+              type="button"
+              variant="quiet"
+              size="sm"
               aria-label={`Edit: ${line.description}`}
               onClick={() => setEditing(true)}
             >
               Edit
-            </Button>
-            <AlertDialog.Root>
-              <AlertDialog.Trigger>
-                <Button
-                  variant="ghost"
-                  color="red"
-                  size="1"
-                  disabled={deletePending}
-                  aria-label={`Remove: ${line.description}`}
-                >
-                  {deletePending ? "Removing…" : "Remove"}
-                </Button>
-              </AlertDialog.Trigger>
-              <AlertDialog.Content maxWidth="420px">
-                <AlertDialog.Title>Remove this line?</AlertDialog.Title>
-                <AlertDialog.Description size="2">
-                  This removes the line from the estimate. This can&rsquo;t be undone.
-                </AlertDialog.Description>
-                <Flex gap="3" mt="4" justify="end">
-                  <AlertDialog.Cancel>
-                    <Button variant="soft" color="gray">
-                      Cancel
-                    </Button>
-                  </AlertDialog.Cancel>
-                  <AlertDialog.Action>
-                    <Button
-                      variant="solid"
-                      color="red"
-                      onClick={() => {
-                        startDelete(async () => {
-                          const result = await deleteEstimateLine(line.id, estimateId);
-                          setDeleteError(result?.error ?? null);
-                        });
-                      }}
-                    >
-                      Remove
-                    </Button>
-                  </AlertDialog.Action>
-                </Flex>
-              </AlertDialog.Content>
-            </AlertDialog.Root>
-          </Flex>
+            </LButton>
+            <LButton
+              type="button"
+              variant="outline"
+              size="sm"
+              className="border-crit text-crit hover:bg-crit-soft"
+              disabled={deletePending}
+              aria-label={`Remove: ${line.description}`}
+              onClick={() => setConfirmOpen(true)}
+            >
+              {deletePending ? "Removing…" : "Remove"}
+            </LButton>
+            <LConfirmDialog
+              open={confirmOpen}
+              onOpenChange={setConfirmOpen}
+              title="Remove this line?"
+              description="This removes the line from the estimate. This can't be undone."
+              confirmLabel="Remove"
+              confirmVariant="danger"
+              onConfirm={() => {
+                setConfirmOpen(false);
+                startDelete(async () => {
+                  const result = await deleteEstimateLine(line.id, estimateId);
+                  setDeleteError(result?.error ?? null);
+                });
+              }}
+            />
+          </div>
           {deleteError ? (
-            <Text as="div" size="1" color="red" role="alert">
+            <p className="mt-1 text-caption text-crit" role="alert">
               {deleteError}
-            </Text>
+            </p>
           ) : null}
-        </Table.Cell>
-      </Table.Row>
+        </LTd>
+      </tr>
     );
   }
 
   return (
-    <Table.Row>
-      <Table.Cell colSpan={7}>
+    <tr>
+      <LTd colSpan={7}>
         <form action={formAction}>
-          <Flex gap="3" align="start" wrap="wrap">
+          <div className="flex flex-wrap items-start gap-3">
             <input type="hidden" name="id" value={line.id} />
             <input type="hidden" name="estimate_id" value={estimateId} />
-            <Box style={{ flex: "1 1 220px" }}>
-              <Text as="label" size="1" color="gray" htmlFor={`description-${line.id}`}>
+            <div className="min-w-56 flex-1">
+              <label htmlFor={`description-${line.id}`} className="text-caption text-ink-3">
                 Description
-              </Text>
-              <TextField.Root
+              </label>
+              <LInput
                 id={`description-${line.id}`}
                 name="description"
                 placeholder="Description"
                 defaultValue={echoed("description", line.description)}
-                size="2"
               />
-            </Box>
-            <Box style={{ width: "90px" }}>
-              <Text as="label" size="1" color="gray" htmlFor={`quantity-${line.id}`}>
+            </div>
+            <div className="w-24">
+              <label htmlFor={`quantity-${line.id}`} className="text-caption text-ink-3">
                 Qty
-              </Text>
-              <TextField.Root
+              </label>
+              <LInput
                 id={`quantity-${line.id}`}
                 name="quantity"
                 placeholder="Qty"
                 defaultValue={echoed("quantity", String(line.quantity))}
-                size="2"
               />
-            </Box>
-            <Box style={{ width: "120px" }}>
-              <Text as="label" size="1" color="gray" htmlFor={`unit_amount-${line.id}`}>
+            </div>
+            <div className="w-28">
+              <label htmlFor={`unit_amount-${line.id}`} className="text-caption text-ink-3">
                 Unit (USD)
-              </Text>
-              <TextField.Root
+              </label>
+              <LInput
                 id={`unit_amount-${line.id}`}
                 name="unit_amount"
                 placeholder="Unit (USD)"
                 defaultValue={echoed("unit_amount", centsToInput(line.unit_amount_cents))}
-                size="2"
               />
-            </Box>
-            <Flex align="center" gap="2" asChild>
-              <label>
-                <input type="hidden" name="taxable" value={taxable ? "on" : "off"} />
-                <Checkbox
-                  checked={taxable}
-                  onCheckedChange={(checked) => setTaxable(checked === true)}
-                />
-                <Text size="1">Taxable</Text>
-              </label>
-            </Flex>
-            <Flex gap="2">
-              <Button type="submit" size="2" disabled={pending}>
+            </div>
+            <label className="mt-6 flex items-center gap-2">
+              <input type="hidden" name="taxable" value={taxable ? "on" : "off"} />
+              <LCheckbox checked={taxable} onChange={(e) => setTaxable(e.target.checked)} />
+              <span className="text-caption text-ink">Taxable</span>
+            </label>
+            <div className="mt-6 flex gap-2">
+              {/* Outline, not filled — the detail page's one accent action
+                  is StatusActions' live CTA. */}
+              <LButton type="submit" variant="outline" size="sm" disabled={pending}>
                 {pending ? "Saving…" : "Save"}
-              </Button>
-              <Button
+              </LButton>
+              <LButton
                 type="button"
                 variant="outline"
-                color="gray"
-                size="2"
+                size="sm"
                 onClick={() => setEditing(false)}
               >
                 Cancel
-              </Button>
-            </Flex>
+              </LButton>
+            </div>
             {state.error ? (
-              <Text size="1" color="red" style={{ width: "100%" }} role="alert">
+              <p className="w-full text-caption text-crit" role="alert">
                 {state.error}
-              </Text>
+              </p>
             ) : null}
-          </Flex>
+          </div>
         </form>
-      </Table.Cell>
-    </Table.Row>
+      </LTd>
+    </tr>
   );
 }
 
@@ -319,9 +282,8 @@ function AddLineForm({ estimateId }: { estimateId: string }) {
     setTaxable(taxableChecked);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitted]);
-  // Same Select.Root uncontrolled-bubble-input issue as elsewhere: `name`
-  // dropped, real value posted from a controlled hidden input so a
-  // rejected add doesn't silently revert the line type.
+  // Controlled + a hidden input carries the posted value, same as every
+  // other Select in this product — see EditableRow's comment.
   const [lineType, setLineType] = useState(() =>
     submitted?.line_type !== undefined ? String(submitted.line_type) : "flight_day"
   );
@@ -332,79 +294,74 @@ function AddLineForm({ estimateId }: { estimateId: string }) {
 
   return (
     <form action={formAction}>
-      <Flex mt="2" gap="3" align="start" wrap="wrap">
+      <div className="mt-2 flex flex-wrap items-start gap-3">
         <input type="hidden" name="estimate_id" value={estimateId} />
-        <Box style={{ width: "170px" }}>
-          <Text as="label" size="1" color="gray" id="add-line-type-label">
+        <div className="w-44">
+          <label id="add-line-type-label" className="text-caption text-ink-3">
             Type
-          </Text>
-          <Select.Root value={lineType} onValueChange={setLineType}>
-            <Select.Trigger aria-labelledby="add-line-type-label" />
-            <Select.Content>
-              {ESTIMATE_LINE_TYPES.map((value) => (
-                <Select.Item key={value} value={value}>
-                  {ESTIMATE_LINE_TYPE_LABEL[value]}
-                </Select.Item>
-              ))}
-            </Select.Content>
-          </Select.Root>
+          </label>
+          <LSelect
+            aria-labelledby="add-line-type-label"
+            value={lineType}
+            onChange={(e) => setLineType(e.target.value)}
+          >
+            {ESTIMATE_LINE_TYPES.map((value) => (
+              <option key={value} value={value}>
+                {ESTIMATE_LINE_TYPE_LABEL[value]}
+              </option>
+            ))}
+          </LSelect>
           <input type="hidden" name="line_type" value={lineType} />
-        </Box>
-        <Box style={{ flex: "1 1 220px" }}>
-          <Text as="label" size="1" color="gray" htmlFor="add-line-description">
+        </div>
+        <div className="min-w-56 flex-1">
+          <label htmlFor="add-line-description" className="text-caption text-ink-3">
             Description
-          </Text>
-          <TextField.Root
+          </label>
+          <LInput
             id="add-line-description"
             name="description"
             placeholder="Description"
             defaultValue={submitted?.description !== undefined ? String(submitted.description) : ""}
-            size="2"
           />
-        </Box>
-        <Box style={{ width: "90px" }}>
-          <Text as="label" size="1" color="gray" htmlFor="add-line-quantity">
+        </div>
+        <div className="w-24">
+          <label htmlFor="add-line-quantity" className="text-caption text-ink-3">
             Qty
-          </Text>
-          <TextField.Root
+          </label>
+          <LInput
             id="add-line-quantity"
             name="quantity"
             placeholder="Qty"
             defaultValue={submitted?.quantity !== undefined ? String(submitted.quantity) : "1"}
-            size="2"
           />
-        </Box>
-        <Box style={{ width: "120px" }}>
-          <Text as="label" size="1" color="gray" htmlFor="add-line-unit-amount">
+        </div>
+        <div className="w-28">
+          <label htmlFor="add-line-unit-amount" className="text-caption text-ink-3">
             Unit (USD)
-          </Text>
-          <TextField.Root
+          </label>
+          <LInput
             id="add-line-unit-amount"
             name="unit_amount"
             placeholder="1500.00"
             defaultValue={submitted?.unit_amount !== undefined ? String(submitted.unit_amount) : ""}
-            size="2"
           />
-        </Box>
-        <Flex align="center" gap="2" asChild>
-          <label>
-            <input type="hidden" name="taxable" value={taxable ? "on" : "off"} />
-            <Checkbox
-              checked={taxable}
-              onCheckedChange={(checked) => setTaxable(checked === true)}
-            />
-            <Text size="1">Taxable</Text>
-          </label>
-        </Flex>
-        <Button type="submit" size="2" disabled={pending}>
+        </div>
+        <label className="mt-6 flex items-center gap-2">
+          <input type="hidden" name="taxable" value={taxable ? "on" : "off"} />
+          <LCheckbox checked={taxable} onChange={(e) => setTaxable(e.target.checked)} />
+          <span className="text-caption text-ink">Taxable</span>
+        </label>
+        {/* Outline, not filled — see the header comment on EditableRow's
+            Save button for why. */}
+        <LButton type="submit" variant="outline" size="sm" disabled={pending} className="mt-6">
           {pending ? "Adding…" : "Add line"}
-        </Button>
+        </LButton>
         {state.error ? (
-          <Text size="1" color="red" style={{ width: "100%" }} role="alert">
+          <p className="w-full text-caption text-crit" role="alert">
             {state.error}
-          </Text>
+          </p>
         ) : null}
-      </Flex>
+      </div>
     </form>
   );
 }

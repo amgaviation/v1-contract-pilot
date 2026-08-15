@@ -1,26 +1,17 @@
 import NextLink from "next/link";
 import { notFound } from "next/navigation";
-import {
-  Badge,
-  Callout,
-  Card,
-  Flex,
-  Grid,
-  Link as RadixLink,
-  Separator,
-  Text,
-} from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { LAlert, LCard, LPill, LSeparator } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import { YOU_INVOICE_COLUMN } from "@/lib/counterparty";
-import PageShell from "../../page-shell";
 import {
   ESTIMATE_STATUS_BADGE,
   ESTIMATE_STATUS_FALLBACK,
+  type EstimateBadge,
   type EstimateStatus,
 } from "../estimate-lib";
 import HeaderForm, { type ClientOption } from "./header-form";
@@ -50,6 +41,29 @@ type TotalsRow = {
   tax_cents: number;
   total_cents: number;
 };
+
+// The status/badge vocabulary is shared with the list screen (../page.tsx),
+// which carries the identical mapping under the identical comment —
+// duplicated rather than imported, same posture estimate-lib.ts's own
+// header documents for cross-agent-surface helpers this session. A
+// straight, restrained dictionary, the same one Overview's ladder uses:
+// red→crit, amber→warn, green→good, gray→neutral, blue→accent.
+function estimateBadgeTone(
+  color: EstimateBadge["color"]
+): "crit" | "warn" | "good" | "neutral" | "accent" {
+  switch (color) {
+    case "red":
+      return "crit";
+    case "amber":
+      return "warn";
+    case "green":
+      return "good";
+    case "blue":
+      return "accent";
+    default:
+      return "neutral";
+  }
+}
 
 export default async function EstimatePage({
   params,
@@ -146,84 +160,75 @@ export default async function EstimatePage({
   const expired = Boolean(expiredRow);
 
   return (
-    <PageShell
+    <LPageShell
       title={estimate.estimate_number ?? "Draft estimate"}
       subtitle={
-        <Flex align="center" gap="2" mt="1">
+        <div className="flex flex-wrap items-center gap-2">
           {expired ? (
-            <Badge color="amber">Expired</Badge>
+            <LPill tone="warn">Expired</LPill>
           ) : (
-            <Badge color={badge.color}>{badge.label}</Badge>
+            <LPill tone={estimateBadgeTone(badge.color)}>{badge.label}</LPill>
           )}
-          <Text color={expired ? "amber" : "gray"}>
+          <span className={expired ? "text-warn" : "text-ink-3"}>
             {estimate.issued_on ? `Sent ${formatDate(estimate.issued_on)}` : "Not yet sent"}
             {estimate.valid_until
               ? ` · Valid until ${formatDate(estimate.valid_until)}${expired ? " (passed)" : ""}`
               : ""}
-          </Text>
-        </Flex>
+          </span>
+        </div>
       }
     >
       {warning ? (
-        <Callout.Root color="amber" mb="4">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>{warning}</Callout.Text>
-        </Callout.Root>
+        <LAlert tone="warn" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+          <span>{warning}</span>
+        </LAlert>
       ) : null}
 
       {moneyError ? (
-        <Callout.Root color="red" mb="4">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>{friendlyDbError(moneyError, "estimates.detail")}</Callout.Text>
-        </Callout.Root>
+        <LAlert tone="crit" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+          <span>{friendlyDbError(moneyError, "estimates.detail")}</span>
+        </LAlert>
       ) : null}
 
       {converted ? (
-        <Callout.Root color="green" mb="4">
-          <Callout.Text>
-            This estimate became{" "}
-            <RadixLink asChild weight="medium">
-              <NextLink href={`/invoices/${estimate.converted_invoice_id}`}>
-                {convertedInvoiceNumber
-                  ? `invoice ${convertedInvoiceNumber}`
-                  : "a draft invoice"}
-              </NextLink>
-            </RadixLink>
-            {estimate.converted_at ? ` on ${formatDate(estimate.converted_at)}` : ""}. Its
-            figures are frozen here. Any changes happen on the invoice.
-          </Callout.Text>
-        </Callout.Root>
+        <LAlert tone="good">
+          This estimate became{" "}
+          <NextLink
+            href={`/invoices/${estimate.converted_invoice_id}`}
+            className="font-medium text-accent hover:underline"
+          >
+            {convertedInvoiceNumber ? `invoice ${convertedInvoiceNumber}` : "a draft invoice"}
+          </NextLink>
+          {estimate.converted_at ? ` on ${formatDate(estimate.converted_at)}` : ""}. Its
+          figures are frozen here. Any changes happen on the invoice.
+        </LAlert>
       ) : null}
 
-      <Grid columns={{ initial: "1", lg: "12" }} gap="4">
-        <Flex direction="column" gap="4" gridColumn={{ lg: "span 7" }}>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+        <div className="flex flex-col gap-4 lg:col-span-7">
           <HeaderForm estimate={estimate} clients={clients} locked={!draft} />
 
-          <Card size="3">
-            <Text as="div" size="4" weight="bold" mb="3">
-              Lines
-            </Text>
+          <LCard>
+            <p className="mb-3 text-lead font-bold text-ink">Lines</p>
             <LinesEditor estimateId={estimate.id} lines={lines} editable={draft} />
 
-            <Separator size="4" my="4" />
+            <LSeparator />
 
             {totalsError ? (
-              <Text color="red">{friendlyDbError(totalsError, "estimate_totals.select")}</Text>
+              <p className="text-crit">{friendlyDbError(totalsError, "estimate_totals.select")}</p>
             ) : (
-              <Flex direction="column" gap="1" align="end">
+              <div className="flex flex-col items-end gap-1">
                 <TotalsLine label="Subtotal" value={totals?.subtotal_cents ?? 0} />
                 <TotalsLine label="Tax" value={totals?.tax_cents ?? 0} />
                 <TotalsLine label="Total" value={totals?.total_cents ?? 0} emphasize />
-              </Flex>
+              </div>
             )}
-          </Card>
-        </Flex>
+          </LCard>
+        </div>
 
-        <Flex direction="column" gap="4" gridColumn={{ lg: "span 5" }}>
+        <div className="flex flex-col gap-4 lg:col-span-5">
           <StatusActions
             estimate={{
               id: estimate.id,
@@ -235,20 +240,18 @@ export default async function EstimatePage({
             expiredDays={expiredRow?.days_expired ?? null}
             clientName={clients.find((c) => c.id === estimate.client_id)?.name ?? "this client"}
           />
-          <Card size="3">
-            <Text as="div" size="2" weight="bold" mb="1">
-              What an estimate is
-            </Text>
-            <Text as="div" size="1" color="gray">
+          <LCard>
+            <p className="mb-1 text-body-s font-semibold text-ink">What an estimate is</p>
+            <p className="text-caption text-ink-3">
               A quote, not an invoice: it isn&rsquo;t a financial record, no payment
               can be recorded against it, and it doesn&rsquo;t appear in tax reports.
               When the client accepts, converting it creates a draft invoice you
               still review and send.
-            </Text>
-          </Card>
-        </Flex>
-      </Grid>
-    </PageShell>
+            </p>
+          </LCard>
+        </div>
+      </div>
+    </LPageShell>
   );
 }
 
@@ -262,13 +265,32 @@ function TotalsLine({
   emphasize?: boolean;
 }) {
   return (
-    <Flex gap="4" minWidth="220px" justify="between">
-      <Text color="gray" weight={emphasize ? "bold" : "regular"}>
-        {label}
-      </Text>
-      <Text weight={emphasize ? "bold" : "regular"} className="tnum">
-        {formatCents(value)}
-      </Text>
-    </Flex>
+    <div className="flex min-w-56 justify-between gap-4">
+      <span className={emphasize ? "font-bold text-ink-2" : "text-ink-2"}>{label}</span>
+      <span className={emphasize ? "tnum-l font-bold" : "tnum-l"}>{formatCents(value)}</span>
+    </div>
+  );
+}
+
+/* Local inline icon — same posture as overview/page.tsx's own header rule
+   and ../page.tsx's copy of it: Ledger screens carry no icon dependency. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

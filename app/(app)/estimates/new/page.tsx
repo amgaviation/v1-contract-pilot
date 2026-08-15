@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { YOU_INVOICE_COLUMN } from "@/lib/counterparty";
-import PageShell from "../../page-shell";
+import { LPageShell } from "@/components/ledger/page-shell";
 import { createEstimateDraft } from "../actions";
 import NewEstimateForm, { type ClientOption } from "./new-form";
 
@@ -33,11 +33,11 @@ export default async function NewEstimatePage() {
   const clients = (clientData ?? []) as ClientOption[];
 
   return (
-    <PageShell
+    <LPageShell
       title="New estimate"
       subtitle="Quote the work before it's flown: day rates, travel days, per diem. It stays a draft until you send it."
     >
       <NewEstimateForm action={createEstimateDraft} clients={clients} />
-    </PageShell>
+    </LPageShell>
   );
 }

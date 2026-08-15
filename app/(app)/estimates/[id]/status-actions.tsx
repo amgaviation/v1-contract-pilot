@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { AlertDialog, Box, Button, Card, Flex, Text } from "@/components/ui";
+import { LButton, LCard } from "@/components/ledger";
+import { LConfirmDialog } from "@/components/ledger/dialog";
 import {
   convertEstimateToInvoice,
   deleteEstimateDraft,
@@ -29,6 +30,16 @@ type EstimateForActions = {
  * Conversion is not a transition: an accepted estimate stays accepted and
  * pilot.estimate_convert_to_invoice stamps converted_invoice_id, after
  * which the whole quote is frozen.
+ *
+ * THE PAGE'S ONE FILLED ACCENT ACTION lives here: whichever of "Mark as
+ * sent" / "Mark accepted" / "Convert to invoice" is live for the current
+ * status — the workflow-progressing move the detail screen exists to
+ * drive, same reasoning as Overview reserving its fill for the screen's
+ * headline action. The transition table above already keeps these
+ * mutually exclusive by status, one filled button per render; every other
+ * button on the detail page (header Save, line Save/Add, Email, Create
+ * link) is outline, and every destructive one (Mark declined, Delete
+ * draft) is outline tinted crit rather than filled.
  */
 export default function StatusActions({
   estimate,
@@ -45,6 +56,9 @@ export default function StatusActions({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [sendConfirmOpen, setSendConfirmOpen] = useState(false);
+  const [convertConfirmOpen, setConvertConfirmOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const converted = estimate.converted_invoice_id !== null;
 
@@ -62,15 +76,13 @@ export default function StatusActions({
   // links to the invoice, which is where changes happen now.
   if (converted) {
     return (
-      <Card size="3">
-        <Text as="div" size="4" weight="bold" mb="2">
-          Status
-        </Text>
-        <Text as="div" size="2" color="gray">
+      <LCard>
+        <p className="mb-2 text-lead font-bold text-ink">Status</p>
+        <p className="text-body-s text-ink-2">
           Accepted and converted to an invoice. This estimate is frozen. Its
           figures are the basis of that document.
-        </Text>
-      </Card>
+        </p>
+      </LCard>
     );
   }
 
@@ -85,210 +97,189 @@ export default function StatusActions({
   const canDelete = estimate.status === "draft" && estimate.estimate_number === null;
 
   return (
-    <Card size="3">
-      <Text as="div" size="4" weight="bold" mb="2">
-        Status
-      </Text>
+    <LCard>
+      <p className="mb-2 text-lead font-bold text-ink">Status</p>
 
       {expiredDays !== null ? (
-        <Text as="div" size="1" color="amber" mb="3">
+        <p className="mb-3 text-caption text-warn">
           The valid-until date passed {expiredDays === 1 ? "1 day" : `${expiredDays} days`} ago.
           The quoted price no longer stands on its own. Revise and re-send it,
           or record the client&rsquo;s answer if they gave one in time.
-        </Text>
+        </p>
       ) : null}
 
       {canSend ? (
-        <Box mb="4">
+        <div className="mb-4">
           {estimate.status === "draft" ? (
             <>
               {!hasLines ? (
                 // Visible, not a title= on a disabled button — a disabled
                 // button is not focusable, so a tooltip there is silent to
                 // keyboards and assistive tech.
-                <Text as="div" size="1" color="gray" mb="2">
+                <p className="mb-2 text-caption text-ink-3">
                   Add at least one line before sending. A quote with nothing on
                   it totals $0.00.
-                </Text>
+                </p>
               ) : null}
-              <AlertDialog.Root>
-                <AlertDialog.Trigger>
-                  <Button disabled={pending || !hasLines} style={{ width: "100%" }}>
-                    {pending ? "Working…" : "Mark as sent"}
-                  </Button>
-                </AlertDialog.Trigger>
-                <AlertDialog.Content maxWidth="420px">
-                  <AlertDialog.Title>Mark this estimate as sent?</AlertDialog.Title>
-                  <AlertDialog.Description size="2">
-                    {estimate.estimate_number
-                      ? `It keeps its number ${estimate.estimate_number} and moves back to Sent, waiting on ${clientName}'s answer.`
-                      : `It gets its permanent estimate number and today's date. Nothing is emailed from here. You send the quote to ${clientName} yourself. You can still revise and re-send it afterwards.`}
-                  </AlertDialog.Description>
-                  <Flex gap="3" mt="4" justify="end">
-                    <AlertDialog.Cancel>
-                      <Button variant="soft" color="gray">
-                        Cancel
-                      </Button>
-                    </AlertDialog.Cancel>
-                    <AlertDialog.Action>
-                      <Button variant="solid" onClick={() => run(markEstimateSent)}>
-                        Mark as sent
-                      </Button>
-                    </AlertDialog.Action>
-                  </Flex>
-                </AlertDialog.Content>
-              </AlertDialog.Root>
+              <LButton
+                className="w-full"
+                disabled={pending || !hasLines}
+                onClick={() => setSendConfirmOpen(true)}
+              >
+                {pending ? "Working…" : "Mark as sent"}
+              </LButton>
+              <LConfirmDialog
+                open={sendConfirmOpen}
+                onOpenChange={setSendConfirmOpen}
+                title="Mark this estimate as sent?"
+                description={
+                  estimate.estimate_number
+                    ? `It keeps its number ${estimate.estimate_number} and moves back to Sent, waiting on ${clientName}'s answer.`
+                    : `It gets its permanent estimate number and today's date. Nothing is emailed from here. You send the quote to ${clientName} yourself. You can still revise and re-send it afterwards.`
+                }
+                confirmLabel="Mark as sent"
+                confirmVariant="primary"
+                onConfirm={() => {
+                  setSendConfirmOpen(false);
+                  run(markEstimateSent);
+                }}
+              />
             </>
           ) : (
             // declined -> sent: the client said no, the conversation
             // reopened. Number and record survive.
-            <Button
+            <LButton
               variant="outline"
-              style={{ width: "100%" }}
+              className="w-full"
               disabled={pending}
               onClick={() => run(markEstimateSent, "Back out as a live quote.")}
             >
               {pending ? "Working…" : "Send it again"}
-            </Button>
+            </LButton>
           )}
-        </Box>
+        </div>
       ) : null}
 
       {canAccept || canDecline ? (
-        <Box mb="4">
-          <Text as="div" size="1" color="gray" mb="2">
-            Record {clientName}&rsquo;s answer:
-          </Text>
-          <Flex gap="2" direction="column">
+        <div className="mb-4">
+          <p className="mb-2 text-caption text-ink-3">Record {clientName}&rsquo;s answer:</p>
+          <div className="flex flex-col gap-2">
             {canAccept ? (
-              <Button
-                disabled={pending}
-                onClick={() => run(markEstimateAccepted, "Marked accepted.")}
-              >
+              <LButton disabled={pending} onClick={() => run(markEstimateAccepted, "Marked accepted.")}>
                 {pending ? "Working…" : "Mark accepted"}
-              </Button>
+              </LButton>
             ) : null}
             {canDecline ? (
-              <Button
+              <LButton
                 variant="outline"
-                color="red"
+                className="border-crit text-crit hover:bg-crit-soft"
                 disabled={pending}
                 onClick={() => run(markEstimateDeclined, "Marked declined.")}
               >
                 {pending ? "Working…" : "Mark declined"}
-              </Button>
+              </LButton>
             ) : null}
-          </Flex>
-        </Box>
+          </div>
+        </div>
       ) : null}
 
       {canRevise ? (
-        <Box mb="4">
-          <Button
+        <div className="mb-4">
+          <LButton
             variant="outline"
-            style={{ width: "100%" }}
+            className="w-full"
             disabled={pending}
             onClick={() => run(reviseEstimate, "Back in draft. Edit and re-send.")}
           >
             {pending ? "Working…" : "Revise"}
-          </Button>
-          <Text as="div" size="1" color="gray" mt="2">
+          </LButton>
+          <p className="mt-2 text-caption text-ink-3">
             Takes it back to draft to change lines or terms, then re-send. It
             keeps its number.
-          </Text>
-        </Box>
+          </p>
+        </div>
       ) : null}
 
       {canConvert ? (
-        <Box mb="4">
+        <div className="mb-4">
           {!hasLines ? (
-            <Text as="div" size="1" color="gray" mb="2">
+            <p className="mb-2 text-caption text-ink-3">
               This estimate has no lines, so there&rsquo;s nothing to put on an
               invoice.
-            </Text>
+            </p>
           ) : null}
-          <AlertDialog.Root>
-            <AlertDialog.Trigger>
-              <Button disabled={pending || !hasLines} style={{ width: "100%" }}>
-                {pending ? "Converting…" : "Convert to invoice"}
-              </Button>
-            </AlertDialog.Trigger>
-            <AlertDialog.Content maxWidth="420px">
-              <AlertDialog.Title>Convert this estimate to an invoice?</AlertDialog.Title>
-              <AlertDialog.Description size="2">
+          <LButton
+            className="w-full"
+            disabled={pending || !hasLines}
+            onClick={() => setConvertConfirmOpen(true)}
+          >
+            {pending ? "Converting…" : "Convert to invoice"}
+          </LButton>
+          <LConfirmDialog
+            open={convertConfirmOpen}
+            onOpenChange={setConvertConfirmOpen}
+            title="Convert this estimate to an invoice?"
+            description={
+              <>
                 Creates a draft invoice carrying every line and the tax rate as
                 quoted. You still review and send that invoice; nothing goes to{" "}
                 {clientName} now. Afterwards this estimate is frozen and can&rsquo;t
                 convert a second time.
-              </AlertDialog.Description>
-              <Flex gap="3" mt="4" justify="end">
-                <AlertDialog.Cancel>
-                  <Button variant="soft" color="gray">
-                    Cancel
-                  </Button>
-                </AlertDialog.Cancel>
-                <AlertDialog.Action>
-                  <Button variant="solid" onClick={() => run(convertEstimateToInvoice)}>
-                    Convert
-                  </Button>
-                </AlertDialog.Action>
-              </Flex>
-            </AlertDialog.Content>
-          </AlertDialog.Root>
-        </Box>
+              </>
+            }
+            confirmLabel="Convert"
+            confirmVariant="primary"
+            onConfirm={() => {
+              setConvertConfirmOpen(false);
+              run(convertEstimateToInvoice);
+            }}
+          />
+        </div>
       ) : null}
 
       {canDelete ? (
-        <AlertDialog.Root>
-          <AlertDialog.Trigger>
-            <Button variant="outline" color="red" style={{ width: "100%" }} disabled={pending}>
-              {pending ? "Working…" : "Delete draft"}
-            </Button>
-          </AlertDialog.Trigger>
-          <AlertDialog.Content maxWidth="420px">
-            <AlertDialog.Title>Delete this draft estimate?</AlertDialog.Title>
-            <AlertDialog.Description size="2">
-              It was never sent, so nothing references it. This can&rsquo;t be
-              undone.
-            </AlertDialog.Description>
-            <Flex gap="3" mt="4" justify="end">
-              <AlertDialog.Cancel>
-                <Button variant="soft" color="gray">
-                  Cancel
-                </Button>
-              </AlertDialog.Cancel>
-              <AlertDialog.Action>
-                <Button variant="solid" color="red" onClick={() => run(deleteEstimateDraft)}>
-                  Delete draft
-                </Button>
-              </AlertDialog.Action>
-            </Flex>
-          </AlertDialog.Content>
-        </AlertDialog.Root>
+        <>
+          <LButton
+            variant="outline"
+            className="w-full border-crit text-crit hover:bg-crit-soft"
+            disabled={pending}
+            onClick={() => setDeleteConfirmOpen(true)}
+          >
+            {pending ? "Working…" : "Delete draft"}
+          </LButton>
+          <LConfirmDialog
+            open={deleteConfirmOpen}
+            onOpenChange={setDeleteConfirmOpen}
+            title="Delete this draft estimate?"
+            description="It was never sent, so nothing references it. This can't be undone."
+            confirmLabel="Delete draft"
+            confirmVariant="danger"
+            onConfirm={() => {
+              setDeleteConfirmOpen(false);
+              run(deleteEstimateDraft);
+            }}
+          />
+        </>
       ) : null}
 
       {estimate.status === "draft" && estimate.estimate_number !== null ? (
-        <Text as="div" size="1" color="gray" mt="3">
+        <p className="mt-3 text-caption text-ink-3">
           This estimate has been sent before, so it keeps its number and its
           record. It can&rsquo;t be deleted, only revised and re-sent.
-        </Text>
+        </p>
       ) : null}
 
       {error ? (
-        <Box mt="3" role="alert">
-          <Text size="1" color="red">
-            {error}
-          </Text>
-        </Box>
+        <div className="mt-3" role="alert">
+          <p className="text-caption text-crit">{error}</p>
+        </div>
       ) : null}
 
       {note ? (
-        <Box mt="3" role="status">
-          <Text size="1" color="green">
-            {note}
-          </Text>
-        </Box>
+        <div className="mt-3" role="status">
+          <p className="text-caption text-good">{note}</p>
+        </div>
       ) : null}
-    </Card>
+    </LCard>
   );
 }
