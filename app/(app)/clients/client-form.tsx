@@ -17,6 +17,7 @@ import {
   TextField,
 } from "@/components/ui";
 import { centsToInput } from "@/lib/format";
+import { COUNTERPARTY_COPY } from "@/lib/counterparty";
 import { CLIENT_OPERATING_RULES } from "@/lib/operating-rule";
 import {
   REMINDER_AFTER_DAYS,
@@ -58,6 +59,11 @@ export type ClientFormValues = {
   late_fee_bps_per_month?: number | null;
   late_fee_grace_days?: number | null;
   late_fee_note_on_reminders?: boolean | null;
+  /**
+   * 20260815120000. Absent (a brand new client) reads as TRUE, matching
+   * the column default. Only an explicit false is "you do not bill them".
+   */
+  you_invoice?: boolean | null;
 };
 
 const LATE_FEE_KINDS = [
@@ -184,6 +190,9 @@ export default function ClientForm({
     if (submitted?.late_fee_note_on_reminders !== undefined) {
       setLateFeeNote(submitted.late_fee_note_on_reminders === "1");
     }
+    if (submitted?.you_invoice !== undefined) {
+      setYouInvoice(submitted.you_invoice === "1");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitted]);
   const expenseTreatmentId = useId();
@@ -226,6 +235,18 @@ export default function ClientForm({
   const [lateFeeNote, setLateFeeNote] = useState<boolean>(
     () => initialFlag("late_fee_note_on_reminders", values.late_fee_note_on_reminders)
   );
+
+  // you_invoice defaults ON, which is why it cannot use initialFlag: that
+  // helper reads an absent stored value as false, correct for the reminder
+  // and late-fee flags (a client has no chase schedule until a pilot sets
+  // one) and wrong here. A NEW client is one you bill unless the pilot
+  // says otherwise, matching the column's own `not null default true`, so
+  // only an explicit stored `false` turns it off.
+  const [youInvoice, setYouInvoice] = useState<boolean>(() => {
+    const echoed = submitted?.you_invoice;
+    if (echoed !== undefined) return echoed === "1";
+    return values.you_invoice !== false;
+  });
 
   function initialDays(key: string, stored: number[] | null | undefined): number[] {
     const echoed = submitted?.[key];
@@ -514,6 +535,27 @@ export default function ClientForm({
               Notes
             </Text>
             <TextArea id="notes" name="notes" rows={3} defaultValue={initial("notes", values.notes)} />
+          </Flex>
+          {/* 20260815120000. Sits in the rate agreement block because that
+              is the block about money, and this is the switch that says
+              whether there is any. Posted through a controlled hidden
+              input for the same React 19 reason every other control on
+              this form is: an uncontrolled checkbox loses its state on
+              every action dispatch, the rejected one included. */}
+          <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
+            <Text as="label" size="2" weight="medium">
+              <Flex align="center" gap="2">
+                <Checkbox
+                  checked={youInvoice}
+                  onCheckedChange={(value) => setYouInvoice(value === true)}
+                />
+                {COUNTERPARTY_COPY.toggleLabel}
+              </Flex>
+            </Text>
+            <input type="hidden" name="you_invoice" value={youInvoice ? "1" : ""} />
+            <Text size="1" color="gray">
+              {COUNTERPARTY_COPY.toggleHelp}
+            </Text>
           </Flex>
         </Grid>
 

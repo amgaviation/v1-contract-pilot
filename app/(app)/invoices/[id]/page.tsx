@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { isLiveMode } from "@/lib/stripe/server";
 import { formatCents, formatDate } from "@/lib/format";
+import { YOU_INVOICE_COLUMN } from "@/lib/counterparty";
 import { friendlyDbError } from "@/lib/db-errors";
 import { emailIsConfigured, looksLikeEmail } from "@/lib/email/send";
 import { loadPreferences } from "@/lib/preferences";
@@ -125,9 +126,15 @@ export default async function InvoicePage({
     // actually prefers when it looks like a real one — this screen has to
     // resolve the SAME preference or "Goes to {email}" would name an
     // address the send does not use.
+    // 20260815120000: this list backs the header form's client picker, so
+    // it offers only counterparties the pilot bills. An invoice cannot
+    // lose its own current selection this way, because a client with any
+    // invoice is refused the flag in the first place
+    // (pilot.clients_refuse_stop_invoicing()).
     supabase
       .from("clients")
       .select("id, name, contact_email, billing_email")
+      .eq(YOU_INVOICE_COLUMN, true)
       .order("name", { ascending: true }),
     // A share row is best-effort read: its own error is not folded into
     // moneyError below, because a failed read here degrades to "no share

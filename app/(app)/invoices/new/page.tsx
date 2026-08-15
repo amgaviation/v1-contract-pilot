@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { friendlyDbError } from "@/lib/db-errors";
 import { countOf } from "@/lib/supabase/rows";
+import { YOU_INVOICE_COLUMN } from "@/lib/counterparty";
 import { tripValueCents, type TripDayValueRow } from "@/lib/trip-value";
 import PageShell from "../../page-shell";
 import { createInvoiceDraft } from "../actions";
@@ -21,10 +22,17 @@ export default async function NewInvoicePage({
 
   // Archived clients are excluded — same rule as the trip form: archiving
   // is about what shows up in new work, not history.
+  //
+  // So are counterparties the pilot does not invoice (20260815120000): an
+  // operator whose indoc and 135 checks they hold with no billing
+  // relationship. pilot.refuse_billing_a_non_invoiced_client() refuses the
+  // insert anyway, so this filter is what keeps the picker from offering a
+  // choice the database will reject rather than being the boundary itself.
   const { data: clientData, error: clientsError } = await supabase
     .from("clients")
     .select("id, name")
     .is("archived_at", null)
+    .eq(YOU_INVOICE_COLUMN, true)
     .order("name", { ascending: true });
 
   if (clientsError) {
@@ -32,6 +40,23 @@ export default async function NewInvoicePage({
   }
 
   const clients = (clientData ?? []) as ClientOption[];
+
+  // THE PRESELECTED CLIENT HAS TO SURVIVE THE SAME FILTER THE PICKER DID.
+  //
+  // `?client=` arrives from first-party links, chiefly the bill-this-trip
+  // CTAs on a trip page. A trip can belong to an operator the pilot does
+  // not invoice, so those links can name a client this picker just removed.
+  // Left unchecked the id stayed in the hidden input and in the trip
+  // queries below, so the page loaded that operator's trips, offered them,
+  // and posted the id on submit, where the only thing standing in the way
+  // was pilot.refuse_billing_a_non_invoiced_client() and the generic save
+  // error it surfaces.
+  //
+  // Dropping it here means the form opens with no client chosen, which is
+  // the same state as arriving with no parameter at all, and the pilot
+  // picks from the list of people they actually bill.
+  const preselectedClientId =
+    clientId && clients.some((c) => c.id === clientId) ? clientId : undefined;
 
   let trips: TripOption[] = [];
   let tripsErrorMessage: string | null = null;
@@ -43,7 +68,7 @@ export default async function NewInvoicePage({
   // assert "no completed, unbilled trips" instead of admitting it doesn't
   // know.
   let unmarkedTripCountFailed = false;
-  if (clientId) {
+  if (preselectedClientId) {
     // Only what's actually billable: unbilled AND completed. A scheduled
     // or in-progress trip's day count/expenses aren't final yet, so
     // drafting from one would bake in numbers that are still moving.
@@ -57,7 +82,7 @@ export default async function NewInvoicePage({
         .select(
           "id, starts_on, ends_on, aircraft_ident, day_rate_cents, day_count, travel_day_count, travel_day_rate_cents"
         )
-        .eq("client_id", clientId)
+        .eq("client_id", preselectedClientId)
         .eq("billing_state", "unbilled")
         .eq("status", "completed")
         .order("starts_on", { ascending: true }),
@@ -73,7 +98,7 @@ export default async function NewInvoicePage({
       supabase
         .from("trips")
         .select("id", { count: "exact", head: true })
-        .eq("client_id", clientId)
+        .eq("client_id", preselectedClientId)
         .in("status", ["scheduled", "in_progress"]),
     ]);
 
@@ -245,7 +270,7 @@ export default async function NewInvoicePage({
       <DraftForm
         action={createInvoiceDraft}
         clients={clients}
-        selectedClientId={clientId ?? ""}
+        selectedClientId={preselectedClientId ?? ""}
         trips={trips}
         tripsError={tripsErrorMessage}
         unmarkedTripCount={unmarkedTripCount ?? 0}
