@@ -2,13 +2,10 @@
 
 import { useActionState, useState } from "react";
 import NextLink from "next/link";
-import { CheckCircledIcon } from "@radix-ui/react-icons";
 import {
   Box,
-  Button,
   Flex,
   Grid,
-  Heading,
   Link,
   SegmentedControl,
   Text,
@@ -52,27 +49,10 @@ export default function SignUpForm({ trialDays }: { trialDays: number }) {
   const [homeBase, setHomeBase] = useState("");
   const [accountKind, setAccountKind] = useState("solo");
 
-  if (state.needsConfirmation) {
-    return (
-      <Flex direction="column" gap="5">
-        <Flex direction="column" gap="3" align="start">
-          <Text color="indigo" aria-hidden>
-            <CheckCircledIcon width="32" height="32" />
-          </Text>
-          <Heading as="h1" size="7" trim="start">
-            Check your email
-          </Heading>
-          <Text as="p" size="2" color="gray">
-            Click the confirmation link we just sent, then sign in to start
-            your trial.
-          </Text>
-        </Flex>
-        <Button asChild size="3" style={{ width: "100%" }}>
-          <NextLink href="/login">Go to sign in</NextLink>
-        </Button>
-      </Flex>
-    );
-  }
+  // The "check your email" state used to be rendered here, inline. It is a
+  // page now (/check-email): the address it names comes from an httpOnly
+  // cookie this component could not have held, and the state survives a
+  // reload, which an action state does not. signUp redirects there.
 
   return (
     <Flex direction="column" gap="6">
