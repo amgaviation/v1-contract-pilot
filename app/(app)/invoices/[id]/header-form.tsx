@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { Button, Card, Flex, Grid, Text, TextField } from "@/components/ui";
+import { LButton, LCard } from "@/components/ledger";
+import { LField, LInput } from "@/components/ledger/forms";
 import { formatDate } from "@/lib/format";
 import { updateInvoiceHeader, updateInvoiceNotes, type InvoiceFormState } from "../actions";
 import BillToFields, {
@@ -100,15 +101,15 @@ function DraftHeader({
     return stored === null || stored === undefined ? fallback : String(stored);
   };
 
-  // Radix's Select.Root always renders its posting <select> with
-  // `defaultValue`, never `value` (@radix-ui/react-select's
-  // SelectBubbleInput) — so it's uncontrolled from React's point of view
-  // no matter what Select.Root is given, and it's what the browser
-  // actually posts when `name` stays on it. React 19's post-action
-  // form.reset() restores it to its mount-time option even on a rejected
-  // submit, silently reassigning the invoice to the wrong client. Fixed
-  // by dropping `name` and posting the real value from a controlled
-  // hidden input instead. BillToFields keeps that shape.
+  // BillToFields' own picker is a native, fully-controlled LSelect — no
+  // `name` on the visible control at all, only on the hidden `client_id`/
+  // `bill_to_mode` inputs it derives from `selection` — so this parent
+  // still has to own that state and re-seed it on a rejected submit.
+  // Without it, the native <select> would still participate directly in
+  // the browser's own form "reset" event React 19 fires after every action
+  // dispatch (including a rejected one), which restores whichever option
+  // was selected at mount rather than the live value, silently
+  // reassigning the invoice to the wrong client.
   const [selection, setSelection] = useState(() =>
     submitted?.bill_to_mode === "typed"
       ? TYPED_VALUE
@@ -144,14 +145,12 @@ function DraftHeader({
   }, [submitted]);
 
   return (
-    <Card size="3">
+    <LCard>
       <form action={formAction}>
         <input type="hidden" name="id" value={invoice.id} />
-        <Text as="div" size="4" weight="bold" mb="3">
-          Billing details
-        </Text>
-        <Grid columns={{ initial: "1", md: "12" }} gap="3">
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 12" }}>
+        <div className="mb-3 text-h3 font-semibold">Billing details</div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+          <div className="flex flex-col gap-1 md:col-span-12">
             <BillToFields
               clients={clients}
               selection={selection}
@@ -161,78 +160,70 @@ function DraftHeader({
                 setBillTo((prev) => ({ ...prev, [field]: next }))
               }
             />
-          </Flex>
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
-            <Text as="label" size="2" weight="medium" htmlFor="issued_on">
-              Issue date
-            </Text>
-            <TextField.Root
-              id="issued_on"
-              type="date"
-              name="issued_on"
-              defaultValue={initial("issued_on", invoice.issued_on)}
-            />
-            <Text size="1" color="gray">
-              Defaults to today when sent
-            </Text>
-          </Flex>
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
-            <Text as="label" size="2" weight="medium" htmlFor="due_on">
-              Due date
-            </Text>
-            <TextField.Root
-              id="due_on"
-              type="date"
-              name="due_on"
-              defaultValue={initial("due_on", invoice.due_on)}
-            />
-            <Text size="1" color="gray">
-              {selection === TYPED_VALUE
-                ? "Defaults from your own terms in Settings, or 30 days"
-                : "Defaults from the client\u2019s terms"}
-            </Text>
-          </Flex>
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 4" }}>
-            <Text as="label" size="2" weight="medium" htmlFor="tax_rate_percent">
-              Tax rate (%)
-            </Text>
-            <TextField.Root
-              id="tax_rate_percent"
-              name="tax_rate_percent"
-              inputMode="decimal"
-              defaultValue={initial(
-                "tax_rate_percent",
-                (invoice.tax_rate_bps / 100).toString()
-              )}
-            />
-          </Flex>
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 8" }}>
-            <Text as="label" size="2" weight="medium" htmlFor="notes">
-              Notes
-            </Text>
-            <TextField.Root id="notes" name="notes" defaultValue={initial("notes", invoice.notes)} />
-          </Flex>
-        </Grid>
+          </div>
+          <div className="md:col-span-3">
+            <LField label="Issue date" htmlFor="issued_on" hint="Defaults to today when sent">
+              <LInput
+                id="issued_on"
+                type="date"
+                name="issued_on"
+                defaultValue={initial("issued_on", invoice.issued_on)}
+              />
+            </LField>
+          </div>
+          <div className="md:col-span-3">
+            <LField
+              label="Due date"
+              htmlFor="due_on"
+              hint={
+                selection === TYPED_VALUE
+                  ? "Defaults from your own terms in Settings, or 30 days"
+                  : "Defaults from the client’s terms"
+              }
+            >
+              <LInput
+                id="due_on"
+                type="date"
+                name="due_on"
+                defaultValue={initial("due_on", invoice.due_on)}
+              />
+            </LField>
+          </div>
+          <div className="md:col-span-4">
+            <LField label="Tax rate (%)" htmlFor="tax_rate_percent">
+              <LInput
+                id="tax_rate_percent"
+                name="tax_rate_percent"
+                inputMode="decimal"
+                defaultValue={initial(
+                  "tax_rate_percent",
+                  (invoice.tax_rate_bps / 100).toString()
+                )}
+              />
+            </LField>
+          </div>
+          <div className="md:col-span-8">
+            <LField label="Notes" htmlFor="notes">
+              <LInput id="notes" name="notes" defaultValue={initial("notes", invoice.notes)} />
+            </LField>
+          </div>
+        </div>
 
-        <Flex mt="3" role="alert" aria-live="polite">
+        <div className="mt-3" role="alert" aria-live="polite">
           {state.error ? (
-            <Text size="1" color="red">
-              {state.error}
-            </Text>
+            <p className="text-caption font-medium text-crit">{state.error}</p>
           ) : state.saved ? (
-            <Text size="1" color="green">
-              Saved.
-            </Text>
+            <p className="text-caption font-medium text-good">Saved.</p>
           ) : null}
-        </Flex>
+        </div>
 
-        <Flex mt="3">
-          <Button type="submit" disabled={pending}>
+        <div className="mt-3">
+          <LButton type="submit" variant="outline" disabled={pending}>
             {pending ? "Saving…" : "Save details"}
-          </Button>
-        </Flex>
+          </LButton>
+        </div>
       </form>
-    </Card>
+    </LCard>
   );
 }
 
@@ -262,64 +253,50 @@ function LockedHeader({
   const typedLines = typed ? billToLines(invoice) : [];
 
   return (
-    <Card size="3">
-      <Text as="div" size="4" weight="bold" mb="3">
-        Billing details
-      </Text>
-      <Grid columns={{ initial: "1", md: "12" }} gap="3">
-        <Flex direction="column" gap="1" gridColumn={{ md: "span 6" }}>
-          <Text size="1" color="gray">
-            Bill to
-          </Text>
-          <Text weight="medium">{clientName}</Text>
+    <LCard>
+      <div className="mb-3 text-h3 font-semibold">Billing details</div>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+        <div className="flex flex-col gap-1 md:col-span-6">
+          <span className="text-caption text-ink-3">Bill to</span>
+          <span className="font-medium">{clientName}</span>
           {typedLines.map((line) => (
-            <Text key={line} size="1" color="gray">
+            <span key={line} className="text-caption text-ink-3">
               {line}
-            </Text>
+            </span>
           ))}
-        </Flex>
-        <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
-          <Text size="1" color="gray">
-            Issued
-          </Text>
-          <Text weight="medium">{formatDate(invoice.issued_on)}</Text>
-        </Flex>
-        <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
-          <Text size="1" color="gray">
-            Due
-          </Text>
-          <Text weight="medium">{formatDate(invoice.due_on)}</Text>
-        </Flex>
-      </Grid>
+        </div>
+        <div className="flex flex-col gap-1 md:col-span-3">
+          <span className="text-caption text-ink-3">Issued</span>
+          <span className="font-medium">{formatDate(invoice.issued_on)}</span>
+        </div>
+        <div className="flex flex-col gap-1 md:col-span-3">
+          <span className="text-caption text-ink-3">Due</span>
+          <span className="font-medium">{formatDate(invoice.due_on)}</span>
+        </div>
+      </div>
 
-      <form action={formAction} style={{ marginTop: "var(--space-3)" }}>
+      <form action={formAction} className="mt-3">
         <input type="hidden" name="id" value={invoice.id} />
-        <Flex direction="column" gap="1">
-          <Text as="label" size="2" weight="medium" htmlFor="notes-locked">
-            Notes
-          </Text>
-          <TextField.Root id="notes-locked" name="notes" defaultValue={invoice.notes ?? ""} />
-          <Text size="1" color="gray">
-            This is issued. Only notes and delivery status can still change.
-          </Text>
-        </Flex>
-        <Flex mt="2" role="alert" aria-live="polite">
+        <LField
+          label="Notes"
+          htmlFor="notes-locked"
+          hint="This is issued. Only notes and delivery status can still change."
+        >
+          <LInput id="notes-locked" name="notes" defaultValue={invoice.notes ?? ""} />
+        </LField>
+        <div className="mt-2" role="alert" aria-live="polite">
           {state.error ? (
-            <Text size="1" color="red">
-              {state.error}
-            </Text>
+            <p className="text-caption font-medium text-crit">{state.error}</p>
           ) : state.saved ? (
-            <Text size="1" color="green">
-              Saved.
-            </Text>
+            <p className="text-caption font-medium text-good">Saved.</p>
           ) : null}
-        </Flex>
-        <Flex mt="2">
-          <Button type="submit" variant="outline" size="1" disabled={pending}>
+        </div>
+        <div className="mt-2">
+          <LButton type="submit" variant="outline" size="sm" disabled={pending}>
             {pending ? "Saving…" : "Save notes"}
-          </Button>
-        </Flex>
+          </LButton>
+        </div>
       </form>
-    </Card>
+    </LCard>
   );
 }

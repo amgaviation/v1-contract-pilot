@@ -1,7 +1,9 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { Button, Callout, Card, Flex, Select, Separator, Text, TextField } from "@/components/ui";
+import { LAlert, LButton, LCard, LSeparator } from "@/components/ledger";
+import { LField, LInput, LSelect } from "@/components/ledger/forms";
+import { cn } from "@/lib/ledger/cn";
 import { formatCents, formatDate } from "@/lib/format";
 import {
   BANK_PAYMENT_FEE_NOTE,
@@ -53,14 +55,16 @@ export type PaymentRow = {
  *   invoice or the session could not take it: a client paying a link that
  *   outlived a voided invoice, most of all, which is real money sitting in
  *   the pilot's Stripe balance against a dead document). A human has to
- *   look. Amber.
+ *   look. Rendered in Ledger's warn tone.
  *
  *   MONEY IS ON ITS WAY, OR NEVER CAME — 'payment_pending' (a bank debit
  *   authorised and settling; nothing to do, and it takes itself off the
  *   screen when it lands) and 'payment_failed' (the debit failed; the link
  *   was spent at authorisation and needs replacing). The first of those is
  *   INFORMATION, and dressing it as a warning would be the fastest way to
- *   teach a pilot to ignore warnings.
+ *   teach a pilot to ignore warnings — rendered in Ledger's accent tone
+ *   instead, the same one the rest of the app reserves for "no action
+ *   needed."
  *
  * 20260813120000 added the last two.
  */
@@ -127,9 +131,9 @@ function CorrectPaymentForm({
 
   if (!open && !notice) {
     return (
-      <Button type="button" variant="ghost" size="1" color="gray" onClick={() => setOpen(true)}>
+      <LButton type="button" variant="quiet" size="sm" onClick={() => setOpen(true)}>
         Correct
-      </Button>
+      </LButton>
     );
   }
 
@@ -137,50 +141,42 @@ function CorrectPaymentForm({
     <form action={formAction}>
       <input type="hidden" name="invoice_id" value={invoiceId} />
       <input type="hidden" name="payment_id" value={payment.id} />
-      <Flex direction="column" gap="2" mt="2">
+      <div className="mt-2 flex flex-col gap-2">
         {!corrected ? (
           <>
-            <Text size="1" color="gray">
+            <p className="text-caption text-ink-3">
               {`This cancels the ${formatCents(payment.amount_cents)} entry with a matching
                 correction. Both stay on the invoice, so the record shows what happened.
                 Enter the right payment afterwards.`}
-            </Text>
-            <TextField.Root
+            </p>
+            <LInput
               name="reversal_reason"
               placeholder="Why? e.g. typo, meant 450.00"
               aria-label="Why you're correcting this"
             />
-            <Flex gap="2">
-              <Button type="submit" size="1" disabled={pending}>
+            <div className="flex gap-2">
+              <LButton type="submit" variant="outline" size="sm" disabled={pending}>
                 {pending ? "Correcting…" : "Correct it"}
-              </Button>
-              <Button type="button" size="1" variant="ghost" onClick={() => setOpen(false)}>
+              </LButton>
+              <LButton type="button" variant="quiet" size="sm" onClick={() => setOpen(false)}>
                 Cancel
-              </Button>
-            </Flex>
+              </LButton>
+            </div>
           </>
         ) : (
           // The correction already landed; this row is only still mounted
           // to show the notice below. "Cancel" would be the wrong word for
           // an action that already happened, so this dismisses instead.
-          <Button type="button" size="1" variant="ghost" onClick={() => setDismissed(true)}>
+          <LButton type="button" variant="quiet" size="sm" onClick={() => setDismissed(true)}>
             Dismiss
-          </Button>
+          </LButton>
         )}
-        {state.error ? (
-          <Text size="1" color="red">
-            {state.error}
-          </Text>
-        ) : null}
+        {state.error ? <p className="text-caption font-medium text-crit">{state.error}</p> : null}
         {/* Mirrors the notice rendering in PaymentPanel's own record-payment
             form below — a side effect of a SUCCESSFUL correction, not a
             failure, so it renders separately from `error`. */}
-        {notice ? (
-          <Callout.Root color="amber" size="1">
-            <Callout.Text>{notice}</Callout.Text>
-          </Callout.Root>
-        ) : null}
-      </Flex>
+        {notice ? <LAlert tone="warn">{notice}</LAlert> : null}
+      </div>
     </form>
   );
 }
@@ -304,35 +300,35 @@ function PayOnlinePanel({
 
   if (!connected) {
     return (
-      <Text size="1" color="gray">
+      <p className="text-caption text-ink-3">
         Connect Stripe from Settings to let clients pay online, by card or by
         bank payment (ACH).
-      </Text>
+      </p>
     );
   }
 
   return (
-    <Flex direction="column" gap="2" align="start">
+    <div className="flex flex-col items-start gap-2">
       {url ? (
-        <Flex direction="column" gap="1" width="100%">
+        <div className="flex w-full flex-col gap-1">
           {bankPaymentSettling ? (
             // NOT AN IMPERATIVE, because this link cannot be paid any more.
-            // The blue notice above this panel is where the pilot reads what
-            // is happening to the money; this sentence exists only to stop
-            // the URL below being read as something to send.
-            <Text size="1" color="gray">
+            // The accent notice above this panel is where the pilot reads
+            // what is happening to the money; this sentence exists only to
+            // stop the URL below being read as something to send.
+            <p className="text-caption text-ink-3">
               {linkAmountCents !== null
                 ? `This link has been used. Don't send it again. Your client authorised a bank payment of ${formatCents(linkAmountCents)} on it:`
                 : "This link has been used. Don't send it again. Your client authorised a bank payment on it:"}
-            </Text>
+            </p>
           ) : !stale ? (
-            <Text size="1" color="gray">
+            <p className="text-caption text-ink-3">
               {linkAmountCents !== null
                 ? `Send this link to your client to pay ${formatCents(linkAmountCents)}:`
                 : "Send this link to your client:"}
-            </Text>
+            </p>
           ) : null}
-          <TextField.Root readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
+          <LInput readOnly value={url} onFocus={(e) => e.currentTarget.select()} />
           {/* THE SECOND SENTENCE IS THE ACH ONE, and it is here rather than
               in a tooltip because it is the single most surprising thing
               about a bank payment: the link is spent at AUTHORISATION, days
@@ -344,95 +340,79 @@ function PayOnlinePanel({
               past tense and the "generate a new one" offer below is framed
               as a SEPARATE payment rather than a retry. */}
           {bankPaymentSettling ? (
-            <Text size="1" color="gray">
+            <p className="text-caption text-ink-3">
               Stripe switched it off when your client authorised the debit: a
               bank payment (ACH) counts as gone through at authorisation, a few
               business days before the money actually lands. It is kept here so
               you can see what they were sent. Only generate a new link if you
               need a second, separate payment on this invoice. If this debit
               fails, this app clears the dead link and tells you to replace it.
-            </Text>
+            </p>
           ) : (
-            <Text size="1" color="gray">
+            <p className="text-caption text-ink-3">
               It can only be paid once. Stripe switches it off after the first
               payment goes through. A bank payment (ACH) counts as gone through the
               moment your client authorises it, which is a few business days before
               the money actually lands. Generating a new link switches this one off
               too.
-            </Text>
+            </p>
           )}
-        </Flex>
+        </div>
       ) : null}
       {stale && balanceDueCents !== null ? (
-        <Callout.Root color="amber" size="1">
-          <Callout.Text>
-            {existingLinkAmountCents !== null
-              ? `This link still charges ${formatCents(existingLinkAmountCents)}, but the balance due is now ${formatCents(balanceDueCents)}. Generate a new link before you send it.`
-              : "This link predates this app tracking what it charges, so there's no way to confirm it still matches the balance due. Generate a new link before you send it."}
-          </Callout.Text>
-        </Callout.Root>
+        <LAlert tone="warn" className="w-full">
+          {existingLinkAmountCents !== null
+            ? `This link still charges ${formatCents(existingLinkAmountCents)}, but the balance due is now ${formatCents(balanceDueCents)}. Generate a new link before you send it.`
+            : "This link predates this app tracking what it charges, so there's no way to confirm it still matches the balance due. Generate a new link before you send it."}
+        </LAlert>
       ) : null}
       <form action={formAction}>
         <input type="hidden" name="invoice_id" value={invoiceId} />
         <input type="hidden" name="methods" value={methods} />
-        <Flex direction="column" gap="2" align="start">
+        <div className="flex flex-col items-start gap-2">
           {/* PER-INVOICE, PREFILLED FROM THE ACCOUNT DEFAULT. The same
               "account defaults prefill, the screen decides" idiom as day
               rates and payment terms — a pilot who takes cards on small
               invoices and insists on ACH for a five-figure one should not
               have to go to Settings and back. */}
-          <Text as="label" size="1" color="gray" id="link-methods-label">
-            What this link accepts
-          </Text>
-          <Select.Root
-            value={methods}
-            onValueChange={(value) => setMethods(value as PaymentMethodChoice)}
-          >
-            <Select.Trigger aria-labelledby="link-methods-label" />
-            <Select.Content>
+          <LField label="What this link accepts" htmlFor="link-methods">
+            <LSelect
+              id="link-methods"
+              value={methods}
+              onChange={(e) => setMethods(e.target.value as PaymentMethodChoice)}
+            >
               {PAYMENT_METHOD_CHOICES.map((option) => (
-                <Select.Item key={option.value} value={option.value}>
+                <option key={option.value} value={option.value}>
                   {option.label}
-                </Select.Item>
+                </option>
               ))}
-            </Select.Content>
-          </Select.Root>
-          <Text size="1" color="gray">
-            {BANK_PAYMENT_FEE_NOTE}
-          </Text>
-          <Button type="submit" variant="outline" disabled={pending}>
+            </LSelect>
+          </LField>
+          <p className="text-caption text-ink-3">{BANK_PAYMENT_FEE_NOTE}</p>
+          <LButton type="submit" variant="outline" disabled={pending}>
             {pending ? "Creating…" : url ? "Generate a new link" : "Generate payment link"}
-          </Button>
-        </Flex>
+          </LButton>
+        </div>
       </form>
-      <Flex direction="column" gap="2" role="alert" aria-live="polite">
-        {state.error ? (
-          <Text size="1" color="red">
-            {state.error}
-          </Text>
-        ) : null}
-        {state.warning ? (
-          <Callout.Root color="amber" size="1">
-            <Callout.Text>{state.warning}</Callout.Text>
-          </Callout.Root>
-        ) : null}
+      <div className="flex flex-col gap-2" role="alert" aria-live="polite">
+        {state.error ? <p className="text-caption font-medium text-crit">{state.error}</p> : null}
+        {state.warning ? <LAlert tone="warn">{state.warning}</LAlert> : null}
         {/* SEPARATE FROM `warning`, because they are separate facts about
             separate links: `warning` is "the OLD link may still be live",
             this is "the NEW one couldn't be given the bank option you
             asked for". Both can be true at once. */}
-        {state.methodNotice ? (
-          <Callout.Root color="amber" size="1">
-            <Callout.Text>{state.methodNotice}</Callout.Text>
-          </Callout.Root>
-        ) : null}
-      </Flex>
-    </Flex>
+        {state.methodNotice ? <LAlert tone="warn">{state.methodNotice}</LAlert> : null}
+      </div>
+    </div>
   );
 }
 
-// Radix Select forbids an item with value="" — "Unspecified" instead uses
-// this sentinel, translated back to "" (the value the `method` FormData
-// field must carry for actions.ts's optional() to read it as unset) via
+// UNSPECIFIED stays a sentinel even though LSelect's native <select>
+// tolerates an empty option value (unlike the Radix Select this replaced,
+// which forbade one outright): keeping the same translate-back-to-""
+// dance means this control's FormData contract for `method` — the value
+// actions.ts's optional() reads as unset — doesn't change shape as the
+// design system migrates. Translated back to "" via
 // formData.set("method", …) in the <form action> closure below, rather
 // than by renaming the field.
 const UNSPECIFIED = "unspecified";
@@ -487,15 +467,16 @@ function fallbackDetail(outcome: string | null | undefined): string {
  * entered by hand or a genuinely separate payment — and guessing wrong
  * either credits a client twice or hides a payment. So it declines, writes
  * down what it saw, and this renders that sentence where the pilot is
- * already standing. There is deliberately no "record it anyway" button:
- * the ordinary payment form is right below and is the honest way to add a
- * payment the pilot has decided is real.
+ * already standing — in Ledger's warn tone, the same one every other
+ * "money-needs-a-human" branch on this screen uses. There is deliberately
+ * no "record it anyway" button: the ordinary payment form is right below
+ * and is the honest way to add a payment the pilot has decided is real.
  *
  * For 'payment_pending' this is not a warning at all — a bank debit has
  * been authorised and is settling, the invoice is untouched, and the only
- * correct action is none. It is blue rather than amber for exactly that
- * reason, and its button says "Hide this" rather than "I've checked this",
- * because there is nothing to check.
+ * correct action is none. It renders in Ledger's accent tone rather than
+ * warn for exactly that reason, and its button says "Hide this" rather
+ * than "I've checked this", because there is nothing to check.
  *
  * WHY A PENDING NOTICE IS DISMISSIBLE AT ALL, given that the webhook
  * supersedes it automatically when the payment settles or fails: that
@@ -516,11 +497,11 @@ function ConnectNotice({
   );
 
   const isPending = notice.outcome === "payment_pending";
-  const color = isPending ? "blue" : "amber";
+  const tone = isPending ? "accent" : "warn";
 
   return (
-    <Callout.Root color={color} size="1" mb="3">
-      <Callout.Text>{notice.detail ?? fallbackDetail(notice.outcome)}</Callout.Text>
+    <LAlert tone={tone} className="mb-3">
+      <p>{notice.detail ?? fallbackDetail(notice.outcome)}</p>
       <form action={formAction}>
         <input type="hidden" name="invoice_id" value={invoiceId} />
         <input type="hidden" name="event_id" value={notice.id} />
@@ -529,18 +510,24 @@ function ConnectNotice({
           name="connected_account_id"
           value={notice.connected_account_id}
         />
-        <Flex align="center" gap="2" mt="2">
-          <Button type="submit" size="1" variant="soft" color={color} disabled={pending}>
+        <div className="mt-2 flex items-center gap-2">
+          <LButton
+            type="submit"
+            variant="outline"
+            size="sm"
+            disabled={pending}
+            className={cn(
+              isPending
+                ? "border-accent-soft text-accent hover:bg-accent-soft"
+                : "border-warn-soft text-warn hover:bg-warn-soft"
+            )}
+          >
             {pending ? "Hiding…" : isPending ? "Hide this" : "I’ve checked this"}
-          </Button>
-          {state.error ? (
-            <Text size="1" color="red">
-              {state.error}
-            </Text>
-          ) : null}
-        </Flex>
+          </LButton>
+          {state.error ? <p className="text-caption font-medium text-crit">{state.error}</p> : null}
+        </div>
       </form>
-    </Callout.Root>
+    </LAlert>
   );
 }
 
@@ -643,10 +630,8 @@ export default function PaymentPanel({
   );
 
   return (
-    <Card size="3">
-      <Text as="div" size="4" weight="bold" mb="2">
-        Payments
-      </Text>
+    <LCard>
+      <div className="mb-2 text-h3 font-semibold">Payments</div>
 
       {/* Above the ledger, not below it: this is a warning about a payment
           that is NOT in the list, and putting it under the list would read
@@ -656,15 +641,15 @@ export default function PaymentPanel({
       ))}
 
       {paymentsLoadError ? (
-        <Text color="red">
+        <p className="text-crit">
           Couldn&rsquo;t load payments on this invoice. This is not a
           statement that none have been recorded. Reload before assuming
           the balance below is current.
-        </Text>
+        </p>
       ) : payments.length === 0 ? (
-        <Text color="gray">No payments recorded yet.</Text>
+        <p className="text-ink-3">No payments recorded yet.</p>
       ) : (
-        <Flex direction="column" gap="3" mb={canRecordPayment ? "4" : "0"}>
+        <div className={cn("flex flex-col gap-3", canRecordPayment ? "mb-4" : "mb-0")}>
           {payments.map((payment) => {
             const isCorrection = Boolean(payment.reverses_payment_id);
             // A payment that has already been cancelled keeps its row —
@@ -679,23 +664,29 @@ export default function PaymentPanel({
             // guessing wrong is a client credited twice.
             const paidOnline = payment.source === "stripe_link";
             return (
-              <Flex key={payment.id} direction="column">
-                <Flex justify="between" align="center" gap="3">
-                  <Text color="gray">
+              <div key={payment.id} className="flex flex-col">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-ink-3">
                     {formatDate(payment.paid_on)}
                     {payment.method ? ` · ${METHOD_LABEL[payment.method] ?? payment.method}` : ""}
                     {paidOnline ? " · paid online" : ""}
                     {isCorrection ? " · correction" : ""}
                     {wasCorrected ? " · corrected" : ""}
-                  </Text>
-                  <Flex align="center" gap="2">
-                    <Text
-                      weight="medium"
-                      className="tnum"
-                      color={isCorrection || wasCorrected ? "gray" : undefined}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {/* CORRECTIONS AND ALREADY-CORRECTED ROWS STAY MUTED,
+                        the negative correction amount included — the same
+                        de-emphasis (Radix's `color="gray"`, here Ledger's
+                        ink-3) that read this money as settled rather than
+                        outstanding before the migration. */}
+                    <span
+                      className={cn(
+                        "tnum-l font-medium",
+                        (isCorrection || wasCorrected) && "text-ink-3"
+                      )}
                     >
                       {formatCents(payment.amount_cents)}
-                    </Text>
+                    </span>
                     {!isCorrection ? (
                       <CorrectPaymentForm
                         invoiceId={invoiceId}
@@ -703,8 +694,8 @@ export default function PaymentPanel({
                         wasCorrected={wasCorrected}
                       />
                     ) : null}
-                  </Flex>
-                </Flex>
+                  </div>
+                </div>
                 {/* Where the money actually IS, said at the moment it is
                     easiest to wonder. The product never touches a client's
                     funds — a payment link is a direct charge on the pilot's
@@ -715,28 +706,24 @@ export default function PaymentPanel({
                     "V1 pays out"; the answer is neither, and it belongs
                     here. Matches settings/connect-panel.tsx's wording. */}
                 {paidOnline ? (
-                  <Text size="1" color="gray">
+                  <span className="text-caption text-ink-3">
                     Recorded automatically from your payment link. The money is in
                     your own Stripe account, paid out on Stripe&rsquo;s schedule.
-                  </Text>
+                  </span>
                 ) : null}
                 {payment.reversal_reason ? (
-                  <Text size="1" color="gray">
-                    {payment.reversal_reason}
-                  </Text>
+                  <span className="text-caption text-ink-3">{payment.reversal_reason}</span>
                 ) : null}
-              </Flex>
+              </div>
             );
           })}
-        </Flex>
+        </div>
       )}
 
       {canRecordPayment ? (
         <>
-          <Separator size="4" my="3" />
-          <Text as="div" size="2" weight="medium" mb="2">
-            Pay online
-          </Text>
+          <LSeparator className="my-3" />
+          <div className="mb-2 text-body-s font-medium">Pay online</div>
           <PayOnlinePanel
             invoiceId={invoiceId}
             connected={connectAccountConnected}
@@ -746,7 +733,7 @@ export default function PaymentPanel({
             defaultMethods={defaultPaymentMethods}
             bankPaymentSettling={bankPaymentSettling}
           />
-          <Separator size="4" my="3" />
+          <LSeparator className="my-3" />
         </>
       ) : null}
 
@@ -761,74 +748,64 @@ export default function PaymentPanel({
           }}
         >
           <input type="hidden" name="invoice_id" value={invoiceId} />
-          <Flex direction="column" gap="3" mt="3">
-            <Text as="label" size="1" color="gray" htmlFor="payment-paid-on">
-              Date paid
-            </Text>
-            <TextField.Root
-              id="payment-paid-on"
-              type="date"
-              name="paid_on"
-              defaultValue={echoed("paid_on", todayLocalIso())}
-            />
-            <Text as="label" size="1" color="gray" htmlFor="payment-amount">
-              Amount (USD)
-            </Text>
-            <TextField.Root
-              id="payment-amount"
-              name="amount"
-              placeholder="Amount (USD)"
-              inputMode="decimal"
-              defaultValue={echoed("amount", "")}
-            />
-            <Text as="label" size="1" color="gray" id="payment-method-label">
-              Method
-            </Text>
-            <Select.Root value={method} onValueChange={setMethod}>
-              <Select.Trigger placeholder="Method" aria-labelledby="payment-method-label" />
-              <Select.Content>
-                <Select.Item value={UNSPECIFIED}>Unspecified</Select.Item>
+          <div className="mt-3 flex flex-col gap-3">
+            <LField label="Date paid" htmlFor="payment-paid-on">
+              <LInput
+                id="payment-paid-on"
+                type="date"
+                name="paid_on"
+                defaultValue={echoed("paid_on", todayLocalIso())}
+              />
+            </LField>
+            <LField label="Amount (USD)" htmlFor="payment-amount">
+              <LInput
+                id="payment-amount"
+                name="amount"
+                placeholder="Amount (USD)"
+                inputMode="decimal"
+                defaultValue={echoed("amount", "")}
+              />
+            </LField>
+            <LField label="Method" htmlFor="payment-method">
+              <LSelect id="payment-method" value={method} onChange={(e) => setMethod(e.target.value)}>
+                <option value={UNSPECIFIED}>Unspecified</option>
                 {METHODS.map((option) => (
-                  <Select.Item key={option.value} value={option.value}>
+                  <option key={option.value} value={option.value}>
                     {option.label}
-                  </Select.Item>
+                  </option>
                 ))}
-              </Select.Content>
-            </Select.Root>
-            <Text as="label" size="1" color="gray" htmlFor="payment-notes">
-              Notes
-            </Text>
-            <TextField.Root id="payment-notes" name="notes" placeholder="Notes" defaultValue={echoed("notes", "")} />
-          </Flex>
-          <Flex mt="3" direction="column" gap="2" role="alert" aria-live="polite">
+              </LSelect>
+            </LField>
+            <LField label="Notes" htmlFor="payment-notes">
+              <LInput id="payment-notes" name="notes" placeholder="Notes" defaultValue={echoed("notes", "")} />
+            </LField>
+          </div>
+          <div className="mt-3 flex flex-col gap-2" role="alert" aria-live="polite">
             {state.error ? (
-              <Text size="1" color="red">
-                {state.error}
-              </Text>
+              <p className="text-caption font-medium text-crit">{state.error}</p>
             ) : state.saved ? (
-              <Text size="1" color="green">
-                Payment recorded.
-              </Text>
+              <p className="text-caption font-medium text-good">Payment recorded.</p>
             ) : null}
             {/* A side effect of a SUCCESSFUL record, not a failure:
                 recording a payment retires the online payment link, because
                 that link is priced at the balance it was generated for.
-                Rendered separately from `error` so a green "Payment
+                Rendered separately from `error` so a good "Payment
                 recorded." and this can both be true at once, which they
                 usually are. */}
-            {state.notice ? (
-              <Callout.Root color="amber" size="1">
-                <Callout.Text>{state.notice}</Callout.Text>
-              </Callout.Root>
-            ) : null}
-          </Flex>
-          <Flex mt="3">
-            <Button type="submit" disabled={pending} style={{ width: "100%" }}>
+            {state.notice ? <LAlert tone="warn">{state.notice}</LAlert> : null}
+          </div>
+          <div className="mt-3">
+            {/* THE ONE FILLED ACCENT ACTION on this page while the invoice
+                is payable: StatusActions' "Send to client" earns that
+                treatment only on a draft, and the two states never overlap
+                (see status-actions.tsx's own note), so there is never more
+                than one primary button showing at once. */}
+            <LButton type="submit" disabled={pending} className="w-full">
               {pending ? "Recording…" : "Record payment"}
-            </Button>
-          </Flex>
+            </LButton>
+          </div>
         </form>
       ) : null}
-    </Card>
+    </LCard>
   );
 }

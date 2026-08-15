@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Checkbox, Flex, Text } from "@/components/ui";
+import { lButtonClass } from "@/components/ledger";
+import { LCheckbox } from "@/components/ledger/forms";
 
 /**
  * The Preview/Download PDF button, now with the receipts toggle beside it
@@ -17,11 +18,10 @@ import { Button, Checkbox, Flex, Text } from "@/components/ui";
  * exact drift lib/invoice-document.tsx exists to prevent).
  *
  * CONTROLLED checkbox, not defaultChecked. Here there is no form action at
- * all so the React-19 reset-event trap lines-editor.tsx documents (Radix's
- * Checkbox restoring its first-mount value on the post-action form reset)
- * cannot fire — but controlled is still the house shape for Radix
- * checkboxes precisely so nobody has to re-derive that analysis when a
- * form later grows around one.
+ * all, so there's no native form "reset" event to fight in the first
+ * place — but controlled is still the house shape for Ledger checkboxes
+ * precisely so nobody has to re-derive that analysis when a form later
+ * grows around one.
  *
  * REIMBURSABLES PACKET (roadmap #1's remainder): a second, plain download
  * link, shown under the same gate as the receipts checkbox above — this
@@ -48,43 +48,35 @@ export default function PdfDownload({
 
   if (receiptCount === 0) {
     return (
-      <Button asChild variant="outline">
-        <a href={href} target="_blank" rel="noopener noreferrer">
-          {label}
-        </a>
-      </Button>
+      <a href={href} target="_blank" rel="noopener noreferrer" className={lButtonClass({ variant: "outline" })}>
+        {label}
+      </a>
     );
   }
 
   return (
-    <Flex direction="column" gap="1" align="end">
-      <Flex gap="2">
-        <Button asChild variant="outline">
-          <a href={href} target="_blank" rel="noopener noreferrer">
-            {label}
-          </a>
-        </Button>
-        <Button asChild variant="outline">
-          <a
-            href={`/invoices/${invoiceId}/reimbursables-packet`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Reimbursables packet
-          </a>
-        </Button>
-      </Flex>
-      <Text as="label" size="1" color="gray">
-        <Flex gap="1" align="center">
-          <Checkbox
-            size="1"
-            checked={withReceipts}
-            onCheckedChange={(value) => setWithReceipts(value === true)}
-          />
-          Attach {receiptCount === 1 ? "the receipt" : `${receiptCount} receipts`} for
-          rebilled expenses
-        </Flex>
-      </Text>
-    </Flex>
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex gap-2">
+        <a href={href} target="_blank" rel="noopener noreferrer" className={lButtonClass({ variant: "outline" })}>
+          {label}
+        </a>
+        <a
+          href={`/invoices/${invoiceId}/reimbursables-packet`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={lButtonClass({ variant: "outline" })}
+        >
+          Reimbursables packet
+        </a>
+      </div>
+      <label className="flex items-center gap-1 text-caption text-ink-3">
+        <LCheckbox
+          checked={withReceipts}
+          onChange={(e) => setWithReceipts(e.target.checked)}
+        />
+        Attach {receiptCount === 1 ? "the receipt" : `${receiptCount} receipts`} for
+        rebilled expenses
+      </label>
+    </div>
   );
 }

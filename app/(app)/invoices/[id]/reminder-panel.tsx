@@ -2,18 +2,9 @@
 
 import { useState, useTransition } from "react";
 import NextLink from "next/link";
-import {
-  AlertDialog,
-  Badge,
-  Box,
-  Button,
-  Card,
-  Flex,
-  Link as RadixLink,
-  Separator,
-  Switch,
-  Text,
-} from "@/components/ui";
+import { LButton, LCard, LPill, LSeparator } from "@/components/ledger";
+import { LConfirmDialog } from "@/components/ledger/dialog";
+import { cn } from "@/lib/ledger/cn";
 import { setInvoiceRemindersSuppressed, createLateFeeInvoice } from "../reminder-actions";
 import {
   NO_CLIENT_LATE_FEE_NOTICE,
@@ -70,6 +61,55 @@ export type LateFeeView = {
   raised: { id: string; number: string | null; amount: string; when: string }[];
 };
 
+/**
+ * A LEDGER-SKINNED TOGGLE, LOCAL TO THIS FILE. There is no LSwitch in
+ * components/ledger yet — the primitive layer's own header says
+ * interactive controls are added "when a migrated screen first needs one"
+ * rather than spun up speculatively, and this is the first Ledger screen
+ * that needs one. Built on a plain `<button role="switch">` rather than a
+ * checkbox: it is a single on/off action fired immediately (via
+ * setInvoiceRemindersSuppressed below), not a value collected into a form
+ * submission, which is exactly the semantic native ARIA switches exist
+ * for. cn() only, no i- classes, no var(), no arbitrary-px utilities — the
+ * same constraints as every other migrated file.
+ */
+function LSwitch({
+  checked,
+  onCheckedChange,
+  disabled,
+  ariaLabel,
+}: {
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  disabled?: boolean;
+  ariaLabel?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      onClick={() => onCheckedChange(!checked)}
+      className={cn(
+        "inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+        "disabled:pointer-events-none disabled:opacity-50",
+        checked ? "bg-accent" : "border border-hair-strong bg-sunk"
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "size-4 rounded-full bg-card shadow-card transition-transform",
+          checked ? "translate-x-4" : "translate-x-0"
+        )}
+      />
+    </button>
+  );
+}
+
 export default function ReminderPanel({
   invoiceId,
   clientName,
@@ -113,37 +153,35 @@ export default function ReminderPanel({
   const [pending, startTransition] = useTransition();
   const [suppressed, setSuppressed] = useState(initialSuppressed);
   const [error, setError] = useState<string | null>(null);
+  const [lateFeeOpen, setLateFeeOpen] = useState(false);
 
   return (
-    <Card size="3">
-      <Flex justify="between" align="center" mb="2">
-        <Text as="div" size="4" weight="bold">
-          Reminders
-        </Text>
-        {suppressed ? <Badge color="gray">Off for this invoice</Badge> : null}
-      </Flex>
+    <LCard>
+      <div className="mb-2 flex items-center justify-between">
+        <div className="text-h3 font-semibold">Reminders</div>
+        {suppressed ? <LPill tone="neutral">Off for this invoice</LPill> : null}
+      </div>
 
       {noClient ? (
-        <Text as="div" size="2" color="gray">
-          {NO_CLIENT_REMINDER_NOTICE}
-        </Text>
+        <p className="text-body-s text-ink-3">{NO_CLIENT_REMINDER_NOTICE}</p>
       ) : scheduleIsEmpty ? (
-        <Text as="div" size="2" color="gray">
+        <p className="text-body-s text-ink-3">
           Nothing goes out automatically for {clientName}.{" "}
-          <RadixLink asChild>
-            <NextLink href={`/clients/${clientId}`}>Set a schedule</NextLink>
-          </RadixLink>{" "}
+          <NextLink href={`/clients/${clientId}`} className="text-accent underline">
+            Set a schedule
+          </NextLink>{" "}
           if you want reminders sent for them, or send one now from the panel
           above.
-        </Text>
+        </p>
       ) : (
         <>
           {/* THE SWITCH FIRST, because "stop chasing this one" is the reason a
               pilot opens this panel in a hurry. */}
-          <Flex align="center" gap="2" mb="3">
-            <Switch
+          <div className="mb-3 flex items-center gap-2">
+            <LSwitch
               checked={!suppressed}
               disabled={pending}
+              ariaLabel={`Automatic reminders for this invoice, ${suppressed ? "off" : "on"}`}
               onCheckedChange={(value) => {
                 const next = value !== true;
                 setSuppressed(next);
@@ -159,98 +197,92 @@ export default function ReminderPanel({
                 });
               }}
             />
-            <Text size="2">
+            <span className="text-body-s">
               {suppressed
                 ? "Paused. No scheduled reminder will go out for this invoice."
                 : `Follow ${clientName}'s schedule for this invoice.`}
-            </Text>
-          </Flex>
+            </span>
+          </div>
 
           {!canEmail ? (
-            <Text as="div" size="1" color="amber" mb="2">
+            <p className="mb-2 text-caption text-warn">
               Emailing isn&rsquo;t set up on this account yet, so scheduled
               reminders can&rsquo;t be sent. Nothing is marked as sent, and
               anything due will go out once it is.
-            </Text>
+            </p>
           ) : !clientHasEmail ? (
-            <Text as="div" size="1" color="amber" mb="2">
+            <p className="mb-2 text-caption text-warn">
               {clientName} has no email address on file, so nothing can be sent.
               Add one on their page.
-            </Text>
+            </p>
           ) : null}
 
-          <Flex direction="column" gap="2">
+          <div className="flex flex-col gap-2">
             {rungs.map((rung) => (
-              <Flex key={rung.key} justify="between" align="start" gap="3">
-                <Flex direction="column">
-                  <Text size="2">{rung.label}</Text>
-                  <Text size="1" color="gray">
+              <div key={rung.key} className="flex items-start justify-between gap-3">
+                <div className="flex flex-col">
+                  <span className="text-body-s">{rung.label}</span>
+                  <span className="text-caption text-ink-3">
                     {rung.when}
                     {rung.at ? ` · ${rung.at}` : ""}
-                  </Text>
+                  </span>
                   {rung.detail ? (
-                    <Text
-                      size="1"
-                      color={
+                    <span
+                      className={cn(
+                        "text-caption",
                         rung.state === "failed"
-                          ? "red"
+                          ? "text-crit"
                           : rung.state === "retrying" || rung.state === "unknown"
-                            ? "amber"
-                            : "gray"
-                      }
+                            ? "text-warn"
+                            : "text-ink-3"
+                      )}
                     >
                       {rung.detail}
-                    </Text>
+                    </span>
                   ) : null}
                   {/* WHAT HAPPENS NEXT, in the pilot's own terms. The line
                       above is the mail service's words about the last
                       attempt; this one says what this product is going to do
                       about them, which is the part they can act on. */}
                   {rung.state === "retrying" ? (
-                    <Text size="1" color="gray">
+                    <span className="text-caption text-ink-3">
                       Nothing reached {clientName}. This one is tried again on
                       the next run.
-                    </Text>
+                    </span>
                   ) : rung.state === "failed" ? (
-                    <Text size="1" color="gray">
+                    <span className="text-caption text-ink-3">
                       Nothing reached {clientName} after{" "}
                       {rung.attempts ?? 0} attempt
                       {(rung.attempts ?? 0) === 1 ? "" : "s"}, so this step is
                       being left alone. Later reminders in the schedule still
                       go out.
-                    </Text>
+                    </span>
                   ) : rung.state === "unknown" ? (
-                    <Text size="1" color="gray">
+                    <span className="text-caption text-ink-3">
                       We can&rsquo;t tell whether this one reached{" "}
                       {clientName}. Check with them before sending it again,
                       and mark the invoice by hand if it did arrive. It
                       won&rsquo;t be tried again on its own.
-                    </Text>
+                    </span>
                   ) : null}
-                </Flex>
-                <Badge color={STATE_COLOR[rung.state]}>{STATE_LABEL[rung.state]}</Badge>
-              </Flex>
+                </div>
+                <LPill tone={STATE_TONE[rung.state]}>{STATE_LABEL[rung.state]}</LPill>
+              </div>
             ))}
-          </Flex>
+          </div>
 
           {hold ? (
-            <Text as="div" size="1" color="gray" mt="3">
-              {hold}
-            </Text>
+            <p className="mt-3 text-caption text-ink-3">{hold}</p>
           ) : nextUp ? (
-            <Text as="div" size="1" color="gray" mt="3">
-              {nextUp}
-            </Text>
+            <p className="mt-3 text-caption text-ink-3">{nextUp}</p>
           ) : null}
         </>
       )}
 
       {manualSends.length > 0 ? (
-        <Box mt="3">
-          <Text as="div" size="1" color="gray">
-            Sent by hand: {manualSends.join(", ")}
-          </Text>
-        </Box>
+        <div className="mt-3">
+          <p className="text-caption text-ink-3">Sent by hand: {manualSends.join(", ")}</p>
+        </div>
       ) : null}
 
       {/* ------------------------------------------------------------------
@@ -261,109 +293,90 @@ export default function ReminderPanel({
           ------------------------------------------------------------------ */}
       {noClient ? (
         <>
-          <Separator size="4" my="4" />
-          <Text as="div" size="2" weight="medium" mb="1">
-            Late fee
-          </Text>
-          <Text as="div" size="1" color="gray">
-            {NO_CLIENT_LATE_FEE_NOTICE}
-          </Text>
+          <LSeparator className="my-4" />
+          <p className="mb-1 text-body-s font-medium">Late fee</p>
+          <p className="text-caption text-ink-3">{NO_CLIENT_LATE_FEE_NOTICE}</p>
         </>
       ) : null}
 
       {!noClient && lateFee.policy ? (
         <>
-          <Separator size="4" my="4" />
-          <Text as="div" size="2" weight="medium" mb="1">
-            Late fee
-          </Text>
-          <Text as="div" size="1" color="gray">
-            {lateFee.policy}
-          </Text>
+          <LSeparator className="my-4" />
+          <p className="mb-1 text-body-s font-medium">Late fee</p>
+          <p className="text-caption text-ink-3">{lateFee.policy}</p>
 
           {lateFee.raised.length > 0 ? (
-            <Box mt="2">
+            <div className="mt-2">
               {lateFee.raised.map((fee) => (
-                <Text as="div" size="1" color="gray" key={fee.id}>
+                <p className="text-caption text-ink-3" key={fee.id}>
                   {fee.amount} raised {fee.when}:{" "}
-                  <RadixLink asChild>
-                    <NextLink href={`/invoices/${fee.id}`}>
-                      {fee.number ?? "draft invoice"}
-                    </NextLink>
-                  </RadixLink>
-                </Text>
+                  <NextLink href={`/invoices/${fee.id}`} className="text-accent underline">
+                    {fee.number ?? "draft invoice"}
+                  </NextLink>
+                </p>
               ))}
-            </Box>
+            </div>
           ) : null}
 
           {lateFee.quote ? (
-            <Box mt="3">
-              <Text as="div" size="2" mb="2">
-                {lateFee.quote}
-              </Text>
-              <AlertDialog.Root>
-                <AlertDialog.Trigger>
-                  <Button variant="outline" disabled={pending} style={{ width: "100%" }}>
-                    Draft a late fee invoice
-                  </Button>
-                </AlertDialog.Trigger>
-                <AlertDialog.Content maxWidth="440px">
-                  <AlertDialog.Title>
-                    Draft a late fee invoice for {clientName}?
-                  </AlertDialog.Title>
-                  {/* SPELLS OUT EVERY CONSEQUENCE, because this is the one
-                      action in the feature that creates a billable document.
-                      It says what it makes (a draft), what it does not touch
-                      (this invoice), and who sends it (them). */}
-                  <AlertDialog.Description size="2">
+            <div className="mt-3">
+              <p className="mb-2 text-body-s">{lateFee.quote}</p>
+              <LButton
+                type="button"
+                variant="outline"
+                disabled={pending}
+                className="w-full"
+                onClick={() => setLateFeeOpen(true)}
+              >
+                Draft a late fee invoice
+              </LButton>
+              <LConfirmDialog
+                open={lateFeeOpen}
+                onOpenChange={setLateFeeOpen}
+                title={`Draft a late fee invoice for ${clientName}?`}
+                // SPELLS OUT EVERY CONSEQUENCE, because this is the one
+                // action in the feature that creates a billable document.
+                // It says what it makes (a draft), what it does not touch
+                // (this invoice), and who sends it (them).
+                description={
+                  <>
                     This creates a SEPARATE draft invoice for {lateFee.quote}. It
                     does not change this invoice, which stays exactly as your
                     client received it. Nothing is sent: you review the draft and
                     send it yourself, like any other invoice. Only do this if the
                     fee is in what you agreed with them.
-                  </AlertDialog.Description>
-                  <Flex gap="3" mt="4" justify="end">
-                    <AlertDialog.Cancel>
-                      <Button variant="soft" color="gray">
-                        Cancel
-                      </Button>
-                    </AlertDialog.Cancel>
-                    <AlertDialog.Action>
-                      <Button
-                        variant="solid"
-                        onClick={() => {
-                          startTransition(async () => {
-                            setError(null);
-                            const result = await createLateFeeInvoice(invoiceId);
-                            // On success this redirects to the new draft and
-                            // never returns a value.
-                            setError(result?.error ?? null);
-                          });
-                        }}
-                      >
-                        Create the draft
-                      </Button>
-                    </AlertDialog.Action>
-                  </Flex>
-                </AlertDialog.Content>
-              </AlertDialog.Root>
-            </Box>
+                  </>
+                }
+                confirmLabel="Create the draft"
+                confirmVariant="primary"
+                pending={pending}
+                onConfirm={() => {
+                  // Closes the instant it's pressed, exactly as Radix's
+                  // AlertDialog.Action always did — not gated on the async
+                  // result. On success createLateFeeInvoice redirects to
+                  // the new draft and never returns a value, so this
+                  // component is gone before it matters anyway.
+                  setLateFeeOpen(false);
+                  startTransition(async () => {
+                    setError(null);
+                    const result = await createLateFeeInvoice(invoiceId);
+                    setError(result?.error ?? null);
+                  });
+                }}
+              />
+            </div>
           ) : (
-            <Text as="div" size="1" color="gray" mt="2">
-              Nothing to charge yet.
-            </Text>
+            <p className="mt-2 text-caption text-ink-3">Nothing to charge yet.</p>
           )}
         </>
       ) : null}
 
       {error ? (
-        <Box mt="3" role="alert">
-          <Text size="1" color="red">
-            {error}
-          </Text>
-        </Box>
+        <div className="mt-3" role="alert">
+          <p className="text-caption font-medium text-crit">{error}</p>
+        </div>
       ) : null}
-    </Card>
+    </LCard>
   );
 }
 
@@ -376,17 +389,17 @@ const STATE_LABEL: Record<ReminderRungView["state"], string> = {
   upcoming: "Scheduled",
 };
 
-const STATE_COLOR: Record<
+const STATE_TONE: Record<
   ReminderRungView["state"],
-  "green" | "red" | "gray" | "blue" | "amber"
+  "good" | "crit" | "neutral" | "accent" | "warn"
 > = {
-  sent: "green",
-  // Red is for the one that is over: nothing reached the client and nothing
-  // more will. A retry is amber because it is still in progress, and an
-  // unconfirmed send is amber because it is a question rather than a fault.
-  failed: "red",
-  retrying: "amber",
-  unknown: "amber",
-  skipped: "gray",
-  upcoming: "blue",
+  sent: "good",
+  // Crit is for the one that is over: nothing reached the client and nothing
+  // more will. A retry is warn because it is still in progress, and an
+  // unconfirmed send is warn because it is a question rather than a fault.
+  failed: "crit",
+  retrying: "warn",
+  unknown: "warn",
+  skipped: "neutral",
+  upcoming: "accent",
 };
