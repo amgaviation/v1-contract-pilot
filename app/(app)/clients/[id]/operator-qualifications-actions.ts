@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { friendlyDbError } from "@/lib/db-errors";
@@ -14,6 +15,17 @@ import {
 
 type QualificationInsert = Database["pilot"]["Tables"]["operator_qualifications"]["Insert"];
 type QualificationUpdate = Database["pilot"]["Tables"]["operator_qualifications"]["Update"];
+type ClientInsert = Database["pilot"]["Tables"]["clients"]["Insert"];
+
+/**
+ * State for the panel's inline "add an operator" form. `name` echoes what
+ * was typed so a rejected submit does not blank it: React 19 resets an
+ * uncontrolled form on every action dispatch, the error path included.
+ */
+export type OperatorFormState = {
+  error: string | null;
+  name?: string;
+};
 
 export type QualificationFormState = {
   error: string | null;
@@ -240,4 +252,66 @@ export async function deleteOperatorQualification(
 
   revalidatePath(`/clients/${clientId}`);
   return { error: null };
+}
+
+/**
+ * ADD AN OPERATOR WITHOUT LEAVING THIS PANEL.
+ *
+ * THE SEQUENCE THIS EXISTS FOR. A contract pilot completes basic indoc for
+ * an operator weeks before flying for them, and sometimes for one that
+ * never sends a trip at all. pilot.operator_qualifications.client_id is
+ * `not null` and correctly so (a qualification is held under a specific
+ * operator's certificate), so recording that indoc has always needed a
+ * pilot.clients row to point at. What was wrong was the ROUTE to one:
+ * leave this screen, go to Clients, fill in a billing form with rates,
+ * payment terms, a W-9 status and a chase schedule, then come back. Every
+ * one of those fields is a question about billing somebody the pilot is
+ * not billing.
+ *
+ * SO THIS ASKS FOR A NAME. pilot.clients requires exactly that; every
+ * other column is nullable or has a default (terms 30, expense treatment
+ * 'unassigned', W-9 'not_requested', rates null). The record is created
+ * with you_invoice = false (20260815120000) so it never reaches an invoice
+ * or estimate picker, the A/R aging, a statement or the unbilled queue,
+ * and the pilot flips that themselves the day the operator sends paid
+ * work.
+ *
+ * WHY IT REDIRECTS. Qualifications are per operator, and this panel renders
+ * ONE operator's, so the new operator's own panel is where the pilot is
+ * going. What they no longer do is stop at a billing form on the way.
+ */
+export async function createOperatorCounterparty(
+  _prev: OperatorFormState,
+  formData: FormData
+): Promise<OperatorFormState> {
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return { error: "Give the operator a name.", name: "" };
+
+  const { account } = await requireAccount("/clients");
+  const supabase = await createClient();
+
+  const payload: ClientInsert = {
+    account_id: account.id,
+    name,
+    // The whole point: created as somebody you do not bill. Reversible on
+    // the client form above the moment that changes.
+    you_invoice: false,
+  };
+  const { data, error } = await supabase
+    .from("clients")
+    .insert(payload as never)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return { error: friendlyDbError(error, "clients.insert"), name };
+  }
+  const created = data as { id: string } | null;
+  // PostgREST returns no error for an insert that produced no readable
+  // row. Reporting success and redirecting nowhere would be a lie, and
+  // redirecting to an id we do not have is not possible.
+  if (!created) return { error: "Couldn't add that operator. Try again.", name };
+
+  revalidatePath("/clients");
+  redirect(`/clients/${created.id}`);
 }

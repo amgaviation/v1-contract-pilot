@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { friendlyDbError } from "@/lib/db-errors";
 import { countOf } from "@/lib/supabase/rows";
+import { YOU_INVOICE_COLUMN } from "@/lib/counterparty";
 import { tripValueCents, type TripDayValueRow } from "@/lib/trip-value";
 import PageShell from "../../page-shell";
 import { createInvoiceDraft } from "../actions";
@@ -21,10 +22,17 @@ export default async function NewInvoicePage({
 
   // Archived clients are excluded — same rule as the trip form: archiving
   // is about what shows up in new work, not history.
+  //
+  // So are counterparties the pilot does not invoice (20260815120000): an
+  // operator whose indoc and 135 checks they hold with no billing
+  // relationship. pilot.refuse_billing_a_non_invoiced_client() refuses the
+  // insert anyway, so this filter is what keeps the picker from offering a
+  // choice the database will reject rather than being the boundary itself.
   const { data: clientData, error: clientsError } = await supabase
     .from("clients")
     .select("id, name")
     .is("archived_at", null)
+    .eq(YOU_INVOICE_COLUMN, true)
     .order("name", { ascending: true });
 
   if (clientsError) {

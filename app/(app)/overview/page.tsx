@@ -24,6 +24,7 @@ import { countOf } from "@/lib/supabase/rows";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import { formatCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+import { isInvoicedCounterparty } from "@/lib/counterparty";
 import { STAT_ROW_LAYOUT } from "@/components/ui/skeletons";
 import EmptyState from "@/components/ui/empty-state";
 import { EXPIRY_LADDER_BADGE, type ExpiryBadge } from "../documents/expiry-badge";
@@ -68,6 +69,8 @@ type ClientRow = {
   name: string;
   w9_status: "not_requested" | "requested" | "on_file";
   w9_sent_at: string | null;
+  /** 20260815120000. False for an operator the pilot flies for but never bills. */
+  you_invoice: boolean;
   archived_at: string | null;
 };
 
@@ -290,7 +293,7 @@ export default async function OverviewPage() {
     // server-side aggregate (an RPC or a view) — deferred to a later pass.
     supabase
       .from("clients")
-      .select("id, name, w9_status, w9_sent_at, archived_at")
+      .select("id, name, w9_status, w9_sent_at, archived_at, you_invoice")
       .limit(AGGREGATE_LIMIT),
     supabase
       .from("expenses")
@@ -996,7 +999,14 @@ export default async function OverviewPage() {
       ]
     : [];
 
-  const w9Clients = clients.filter((c) => !c.archived_at && c.w9_status !== "on_file");
+  // A W-9 is what a client needs in order to 1099 the pilot for money
+  // paid. A counterparty the pilot does not invoice (20260815120000) is
+  // never paying them, so an outstanding W-9 there is not a thing to
+  // chase: it is one row of noise per training relationship on the queue
+  // whose whole job is to make the real ones visible.
+  const w9Clients = clients.filter(
+    (c) => !c.archived_at && c.w9_status !== "on_file" && isInvoicedCounterparty(c)
+  );
   const w9ItemsAll = w9Clients.map((c) => ({
     id: `w9-${c.id}`,
     band: "Paperwork" as const,

@@ -9,6 +9,10 @@ import { friendlyDbError } from "@/lib/db-errors";
 import { looksLikeEmail } from "@/lib/email/address";
 import type { ClientOperatingRule } from "@/lib/operating-rule";
 import {
+  stopInvoicingRefusal,
+  type BillingPaperwork,
+} from "@/lib/counterparty";
+import {
   REMINDER_AFTER_DAYS,
   REMINDER_BEFORE_DAYS,
 } from "@/lib/reminders/policy";
@@ -69,6 +73,9 @@ const CLIENT_FIELDS = [
   "late_fee_rate_percent",
   "late_fee_grace_days",
   "late_fee_note_on_reminders",
+  // 20260815120000. Posted as "1" or "" by the form's controlled hidden
+  // input, same shape as the two flags above it.
+  "you_invoice",
 ] as const;
 
 function echo(formData: FormData) {
@@ -343,7 +350,64 @@ function parseClientForm(formData: FormData): ParsedClient {
       w9_status: oneOf(formData, "w9_status", W9_STATUSES, "not_requested"),
       notes: optional(formData, "notes"),
       operating_rule: oneOf(formData, "operating_rule", OPERATING_RULES, "unspecified"),
+      // 20260815120000. "1" is the only value that means "yes, I bill
+      // them"; anything else, including a post that omits the field
+      // entirely, means false. That is the opposite of the reading the
+      // column's default uses, and it has to be: the field is always
+      // present on this form, so an absent one is a crafted or stale
+      // post, and the honest answer to that is the LESS billing-capable
+      // of the two. The database refuses to store false for a client that
+      // already has paperwork either way, so this cannot lose an invoice.
+      you_invoice: String(formData.get("you_invoice") ?? "") === "1",
     },
+  };
+}
+
+/**
+ * The three tables the database guard checks, counted so a pilot gets a
+ * sentence rather than a Postgres exception.
+ *
+ * NOT THE BOUNDARY. pilot.clients_refuse_stop_invoicing() is, and it also
+ * catches the case this cannot: an invoice created between this count and
+ * the update. This exists because a rejected write here reaches
+ * friendlyDbError as an unmapped code and reads "Couldn't save that. Try
+ * again.", which tells a pilot nothing about what to do instead.
+ *
+ * Counts, not rows: `head: true` with an exact count sends no data back,
+ * and the only question being asked is whether the number is zero.
+ */
+async function billingPaperworkFor(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  accountId: string,
+  clientId: string
+): Promise<BillingPaperwork | null> {
+  const [invoices, estimates, schedules] = await Promise.all([
+    supabase
+      .from("invoices")
+      .select("id", { count: "exact", head: true })
+      .eq("account_id", accountId)
+      .eq("client_id", clientId),
+    supabase
+      .from("estimates")
+      .select("id", { count: "exact", head: true })
+      .eq("account_id", accountId)
+      .eq("client_id", clientId),
+    supabase
+      .from("recurring_invoice_schedules")
+      .select("id", { count: "exact", head: true })
+      .eq("account_id", accountId)
+      .eq("client_id", clientId),
+  ]);
+
+  // A failed count is not "none". Returning null makes the caller say so
+  // rather than let a read error read as permission to unbill a client
+  // with an open invoice.
+  if (invoices.error || estimates.error || schedules.error) return null;
+
+  return {
+    invoices: invoices.count ?? 0,
+    estimates: estimates.count ?? 0,
+    schedules: schedules.count ?? 0,
   };
 }
 
@@ -412,11 +476,34 @@ export async function updateClientRecord(
   // reset the clock on a request that went out weeks ago.
   const { data: priorRow } = await supabase
     .from("clients")
-    .select("w9_status")
+    .select("w9_status, you_invoice")
     .eq("id", id)
     .eq("account_id", account.id)
     .maybeSingle();
-  const priorW9 = (priorRow as { w9_status: string | null } | null)?.w9_status ?? null;
+  const prior = priorRow as {
+    w9_status: string | null;
+    you_invoice: boolean | null;
+  } | null;
+  const priorW9 = prior?.w9_status ?? null;
+
+  // STOPPING INVOICING IS REFUSED ONCE THERE IS PAPERWORK, and the pilot is
+  // told what to do instead. Only checked on the transition, so a client
+  // who was already marked this way keeps saving normally and a pilot
+  // turning the flag back ON is never made to wait for three counts.
+  // See lib/counterparty.ts and 20260815120000's header for why refusal is
+  // the coherent answer rather than hiding their invoices from A/R.
+  if (prior?.you_invoice !== false && values.you_invoice === false) {
+    const paperwork = await billingPaperworkFor(supabase, account.id, id);
+    if (!paperwork) {
+      return {
+        error:
+          "Couldn't check whether you've billed this client, so nothing was changed. Try again.",
+        values: echo(formData),
+      };
+    }
+    const refusal = stopInvoicingRefusal(paperwork);
+    if (refusal) return { error: refusal, values: echo(formData) };
+  }
   const nextW9 = values.w9_status ?? null;
   const nowIso = new Date().toISOString();
 
