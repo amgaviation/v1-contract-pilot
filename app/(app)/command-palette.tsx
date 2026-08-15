@@ -12,8 +12,9 @@ import {
   defaultFilter,
 } from "cmdk";
 import { MagnifyingGlassIcon } from "@radix-ui/react-icons";
-import { DialogShell } from "@/components/ds/dialog";
-import { Box, Button, Flex, Text } from "@/components/ui";
+import { LDialogShell } from "@/components/ledger/dialog";
+import { LButton } from "@/components/ledger";
+import { cn } from "@/lib/ledger/cn";
 import { NAV_HELP, NAV_SETTINGS, type NavItem } from "@/lib/nav";
 import type {
   CommandSearchResponse,
@@ -27,15 +28,22 @@ import type {
  * type a client name, an invoice number, or an ICAO pair and land on the
  * record directly instead of paging a list to find it.
  *
- * HOSTED IN THE REPO'S OWN DIALOG, NOT cmdk's. cmdk ships a `Command.Dialog`
- * built on Radix's dialog primitive, but this product has exactly one
- * overlay mechanism — DialogShell (components/ds/dialog.tsx), native
- * `<dialog>` + showModal() — and every accessibility property a second
- * dialog implementation would have to re-earn (focus trap, inert
- * background, top layer, Escape-to-close) that one already has. So this
- * renders the PLAIN `Command` primitives inside DialogShell instead:
- * cmdk supplies listbox semantics and keyboard nav, DialogShell supplies
- * the modal itself.
+ * HOSTED IN THE REPO'S LEDGER DIALOG SHELL, NOT cmdk's. cmdk ships a
+ * `Command.Dialog` built on Radix's dialog primitive, but this product has
+ * exactly one overlay mechanism per design system — `LDialogShell`
+ * (components/ledger/dialog.tsx), native `<dialog>` + `showModal()`, itself
+ * a direct port of components/ds/dialog.tsx's `DialogShell` (see that
+ * file's own header for why native wins) — and every accessibility
+ * property a second dialog implementation would have to re-earn (focus
+ * trap, inert background, top layer, Escape-to-close) that one already
+ * has. So this renders the PLAIN `Command` primitives inside
+ * `LDialogShell` instead: cmdk supplies listbox semantics and keyboard
+ * nav, `LDialogShell` supplies the modal itself. Styling throughout this
+ * file is Ledger utilities against `cn()` (lib/ledger/cn) — no `i-*`
+ * classes, no `var()`, no `@/components/ui` import — with the currently
+ * highlighted row picked out by cmdk's own `data-selected` attribute via
+ * Tailwind's `data-[selected=true]:` variant rather than a hand-computed
+ * "is this the active one" comparison.
  *
  * TWO RESULT LAYERS, deliberately filtered two different ways, plus a
  * THIRD that isn't filtered by the query at all:
@@ -86,7 +94,7 @@ import type {
  *
  *   CommandPaletteProvider   owns EVERYTHING: the open state, the ⌘K/
  *                            Ctrl-K listener, the query/records/recents
- *                            state, and the DialogShell-hosted Command
+ *                            state, and the LDialogShell-hosted Command
  *                            tree itself. Mounted exactly once, wrapping
  *                            the shell's own content in app-shell.tsx.
  *   CommandPaletteTrigger    owns nothing — it reads `open` off context
@@ -251,6 +259,21 @@ type CommandPaletteContextValue = { open: () => void };
 
 const CommandPaletteContext = React.createContext<CommandPaletteContextValue | null>(null);
 
+/** Shared row styling for every selectable item in the list — nav
+ *  sections, live records and recents alike — so the three render call
+ *  sites below cannot drift into three slightly different hover/selected
+ *  treatments. The selected look (`bg-accent-soft`, with the label text
+ *  inheriting `text-accent`) is driven entirely by cmdk's own
+ *  `data-selected="true"` attribute on this element, not by comparing the
+ *  Command's controlled `value` against this row's own value in JS — cmdk
+ *  already tracks which row is current; restating that comparison here
+ *  would be a second, potentially-stale source of truth for the same
+ *  fact. */
+const ITEM_CLASS = cn(
+  "mx-1 flex cursor-pointer items-center justify-between gap-3 rounded-control px-3 py-2 text-ink",
+  "data-[selected=true]:bg-accent-soft data-[selected=true]:text-accent"
+);
+
 export function CommandPaletteProvider({
   sections,
   children,
@@ -299,7 +322,7 @@ export function CommandPaletteProvider({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // FOCUS THE INPUT ON EVERY OPEN, not just the first. DialogShell keeps
+  // FOCUS THE INPUT ON EVERY OPEN, not just the first. LDialogShell keeps
   // this component's children mounted for the dialog's whole lifetime and
   // only toggles native open/closed state, so React's own `autoFocus`
   // prop — which fires once, on mount — would focus the input the first
@@ -414,12 +437,15 @@ export function CommandPaletteProvider({
     <CommandPaletteContext.Provider value={contextValue}>
       {children}
 
-      <DialogShell open={open} onOpenChange={setOpen} labelledBy={titleId}>
+      <LDialogShell open={open} onOpenChange={setOpen} labelledBy={titleId}>
         {/* Screen-reader-only accessible name for the dialog itself — a
             command palette has no visible heading (the input's own
             placeholder carries that job for sighted pilots), but the
-            dialog still needs a name announced on open. */}
-        <span className="i-vh" id={titleId}>
+            dialog still needs a name announced on open. `sr-only` is
+            Tailwind's own visually-hidden utility (part of the
+            `utilities` layer ledger.css imports), not INSTRUMENT's
+            `i-vh` — the two systems' stylesheets never share a class. */}
+        <span className="sr-only" id={titleId}>
           Command palette
         </span>
         <Command
@@ -431,29 +457,19 @@ export function CommandPaletteProvider({
             isRecordValue(value) ? 1 : defaultFilter(value, search, keywords)
           }
         >
-          <Box p="3" style={{ borderBottom: "var(--hairline) solid var(--hair)" }}>
+          <div className="border-b border-hair p-3">
             <CommandInput
               ref={inputRef}
               value={query}
               onValueChange={setQuery}
               placeholder="Search clients, invoices, trips, or jump to a section…"
-              className="i-field i-field-3"
+              className="w-full bg-transparent text-body text-ink outline-none placeholder:text-ink-3"
             />
-          </Box>
+          </div>
 
-          <CommandList
-            style={{
-              maxHeight: "calc(100dvh - var(--space-8) - var(--space-8))",
-              overflowY: "auto",
-              padding: "var(--space-2) 0",
-            }}
-          >
+          <CommandList className="max-h-[calc(100dvh_-_8rem)] overflow-y-auto py-2">
             <CommandEmpty>
-              <Box px="4" py="4">
-                <Text size="2" color="gray">
-                  No matches.
-                </Text>
-              </Box>
+              <div className="px-4 py-4 text-caption text-ink-3">No matches.</div>
             </CommandEmpty>
 
             {/* RECENT sits ABOVE Sections — see the header comment's
@@ -468,7 +484,6 @@ export function CommandPaletteProvider({
                     key={recent.href}
                     result={recent}
                     kind={recent.kind}
-                    activeValue={activeValue}
                     onSelectRecord={selectRecord}
                   />
                 ))}
@@ -477,8 +492,13 @@ export function CommandPaletteProvider({
 
             <CommandGroup heading={<GroupHeading>Sections</GroupHeading>}>
               {navItems.map((item) => (
-                <CommandItem key={item.href} value={item.label} onSelect={() => go(item.href)}>
-                  <PaletteRow label={item.label} selected={activeValue === item.label} />
+                <CommandItem
+                  key={item.href}
+                  value={item.label}
+                  onSelect={() => go(item.href)}
+                  className={ITEM_CLASS}
+                >
+                  <PaletteRow label={item.label} />
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -505,7 +525,6 @@ export function CommandPaletteProvider({
                         key={result.href}
                         result={result}
                         kind="client"
-                        activeValue={activeValue}
                         onSelectRecord={selectRecord}
                       />
                     ))}
@@ -514,7 +533,6 @@ export function CommandPaletteProvider({
                         key={result.href}
                         result={result}
                         kind="invoice"
-                        activeValue={activeValue}
                         onSelectRecord={selectRecord}
                       />
                     ))}
@@ -523,7 +541,6 @@ export function CommandPaletteProvider({
                         key={result.href}
                         result={result}
                         kind="trip"
-                        activeValue={activeValue}
                         onSelectRecord={selectRecord}
                       />
                     ))}
@@ -533,7 +550,7 @@ export function CommandPaletteProvider({
             ) : null}
           </CommandList>
         </Command>
-      </DialogShell>
+      </LDialogShell>
     </CommandPaletteContext.Provider>
   );
 }
@@ -550,14 +567,18 @@ export function CommandPaletteProvider({
  * a pilot who already knew to try it would ever find. The "⌘K" hint hides
  * below `sm`: a touch device has no ⌘/Ctrl key for the hint to describe,
  * so showing it there would document a shortcut that does not exist on
- * the hardware reading it.
+ * the hardware reading it. Styled `outline` (LButton) — a bordered,
+ * card-background button, not the one filled-accent action LEDGER.md
+ * reserves per view (see components/ledger/index.tsx's button variants).
  *
  * `variant="icon"` is the phone top bar's entry point, where there is no
  * room for a labelled button — icon-only with `aria-label="Search"`, the
  * same tradeoff every other icon-only control in the product makes (e.g.
  * logbook/saved-views.tsx's delete button): silent to a sighted pilot who
  * already recognizes the glyph, legible to a screen reader that cannot
- * see it.
+ * see it. Styled `quiet` (text-only until hovered) since it sits in a
+ * tighter top-bar strip than the desktop trigger; LButton's `sm` size is
+ * 32px tall, clearing the ≥24px touch-target floor on its own.
  */
 export function CommandPaletteTrigger({
   variant = "full",
@@ -572,47 +593,32 @@ export function CommandPaletteTrigger({
 
   if (variant === "icon") {
     return (
-      <Button
+      <LButton
         type="button"
-        variant="soft"
-        color="gray"
-        size="2"
+        variant="quiet"
+        size="sm"
+        className="px-2"
         onClick={open}
         aria-label="Search"
       >
-        <MagnifyingGlassIcon />
-      </Button>
+        <MagnifyingGlassIcon aria-hidden focusable={false} />
+      </LButton>
     );
   }
 
   return (
-    <Button type="button" variant="soft" color="gray" size="2" onClick={open}>
-      <Flex align="center" gap="2">
-        <Text size="2">Search</Text>
-        <Box
-          display={{ initial: "none", sm: "inline-block" }}
-          style={{
-            border: "var(--hairline) solid var(--edge)",
-            borderRadius: "var(--radius)",
-            padding: "0 var(--space-1)",
-          }}
-        >
-          <Text size="1" color="gray">
-            ⌘K
-          </Text>
-        </Box>
-      </Flex>
-    </Button>
+    <LButton type="button" variant="outline" size="sm" onClick={open}>
+      <span>Search</span>
+      <span className="hidden rounded-control border border-hair-strong px-1 text-caption text-ink-3 sm:inline-block">
+        ⌘K
+      </span>
+    </LButton>
   );
 }
 
 function GroupHeading({ children }: { children: React.ReactNode }) {
   return (
-    <Box px="3" pt="3" pb="1">
-      <Text size="1" color="gray" weight="medium">
-        {children}
-      </Text>
-    </Box>
+    <div className="px-3 pb-1 pt-3 text-caption font-semibold text-ink-3">{children}</div>
   );
 }
 
@@ -620,15 +626,13 @@ function GroupHeading({ children }: { children: React.ReactNode }) {
  *  couldn't run", "No matching records". Given a `record::` value so the
  *  palette's `filter` function keeps it visible (see the header comment),
  *  and `disabled` so cmdk excludes it from arrow-key navigation and click
- *  selection — it is a status line, not a choice. */
+ *  selection — it is a status line, not a choice. Caption-sized, ink-3 —
+ *  a status line is the quietest text on the row, never competing with an
+ *  actual match. */
 function StatusRow({ value, children }: { value: string; children: React.ReactNode }) {
   return (
     <CommandItem value={value} disabled>
-      <Box px="3" py="2">
-        <Text size="2" color="gray">
-          {children}
-        </Text>
-      </Box>
+      <div className="px-3 py-2 text-caption text-ink-3">{children}</div>
     </CommandItem>
   );
 }
@@ -640,59 +644,33 @@ function StatusRow({ value, children }: { value: string; children: React.ReactNo
 function RecordItem({
   result,
   kind,
-  activeValue,
   onSelectRecord,
 }: {
   result: CommandSearchResult;
   kind: PaletteRecordKind;
-  activeValue: string;
   onSelectRecord: (result: CommandSearchResult, kind: PaletteRecordKind) => void;
 }) {
   const value = `record::${result.href}`;
   return (
-    <CommandItem value={value} onSelect={() => onSelectRecord(result, kind)}>
-      <PaletteRow label={result.label} sublabel={result.sublabel} selected={activeValue === value} />
+    <CommandItem value={value} onSelect={() => onSelectRecord(result, kind)} className={ITEM_CLASS}>
+      <PaletteRow label={result.label} sublabel={result.sublabel} />
     </CommandItem>
   );
 }
 
-/** The one row shape both layers render — a label, an optional sublabel,
- *  and the keyboard/pointer "current selection" highlight cmdk tracks via
- *  the Command's controlled `value`. Background rather than a border, same
- *  reasoning as the nav rail's own current-section fill: a course-bar
- *  highlight that does not shift layout when it appears. */
-function PaletteRow({
-  label,
-  sublabel,
-  selected,
-}: {
-  label: string;
-  sublabel?: string;
-  selected: boolean;
-}) {
+/** The one row shape both layers render — a label and an optional
+ *  sublabel. Neither sets its own selected-state styling: the parent
+ *  `CommandItem` (see ITEM_CLASS above) carries `data-[selected=true]:`,
+ *  and this label inherits that color rather than recomputing it, so
+ *  there is exactly one place selection is decided rather than two that
+ *  could disagree. */
+function PaletteRow({ label, sublabel }: { label: string; sublabel?: string }) {
   return (
-    <Flex
-      align="center"
-      justify="between"
-      gap="3"
-      px="3"
-      py="2"
-      style={{
-        borderRadius: "var(--radius)",
-        background: selected ? "var(--selected)" : undefined,
-        cursor: "pointer",
-      }}
-    >
-      <Box minWidth="0" style={{ overflow: "hidden" }}>
-        <Text size="2" truncate as="div">
-          {label}
-        </Text>
-      </Box>
+    <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+      <div className="min-w-0 flex-1 truncate text-body-s">{label}</div>
       {sublabel ? (
-        <Text size="1" color="gray" truncate as="div" style={{ flexShrink: 0, maxWidth: "50%" }}>
-          {sublabel}
-        </Text>
+        <div className="max-w-[50%] shrink-0 truncate text-caption text-ink-3">{sublabel}</div>
       ) : null}
-    </Flex>
+    </div>
   );
 }
