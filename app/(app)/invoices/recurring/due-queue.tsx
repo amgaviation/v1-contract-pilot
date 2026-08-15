@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import NextLink from "next/link";
-import { AlertDialog, Button, Callout, Card, Flex, Link as RadixLink, Table, Text } from "@/components/ui";
-import { ClockIcon } from "@radix-ui/react-icons";
+import { LAlert, LButton, LCard, LTable, LTd, LTh } from "@/components/ledger";
+import { LDialog } from "@/components/ledger/dialog";
 import { formatCents, formatDate } from "@/lib/format";
 import { generateRecurringInvoice, generateAllDueRecurringInvoices, type DuePeriod } from "./actions";
 
@@ -23,16 +23,16 @@ function CreateOneButton({ row, onDone }: { row: DueRow; onDone: () => void }) {
   }
 
   return (
-    <Flex direction="column" align="end" gap="1">
-      <Button type="button" size="1" onClick={handleCreate} disabled={pending}>
+    <div className="flex flex-col items-end gap-1">
+      <LButton type="button" variant="outline" size="sm" onClick={handleCreate} disabled={pending}>
         {pending ? "Creating…" : "Create"}
-      </Button>
+      </LButton>
       {error ? (
-        <Text size="1" color="red" role="alert">
+        <p className="text-caption text-crit" role="alert">
           {error}
-        </Text>
+        </p>
       ) : null}
-    </Flex>
+    </div>
   );
 }
 
@@ -54,6 +54,16 @@ export default function DueQueue({
   // past CREATE_ALL_CONFIRM_THRESHOLD — see that action's own comment
   // (defect 7). Nothing has been created yet at this point.
   const [confirmInfo, setConfirmInfo] = useState<{ count: number; amountCents: number } | null>(null);
+  // Same reasoning LConfirmDialog's own header documents for a destructive
+  // confirm: a native <dialog> autofocuses the first focusable control,
+  // which here is "Create N invoices" — so an Enter already in flight when
+  // this opens would confirm a many-invoice creation the pilot hasn't
+  // actually looked at yet. Focused on Cancel instead, same as every other
+  // confirm dialog in this product.
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (confirmInfo) cancelRef.current?.focus();
+  }, [confirmInfo]);
 
   const key = (r: DuePeriod) => `${r.schedule_id}:${r.period_start}`;
   const visible = rows.filter((r) => !dismissed.has(key(r)));
@@ -91,116 +101,161 @@ export default function DueQueue({
 
   if (rows.length === 0) {
     return (
-      <Card size="3">
-        <Flex direction="column" align="center" gap="2" py="6">
-          <Text size="4" weight="bold">
+      <LCard>
+        <div className="flex flex-col items-center gap-2 py-6 text-center">
+          <h2 className="text-h3 font-semibold">
             {hasActiveSchedules ? "Nothing due right now" : "No schedules to fall due"}
-          </Text>
-          <Text size="2" color="gray" align="center">
+          </h2>
+          <p className="max-w-md text-body-s text-ink-2">
             {hasActiveSchedules
               ? "Every active schedule’s periods up to today have already been created."
               : "This queue lists the periods an active recurring schedule owes you an invoice for. Set one up below and its first period shows up here."}
-          </Text>
-        </Flex>
-      </Card>
+          </p>
+        </div>
+      </LCard>
     );
   }
 
   return (
-    <Card size="3">
-      <Flex justify="between" align="center" mb="3" wrap="wrap" gap="2">
-        <Flex align="center" gap="2">
-          <ClockIcon />
-          <Text weight="bold">
-            {visible.length} due to create
-          </Text>
-        </Flex>
-        <Button type="button" size="1" variant="soft" onClick={handleCreateAll} disabled={pendingAll || visible.length === 0}>
+    <LCard>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <ClockIcon className="text-ink-3" />
+          <p className="font-semibold">{visible.length} due to create</p>
+        </div>
+        <LButton
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleCreateAll}
+          disabled={pendingAll || visible.length === 0}
+        >
           {pendingAll ? "Creating…" : "Create all due"}
-        </Button>
-      </Flex>
+        </LButton>
+      </div>
 
-      <AlertDialog.Root open={confirmInfo !== null} onOpenChange={(open) => { if (!open) setConfirmInfo(null); }}>
-        <AlertDialog.Content maxWidth="440px">
-          <AlertDialog.Title>Create {confirmInfo?.count ?? 0} invoices?</AlertDialog.Title>
-          <AlertDialog.Description size="2">
+      <LDialog
+        open={confirmInfo !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmInfo(null);
+        }}
+        title={`Create ${confirmInfo?.count ?? 0} invoices?`}
+        description={
+          <>
             {`This creates ${confirmInfo?.count ?? 0} draft invoices totaling `}
-            <Text weight="medium" className="tnum">
+            <span className="tnum-l font-medium text-ink">
               {formatCents(confirmInfo?.amountCents ?? 0)}
-            </Text>
-            {". That's more than usual for one click. Double-check a schedule's first-bill date isn't further in the past than intended before continuing. Every invoice is still a draft you review before sending."}
-          </AlertDialog.Description>
-          <Flex gap="3" mt="4" justify="end">
-            <AlertDialog.Cancel>
-              <Button variant="soft" color="gray" disabled={pendingAll}>
-                Cancel
-              </Button>
-            </AlertDialog.Cancel>
-            <Button variant="solid" disabled={pendingAll} onClick={handleConfirmCreateAll}>
+            </span>
+            {
+              ". That's more than usual for one click. Double-check a schedule's first-bill date isn't further in the past than intended before continuing. Every invoice is still a draft you review before sending."
+            }
+          </>
+        }
+        footer={
+          <>
+            <LButton
+              ref={cancelRef}
+              type="button"
+              variant="quiet"
+              disabled={pendingAll}
+              onClick={() => setConfirmInfo(null)}
+            >
+              Cancel
+            </LButton>
+            <LButton type="button" variant="primary" disabled={pendingAll} onClick={handleConfirmCreateAll}>
               {pendingAll ? "Creating…" : `Create ${confirmInfo?.count ?? 0} invoices`}
-            </Button>
-          </Flex>
-        </AlertDialog.Content>
-      </AlertDialog.Root>
+            </LButton>
+          </>
+        }
+      />
 
       {allError ? (
-        <Callout.Root color="red" mb="3">
-          <Callout.Text>{allError}</Callout.Text>
-        </Callout.Root>
+        <LAlert tone="crit" className="mb-3">
+          {allError}
+        </LAlert>
       ) : null}
       {allSummary ? (
-        <Callout.Root color="green" mb="3">
-          <Callout.Text>
-            {allSummary}{" "}
-            <RadixLink asChild>
-              <NextLink href="/invoices">View invoices</NextLink>
-            </RadixLink>
-          </Callout.Text>
-        </Callout.Root>
+        <LAlert tone="good" className="mb-3">
+          {allSummary}{" "}
+          <NextLink href="/invoices" className="font-medium text-accent underline-offset-2 hover:underline">
+            View invoices
+          </NextLink>
+        </LAlert>
       ) : null}
 
       {visible.length === 0 ? null : (
-        <Table.Root variant="ghost">
-          <Table.Header>
-            <Table.Row>
-              <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell>Description</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell>Period</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell>Due</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell justify="end" />
-            </Table.Row>
-          </Table.Header>
-          <Table.Body>
+        <LTable>
+          <caption>
+            <span className="sr-only">Recurring invoices due</span>
+          </caption>
+          <thead>
+            <tr>
+              <LTh>Client</LTh>
+              <LTh>Description</LTh>
+              <LTh>Period</LTh>
+              <LTh>Due</LTh>
+              <LTh>
+                <span className="sr-only">Action</span>
+              </LTh>
+            </tr>
+          </thead>
+          <tbody>
             {visible.map((row) => (
-              <Table.Row key={key(row)}>
-                <Table.RowHeaderCell>
-                  <Text weight="medium">{row.client_name}</Text>
-                </Table.RowHeaderCell>
-                <Table.Cell>
-                  <Text color="gray">{row.description}</Text>
-                </Table.Cell>
-                <Table.Cell>
-                  <Text color="gray">
+              <tr key={key(row)}>
+                {/* scope="row": the accessible-name row header Radix's
+                    Table.RowHeaderCell gave this cell. */}
+                <th
+                  scope="row"
+                  className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                >
+                  {row.client_name}
+                </th>
+                <LTd>
+                  <span className="text-ink-2">{row.description}</span>
+                </LTd>
+                <LTd>
+                  <span className="text-ink-2">
                     {new Date(`${row.period_start}T00:00:00Z`).toLocaleDateString("en-US", {
                       month: "long",
                       year: "numeric",
                       timeZone: "UTC",
                     })}
-                  </Text>
-                </Table.Cell>
-                <Table.Cell>
-                  <Text color="gray" className="tnum">
-                    {formatDate(row.due_on)}
-                  </Text>
-                </Table.Cell>
-                <Table.Cell justify="end">
+                  </span>
+                </LTd>
+                <LTd>
+                  <span className="text-ink-2">{formatDate(row.due_on)}</span>
+                </LTd>
+                <LTd>
                   <CreateOneButton row={row} onDone={() => setDismissed((d) => new Set(d).add(key(row)))} />
-                </Table.Cell>
-              </Table.Row>
+                </LTd>
+              </tr>
             ))}
-          </Table.Body>
-        </Table.Root>
+          </tbody>
+        </LTable>
       )}
-    </Card>
+    </LCard>
+  );
+}
+
+/* ── Inline icon ───────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. */
+function ClockIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <circle cx="8" cy="8" r="6.25" />
+      <path d="M8 4.5v3.75l2.5 1.5" />
+    </svg>
   );
 }

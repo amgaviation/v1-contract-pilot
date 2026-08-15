@@ -3,16 +3,8 @@
 import { useActionState, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import NextLink from "next/link";
-import {
-  Button,
-  Card,
-  Checkbox,
-  Flex,
-  Grid,
-  Table,
-  Text,
-  TextField,
-} from "@/components/ui";
+import { LButton, LCard, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
+import { LCheckbox, LField, LInput } from "@/components/ledger/forms";
 import { formatCents, formatDateRange } from "@/lib/format";
 import type { InvoiceFormState } from "../actions";
 import BillToFields, {
@@ -65,9 +57,11 @@ const initialState: InvoiceFormState = { error: null };
  * nobody cannot be sent, and that is now answerable two ways: a saved client,
  * or details typed on the invoice itself.
  *
- * Radix Select forbids an empty-string item value, so "nothing chosen yet" is
- * still the empty string in this component's state and the placeholder stands
- * in for it; TYPED_VALUE (../bill-to-fields.tsx) is the clientless option.
+ * The bill-to picker is a native `<select>` (components/ledger/forms.tsx's
+ * LSelect) with a leading, disabled placeholder option, so "nothing chosen
+ * yet" is still the empty string in this component's state and the
+ * placeholder stands in for it; TYPED_VALUE (../bill-to-fields.tsx) is the
+ * clientless option.
  */
 export default function DraftForm({
   action,
@@ -174,15 +168,15 @@ export default function DraftForm({
     .reduce((sum, t) => sum + t.estimated_value_cents, 0);
 
   return (
-    <Card size="3">
+    <LCard>
       <form action={formAction}>
         {/* client_id and bill_to_mode are posted by BillToFields itself. */}
         {[...selectedTrips].map((id) => (
           <input key={id} type="hidden" name="trip_ids" value={id} />
         ))}
 
-        <Grid columns={{ initial: "1", md: "3" }} gap="4">
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="flex flex-col gap-1 md:col-span-2">
             <BillToFields
               clients={clients}
               selection={selection}
@@ -193,47 +187,44 @@ export default function DraftForm({
               }
               clientHint={
                 clients.length === 0
-                  ? "No active clients yet. Pick \u201cNo client\u201d and type the details, or add a client first."
+                  ? "No active clients yet. Pick “No client” and type the details, or add a client first."
                   : undefined
               }
             />
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="tax_rate_percent">
-              Tax rate (%)
-            </Text>
-            <TextField.Root
+          </div>
+          <LField
+            label="Tax rate (%)"
+            htmlFor="tax_rate_percent"
+            hint="State sales or service tax, if any"
+          >
+            <LInput
               id="tax_rate_percent"
               name="tax_rate_percent"
               inputMode="decimal"
+              className="tnum-l"
               value={taxRate}
               onChange={(e) => setTaxRate(e.target.value)}
             />
-            <Text size="1" color="gray">
-              State sales or service tax, if any
-            </Text>
-          </Flex>
-        </Grid>
+          </LField>
+        </div>
 
         {selection !== "" && selection !== TYPED_VALUE ? (
-          <Flex direction="column" gap="3" mt="6">
-            <Flex justify="between" align="center">
-              <Text size="4" weight="bold">
-                Unbilled trips
-              </Text>
+          <div className="mt-6 flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-h3 font-semibold">Unbilled trips</h2>
               {selectedTrips.size > 0 ? (
-                <Text size="2" color="gray">
+                <p className="tnum-l text-body-s text-ink-2">
                   {selectedTrips.size} selected · est. {formatCents(selectedValueCents)}
-                </Text>
+                </p>
               ) : null}
-            </Flex>
+            </div>
 
             {tripsError ? (
-              <Text size="2" color="red" role="alert">
+              <p className="text-body-s text-crit" role="alert">
                 {tripsError}
-              </Text>
+              </p>
             ) : trips.length === 0 ? (
-              <Text size="2" color="gray">
+              <p className="text-body-s text-ink-2">
                 {unmarkedTripCount > 0
                   ? `No trips are marked flown for this client yet. ${unmarkedTripCount} ${
                       unmarkedTripCount === 1 ? "is" : "are"
@@ -241,60 +232,62 @@ export default function DraftForm({
                   : unmarkedTripCountFailed
                     ? "Couldn't check whether this client has trips still marked Scheduled. This is not a statement that none are waiting."
                     : "No completed, unbilled trips for this client yet."}
-              </Text>
+              </p>
             ) : (
-              <Table.Root variant="ghost">
-                <Table.Header>
-                  <Table.Row>
-                    <Table.ColumnHeaderCell />
-                    <Table.ColumnHeaderCell>Dates</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell>Aircraft</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell justify="end">Flight days</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell justify="end">Travel days</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell justify="end">Rebill</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell justify="end">Est. value</Table.ColumnHeaderCell>
-                  </Table.Row>
-                </Table.Header>
-                <Table.Body>
+              <LTable>
+                <caption>
+                  <span className="sr-only">Unbilled trips</span>
+                </caption>
+                <thead>
+                  <tr>
+                    <LTh>
+                      <span className="sr-only">Select</span>
+                    </LTh>
+                    <LTh>Dates</LTh>
+                    <LTh>Aircraft</LTh>
+                    <LTh numeric>Flight days</LTh>
+                    <LTh numeric>Travel days</LTh>
+                    <LTh numeric>Rebill</LTh>
+                    <LTh numeric>Est. value</LTh>
+                  </tr>
+                </thead>
+                <tbody>
                   {trips.map((trip) => {
                     const disabled = trip.committed_invoice_label !== null;
                     return (
-                      <Table.Row key={trip.id} style={disabled ? { opacity: 0.55 } : undefined}>
-                        <Table.Cell>
-                          <Checkbox
+                      <tr key={trip.id} style={disabled ? { opacity: 0.55 } : undefined}>
+                        <LTd>
+                          <LCheckbox
                             checked={selectedTrips.has(trip.id)}
-                            onCheckedChange={() => toggleTrip(trip)}
+                            onChange={() => toggleTrip(trip)}
                             disabled={disabled}
                           />
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Text>{formatDateRange(trip.starts_on, trip.ends_on)}</Text>
+                        </LTd>
+                        <LTd>
+                          <span>{formatDateRange(trip.starts_on, trip.ends_on)}</span>
                           {disabled ? (
-                            <Text as="div" size="1" color="amber">
-                              Already on {trip.committed_invoice_label}
-                            </Text>
+                            <span className="block text-caption text-warn">
+                              {`Already on ${trip.committed_invoice_label}`}
+                            </span>
                           ) : null}
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Text color="gray">{trip.aircraft_ident ?? "—"}</Text>
-                        </Table.Cell>
-                        <Table.Cell justify="end">
+                        </LTd>
+                        <LTd>
+                          <span className="text-ink-2">{trip.aircraft_ident ?? "—"}</span>
+                        </LTd>
+                        <LTd numeric>
                           {trip.has_day_rows ? (
-                            <Text color="gray">From day grid</Text>
+                            <span className="text-ink-2">From day grid</span>
                           ) : (
-                            <Text className="tnum">
+                            <span>
                               {trip.day_count} × {formatCents(trip.day_rate_cents)}
-                            </Text>
+                            </span>
                           )}
-                        </Table.Cell>
-                        <Table.Cell justify="end">
+                        </LTd>
+                        <LTd numeric>
                           {trip.has_day_rows ? (
-                            <Text color="gray">N/A</Text>
+                            <span className="text-ink-2">N/A</span>
                           ) : (
-                            <Text
-                              className="tnum"
-                              color={trip.missing_travel_rate ? "amber" : "gray"}
-                            >
+                            <span className={trip.missing_travel_rate ? "text-warn" : "text-ink-2"}>
                               {trip.travel_day_count > 0
                                 ? trip.missing_travel_rate
                                   ? `${trip.travel_day_count} × no rate set`
@@ -302,38 +295,34 @@ export default function DraftForm({
                                       trip.travel_day_rate_cents
                                     )}`
                                 : "—"}
-                            </Text>
+                            </span>
                           )}
-                        </Table.Cell>
-                        <Table.Cell justify="end">
-                          <Text color="gray" className="tnum">
+                        </LTd>
+                        <LTd numeric>
+                          <span className="text-ink-2">
                             {trip.rebillable_expense_cents > 0
                               ? formatCents(trip.rebillable_expense_cents)
                               : "—"}
-                          </Text>
-                        </Table.Cell>
-                        <Table.Cell justify="end">
-                          <Text weight="medium" className="tnum">
-                            {formatCents(trip.estimated_value_cents)}
-                          </Text>
+                          </span>
+                        </LTd>
+                        <LTd numeric>
+                          <span className="font-medium">{formatCents(trip.estimated_value_cents)}</span>
                           {trip.has_day_rows ? (
-                            <Text
-                              as="div"
-                              size="1"
-                              color="gray"
+                            <span
+                              className="block text-caption text-ink-3"
                               title="Priced from this trip's day-by-day grid (quantity × rate for each billable day), not the trip's flat day count/rate."
                             >
                               from day grid
-                            </Text>
+                            </span>
                           ) : null}
-                        </Table.Cell>
-                      </Table.Row>
+                        </LTd>
+                      </tr>
                     );
                   })}
-                </Table.Body>
-              </Table.Root>
+                </tbody>
+              </LTable>
             )}
-          </Flex>
+          </div>
         ) : null}
 
         {
@@ -355,22 +344,18 @@ export default function DraftForm({
           // actually has lines or does not.
         }
         {selection !== "" && selectedTrips.size === 0 ? (
-          <Text as="div" size="1" color="gray" mt="3">
+          <p className="mt-3 text-caption text-ink-3">
             No trips selected. You will get an empty invoice and add its lines
             yourself on the next screen.
-          </Text>
+          </p>
         ) : null}
 
-        <Flex mt="4" role="alert" aria-live="polite">
-          {state.error ? (
-            <Text size="1" color="red">
-              {state.error}
-            </Text>
-          ) : null}
-        </Flex>
+        <div className="mt-4" role="alert" aria-live="polite">
+          {state.error ? <p className="text-caption text-crit">{state.error}</p> : null}
+        </div>
 
-        <Flex mt="4" gap="3">
-          <Button
+        <div className="mt-4 flex gap-3">
+          <LButton
             type="submit"
             // A bill-to is the only requirement: either a client is picked, or
             // the clientless option is, in which case readBillTo checks the
@@ -379,12 +364,12 @@ export default function DraftForm({
             disabled={pending || selection === ""}
           >
             {pending ? "Drafting…" : "Draft invoice"}
-          </Button>
-          <Button asChild variant="outline">
-            <NextLink href="/invoices">Cancel</NextLink>
-          </Button>
-        </Flex>
+          </LButton>
+          <NextLink href="/invoices" className={lButtonClass({ variant: "outline" })}>
+            Cancel
+          </NextLink>
+        </div>
       </form>
-    </Card>
+    </LCard>
   );
 }

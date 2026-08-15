@@ -1,6 +1,6 @@
 "use client";
 
-import { Flex, Grid, Select, Text, TextField } from "@/components/ui";
+import { LField, LInput, LSelect } from "@/components/ledger/forms";
 
 /**
  * WHO AN INVOICE BILLS, ASKED ONCE, IN ONE CONTROL.
@@ -15,10 +15,14 @@ import { Flex, Grid, Select, Text, TextField } from "@/components/ui";
  * the clientless option is the first item in the same list the clients are in.
  * A radio pair above the picker would make the pilot answer twice.
  *
- * TYPED_VALUE is a sentinel because Radix Select forbids an empty item value.
- * It is prefixed and bracketed so it cannot collide with a UUID, and it never
- * reaches the database: the form posts `bill_to_mode`, and `client_id` is
- * posted empty whenever the sentinel is selected.
+ * TYPED_VALUE is a sentinel: it is prefixed and bracketed so it cannot
+ * collide with a UUID, and it never reaches the database — the form posts
+ * `bill_to_mode`, and `client_id` is posted empty whenever the sentinel is
+ * selected. It also keeps the clientless choice distinguishable from
+ * "nothing chosen yet" (the empty string), which the picker below — a native
+ * `<select>` (components/ledger/forms.tsx's LSelect, per the migration's
+ * "native controls survive" rule) — represents with its own leading,
+ * disabled placeholder option.
  */
 
 export const TYPED_VALUE = "__typed__";
@@ -73,51 +77,43 @@ export default function BillToFields({
   const typed = selection === TYPED_VALUE;
 
   return (
-    <Flex direction="column" gap="3">
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" id="bill-to-label">
-          Bill to
-        </Text>
-        <Select.Root
-          value={selection || undefined}
-          onValueChange={onSelectionChange}
+    <div className="flex flex-col gap-3">
+      <LField
+        label="Bill to"
+        htmlFor="bill-to"
+        hint={
+          typed
+            ? "This invoice keeps these details. No rate card, no minimum, no late fee and no reminder schedule applies to it."
+            : clientHint
+        }
+      >
+        <LSelect
+          id="bill-to"
+          value={selection}
+          onChange={(e) => onSelectionChange(e.target.value)}
         >
-          <Select.Trigger
-            id="bill-to"
-            aria-labelledby="bill-to-label"
-            placeholder="Choose who this bills"
-          />
-          <Select.Content>
-            <Select.Item value={TYPED_VALUE}>No client, type the details</Select.Item>
-            {clients.map((client) => (
-              <Select.Item key={client.id} value={client.id}>
-                {client.name}
-              </Select.Item>
-            ))}
-          </Select.Content>
-        </Select.Root>
-        {/* The posted values. `bill_to_mode` is what readBillTo branches on,
-            rather than inferring the mode from which fields are filled: a
-            cleared name and a form that failed to post are otherwise the same
-            submission. */}
-        <input type="hidden" name="bill_to_mode" value={typed ? "typed" : "client"} />
-        <input type="hidden" name="client_id" value={typed ? "" : selection} />
-        {typed ? (
-          <Text size="1" color="gray">
-            This invoice keeps these details. No rate card, no minimum, no late
-            fee and no reminder schedule applies to it.
-          </Text>
-        ) : clientHint ? (
-          <Text size="1" color="gray">
-            {clientHint}
-          </Text>
-        ) : null}
-      </Flex>
+          <option value="" disabled>
+            Choose who this bills
+          </option>
+          <option value={TYPED_VALUE}>No client, type the details</option>
+          {clients.map((client) => (
+            <option key={client.id} value={client.id}>
+              {client.name}
+            </option>
+          ))}
+        </LSelect>
+      </LField>
+      {/* The posted values. `bill_to_mode` is what readBillTo branches on,
+          rather than inferring the mode from which fields are filled: a
+          cleared name and a form that failed to post are otherwise the same
+          submission. */}
+      <input type="hidden" name="bill_to_mode" value={typed ? "typed" : "client"} />
+      <input type="hidden" name="client_id" value={typed ? "" : selection} />
 
       {typed ? (
-        <Grid columns={{ initial: "1", md: "12" }} gap="3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
           <Field
-            span="6"
+            span="md:col-span-6"
             name="bill_to_name"
             label="Name"
             hint="Who pays this. Required."
@@ -125,14 +121,14 @@ export default function BillToFields({
             onChange={(next) => onValueChange("name", next)}
           />
           <Field
-            span="6"
+            span="md:col-span-6"
             name="bill_to_contact_name"
             label="Contact"
             value={values.contact_name}
             onChange={(next) => onValueChange("contact_name", next)}
           />
           <Field
-            span="6"
+            span="md:col-span-6"
             name="bill_to_email"
             label="Email"
             hint="Where an emailed copy goes. Leave it blank and you send the PDF yourself."
@@ -140,50 +136,50 @@ export default function BillToFields({
             onChange={(next) => onValueChange("email", next)}
           />
           <Field
-            span="6"
+            span="md:col-span-6"
             name="bill_to_address_line1"
             label="Address"
             value={values.address_line1}
             onChange={(next) => onValueChange("address_line1", next)}
           />
           <Field
-            span="6"
+            span="md:col-span-6"
             name="bill_to_address_line2"
             label="Address line 2"
             value={values.address_line2}
             onChange={(next) => onValueChange("address_line2", next)}
           />
           <Field
-            span="4"
+            span="md:col-span-4"
             name="bill_to_city"
             label="City"
             value={values.city}
             onChange={(next) => onValueChange("city", next)}
           />
           <Field
-            span="2"
+            span="md:col-span-2"
             name="bill_to_state"
             label="State"
             value={values.state}
             onChange={(next) => onValueChange("state", next)}
           />
           <Field
-            span="3"
+            span="md:col-span-3"
             name="bill_to_postal_code"
             label="Postal code"
             value={values.postal_code}
             onChange={(next) => onValueChange("postal_code", next)}
           />
           <Field
-            span="3"
+            span="md:col-span-3"
             name="bill_to_country"
             label="Country"
             value={values.country}
             onChange={(next) => onValueChange("country", next)}
           />
-        </Grid>
+        </div>
       ) : null}
-    </Flex>
+    </div>
   );
 }
 
@@ -193,6 +189,10 @@ export default function BillToFields({
  * record of who the invoice bills: losing them on a validation error means
  * retyping an address. The parent owns the state and re-seeds it from the
  * action's echoed values.
+ *
+ * `span` is a literal Tailwind class (e.g. "md:col-span-6"), not assembled
+ * from a template string — Tailwind's build-time scanner has to see the
+ * whole class name at the call site to generate it.
  */
 function Field({
   span,
@@ -210,21 +210,8 @@ function Field({
   onChange: (next: string) => void;
 }) {
   return (
-    <Flex direction="column" gap="1" gridColumn={{ md: `span ${span}` }}>
-      <Text as="label" size="2" weight="medium" htmlFor={name}>
-        {label}
-      </Text>
-      <TextField.Root
-        id={name}
-        name={name}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      />
-      {hint ? (
-        <Text size="1" color="gray">
-          {hint}
-        </Text>
-      ) : null}
-    </Flex>
+    <LField label={label} htmlFor={name} hint={hint} className={span}>
+      <LInput id={name} name={name} value={value} onChange={(e) => onChange(e.target.value)} />
+    </LField>
   );
 }
