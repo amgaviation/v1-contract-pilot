@@ -12,7 +12,7 @@ import { Logo } from "@/components/ui/logo";
  */
 export default function EstimateNotFound() {
   return (
-    <Box style={{ minHeight: "100vh", background: "var(--canvas)" }}>
+    <Box style={{ minHeight: "100dvh", background: "var(--canvas)" }}>
       <Container size="1" p={{ initial: "4", sm: "6" }}>
         <Box mb="5">
           <Logo />

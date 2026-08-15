@@ -12,6 +12,7 @@ import { BRAND } from "@/lib/brand";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import type { NavItem } from "@/lib/nav";
 import type { ResolvedTheme } from "@/lib/theme-slots";
+import { CommandPalette } from "./command-palette";
 import { NavRail, NavStrip } from "./nav-rail";
 import SkipLink from "./skip-link";
 
@@ -279,6 +280,15 @@ export function AppShell({
                   {userEmail}
                 </Text>
               </Box>
+              {/* The one visible entry point to the command palette — see
+                  command-palette.tsx's own header comment for why the
+                  button lives in that client component rather than here.
+                  `sections` is the SAME server-filtered prop passed to
+                  NavRail/NavStrip below (nav-rail.tsx's header comment:
+                  the currency-flag filter runs server-side, before this
+                  prop exists), so the palette can never offer a pilot a
+                  section their tenant does not have. */}
+              <CommandPalette sections={sections} />
               {/* A form, not a link: signing out mutates session state, and
                   a GET that a prefetcher or a link-scanner can fire would
                   end the session behind the pilot's back. */}

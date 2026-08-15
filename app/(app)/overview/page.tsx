@@ -1179,6 +1179,105 @@ export default async function OverviewPage() {
         </Callout.Root>
       ) : null}
 
+      {/* NEEDS ATTENTION — promoted to a full-width card directly under the
+          error notices, ahead of getting-started and the KPI row. This
+          panel carries lapsed 135.293/.297/.299 operator qualifications and
+          overdue invoices — the one item on this page a false "all clear"
+          is most expensive to believe — and it used to render last,
+          bottom-right of a 2-up grid, several scrolls down on a laptop and
+          worse on a phone where that grid single-columns. Nothing about
+          the panel's own logic changed below: same NEEDS_ATTENTION
+          ordering, same item renderers, same links.
+
+          Rendered ONLY when there is something to show: an error (which
+          must be surfaced regardless of attentionCount, since a failed
+          read is never "nothing needs attention") or a real item. A
+          healthy account with attentionCount === 0 gets no card here at
+          all — an empty "all clear" ahead of everything else would be the
+          same reassuring-zero this file's other comments warn against,
+          just moved to the top of the page instead of the bottom. */}
+      {errors.length > 0 || NEEDS_ATTENTION.length > 0 ? (
+        <Card>
+          <Flex direction="column" gap="1" mb="3">
+            <Text size="4" weight="medium">
+              Needs attention
+            </Text>
+            <Text size="2" color="gray">
+              {pluralize(attentionCount, "item")}
+            </Text>
+          </Flex>
+
+          {/* U1: a failed read is not "nothing needs attention". The card
+              above is gated to render for exactly this case even though
+              NEEDS_ATTENTION itself may be empty — see that gate's
+              comment. */}
+          {errors.length ? (
+            <Flex align="center" justify="center" py="5">
+              <Text size="2" color="gray" align="center">
+                Couldn&rsquo;t load. See the notice above. This is not a
+                statement that nothing needs attention.
+              </Text>
+            </Flex>
+          ) : (
+            // A real ordered list, not a stack of rows. The order IS the
+            // information here — qualifications, then overdue invoices,
+            // then the reserved unassigned-receipts slot, then W-9s (see
+            // the slot arithmetic above) — and an <ol> is what tells a
+            // screen reader "this is 1 of 6, in priority order" instead of
+            // presenting six unrelated panels.
+            // The explicit reset is required — see the getting-started
+            // list above for why `asChild` does not bring Radix's with it.
+            <Flex
+              direction="column"
+              asChild
+              style={{ listStyle: "none", margin: 0, padding: 0 }}
+            >
+              <ol>
+                {NEEDS_ATTENTION.map((item, index) => (
+                  <Flex
+                    key={item.id}
+                    asChild
+                    justify="between"
+                    align="center"
+                    gap="3"
+                    py="2"
+                    wrap="wrap"
+                  >
+                    <li>
+                      <Flex direction="column" gap="1" minWidth="0">
+                        <Flex align="center" gap="2" wrap="wrap">
+                          <Text size="1" color="gray" className="tnum" aria-hidden>
+                            {index + 1}
+                          </Text>
+                          <Badge color={item.tone}>{item.band}</Badge>
+                          <Text weight="medium">{item.label}</Text>
+                        </Flex>
+                        <Text size="1" color="gray" className="tnum">
+                          {item.detail}
+                        </Text>
+                      </Flex>
+                      <Button
+                        asChild
+                        variant="outline"
+                        size="1"
+                        aria-label={`${item.action}, ${item.label}`}
+                      >
+                        <NextLink href={item.href}>{item.action}</NextLink>
+                      </Button>
+                    </li>
+                  </Flex>
+                ))}
+              </ol>
+            </Flex>
+          )}
+          {attentionMoreCount > 0 ? (
+            <Text size="1" color="gray">
+              {`+${attentionMoreCount} more`}
+            </Text>
+          ) : null}
+        </Card>
+      ) : null}
+
       {/* Day-one orientation — the KPI cards below are correctly $0.00
           with nothing logged, but a zero-state dashboard alone doesn't
           say what to do next. Said once here, since this is the screen
@@ -1314,9 +1413,10 @@ export default async function OverviewPage() {
         ))}
       </Grid>
 
-      {/* Row 2 — UNBILLED MONEY, BY CLIENT. The lead module: the one
-          question this screen exists to answer is "what should I invoice
-          next", and the answer is a client, not a total.
+      {/* Row 2 — UNBILLED MONEY, BY CLIENT, paired with READY TO INVOICE.
+          The lead module: the one question this screen exists to answer is
+          "what should I invoice next", and the answer is a client, not a
+          total.
 
           THIS IS NOT A SECOND UNBILLED FIGURE. Every cell below comes from
           pilot.unbilled_by_client, and the "Unbilled work" card above comes
@@ -1325,10 +1425,16 @@ export default async function OverviewPage() {
           at the bottom of this table is where a pilot can see that for
           themselves. See 20260813010000_unbilled_money_reads.sql.
 
-          Placed directly under the money row and above the document panel
-          on purpose: it is the actionable half of "Owed to you", and every
-          row carries the one tap that turns it into a draft. */}
-      <Card>
+          Placed directly under the money row, and — from md up — paired
+          side by side with "Ready to invoice": both are the actionable
+          half of "Owed to you", and every row in either card carries the
+          one tap that turns it into a draft. This card takes the wider
+          track (3fr vs 2fr) because its table carries more columns; below
+          md both stack full width, this one first. The document-
+          expirations panel, which is informational rather than
+          actionable, stays below this pair. */}
+      <Grid columns={{ initial: "1", md: "3fr 2fr" }} gap="4">
+        <Card>
         <Flex direction="column" gap="1" mb="3">
           <Text size="4" weight="medium">
             Unbilled money, by client
@@ -1635,101 +1741,14 @@ export default async function OverviewPage() {
             </Flex>
           </>
         )}
-      </Card>
+        </Card>
 
-      {/* Row 3 — document expirations. NOT a currency determination — see
-          the query comment above on why this deliberately excludes
-          day/night/instrument recency. */}
-      <Card>
-        <Flex direction="column" gap="1" mb="3">
-          <Text size="4" weight="medium">
-            Document expirations
-          </Text>
-          <Text size="2" color="gray">
-            Medical, flight review, passport, insurance and PIC proficiency
-            check (61.58) dates from your documents
-          </Text>
-        </Flex>
-
-        {/* U1: a failed read here is not "you have no documents on file" —
-            it used to render exactly that, inviting a pilot to re-enter a
-            medical or flight-review date the query simply couldn't reach.
-            Gated on the same page-wide `errors` this file already builds
-            for the banner above (see its own comment) and the day-one
-            card below — a query error is not "no data". */}
-        {errors.length ? (
-          <Flex direction="column" align="center" gap="3" py="5">
-            <Text size="2" color="gray" align="center">
-              Couldn&rsquo;t load your document expirations. See the notice
-              above. This is not a statement that you have none on file.
-            </Text>
-          </Flex>
-        ) : expirationRows.length === 0 ? (
-          <Flex direction="column" align="center" gap="3" py="5">
-            <Text size="2" color="gray">
-              No document dates on file yet.
-            </Text>
-            <Button asChild variant="outline">
-              <NextLink href="/documents">Add your documents</NextLink>
-            </Button>
-          </Flex>
-        ) : (
-          <Table.Root variant="surface">
-            {/* Radix ships VisuallyHidden as a COMPONENT (inline styles),
-                never as an `rt-VisuallyHidden` class — that class does not
-                exist in its stylesheet, so a caption carrying it rendered
-                as a stray centred line of visible text above the table. */}
-            <caption>
-              <VisuallyHidden>Document expirations</VisuallyHidden>
-            </caption>
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Document</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Expires</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell justify="end">Status</Table.ColumnHeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {expirationRows.map((row) => {
-                const badge = EXPIRY_LADDER_BADGE[row.ladder_stage] ?? LADDER_FALLBACK;
-                return (
-                  <Table.Row key={row.source_id}>
-                    <Table.Cell>
-                      <Text weight="medium">{row.item_label}</Text>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Text color="gray">{formatDate(row.expires_on)}</Text>
-                    </Table.Cell>
-                    <Table.Cell justify="end">
-                      <Badge color={badge.tone}>{badge.label}</Badge>
-                    </Table.Cell>
-                  </Table.Row>
-                );
-              })}
-            </Table.Body>
-          </Table.Root>
-        )}
-
-        <Flex mt="3">
-          {/* Deliberately NOT the currency disclaimer. That copy opens
-              "Currency is calculated from the entries you logged", which
-              asserts a calculation this product does not yet perform —
-              the currency engine is Phase 7 and ships only after an owner
-              spec review and counsel sign-off on the wording. Showing it
-              here is merely inaccurate today, but it also spends the
-              disclaimer early: when the real engine lands,
-              CURRENCY_DISCLAIMER travels with IT, verbatim from
-              lib/brand.ts. This panel claims only what it is — dates the
-              pilot typed off their own documents. */}
-          <Text size="1" color="gray">
-            These are the expiry dates you recorded on your own documents.
-            Keeping them current is your responsibility.
-          </Text>
-        </Flex>
-      </Card>
-
-      {/* Row 4 — ready to invoice / needs attention. */}
-      <Grid columns={{ initial: "1", md: "2" }} gap="4">
+        {/* READY TO INVOICE — paired with the unbilled-by-client table via
+            the Grid both cards sit in (see that Card's opening comment).
+            Moved out of the bottom-of-page 2-up grid it used to share with
+            "Needs attention", which is now a full-width card near the top
+            of the page (see there for why); this panel's own content and
+            gating are otherwise unchanged. */}
         <Card>
           <Flex direction="column" gap="1" mb="3">
             <Text size="4" weight="medium">
@@ -1754,14 +1773,16 @@ export default async function OverviewPage() {
               </Text>
             </Flex>
           ) : readyTrips.length === 0 ? (
-            <Flex direction="column" align="center" gap="3" py="5">
-              <Text size="2" color="gray" align="center">
-                No completed trips are waiting to be billed.
-              </Text>
-              <Button asChild variant="outline">
-                <NextLink href="/trips/new">Log a trip</NextLink>
-              </Button>
-            </Flex>
+            <EmptyState
+              title="Nothing ready to invoice"
+              action={
+                <Button asChild variant="outline">
+                  <NextLink href="/trips/new">Log a trip</NextLink>
+                </Button>
+              }
+            >
+              No completed trips are waiting to be billed.
+            </EmptyState>
           ) : (
             <>
               <Flex direction="column">
@@ -1822,93 +1843,100 @@ export default async function OverviewPage() {
             </>
           )}
         </Card>
+      </Grid>
 
-        <Card>
-          <Flex direction="column" gap="1" mb="3">
-            <Text size="4" weight="medium">
-              Needs attention
-            </Text>
-            <Text size="2" color="gray">
-              {pluralize(attentionCount, "item")}
+      {/* Row 3 — document expirations. NOT a currency determination — see
+          the query comment above on why this deliberately excludes
+          day/night/instrument recency. */}
+      <Card>
+        <Flex direction="column" gap="1" mb="3">
+          <Text size="4" weight="medium">
+            Document expirations
+          </Text>
+          <Text size="2" color="gray">
+            Medical, flight review, passport, insurance and PIC proficiency
+            check (61.58) dates from your documents
+          </Text>
+        </Flex>
+
+        {/* U1: a failed read here is not "you have no documents on file" —
+            it used to render exactly that, inviting a pilot to re-enter a
+            medical or flight-review date the query simply couldn't reach.
+            Gated on the same page-wide `errors` this file already builds
+            for the banner above (see its own comment) and the day-one
+            card below — a query error is not "no data". */}
+        {errors.length ? (
+          <Flex direction="column" align="center" gap="3" py="5">
+            <Text size="2" color="gray" align="center">
+              Couldn&rsquo;t load your document expirations. See the notice
+              above. This is not a statement that you have none on file.
             </Text>
           </Flex>
+        ) : expirationRows.length === 0 ? (
+          <EmptyState
+            title="No documents on file"
+            action={
+              <Button asChild variant="outline">
+                <NextLink href="/documents">Add your documents</NextLink>
+              </Button>
+            }
+          >
+            No document dates on file yet.
+          </EmptyState>
+        ) : (
+          <Table.Root variant="surface">
+            {/* Radix ships VisuallyHidden as a COMPONENT (inline styles),
+                never as an `rt-VisuallyHidden` class — that class does not
+                exist in its stylesheet, so a caption carrying it rendered
+                as a stray centred line of visible text above the table. */}
+            <caption>
+              <VisuallyHidden>Document expirations</VisuallyHidden>
+            </caption>
+            <Table.Header>
+              <Table.Row>
+                <Table.ColumnHeaderCell>Document</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell>Expires</Table.ColumnHeaderCell>
+                <Table.ColumnHeaderCell justify="end">Status</Table.ColumnHeaderCell>
+              </Table.Row>
+            </Table.Header>
+            <Table.Body>
+              {expirationRows.map((row) => {
+                const badge = EXPIRY_LADDER_BADGE[row.ladder_stage] ?? LADDER_FALLBACK;
+                return (
+                  <Table.Row key={row.source_id}>
+                    <Table.Cell>
+                      <Text weight="medium">{row.item_label}</Text>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Text color="gray">{formatDate(row.expires_on)}</Text>
+                    </Table.Cell>
+                    <Table.Cell justify="end">
+                      <Badge color={badge.tone}>{badge.label}</Badge>
+                    </Table.Cell>
+                  </Table.Row>
+                );
+              })}
+            </Table.Body>
+          </Table.Root>
+        )}
 
-          {/* U1: this panel carries lapsed 135.293/.297/.299 operator
-              qualifications — the one item on this page a false "all
-              clear" is most expensive to believe. Same page-wide gate as
-              the two panels above. */}
-          {errors.length ? (
-            <Flex align="center" justify="center" py="5">
-              <Text size="2" color="gray" align="center">
-                Couldn&rsquo;t load. See the notice above. This is not a
-                statement that nothing needs attention.
-              </Text>
-            </Flex>
-          ) : NEEDS_ATTENTION.length === 0 ? (
-            <Flex align="center" justify="center" py="5">
-              <Text size="2" color="gray">
-                Nothing needs attention right now.
-              </Text>
-            </Flex>
-          ) : (
-            // A real ordered list, not a stack of rows. The order IS the
-            // information here — qualifications, then overdue invoices,
-            // then the reserved unassigned-receipts slot, then W-9s (see
-            // the slot arithmetic above) — and an <ol> is what tells a
-            // screen reader "this is 1 of 6, in priority order" instead of
-            // presenting six unrelated panels.
-            // The explicit reset is required — see the getting-started
-            // list above for why `asChild` does not bring Radix's with it.
-            <Flex
-              direction="column"
-              asChild
-              style={{ listStyle: "none", margin: 0, padding: 0 }}
-            >
-              <ol>
-                {NEEDS_ATTENTION.map((item, index) => (
-                  <Flex
-                    key={item.id}
-                    asChild
-                    justify="between"
-                    align="center"
-                    gap="3"
-                    py="2"
-                    wrap="wrap"
-                  >
-                    <li>
-                      <Flex direction="column" gap="1" minWidth="0">
-                        <Flex align="center" gap="2" wrap="wrap">
-                          <Text size="1" color="gray" className="tnum" aria-hidden>
-                            {index + 1}
-                          </Text>
-                          <Badge color={item.tone}>{item.band}</Badge>
-                          <Text weight="medium">{item.label}</Text>
-                        </Flex>
-                        <Text size="1" color="gray" className="tnum">
-                          {item.detail}
-                        </Text>
-                      </Flex>
-                      <Button
-                        asChild
-                        variant="outline"
-                        size="1"
-                        aria-label={`${item.action}, ${item.label}`}
-                      >
-                        <NextLink href={item.href}>{item.action}</NextLink>
-                      </Button>
-                    </li>
-                  </Flex>
-                ))}
-              </ol>
-            </Flex>
-          )}
-          {attentionMoreCount > 0 ? (
-            <Text size="1" color="gray">
-              {`+${attentionMoreCount} more`}
-            </Text>
-          ) : null}
-        </Card>
-      </Grid>
+        <Flex mt="3">
+          {/* Deliberately NOT the currency disclaimer. That copy opens
+              "Currency is calculated from the entries you logged", which
+              asserts a calculation this product does not yet perform —
+              the currency engine is Phase 7 and ships only after an owner
+              spec review and counsel sign-off on the wording. Showing it
+              here is merely inaccurate today, but it also spends the
+              disclaimer early: when the real engine lands,
+              CURRENCY_DISCLAIMER travels with IT, verbatim from
+              lib/brand.ts. This panel claims only what it is — dates the
+              pilot typed off their own documents. */}
+          <Text size="1" color="gray">
+            These are the expiry dates you recorded on your own documents.
+            Keeping them current is your responsibility.
+          </Text>
+        </Flex>
+      </Card>
     </PageShell>
   );
 }

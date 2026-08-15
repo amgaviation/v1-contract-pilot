@@ -251,9 +251,19 @@ export default async function InvoicesPage({
       subtitle={
         firstError
           ? "Some figures below couldn't load. See the notice."
-          : `${invoices.length} invoice${invoices.length === 1 ? "" : "s"}${
-              overdueCount ? ` · ${overdueCount} past due` : ""
-            }`
+          : // The default view filters to "outstanding", so `invoices.length`
+            // (everything loaded) and `visible.length` (what the table below
+            // actually shows) diverge whenever a filter is narrowing the
+            // list — say so, the way trips/page.tsx's subtitle names an
+            // active filter rather than quoting a count the table disagrees
+            // with.
+            visible.length !== invoices.length
+            ? `Showing ${visible.length} of ${invoices.length} invoices${
+                overdueCount ? ` · ${overdueCount} past due` : ""
+              }`
+            : `${invoices.length} invoice${invoices.length === 1 ? "" : "s"}${
+                overdueCount ? ` · ${overdueCount} past due` : ""
+              }`
       }
       action={
         <Flex gap="2" wrap="wrap">

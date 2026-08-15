@@ -24,6 +24,10 @@ import PageShell from "../../page-shell";
 import { currentTaxYear } from "../year-end/db";
 import { loadOptionLabels } from "@/lib/custom-options-read";
 import { loadProfitLossReport, resolvePLPeriod, type Comparison } from "./queries";
+import {
+  PeriodComparisonBarChart,
+  type PeriodComparisonDatum,
+} from "@/components/charts/period-comparison-bar-chart";
 
 export const metadata = { title: "Profit & loss" };
 
@@ -122,6 +126,31 @@ export default async function ProfitLossReportPage({
   const categoryLabels = await loadOptionLabels("expense_category");
 
   const netProfitCents = report.incomeComparison.currentCents - report.expensesComparison.currentCents;
+
+  // Fed from the SAME comparisons the Income/Expenses cards below already
+  // render — no second read, no figure that could disagree with the
+  // tables it sits above. Two categories, always: this never needs the
+  // "at least 2 data points" gate the trip-margin chart does, but the
+  // chart component is written generically, so the check stays explicit
+  // rather than assumed.
+  const comparisonData: PeriodComparisonDatum[] = [
+    {
+      category: "Income",
+      currentCents: report.incomeComparison.currentCents,
+      priorCents: report.incomeComparison.priorCents,
+    },
+    {
+      category: "Expenses",
+      currentCents: report.expensesComparison.currentCents,
+      priorCents: report.expensesComparison.priorCents,
+    },
+  ];
+  const comparisonAriaLabel =
+    `Income and expenses, ${period.label} versus ${period.priorLabel}. ` +
+    `Income: ${formatCents(report.incomeComparison.currentCents)} this period, ` +
+    `${formatCents(report.incomeComparison.priorCents)} prior period. ` +
+    `Expenses: ${formatCents(report.expensesComparison.currentCents)} this period, ` +
+    `${formatCents(report.expensesComparison.priorCents)} prior period.`;
 
   return (
     <PageShell
@@ -254,6 +283,30 @@ export default async function ProfitLossReportPage({
                 be partial. Contact support if your totals look short.
               </Callout.Text>
             </Callout.Root>
+          ) : null}
+
+          {/* ---------------- Income vs. expenses, at a glance ----------------
+              Above the figures it summarizes, never displacing them — the
+              Income/Expenses/Net profit cards below still carry every
+              exact number and the delta badges; this is a compact visual
+              read of the same two comparisons for the two data points
+              (income, expenses) where a chart earns its place over a
+              third number grid. */}
+          {comparisonData.length >= 2 ? (
+            <Card size="3">
+              <Heading as="h2" size="4" mb="1">
+                Income vs. expenses
+              </Heading>
+              <Text as="div" size="2" color="gray" mb="3">
+                {period.label} compared against {period.priorLabel}.
+              </Text>
+              <PeriodComparisonBarChart
+                data={comparisonData}
+                currentLabel={period.label}
+                priorLabel={period.priorLabel}
+                ariaLabel={comparisonAriaLabel}
+              />
+            </Card>
           ) : null}
 
           {/* ---------------- Income ---------------- */}

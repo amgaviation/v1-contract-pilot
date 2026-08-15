@@ -142,7 +142,7 @@ export default async function PublicEstimatePage({
   const status = STATUS_LABEL[estimate.estimate.status] ?? STATUS_LABEL.sent!;
 
   return (
-    <Box style={{ minHeight: "100vh", background: "var(--canvas)" }}>
+    <Box style={{ minHeight: "100dvh", background: "var(--canvas)" }}>
       <Container size="3" p={{ initial: "4", sm: "6" }}>
         <Flex align="center" justify="between" mb="5">
           <Logo />
