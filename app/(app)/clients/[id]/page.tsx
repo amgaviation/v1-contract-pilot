@@ -25,6 +25,7 @@ import RateOverridesPanel from "./rate-overrides-panel";
 import OperatorQualificationsPanel from "./operator-qualifications-panel";
 import PacketPanel from "./packet-panel";
 import PaymentInsightPanel from "./payment-insight-panel";
+import CostPanel from "./cost-panel";
 
 type ClientRow = Database["pilot"]["Tables"]["clients"]["Row"];
 type DayTypeRow = Database["pilot"]["Tables"]["day_types"]["Row"];
@@ -394,6 +395,18 @@ export default async function EditClientPage({
           only. A self-contained server component with its own reads; see
           payment-insight.ts for the computation and the no-cross-tenant
           rule. */}
+      {/* What this client has cost, counting both the expenses filed
+          against their trips and the ones attributed to them directly
+          (20260815130000). Sits next to "what do they owe me" because it
+          is the other half of the same question. */}
+      <Box mt="4">
+        <CostPanel
+          clientId={client.id}
+          clientName={client.name}
+          archived={Boolean(client.archived_at)}
+        />
+      </Box>
+
       <Box mt="4">
         <PaymentInsightPanel accountId={account.id} clientId={client.id} />
       </Box>

@@ -3,6 +3,12 @@ import { fontVariables } from "@/lib/fonts";
 import { BRAND, THEME_COLOR } from "@/lib/brand";
 import "./design/tokens.css";
 import "./design/system.generated.css";
+// LEDGER (the successor system, docs/design/LEDGER.md) loads after
+// INSTRUMENT's sheets: theme + utilities only, no preflight, so nothing
+// here restyles an un-migrated screen. Order matters only for the day the
+// two systems disagree on an element both style — later wins, and the
+// migrated screen is the one that should.
+import "./design/ledger.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
