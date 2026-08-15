@@ -10,6 +10,7 @@ import {
   LTh,
   lButtonClass,
 } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 import { cn } from "@/lib/ledger/cn";
 
 import { createClient } from "@/lib/supabase/server";
@@ -1161,30 +1162,32 @@ export default async function OverviewPage() {
   const stepsDone = GETTING_STARTED_STEPS.filter((s) => s.done).length;
 
   return (
-    // The root wrapper leaves INSTRUMENT's type entirely: font-ledger,
-    // Ledger's body scale, Ledger's ink token. The shell around this slot
-    // still paints INSTRUMENT's canvas — that swap is a later migration
-    // phase (see this file's task header) — so this subtree's own cards
-    // carry the Ledger look on whatever ground sits behind them.
-    <div className="flex flex-col gap-5 font-ledger text-body text-ink">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-h1 font-bold tracking-tight">Overview</h1>
-          <p className="text-body-s text-ink-3">
-            {errors.length
-              ? "Some figures below couldn't load. See the notice."
-              : `${pluralize(readyCount, "trip")} flown and logged but not yet invoiced. ${
-                  overdue.length
-                    ? `${pluralize(overdue.length, "invoice")} past due.`
-                    : "No invoices past due."
-                }${
-                  unmarkedTripCount
-                    ? ` ${pluralize(unmarkedTripCount, "trip")} still marked Scheduled. Mark them flown to invoice them.`
-                    : ""
-                }`}
-          </p>
-        </div>
-        <div className="flex shrink-0 gap-3">
+    // LPageShell owns the root wrapper's exit from INSTRUMENT type
+    // (font-ledger, Ledger's body scale, Ledger's ink token) and the
+    // title/subtitle/action header this screen used to hand-roll — see
+    // components/ledger/page-shell.tsx's header for why the contract screen
+    // now composes through it instead of keeping its own copy. The shell
+    // around this slot still paints INSTRUMENT's canvas — that swap is a
+    // later migration phase (see this file's task header) — so this
+    // subtree's own cards carry the Ledger look on whatever ground sits
+    // behind them.
+    <LPageShell
+      title="Overview"
+      subtitle={
+        errors.length
+          ? "Some figures below couldn't load. See the notice."
+          : `${pluralize(readyCount, "trip")} flown and logged but not yet invoiced. ${
+              overdue.length
+                ? `${pluralize(overdue.length, "invoice")} past due.`
+                : "No invoices past due."
+            }${
+              unmarkedTripCount
+                ? ` ${pluralize(unmarkedTripCount, "trip")} still marked Scheduled. Mark them flown to invoice them.`
+                : ""
+            }`
+      }
+      action={
+        <>
           <NextLink href="/trips/new" className={lButtonClass({ variant: "outline" })}>
             Log a trip
           </NextLink>
@@ -1194,9 +1197,9 @@ export default async function OverviewPage() {
           <NextLink href="/invoices/new" className={lButtonClass({ variant: "primary" })}>
             Create invoice
           </NextLink>
-        </div>
-      </div>
-
+        </>
+      }
+    >
       {errors.length > 0 ? (
         <LAlert tone="crit" className="flex items-start gap-2">
           <WarningIcon className="mt-0.5 shrink-0 text-crit" />
@@ -1888,7 +1891,7 @@ export default async function OverviewPage() {
           </p>
         </div>
       </LCard>
-    </div>
+    </LPageShell>
   );
 }
 

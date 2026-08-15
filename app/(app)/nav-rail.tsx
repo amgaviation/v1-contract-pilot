@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Box, Flex, Separator, Text } from "@/components/ui";
+import { cn } from "@/lib/ledger/cn";
 import {
   NAV_SETTINGS,
   NAV_HELP,
@@ -13,13 +13,19 @@ import {
 } from "@/lib/nav";
 
 /**
- * The section rail — the product's one dark surface. The dark ground
- * itself is painted by the `data-appearance="dark"` Box app-shell.tsx
- * wraps this component in; everything in this file resolves against the
- * dark palette automatically (gray/default Text, --signal-soft fills,
- * hairlines) because tokens are the only values used — see
- * app/design/tokens.css §8 for the mechanism (a plain attribute selector,
- * not a component).
+ * THE SECTION RAIL — restyled to Ledger (docs/design/LEDGER.md, Phase 2).
+ *
+ * It is no longer the product's one dark surface: INSTRUMENT's rail carried
+ * a permanent `data-appearance="dark"` wrapper so it read as a distinct
+ * instrument panel regardless of the tenant's own light/dark choice. Ledger
+ * is the fintech register, and the register's rail is a LIGHT structural
+ * surface in day mode — `bg-sunk` (one step off the canvas, the same
+ * structural-vs-floating distinction app-shell.tsx's header comment draws)
+ * with a right hairline, current section marked by a filled pill rather
+ * than a glow. At night it simply follows the tenant's own
+ * `data-appearance="dark"` — stamped once, on the shell root, by
+ * app-shell.tsx — same as every other Ledger surface; there is no longer a
+ * second, forced-dark palette nested inside it.
  *
  * A client component for exactly one reason — `usePathname`, to mark the
  * current section. Everything else on the authenticated surface stays a
@@ -30,18 +36,34 @@ import {
  * component cannot read. Both shapes below render off the SAME passed
  * list plus NAV_SETTINGS and NAV_HELP — never a second, duplicated one.
  *
- * H9: renders two visual shapes — a vertical rail for `sm` and up, and a
+ * H9: renders two visual shapes — a vertical rail from `lg` up, and a
  * horizontally-scrolling strip below it. Both are always in the DOM;
- * app-shell.tsx toggles which is visible with a CSS `display` breakpoint
- * rather than mounting/unmounting one of them, so navigating between
- * pages never changes which nodes exist and never shifts layout.
+ * app-shell.tsx toggles which is visible with `hidden`/`lg:hidden`
+ * (Tailwind's `display` breakpoint utilities) rather than mounting/
+ * unmounting one of them, so navigating between pages never changes which
+ * nodes exist and never shifts layout. `lg` is deliberately the switch,
+ * not `md`: Tailwind's `lg` is a literal `min-width: 1024px`, the same
+ * number app-shell.tsx's own breakpoint comment pins the shell to (that
+ * comment's rationale — the crushed 768–1023px band that iPad portrait and
+ * 150–175% desktop browser zoom both land in — is unchanged by the move to
+ * Tailwind's naming, only which utility spells "1024" moved).
  *
- * Rail links carry a CONSTANT 2px left border (transparent when idle,
- * --signal when current) so activation never shifts layout — the one
- * restrained instrument gesture on the dark ground: a course-bar edge,
- * not a glow. The strip omits the left border (it reads wrong on a
- * horizontal strip) and uses the fill + highContrast alone.
+ * Rail links carry a CONSTANT 2px left border (`border-l-2`, transparent
+ * when idle, `border-accent` when current) so activation never shifts
+ * layout — a course-bar edge, not a glow, same restrained gesture the
+ * dark rail used, translated to Ledger's accent. The strip omits the left
+ * border (it reads wrong on a horizontal strip) and uses the
+ * `bg-accent-soft` + `text-accent` fill alone, same as the current-section
+ * treatment `components/ledger`'s LPill already establishes for "accent"
+ * tone elsewhere in the product.
  */
+
+/** Shared by both link shapes: a visible keyboard-focus ring in the
+ *  register's own accent, since neither shape had an explicit one before
+ *  (both relied on the browser default, invisible against a dark ground). */
+const LINK_FOCUS =
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+
 function RailLink({ item, pathname }: { item: NavItem; pathname: string }) {
   const current = isCurrentSection(item.href, pathname);
   return (
@@ -51,34 +73,32 @@ function RailLink({ item, pathname }: { item: NavItem; pathname: string }) {
       // reader; the colour change below is the sighted half of the same
       // statement, not a substitute for it.
       aria-current={current ? "page" : undefined}
-      style={{ textDecoration: "none" }}
+      className={cn(
+        "block rounded-control border-l-2 px-3 py-2 no-underline",
+        current
+          ? "border-accent bg-accent-soft"
+          : "border-transparent hover:bg-sunk",
+        LINK_FOCUS
+      )}
     >
-      <Box
-        px="3"
-        py="2"
-        style={{
-          borderRadius: "var(--radius)",
-          borderLeft: current
-            ? "2px solid var(--signal)"
-            : "2px solid transparent",
-          background: current ? "var(--signal-soft)" : undefined,
-        }}
+      <span
+        className={cn(
+          "text-body-s",
+          current ? "font-medium text-accent" : "text-ink-2"
+        )}
       >
-        <Text
-          size="2"
-          weight={current ? "medium" : "regular"}
-          color={current ? undefined : "gray"}
-          highContrast={current}
-        >
-          {item.label}
-        </Text>
-      </Box>
+        {item.label}
+      </span>
     </Link>
   );
 }
 
 /** The same link, laid out for the horizontal strip: no wrap, no shrink,
- *  no left border (fill + highContrast mark the current section). */
+ *  no left border (the fill + weight change mark the current section),
+ *  and `snap-center` to pair with `snap-x`/`snap-proximity` on the strip
+ *  below — the strip now actually declares the scroll-snap TYPE that
+ *  pairs with this ALIGN, which the INSTRUMENT version's own comment
+ *  promised but never wired up on the container. */
 const StripLink = React.forwardRef<
   HTMLAnchorElement,
   { item: NavItem; pathname: string }
@@ -89,31 +109,20 @@ const StripLink = React.forwardRef<
       ref={ref}
       href={item.href}
       aria-current={current ? "page" : undefined}
-      style={{
-        textDecoration: "none",
-        flexShrink: 0,
-        // Pairs with scrollSnapType on the strip below.
-        scrollSnapAlign: "center",
-      }}
+      className={cn(
+        "block shrink-0 snap-center whitespace-nowrap rounded-control px-3 py-2 no-underline",
+        current ? "bg-accent-soft" : "hover:bg-sunk",
+        LINK_FOCUS
+      )}
     >
-      <Box
-        px="3"
-        py="2"
-        style={{
-          borderRadius: "var(--radius)",
-          background: current ? "var(--signal-soft)" : undefined,
-          whiteSpace: "nowrap",
-        }}
+      <span
+        className={cn(
+          "text-body-s",
+          current ? "font-medium text-accent" : "text-ink-2"
+        )}
       >
-        <Text
-          size="2"
-          weight={current ? "medium" : "regular"}
-          color={current ? undefined : "gray"}
-          highContrast={current}
-        >
-          {item.label}
-        </Text>
-      </Box>
+        {item.label}
+      </span>
     </Link>
   );
 });
@@ -137,59 +146,57 @@ export function NavRail({
   const grouped = navGroupsAreContiguous(sections);
 
   return (
-    <Flex asChild direction="column" gap="1" p="3" height="100%">
-      <nav aria-label="Sections">
-        {sections.map((item, index) => {
-          // A group header renders wherever the group changes walking the
-          // list in order — lib/nav.ts writes the list in group order for
-          // exactly this check. Plain uppercase size-1 gray text, no
-          // letter-spacing (a literal would be a token violation; the cap
-          // label is enough).
-          const previous = index > 0 ? sections[index - 1] : undefined;
-          const showHeader =
-            grouped && item.group !== undefined && item.group !== previous?.group;
-          return (
-            <Box key={item.href}>
-              {showHeader ? (
-                <Box px="3" mb="1" mt={index > 0 ? "4" : undefined}>
-                  <Text size="1" color="gray" weight="medium">
-                    {item.group}
-                  </Text>
-                </Box>
-              ) : null}
-              <RailLink item={item} pathname={pathname} />
-            </Box>
-          );
-        })}
+    // flex-1, not h-full: the rail's account block is pinned to the
+    // bottom of the AVAILABLE space below the logo block app-shell.tsx
+    // renders above this nav, and only flex-grow (not a height percentage)
+    // reliably claims that remaining space in a column flex parent — see
+    // app-shell.tsx's own aside for the sticky/scrolling ancestor this
+    // nav fills.
+    <nav aria-label="Sections" className="flex flex-1 flex-col gap-1 p-3">
+      {sections.map((item, index) => {
+        // A group header renders wherever the group changes walking the
+        // list in order — lib/nav.ts writes the list in group order for
+        // exactly this check.
+        const previous = index > 0 ? sections[index - 1] : undefined;
+        const showHeader =
+          grouped && item.group !== undefined && item.group !== previous?.group;
+        return (
+          <div key={item.href}>
+            {showHeader ? (
+              <div className={cn("mb-1 px-3", index > 0 && "mt-4")}>
+                <span className="text-caption font-semibold text-ink-3">
+                  {item.group}
+                </span>
+              </div>
+            ) : null}
+            <RailLink item={item} pathname={pathname} />
+          </div>
+        );
+      })}
 
-        <Box my="2">
-          <Separator size="4" />
-        </Box>
+      <hr className="my-2 border-0 border-t border-hair" />
 
-        <RailLink item={NAV_SETTINGS} pathname={pathname} />
-        <RailLink item={NAV_HELP} pathname={pathname} />
+      <RailLink item={NAV_SETTINGS} pathname={pathname} />
+      <RailLink item={NAV_HELP} pathname={pathname} />
 
-        {/* The account this session is acting for. Pinned to the bottom
-            because it answers "whose data am I looking at" — a question
-            you ask when something looks wrong, not while navigating. */}
-        <Box mt="auto" pt="4" px="3">
-          <Text as="div" size="1" color="gray">
-            Signed in to
-          </Text>
-          <Text as="div" size="2" weight="medium" trim="end">
-            {accountName}
-          </Text>
-        </Box>
-      </nav>
-    </Flex>
+      {/* The account this session is acting for. Pinned to the bottom
+          because it answers "whose data am I looking at" — a question
+          you ask when something looks wrong, not while navigating. */}
+      <div className="mt-auto px-3 pt-4">
+        <div className="text-caption text-ink-3">Signed in to</div>
+        <div className="truncate text-body-s font-medium text-ink">
+          {accountName}
+        </div>
+      </div>
+    </nav>
   );
 }
 
 /**
  * The compact, phone-width equivalent: a horizontally scrolling strip of
  * the same sections plus Settings, all always reachable by scrolling or
- * by Tab (nothing here is clipped with `overflow: hidden`, only
- * `overflow-x: auto`), with the current section still announced the same
+ * by Tab (nothing here is clipped with `overflow-hidden`, only
+ * `overflow-x-auto`), with the current section still announced the same
  * way (`aria-current` plus the colour change). Group headers are a rail
  * treatment only — on a horizontal strip they would read as items.
  */
@@ -213,38 +220,33 @@ export function NavStrip({ sections }: { sections: readonly NavItem[] }) {
   // you the strip scrolls. `block: "nearest"` stops it scrolling the
   // PAGE vertically to achieve that.
   //
-  // Costs nothing on desktop: from `md` up the strip's container is
-  // display:none, and scrollIntoView on a display:none element is a
-  // no-op in every engine.
+  // Costs nothing on desktop: from `lg` up the strip's container is
+  // `hidden`, and scrollIntoView on a display:none element is a no-op in
+  // every engine.
   React.useEffect(() => {
     currentRef.current?.scrollIntoView({ inline: "center", block: "nearest" });
   }, [pathname]);
 
   return (
-    <Flex
-      asChild
-      gap="1"
-      px="3"
-      py="2"
-      style={{
-        overflowX: "auto",
-        WebkitOverflowScrolling: "touch",
-        // Keeps a swipe that reaches either end of the strip from
-        // chaining out to the document — and, on iOS, from triggering the
-        // browser's back-swipe gesture.
-        overscrollBehaviorInline: "contain",
-      }}
+    <nav
+      aria-label="Sections"
+      // snap-x + snap-proximity is the scroll-snap TYPE; each StripLink's
+      // own snap-center is the ALIGN. "Proximity" rather than "mandatory"
+      // deliberately — a nudge toward the nearest item when a scroll ends
+      // near one, not a hard lock that fights a pilot mid-swipe.
+      // overscroll-x-contain keeps a swipe that reaches either end of the
+      // strip from chaining out to the document — and, on iOS, from
+      // triggering the browser's back-swipe gesture.
+      className="flex snap-x snap-proximity gap-1 overflow-x-auto overscroll-x-contain px-3 py-2"
     >
-      <nav aria-label="Sections">
-        {items.map((item) => (
-          <StripLink
-            key={item.href}
-            item={item}
-            pathname={pathname}
-            ref={isCurrentSection(item.href, pathname) ? currentRef : undefined}
-          />
-        ))}
-      </nav>
-    </Flex>
+      {items.map((item) => (
+        <StripLink
+          key={item.href}
+          item={item}
+          pathname={pathname}
+          ref={isCurrentSection(item.href, pathname) ? currentRef : undefined}
+        />
+      ))}
+    </nav>
   );
 }

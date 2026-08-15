@@ -322,3 +322,29 @@ export function LTd({
     />
   );
 }
+
+/* ── Skeleton ──────────────────────────────────────────────────────── */
+
+/**
+ * A quiet placeholder block for content still on its way from Supabase.
+ * Shape is entirely the caller's: pass a height/width utility in
+ * `className` (e.g. "h-4 w-24") and this paints the pulse, nothing else —
+ * a skeleton that guessed its own dimensions would drift from the real
+ * content it stands in for on the next redesign of whatever it's blocking.
+ *
+ * `aria-hidden`: the accessible half of a loading state is a real sentence
+ * (role="status") living once on the page that uses this, not a wall of
+ * empty boxes read out row by row. See app/(app)/loading-panel.tsx's own
+ * header for the INSTRUMENT-side version of the same split.
+ */
+export function LSkeleton({ className }: { className?: string }) {
+  return (
+    <div
+      aria-hidden="true"
+      className={cn(
+        "animate-pulse rounded-control bg-sunk motion-reduce:animate-none",
+        className
+      )}
+    />
+  );
+}
