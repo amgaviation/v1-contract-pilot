@@ -22,17 +22,21 @@ import ReminderPanel, {
   type ReminderRungView,
 } from "./reminder-panel";
 import {
+  consumedRungKeys,
   decideReminder,
   describeHold,
   describeLateFeePolicy,
   describeRung,
+  lastPossibleSendAt,
   normalizeLateFeePolicy,
   normalizeReminderPolicy,
   quoteLateFee,
   reminderPolicyIsEmpty,
   rungsFor,
+  summarizeRungLedger,
   toCalendarDate,
   MANUAL_RULE_KEY,
+  type ReminderOutcome,
 } from "@/lib/reminders/policy";
 
 export const metadata = { title: "Invoice" };
@@ -403,26 +407,40 @@ export default async function InvoicePage({
 
     const sends = (sendData ?? []) as {
       rule_key: string;
-      outcome: "sent" | "failed" | "skipped";
+      outcome: ReminderOutcome;
       detail: string | null;
       created_at: string;
     }[];
+    // NEWEST ROW WINS, and a rung can now have more than one. A definite
+    // failure leaves the rung available, so a rung that failed on Tuesday and
+    // sent on Wednesday has two rows, and the one worth showing is the one
+    // that says how it ended. `sends` is ordered created_at descending, and a
+    // Map keeps the LAST value written for a key, so the list is walked in
+    // reverse to leave the newest in place.
     const byRule = new Map(
-      sends.filter((row) => row.rule_key !== MANUAL_RULE_KEY).map((row) => [row.rule_key, row])
+      sends
+        .filter((row) => row.rule_key !== MANUAL_RULE_KEY)
+        .slice()
+        .reverse()
+        .map((row) => [row.rule_key, row])
     );
+    // What is spent and what is still owed, decided by the same function the
+    // scheduled run uses. A rung with nothing but definite failures against it,
+    // and attempts still left, is NOT consumed: it is coming back tonight.
+    const rungStates = summarizeRungLedger(sends);
 
     const today = toCalendarDate(new Date());
     const decision = decideReminder({
       policy,
       dueOn: invoice.due_on,
       today,
-      consumed: [...byRule.keys()],
-      // Only a send that actually went out starts a quiet period — a skipped
-      // rung and a refused send both reached nobody. Same rule as the run
-      // itself applies (lib/reminders/run.ts), so this screen and the
-      // scheduler cannot disagree about why nothing is going out.
-      lastReminderAt:
-        sends.find((row) => row.outcome === "sent")?.created_at ?? null,
+      consumed: consumedRungKeys(sends),
+      // A reminder that may have reached the client starts a quiet period; one
+      // that definitely did not reached nobody, and a skipped rung reached
+      // nobody either. Same function the run itself calls
+      // (lib/reminders/run.ts), so this screen and the scheduler cannot
+      // disagree about why nothing is going out.
+      lastReminderAt: lastPossibleSendAt(sends),
       // Same quiet period as a reminder itself — see ReminderInput.sentAt's
       // comment. Without this the panel would promise a before-due rung the
       // scheduler is actually holding, on every invoice sent the same day
@@ -442,19 +460,37 @@ export default async function InvoicePage({
 
     const rungs: ReminderRungView[] = rungsFor(policy, invoice.due_on).map((rung) => {
       const row = byRule.get(rung.key);
+      const state = rungStates.get(rung.key);
       return {
         key: rung.key,
         label: describeRung(rung),
         when: formatDate(rung.onDate),
-        state: row ? row.outcome : "upcoming",
+        // A FAILURE READS DIFFERENTLY DEPENDING ON WHETHER IT IS OVER. While
+        // attempts remain the honest label is "will retry", because that is
+        // what is going to happen; once they are used up it is "failed" and
+        // this rung is finished. 'unknown' is neither: nothing more will be
+        // attempted and nobody can say whether the client has it.
+        state: !row
+          ? "upcoming"
+          : row.outcome === "failed" && !state?.consumed
+            ? "retrying"
+            : row.outcome,
         detail: row?.detail ?? null,
         at: row ? formatDate(row.created_at) : null,
+        attempts: state && state.failures > 0 ? state.failures : null,
       };
     });
 
     // The next thing that will happen, said as a date rather than as a state.
+    // A rung that is coming back for a retry is not "next": it is overdue and
+    // the row above already says so, so only genuinely unspent rungs count.
+    const consumedOrPending = new Set(
+      rungsFor(policy, invoice.due_on)
+        .map((rung) => rung.key)
+        .filter((key) => rungStates.has(key))
+    );
     const nextRung = rungsFor(policy, invoice.due_on).find(
-      (rung) => !byRule.has(rung.key) && rung.onDate > today
+      (rung) => !consumedOrPending.has(rung.key) && rung.onDate > today
     );
 
     const fees = (feeData ?? []) as {

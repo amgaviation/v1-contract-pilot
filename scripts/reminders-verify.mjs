@@ -258,6 +258,82 @@ note("The send ledger — a rung is consumed exactly once");
   );
 }
 
+note("\nThe send ledger, a definite failure may be tried again, an unknown one may not (20260815090000)");
+{
+  const FAILED = (key, detail = "The domain is not verified.") =>
+    `insert into pilot.invoice_reminder_sends (account_id, invoice_id, rule_key, outcome, detail)
+     values ('${A.account}', '${A.invoice}', '${key}', 'failed', '${detail}');`;
+  const UNKNOWN = (key) =>
+    `insert into pilot.invoice_reminder_sends (account_id, invoice_id, rule_key, outcome, detail)
+     values ('${A.account}', '${A.invoice}', '${key}', 'unknown', 'The mail service did not respond in time.');`;
+
+  // The defect: one refused send used to burn the rung for good, so an hour
+  // of downtime cost that client that step of the chase permanently.
+  permits(
+    "a rung that definitely did not send can be attempted again",
+    A.user,
+    `${FAILED("after_3")}\n${FAILED("after_3")}\n${FAILED("after_3")}`
+  );
+
+  permits(
+    "and a later success on that same rung is accepted",
+    A.user,
+    `${FAILED("after_3")}\n${RUNG(A, "after_3")}`
+  );
+
+  // The property the index has always owned, and the one this change was not
+  // allowed to lose.
+  refuses(
+    "but that rung cannot then send a second time",
+    A.user,
+    `${FAILED("after_3")}\n${RUNG(A, "after_3")}\n${RUNG(A, "after_3")}`,
+    "23505"
+  );
+
+  // The whole reason 'unknown' exists: the mail service stopped answering, so
+  // the message may be with the client and that endpoint has no idempotency
+  // key. It consumes the rung exactly as a send does.
+  refuses(
+    "an unknown outcome consumes the rung just as a send does",
+    A.user,
+    `${UNKNOWN("after_7")}\n${RUNG(A, "after_7")}`,
+    "23505"
+  );
+
+  refuses(
+    "and cannot itself be recorded twice",
+    A.user,
+    `${UNKNOWN("after_7")}\n${UNKNOWN("after_7")}`,
+    "23505"
+  );
+
+  // An unknown row carries no provider id (none came back) and MUST carry the
+  // mail service's own words, or the pilot has nothing to check against.
+  refuses(
+    "an unknown outcome with a provider id is refused",
+    A.user,
+    `insert into pilot.invoice_reminder_sends (account_id, invoice_id, rule_key, outcome, detail, provider_message_id)
+     values ('${A.account}', '${A.invoice}', 'after_7', 'unknown', 'no answer', 'resend-1');`,
+    "23514"
+  );
+
+  refuses(
+    "an unknown outcome with no reason recorded is refused",
+    A.user,
+    `insert into pilot.invoice_reminder_sends (account_id, invoice_id, rule_key, outcome)
+     values ('${A.account}', '${A.invoice}', 'after_7', 'unknown');`,
+    "23514"
+  );
+
+  refuses(
+    "the outcome vocabulary still refuses anything outside the four",
+    A.user,
+    `insert into pilot.invoice_reminder_sends (account_id, invoice_id, rule_key, outcome, detail)
+     values ('${A.account}', '${A.invoice}', 'after_7', 'probably', 'x');`,
+    "23514"
+  );
+}
+
 note("\nThe send ledger — a row cannot claim more than happened");
 {
   refuses(

@@ -2124,20 +2124,27 @@ export type Database = {
            * spells these — a typo would not surface as a wrong string, it
            * would surface as a client receiving the same reminder twice.
            * Every value except 'manual' is unrepeatable per invoice, by the
-           * partial unique index invoice_reminder_sends_rung_once.
+           * partial unique index invoice_reminder_sends_rung_once, which,
+           * since 20260815090000, excludes 'failed' rows too, so a rung that
+           * definitely did not send can be attempted again.
            */
           rule_key: string;
           /**
            * 'sent' — handed to Resend and an id came back.
-           * 'failed' — attempted and refused, or the service stopped
-           *   answering (in which case detail says the outcome is genuinely
-           *   unknown). A failure consumes the rung: a job that retries a
-           *   failing send daily is how a client gets forty copies.
+           * 'failed': attempted and DEFINITELY not sent (a refusal, a bad
+           *   address, no configuration). Retryable, up to
+           *   lib/reminders/policy.ts's MAX_REMINDER_ATTEMPTS; the row stays
+           *   as history either way.
+           * 'unknown': the mail service stopped answering mid-request, so it
+           *   MAY be in the client's inbox. Never retried: that endpoint has
+           *   no idempotency key, and a second chase is worse than a missed
+           *   one. Rows written before 20260815090000 were re-labelled to
+           *   this, because their kind is genuinely not knowable.
            * 'skipped' — deliberately not attempted: 'superseded' (a later
            *   rung came due in the same run) or 'stale' (a before-due rung
            *   whose moment has passed).
            */
-          outcome: "sent" | "failed" | "skipped";
+          outcome: "sent" | "failed" | "unknown" | "skipped";
           /** The mail service's own words, or the skip reason. */
           detail: string | null;
           /** Present exactly when outcome = 'sent', by CHECK. */
@@ -2148,7 +2155,7 @@ export type Database = {
           account_id: string;
           invoice_id: string;
           rule_key: string;
-          outcome: "sent" | "failed" | "skipped";
+          outcome: "sent" | "failed" | "unknown" | "skipped";
           detail?: string | null;
           provider_message_id?: string | null;
         };

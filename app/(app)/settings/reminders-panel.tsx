@@ -152,7 +152,9 @@ export default function RemindersPanel({
             <Text size="1" color="gray">
               Sends anything that is due right now, exactly as the daily run
               would. Safe to press twice: a reminder that has already gone out
-              is never sent again.
+              is never sent again. One that definitely didn&rsquo;t send is
+              tried again on the next few runs; one the mail service left
+              unconfirmed is never retried, so you decide that one yourself.
             </Text>
             {lines ? (
               <Box role="status">
