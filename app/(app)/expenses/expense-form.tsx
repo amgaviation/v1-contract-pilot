@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import NextLink from "next/link";
 import { Box, Button, Callout, Card, Flex, Grid, Text, TextField, Select, TextArea } from "@/components/ui";
 import { centsToInput } from "@/lib/format";
+import { clientIdForStorage } from "@/lib/expense-client";
 import { matchTrip } from "@/lib/receipt-ocr/match-trip";
 import ReceiptScan, { type ScanOutcome } from "./receipt-scan";
 import type { OptionChoice } from "@/lib/custom-options";
@@ -17,6 +18,7 @@ export type ExpenseFormValues = {
   amount_cents?: number | null;
   treatment?: string | null;
   trip_id?: string | null;
+  client_id?: string | null;
   notes?: string | null;
   receipt_path?: string | null;
 };
@@ -24,6 +26,7 @@ export type ExpenseFormValues = {
 export type TripOption = {
   id: string;
   label: string;
+  clientId: string | null;
   clientName: string | null;
   defaultTreatment: string | null;
   /** For matching a scanned receipt's tail number to the trip it belongs to. */
@@ -31,6 +34,8 @@ export type TripOption = {
   startsOn: string;
   endsOn: string;
 };
+
+export type ClientOption = { id: string; name: string };
 
 const TREATMENTS = [
   { value: "unassigned", label: "Decide later" },
@@ -43,6 +48,8 @@ const TREATMENTS = [
 // name (`trip_id`) never changes and actions.ts's optionalUuid() still
 // reads a blank trip exactly as before.
 const NO_TRIP = "none";
+/** Same sentinel trick for the Client picker, translated back to "" on submit. */
+const NO_CLIENT = "none";
 
 const initialState: ExpenseFormState = { error: null };
 
@@ -52,6 +59,7 @@ type ScanConflict = { field: "incurred_on" | "vendor" | "amount"; label: string;
 export default function ExpenseForm({
   action,
   trips,
+  clients,
   categories,
   values = {},
   submitLabel,
@@ -61,6 +69,12 @@ export default function ExpenseForm({
     formData: FormData
   ) => Promise<ExpenseFormState>;
   trips: TripOption[];
+  /**
+   * Who the pilot can attribute a trip-less cost to. Archived clients are
+   * already dropped upstream (loadClientOptions), same as every other
+   * client picker in the product.
+   */
+  clients: ClientOption[];
   /**
    * The tenant's own expense-category vocabulary — their labels, their
    * order, retired categories already dropped. Read server-side by the
@@ -161,10 +175,43 @@ export default function ExpenseForm({
     const stored = submitted?.trip_id ?? values.trip_id ?? "";
     return stored === "" ? NO_TRIP : stored;
   });
+  // The client the pilot picked THEMSELVES, which only applies while no
+  // trip is chosen. Held separately from what the field displays so that
+  // picking a trip and then removing it restores their choice instead of
+  // silently losing it.
+  const [chosenClientId, setChosenClientId] = useState(() => {
+    const stored = submitted?.client_id ?? values.client_id ?? "";
+    return stored === "" ? NO_CLIENT : stored;
+  });
   const [conflicts, setConflicts] = useState<ScanConflict[]>([]);
   const [tripHint, setTripHint] = useState<string | null>(null);
   const rebilling = treatment === "rebill";
   const selectedTrip = tripId === NO_TRIP ? null : tripsById.get(tripId) ?? null;
+
+  // A trip DECIDES the client. The database will not store an expense whose
+  // client disagrees with its trip's (composite FK on (account_id, trip_id,
+  // client_id)), and the server action re-derives this from the trip
+  // anyway, so the field is shown filled and disabled rather than left
+  // editable and then quietly overruled.
+  const tripDecidesClient = selectedTrip !== null;
+  // What the picker SHOWS. With a trip, that is the trip's client, which is
+  // a display of a derived fact rather than a value this form stores.
+  const effectiveClientId = tripDecidesClient
+    ? selectedTrip.clientId ?? NO_CLIENT
+    : chosenClientId;
+  // What the form STORES, which is null for anything with a trip.
+  const storedClientId = clientIdForStorage(
+    chosenClientId === NO_CLIENT ? null : chosenClientId,
+    tripDecidesClient
+  );
+  const clientsById = new Map(clients.map((client) => [client.id, client.name]));
+  // A client that no longer appears in the picker (archived since this
+  // expense was filed) still has to render as itself, not as "No client" --
+  // Radix would otherwise show an empty trigger for a real attribution.
+  const missingClientName =
+    effectiveClientId !== NO_CLIENT && !clientsById.has(effectiveClientId)
+      ? selectedTrip?.clientName ?? "Client no longer listed"
+      : null;
 
   const handleTreatmentChange = (next: string) => {
     setTreatment(next);
@@ -263,6 +310,11 @@ export default function ExpenseForm({
       <form
         action={(formData) => {
           formData.set("trip_id", tripId === NO_TRIP ? "" : tripId);
+          // Only ever posted for the trip-less case. A trip means the
+          // client is derived and NOT stored, so the field posts blank
+          // rather than the name shown in the disabled picker beside it --
+          // see clientIdForStorage.
+          formData.set("client_id", storedClientId ?? "");
           formData.set("category", category);
           formData.set("treatment", treatment);
           return formAction(formData);
@@ -435,6 +487,38 @@ export default function ExpenseForm({
                 : rebilling
                   ? "Required. A rebilled expense has to land on an invoice"
                   : "Optional. Leave blank and it waits in the unassigned queue."}
+            </Text>
+          </Flex>
+          <Flex direction="column" gap="1">
+            <Text as="label" size="2" weight="medium" id="client-label">
+              Client
+            </Text>
+            <Select.Root
+              value={effectiveClientId}
+              onValueChange={setChosenClientId}
+              disabled={tripDecidesClient}
+            >
+              <Select.Trigger aria-labelledby="client-label" />
+              <Select.Content>
+                <Select.Item value={NO_CLIENT}>No client</Select.Item>
+                {missingClientName ? (
+                  <Select.Item value={effectiveClientId}>{missingClientName}</Select.Item>
+                ) : null}
+                {clients.map((client) => (
+                  <Select.Item key={client.id} value={client.id}>
+                    {client.name}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+            <Text size="1" color="gray">
+              {tripDecidesClient
+                ? selectedTrip?.clientId
+                  ? "Set by the trip. Change it on the trip itself."
+                  : "That trip has no client, so this stays blank. Give the trip a client to attribute this cost."
+                : clients.length === 0
+                  ? "No clients yet. Add one to attribute costs you spend on them."
+                  : "Optional. Use it for money you spent on a client with no trip, like training they required."}
             </Text>
           </Flex>
           <Box gridColumn="1 / -1">

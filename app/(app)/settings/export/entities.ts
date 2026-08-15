@@ -928,6 +928,7 @@ export type ExpenseExportRow = Pick<
   Tables["expenses"]["Row"],
   | "id"
   | "trip_id"
+  | "client_id"
   | "incurred_on"
   | "category"
   | "vendor"
@@ -959,7 +960,14 @@ export function expenseValues(row: ExpenseExportRow, lookups: Lookups): CsvValue
     row.vendor,
     centsToDollarsString(row.amount_cents),
     TREATMENT_LABEL[row.treatment] ?? "",
-    clientName(lookups, trip?.client_id),
+    // The expense's own client first, then the trip's -- the same reading
+    // rule as lib/expense-client.ts, and the two cannot disagree (the
+    // composite FK on (account_id, trip_id, client_id) refuses the pair).
+    // Reading only the trip, as this used to, exported an empty Client for
+    // every cost attributed to a client without one: recurrent training an
+    // operator required, gear bought for one owner's aircraft. That is a
+    // blank cell in a file that goes to an accountant.
+    clientName(lookups, row.client_id ?? trip?.client_id),
     trip?.aircraft_ident,
     // Metadata only, same posture as the documents export: the receipt
     // image itself is not in this file.
@@ -1895,7 +1903,7 @@ export const EXPORT_ENTITIES: Record<string, EntitySpec> = {
     key: "expenses",
     table: "expenses",
     select:
-      "id, trip_id, incurred_on, category, vendor, amount_cents, treatment, receipt_path, notes",
+      "id, trip_id, client_id, incurred_on, category, vendor, amount_cents, treatment, receipt_path, notes",
     orderBy: [
       { column: "incurred_on", ascending: true },
       { column: "id", ascending: true },

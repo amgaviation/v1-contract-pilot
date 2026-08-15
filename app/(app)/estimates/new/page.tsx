@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
+import { YOU_INVOICE_COLUMN } from "@/lib/counterparty";
 import PageShell from "../../page-shell";
 import { createEstimateDraft } from "../actions";
 import NewEstimateForm, { type ClientOption } from "./new-form";
@@ -13,10 +14,16 @@ export default async function NewEstimatePage() {
 
   // Archived clients are excluded — same rule as the trip and invoice
   // forms: archiving is about what shows up in new work, not history.
+  //
+  // So are counterparties the pilot does not invoice (20260815120000).
+  // pilot.refuse_billing_a_non_invoiced_client() refuses the insert
+  // anyway; this keeps the picker from offering a choice the database
+  // will reject.
   const { data: clientData, error: clientsError } = await supabase
     .from("clients")
     .select("id, name")
     .is("archived_at", null)
+    .eq(YOU_INVOICE_COLUMN, true)
     .order("name", { ascending: true });
 
   if (clientsError) {

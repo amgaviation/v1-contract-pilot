@@ -4,6 +4,7 @@ import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { friendlyDbError } from "@/lib/db-errors";
+import { YOU_INVOICE_COLUMN } from "@/lib/counterparty";
 import PageShell from "../../page-shell";
 import type { Database } from "@/lib/supabase/database.types";
 import ScheduleManager from "./schedule-form";
@@ -34,7 +35,13 @@ export default async function RecurringInvoicesPage() {
       )
       .order("created_at", { ascending: false }),
     supabase.from("recurring_invoice_generations").select("schedule_id, period_start"),
-    supabase.from("clients").select("id, name").order("name", { ascending: true }),
+    // 20260815120000: a schedule is a standing instruction to generate
+    // invoices, so the picker offers only counterparties the pilot bills.
+    supabase
+      .from("clients")
+      .select("id, name")
+      .eq(YOU_INVOICE_COLUMN, true)
+      .order("name", { ascending: true }),
   ]);
 
   const firstError = scheduleError ?? generationError ?? clientError;

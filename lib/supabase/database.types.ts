@@ -355,6 +355,15 @@ export type Database = {
           late_fee_grace_days: number;
           /** Whether a reminder may STATE the agreed fee. Off by default. */
           late_fee_note_on_reminders: boolean;
+          // Added by 20260815120000_client_you_invoice.sql. TRUE for every
+          // pre-existing row and for every new client. FALSE means a
+          // counterparty the pilot flies for and never bills: excluded
+          // from the invoice and estimate pickers and from the unbilled
+          // queue, and (by the invariant that migration's two triggers
+          // enforce) unable to have an invoice, estimate or recurring
+          // schedule at all, which is what keeps it out of A/R aging and
+          // the statements without either of those needing a filter.
+          you_invoice: boolean;
           archived_at: string | null;
           created_at: string;
           updated_at: string;
@@ -396,6 +405,8 @@ export type Database = {
           late_fee_bps_per_month?: number | null;
           late_fee_grace_days?: number;
           late_fee_note_on_reminders?: boolean;
+          /** 20260815120000. Defaults to true; see the Row comment. */
+          you_invoice?: boolean;
           archived_at?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -437,6 +448,8 @@ export type Database = {
           late_fee_bps_per_month?: number | null;
           late_fee_grace_days?: number;
           late_fee_note_on_reminders?: boolean;
+          /** 20260815120000. Defaults to true; see the Row comment. */
+          you_invoice?: boolean;
           archived_at?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -676,6 +689,14 @@ export type Database = {
           id: string;
           account_id: string;
           trip_id: string | null;
+          // 20260815130000: who the cost was spent on, when the pilot
+          // attributes it directly. Null is a real answer ("not directly
+          // attributed"), and for a trip-attached expense it is the normal
+          // one -- the client is derived from the trip. When both this and
+          // trip_id are set they cannot disagree: a composite FK to
+          // pilot.trips (account_id, id, client_id) makes the mismatch
+          // unstorable. lib/expense-client.ts holds the reading rule.
+          client_id: string | null;
           incurred_on: string;
           category:
             | "airline"
@@ -709,6 +730,7 @@ export type Database = {
           id?: string;
           account_id: string;
           trip_id?: string | null;
+          client_id?: string | null;
           incurred_on: string;
           category:
             | "airline"
@@ -739,6 +761,7 @@ export type Database = {
           id?: string;
           account_id?: string;
           trip_id?: string | null;
+          client_id?: string | null;
           incurred_on?: string;
           category?:
             | "airline"
@@ -772,6 +795,25 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "trips";
             referencedColumns: ["account_id", "id"];
+          },
+          {
+            foreignKeyName: "expenses_account_id_client_id_fkey";
+            columns: ["account_id", "client_id"];
+            isOneToOne: false;
+            referencedRelation: "clients";
+            referencedColumns: ["account_id", "id"];
+          },
+          // 20260815130000: the agreement constraint. Not a second way to
+          // reach a trip -- its job is that (trip_id, client_id) can only
+          // ever be a pair pilot.trips actually holds, so an expense
+          // claiming one client on another client's trip has no storable
+          // form.
+          {
+            foreignKeyName: "expenses_account_id_trip_id_client_id_fkey";
+            columns: ["account_id", "trip_id", "client_id"];
+            isOneToOne: false;
+            referencedRelation: "trips";
+            referencedColumns: ["account_id", "id", "client_id"];
           },
         ];
       };

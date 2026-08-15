@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { parseDollarsToCents } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+import { clientIdForStorage } from "@/lib/expense-client";
 import type { Database } from "@/lib/supabase/database.types";
 
 type ExpenseInsert = Database["pilot"]["Tables"]["expenses"]["Insert"];
@@ -67,6 +68,7 @@ const EXPENSE_FIELDS = [
   "amount",
   "treatment",
   "trip_id",
+  "client_id",
   "notes",
 ] as const;
 
@@ -126,6 +128,9 @@ function parseExpenseForm(formData: FormData): {
   const tripId = optionalUuid(formData, "trip_id");
   if (tripId === undefined) return { values: null, error: "That trip isn't valid." };
 
+  const clientId = optionalUuid(formData, "client_id");
+  if (clientId === undefined) return { values: null, error: "That client isn't valid." };
+
   const treatment = oneOf(formData, "treatment", TREATMENTS, "unassigned");
 
   // The database enforces this too (`treatment <> 'rebill' or trip_id is
@@ -148,9 +153,46 @@ function parseExpenseForm(formData: FormData): {
       amount_cents: amount,
       treatment,
       trip_id: tripId,
+      // A trip stores NULL here, not the trip's client. See
+      // clientIdForStorage for the three things that depend on the column
+      // meaning "attributed directly" and nothing else. The trip itself is
+      // still checked (settleTripAndClient below) so a bad trip id is
+      // caught rather than filed.
+      client_id: clientIdForStorage(clientId, Boolean(tripId)),
       notes: optional(formData, "notes"),
     },
   };
+}
+
+/**
+ * Checks the trip before the row is written.
+ *
+ * `client_id` is already null for anything with a trip (clientIdForStorage
+ * decided that in parseExpenseForm), so there is no pair for the composite
+ * FK to reject and nothing here corrects a value. What this does is refuse
+ * a trip that is not the caller's: without it, a POST carrying another
+ * account's trip id would be filed and only fail at the FK, reported as a
+ * generic "that record is linked to something else". The read is RLS-scoped
+ * like every other, so another account's trip simply returns no row.
+ */
+async function settleTripAndClient(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  accountId: string,
+  values: ExpenseFields
+): Promise<{ values: ExpenseFields | null; error: string | null }> {
+  if (!values.trip_id) return { values, error: null };
+
+  const { data, error } = await supabase
+    .from("trips")
+    .select("id")
+    .eq("id", values.trip_id)
+    .eq("account_id", accountId)
+    .maybeSingle();
+
+  if (error) return { values: null, error: friendlyDbError(error, "trips.select") };
+  if (!data) return { values: null, error: "That trip no longer exists." };
+
+  return { values: { ...values, client_id: null }, error: null };
 }
 
 /**
@@ -282,7 +324,16 @@ export async function createExpense(
   }
 
   const supabase = await createClient();
-  const payload: ExpenseInsert = { ...values, account_id: account.id };
+  const { values: filed, error: clientError } = await settleTripAndClient(
+    supabase,
+    account.id,
+    values
+  );
+  if (clientError || !filed) {
+    return { error: clientError ?? "Couldn't read that form.", values: echo(formData) };
+  }
+
+  const payload: ExpenseInsert = { ...filed, account_id: account.id };
   const { data, error: insertError } = await supabase
     .from("expenses")
     .insert(payload as never)
@@ -360,6 +411,15 @@ export async function updateExpense(
 
   const supabase = await createClient();
 
+  const { values: filed, error: clientError } = await settleTripAndClient(
+    supabase,
+    account.id,
+    values
+  );
+  if (clientError || !filed) {
+    return { error: clientError ?? "Couldn't read that form.", values: echo(formData) };
+  }
+
   // AUTHORIZE BEFORE TOUCHING STORAGE. Uploading first would let a POST
   // carrying any id write an object into the caller's own folder that no
   // expense row will ever reference — an unbounded storage-write
@@ -395,8 +455,8 @@ export async function updateExpense(
   // account_id filter is defence in depth, not the boundary — RLS is.
   // See the note in clients/actions.ts.
   const payload: ExpenseUpdate = receiptPath
-    ? { ...values, receipt_path: receiptPath }
-    : values;
+    ? { ...filed, receipt_path: receiptPath }
+    : filed;
   const { error: updateError, count } = await supabase
     .from("expenses")
     .update(payload as never, { count: "exact" })
@@ -507,10 +567,33 @@ export async function fileExpense(
   }
 
   const supabase = await createClient();
-  const payload: ExpenseUpdate = {
-    trip_id: UUID_RE.test(tripId) ? tripId : null,
-    treatment,
-  };
+  const filedTripId = UUID_RE.test(tripId) ? tripId : null;
+  const payload: ExpenseUpdate = { trip_id: filedTripId, treatment };
+
+  // Filing onto a trip clears client_id, the same rule the form follows
+  // (clientIdForStorage): with a trip, the client is derived, never stored.
+  // Clearing is required rather than tidy -- a receipt already attributed
+  // to client A, filed onto client B's trip, is the exact pair the
+  // composite FK refuses, so leaving the old value would fail the queue's
+  // two-click fix on precisely the receipts a pilot had taken the trouble
+  // to attribute. The trip is read first so an unknown one is reported as
+  // itself instead of as a foreign key error.
+  //
+  // Filing with NO trip leaves client_id alone. "This receipt is client
+  // A's" is something the pilot said on purpose; deciding to deduct it
+  // rather than rebill it is not a retraction of that.
+  if (filedTripId) {
+    const { data: trip, error: tripError } = await supabase
+      .from("trips")
+      .select("id")
+      .eq("id", filedTripId)
+      .eq("account_id", account.id)
+      .maybeSingle();
+    if (tripError) return { error: friendlyDbError(tripError, "trips.select") };
+    if (!trip) return { error: "That trip no longer exists." };
+    payload.client_id = null;
+  }
+
   const { error, count } = await supabase
     .from("expenses")
     .update(payload as never, { count: "exact" })

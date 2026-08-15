@@ -152,8 +152,19 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         body: [
           "Scanning a receipt reads the vendor, date, and amount where it can. It is a suggestion: check it before saving, because a misread total becomes a wrong number on an invoice.",
           "An expense filed against a trip and marked billable becomes an invoice line when you bill that trip, with the receipt attached to the invoice PDF.",
+          "A cost with no trip can still name a client, so training a client asked for or gear bought for one owner's aircraft counts toward what that client has cost you. Pick a trip and the client comes from the trip instead, because the two are never allowed to disagree.",
+          "Rebilling still needs a trip. A client on its own gives the charge nowhere to land, since the line goes on the invoice through the trip.",
         ],
-        keywords: ["receipt", "ocr", "scan", "rebill", "reimbursable", "billable"],
+        keywords: [
+          "receipt",
+          "ocr",
+          "scan",
+          "rebill",
+          "reimbursable",
+          "billable",
+          "client",
+          "attribute",
+        ],
       },
       {
         id: "bank-import",
@@ -235,8 +246,9 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         body: [
           "Flying for a Part 135 operator means being qualified under that operator's certificate: their training, their checks, their programs. Being typed and current personally is necessary and not sufficient.",
           "These records are what a client has told or shown you about your standing with them. They are a place to keep track of it, not a determination that you are qualified.",
+          "Add an operator from this panel the moment you sit their indoc, before there is any work or any money. All it needs is a name. They start as someone you do not invoice, so they stay out of your invoices, estimates and unbilled work until you say otherwise.",
         ],
-        keywords: ["135", "part 135", "checkride", "recurrent", "training", "ipc", "line check"],
+        keywords: ["135", "part 135", "checkride", "recurrent", "training", "ipc", "line check", "indoc", "operator"],
       },
     ],
   },
@@ -252,8 +264,9 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         body: [
           "Rates set on a client are defaults. Every trip can override them, and the rates a trip was confirmed at are what its invoice uses. Renegotiating later does not rewrite work already done.",
           "A rate override sets what this client pays per day type. Left blank, the day type's own default applies.",
+          "Turn off \u201cYou invoice this client\u201d for an operator you fly for but never bill. They keep their qualifications, documents, trips and rates, and they drop out of the invoice and estimate pickers, your unbilled work and your statements. Once you have invoiced or quoted somebody you cannot turn it off: archive them instead, which keeps the invoices and takes them out of new work.",
         ],
-        keywords: ["operator", "owner", "rate", "day rate", "per diem", "terms", "contract"],
+        keywords: ["operator", "owner", "rate", "day rate", "per diem", "terms", "contract", "not invoiced", "billing"],
       },
       {
         id: "day-types",

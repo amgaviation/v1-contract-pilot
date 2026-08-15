@@ -15,6 +15,7 @@ import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatCents } from "@/lib/format";
+import { COUNTERPARTY_COPY, isInvoicedCounterparty } from "@/lib/counterparty";
 import type { Database } from "@/lib/supabase/database.types";
 import { friendlyDbError } from "@/lib/db-errors";
 import EmptyState from "@/components/ui/empty-state";
@@ -159,7 +160,18 @@ export default async function ClientsPage() {
                       </Text>
                     </Table.Cell>
                     <Table.Cell>
-                      <Badge color={w9.color}>{w9.label}</Badge>
+                      {/* A W-9 is what a client needs from the pilot in
+                          order to 1099 them for money paid. A client you
+                          do not invoice is never paying you, so "No W-9"
+                          in red is not a thing to chase, it is noise on
+                          the queue that exists to make real ones visible.
+                          The billing relationship is the fact worth
+                          stating in this column instead. */}
+                      {isInvoicedCounterparty(client) ? (
+                        <Badge color={w9.color}>{w9.label}</Badge>
+                      ) : (
+                        <Badge color="gray">{COUNTERPARTY_COPY.badge}</Badge>
+                      )}
                     </Table.Cell>
                     <Table.Cell justify="end">
                       <Button asChild variant="outline" size="1">

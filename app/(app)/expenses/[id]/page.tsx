@@ -7,7 +7,7 @@ import { formatCents, formatDate } from "@/lib/format";
 import PageShell from "../../page-shell";
 import ExpenseForm, { type ExpenseFormValues } from "../expense-form";
 import { updateExpense } from "../actions";
-import { loadTripOptions } from "../trip-options";
+import { loadClientOptions, loadTripOptions } from "../trip-options";
 import { loadOptionChoices } from "@/lib/custom-options-read";
 import DeleteExpenseButton from "./delete-expense-button";
 import ReceiptLink from "./receipt-link";
@@ -23,17 +23,23 @@ export default async function ExpensePage({
   await requireAccount(`/expenses/${id}`);
 
   const supabase = await createClient();
-  const [{ data, error }, { trips, error: tripError }, categories] =
-    await Promise.all([
-      supabase.from("expenses").select("*").eq("id", id).maybeSingle(),
-      loadTripOptions(),
-      loadOptionChoices("expense_category"),
-    ]);
+  const [
+    { data, error },
+    { trips, error: tripError },
+    { clients, error: clientError },
+    categories,
+  ] = await Promise.all([
+    supabase.from("expenses").select("*").eq("id", id).maybeSingle(),
+    loadTripOptions(),
+    loadClientOptions(),
+    loadOptionChoices("expense_category"),
+  ]);
 
   // A failed query is not a missing expense — rendering a 404 would send
   // the pilot looking for a receipt they never lost.
   if (error) throw new Error(`Couldn't load expense ${id}: ${error.message}`);
   if (tripError) throw new Error(`Couldn't load your trips: ${tripError}`);
+  if (clientError) throw new Error(`Couldn't load your clients: ${clientError}`);
 
   const expense = data as (ExpenseFormValues & {
     id: string;
@@ -70,6 +76,7 @@ export default async function ExpensePage({
       <ExpenseForm
         action={updateExpense}
         trips={trips}
+        clients={clients}
         categories={categories}
         values={expense}
         submitLabel="Save expense"

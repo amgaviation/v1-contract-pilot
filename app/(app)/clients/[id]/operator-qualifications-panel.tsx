@@ -12,6 +12,7 @@ import {
   currentIpcRotationId,
 } from "./operator-qualification-kinds";
 import OperatorQualificationRow from "./operator-qualification-row";
+import AddOperatorForm from "./add-operator-form";
 
 type QualificationRow = Database["pilot"]["Tables"]["operator_qualifications"]["Row"];
 
@@ -202,6 +203,16 @@ export default function OperatorQualificationsPanel({
           })}
         </Flex>
       )}
+
+      {/* ADDING THE NEXT OPERATOR, from here. Recording indoc for an
+          operator you have not flown for yet used to mean leaving this
+          screen, filling in a billing form for somebody you are not
+          billing, and coming back. See createOperatorCounterparty for the
+          whole reasoning. Rendered even when the qualifications above
+          failed to load: this control does not depend on that read, and a
+          load error is not a reason to also take away the way out. */}
+      <Separator size="4" my="3" />
+      <AddOperatorForm />
     </Card>
   );
 }

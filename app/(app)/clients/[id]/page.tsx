@@ -15,6 +15,7 @@ import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDate, formatDateRange } from "@/lib/format";
+import { COUNTERPARTY_COPY, isInvoicedCounterparty } from "@/lib/counterparty";
 import type { Database } from "@/lib/supabase/database.types";
 import PageShell from "../../page-shell";
 import ClientForm from "../client-form";
@@ -24,6 +25,7 @@ import RateOverridesPanel from "./rate-overrides-panel";
 import OperatorQualificationsPanel from "./operator-qualifications-panel";
 import PacketPanel from "./packet-panel";
 import PaymentInsightPanel from "./payment-insight-panel";
+import CostPanel from "./cost-panel";
 
 type ClientRow = Database["pilot"]["Tables"]["clients"]["Row"];
 type DayTypeRow = Database["pilot"]["Tables"]["day_types"]["Row"];
@@ -87,6 +89,13 @@ export default async function EditClientPage({
   // and that is the point: RLS returns no row either way, so a probe
   // can't tell "not yours" from "not real".
   if (!client) notFound();
+
+  // 20260815120000. Decides the subtitle, the note below it, and whether
+  // the Statement button is offered at all. Read through the shared helper
+  // rather than `client.you_invoice === true` so an unselected or
+  // pre-migration column reads as "yes, you bill them" in exactly one
+  // place; see lib/counterparty.ts.
+  const invoiced = isInvoicedCounterparty(client);
 
   // F10: fetches EVERY day type, not just active ones. An archived type
   // is dropped from every picker (it's already removed from new trips'
@@ -239,19 +248,33 @@ export default async function EditClientPage({
   return (
     <PageShell
       title={client.name}
-      subtitle={client.archived_at ? "Archived" : "Client"}
+      subtitle={
+        client.archived_at
+          ? "Archived"
+          : invoiced
+            ? "Client"
+            : "Operator you don't invoice"
+      }
       action={
         <>
           {/* The statement: what this client was invoiced over a period,
               what they've paid, and what's outstanding — the document a
               pilot sends an owner or flight department whose AP pays in
               batches. Lives at its own route so it gets a period picker
-              and a print view without crowding this screen. */}
-          <Button asChild variant="soft">
-            <NextLink href={`/clients/${client.id}/statement`}>
-              Statement
-            </NextLink>
-          </Button>
+              and a print view without crowding this screen.
+
+              HIDDEN for a counterparty the pilot does not invoice
+              (20260815120000). Not a cosmetic choice: that flag can only
+              be set on a client with no invoices, no estimates and no
+              schedule, so the statement behind this button is guaranteed
+              empty. Offering it would be offering a blank document. */}
+          {invoiced ? (
+            <Button asChild variant="soft">
+              <NextLink href={`/clients/${client.id}/statement`}>
+                Statement
+              </NextLink>
+            </Button>
+          ) : null}
           <ArchiveButton id={client.id} archived={Boolean(client.archived_at)} />
         </>
       }
@@ -265,6 +288,14 @@ export default async function EditClientPage({
           </Text>
         </Card>
       ) : null}
+
+      {invoiced ? null : (
+        <Card mb="4">
+          <Text size="2" color="gray">
+            {COUNTERPARTY_COPY.pageNote}
+          </Text>
+        </Card>
+      )}
 
       <ClientForm
         action={updateClientRecord}
@@ -364,6 +395,18 @@ export default async function EditClientPage({
           only. A self-contained server component with its own reads; see
           payment-insight.ts for the computation and the no-cross-tenant
           rule. */}
+      {/* What this client has cost, counting both the expenses filed
+          against their trips and the ones attributed to them directly
+          (20260815130000). Sits next to "what do they owe me" because it
+          is the other half of the same question. */}
+      <Box mt="4">
+        <CostPanel
+          clientId={client.id}
+          clientName={client.name}
+          archived={Boolean(client.archived_at)}
+        />
+      </Box>
+
       <Box mt="4">
         <PaymentInsightPanel accountId={account.id} clientId={client.id} />
       </Box>

@@ -99,4 +99,22 @@ const mono = localFont({
   display: "swap",
 });
 
-export const fontVariables = `${archivo.variable} ${inter.variable} ${mono.variable}`;
+/**
+ * LEDGER's one family (see docs/design/LEDGER.md). A single grotesk in
+ * three working weights carries the whole migrated system — UI text and
+ * figures alike, with tabular numerals switched on per-element by the
+ * `tnum-l` utility rather than by a separate mono face. Vendored like the
+ * three above (same hermetic-build reasoning); variable file covers
+ * 400–900, and the range below pins the slice the type scale uses.
+ * INSTRUMENT's three faces stay loaded until the last screen migrates —
+ * both systems render side by side for the whole migration window.
+ */
+const schibsted = localFont({
+  src: "./font-files/schibsted-grotesk-variable.woff2",
+  weight: "400 700",
+  style: "normal",
+  variable: "--font-schibsted",
+  display: "swap",
+});
+
+export const fontVariables = `${archivo.variable} ${inter.variable} ${mono.variable} ${schibsted.variable}`;

@@ -16,6 +16,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+import { YOU_INVOICE_COLUMN } from "@/lib/counterparty";
 import PageShell from "../../page-shell";
 import {
   ESTIMATE_STATUS_BADGE,
@@ -90,7 +91,16 @@ export default async function EstimatePage({
       .eq("estimate_id", id),
     // Not filtered to active-only: a sent estimate may quote a client that
     // has since been archived, and the picker still needs to show it.
-    supabase.from("clients").select("id, name").order("name", { ascending: true }),
+    // 20260815120000: the header form re-points a DRAFT estimate at a
+    // client, so it offers only counterparties the pilot bills. A draft
+    // cannot lose its own current selection this way: an estimate is one
+    // of the three things pilot.clients_refuse_stop_invoicing() refuses
+    // to let a client carry while being marked as one you do not invoice.
+    supabase
+      .from("clients")
+      .select("id, name")
+      .eq(YOU_INVOICE_COLUMN, true)
+      .order("name", { ascending: true }),
   ]);
 
   // A failed QUERY is not a missing estimate — a 503 must not read as
