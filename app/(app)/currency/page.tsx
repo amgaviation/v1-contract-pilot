@@ -59,7 +59,7 @@ export default async function CurrencyPage() {
               The currency board ships dark behind a deployment flag until its regulatory
               spec review and the counsel review of its disclaimer are signed off. Until
               the flag is set on this deployment, nothing here computes, reads, or shows
-              currency — this notice is the whole feature. There is no in-app switch.
+              currency. This notice is the whole feature. There is no in-app switch.
             </Text>
           </Callout.Text>
         </Callout.Root>
@@ -110,7 +110,7 @@ export default async function CurrencyPage() {
             </Text>
             <Text as="div" size="2">
               This is not a statement that you are current, and not a statement that you
-              are not — it means this screen could not find out. Reload to try again; if
+              are not. It means this screen could not find out. Reload to try again; if
               it keeps failing, contact support. Your logbook itself is unaffected.
             </Text>
           </Callout.Text>
@@ -124,7 +124,7 @@ export default async function CurrencyPage() {
       title="Currency"
       subtitle={`Estimated from your logbook as of ${
         formatCurrencyDate(asOf) ?? asOf
-      } (UTC) — computed fresh on this page load`}
+      } (UTC), computed fresh on this page load`}
       action={<RecomputeButton />}
     >
       {/* COUNSEL-REVIEWED COPY, verbatim from lib/brand.ts — never
@@ -145,7 +145,7 @@ export default async function CurrencyPage() {
         </Text>
         <Text size="1" color="gray" as="div">
           Every window below is evaluated against the UTC calendar date above. Each card
-          states its own arithmetic and the entries it counted — the estimate is only as
+          states its own arithmetic and the entries it counted. The estimate is only as
           good as the logbook it reads.
         </Text>
       </Flex>

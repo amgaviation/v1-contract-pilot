@@ -405,7 +405,7 @@ export default function ExpenseForm({
             </Select.Root>
             {defaultedFromClient ? (
               <Text size="1" color="gray">
-                {`Defaulted from ${defaultedFromClient}'s billing preference — change it anytime.`}
+                {`Defaulted from ${defaultedFromClient}'s billing preference. Change it anytime.`}
               </Text>
             ) : null}
           </Flex>
@@ -431,9 +431,9 @@ export default function ExpenseForm({
             ) : null}
             <Text size="1" color={rebilling ? "amber" : "gray"}>
               {trips.length === 0
-                ? "No trips yet — log one first if this expense should be rebilled."
+                ? "No trips yet. Log one first if this expense should be rebilled."
                 : rebilling
-                  ? "Required — a rebilled expense has to land on an invoice"
+                  ? "Required. A rebilled expense has to land on an invoice"
                   : "Optional. Leave blank and it waits in the unassigned queue."}
             </Text>
           </Flex>

@@ -46,7 +46,7 @@ function connectClientId(): string {
   const id = process.env.STRIPE_CONNECT_CLIENT_ID;
   if (!id) {
     throw new Error(
-      "STRIPE_CONNECT_CLIENT_ID is unset — Stripe Connect onboarding cannot run. Set it in the Vercel project (and .env.local for development) from the platform's Connect settings (dashboard.stripe.com/settings/connect)."
+      "STRIPE_CONNECT_CLIENT_ID is unset. Stripe Connect onboarding cannot run. Set it in the Vercel project (and .env.local for development) from the platform's Connect settings (dashboard.stripe.com/settings/connect)."
     );
   }
   return id;
@@ -108,7 +108,7 @@ export async function exchangeConnectCode(code: string): Promise<ConnectExchange
   const livemode = response.livemode ?? isLiveMode();
   if (livemode !== isLiveMode()) {
     throw new Error(
-      `Stripe OAuth grant livemode (${livemode}) does not match this deployment's key mode (${isLiveMode()}) — refusing to link.`
+      `Stripe OAuth grant livemode (${livemode}) does not match this deployment's key mode (${isLiveMode()}). Refusing to link.`
     );
   }
   return { connectAccountId, livemode };
@@ -446,7 +446,7 @@ export async function deactivatePaymentLink(params: {
  * re-improvised at three call sites.
  */
 export const LINK_STILL_LIVE_WARNING =
-  "We couldn't confirm with Stripe that the old payment link was switched off. It may still accept a card payment — deactivate it under Payment Links in your Stripe Dashboard.";
+  "We couldn't confirm with Stripe that the old payment link was switched off. It may still accept a card payment. Deactivate it under Payment Links in your Stripe Dashboard.";
 
 // A `currentUserId()` helper used to live here, documented as being "for
 // the OAuth `state` cookie/session check". Nothing ever imported it — the

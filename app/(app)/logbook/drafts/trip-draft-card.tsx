@@ -206,7 +206,7 @@ export default function TripDraftCard({
         </Table.Root>
 
         <Text size="1" color="gray">
-          * marks a leg that recorded only the older combined field —
+          * marks a leg that recorded only the older combined field:
           instrument time as one total (not actual vs. simulated) or day
           landings with no full-stop count. The confirmed entry carries that
           the same way; classify it on the logbook entry after confirming.
@@ -215,7 +215,7 @@ export default function TripDraftCard({
         </Text>
         <Text size="1" color="gray">
           These numbers come straight from the trip&rsquo;s legs. Fix a leg on
-          the trip first if anything&rsquo;s wrong, then come back here — you can
+          the trip first if anything&rsquo;s wrong, then come back here. You can
           also edit any field on the logbook entry after confirming.
         </Text>
       </Flex>

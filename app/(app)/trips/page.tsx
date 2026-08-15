@@ -263,7 +263,7 @@ export default async function TripsPage({
         <Callout.Root color="amber" mb="3">
           <Callout.Text>
             {`Showing your ${TRIP_LIMIT} most recent trips. Older ones aren't on this
-              screen — they're still in your account, and your invoices and reports
+              screen, but they're still in your account, and your invoices and reports
               still count them.`}
           </Callout.Text>
         </Callout.Root>

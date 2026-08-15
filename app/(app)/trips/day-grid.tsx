@@ -316,8 +316,8 @@ export default function DayGrid({
         <Box mb="3">
           <Text size="1" color="gray">
             {billedOn
-              ? `This trip is billed on ${billedOn}. Its day rows are frozen here — correcting them would leave the trip and that invoice disagreeing about what was flown. Remove it from the invoice first.`
-              : "This trip is on an invoice. Its day rows are frozen here — correcting them would leave the trip and the invoice that has already gone out disagreeing about what was flown."}
+              ? `This trip is billed on ${billedOn}. Its day rows are frozen here. Correcting them would leave the trip and that invoice disagreeing about what was flown. Remove it from the invoice first.`
+              : "This trip is on an invoice. Its day rows are frozen here. Correcting them would leave the trip and the invoice that has already gone out disagreeing about what was flown."}
           </Text>
         </Box>
         <ReadOnlyGrid dates={dates} existingByDate={existingByDate} dayTypeById={dayTypeById} allDayTypes={dayTypes} />
@@ -334,11 +334,11 @@ export default function DayGrid({
       {existingDays.length === 0 && seed.seeded ? (
         <Box mb="3">
           <Text size="1" color="gray">
-            Seeded from this trip&apos;s day counts — check it before saving.
+            Seeded from this trip&apos;s day counts. Check it before saving.
             Which dates are travel versus flight days (travel first and
             last, flight in between), and where a half day lands, is a
             guess based on the counts alone, not this trip&apos;s real
-            day-by-day record — verify every row.
+            day-by-day record. Verify every row.
             {seed.approximate
               ? " Some days didn't fit the trip's dates and were left blank."
               : ""}
@@ -407,7 +407,7 @@ export default function DayGrid({
                           style={{ width: "100%" }}
                         />
                         <Select.Content>
-                          <Select.Item value={NOT_COUNTED}>— not counted —</Select.Item>
+                          <Select.Item value={NOT_COUNTED}>(not counted)</Select.Item>
                           {optionsFor(row.dayTypeId).map((t) => (
                             <Select.Item key={t.id} value={t.id}>
                               {t.archived_at ? `${t.label} (archived)` : t.label}
@@ -554,8 +554,8 @@ export default function DayGrid({
           Running total: {formatCents(liveTotalCents)}
         </Text>
         <Text as="div" size="1" color="gray">
-          Updates as you edit below, before you save. Day rows only — per
-          diem, the contract minimum and rebilled expenses aren&rsquo;t
+          Updates as you edit below, before you save. Day rows only.
+          Per diem, the contract minimum and rebilled expenses aren&rsquo;t
           included, so this won&rsquo;t match the invoice total.
         </Text>
       </Box>
@@ -632,7 +632,7 @@ function ReadOnlyGrid({
                   },
                   allDayTypes
                 )
-              : "— not counted —";
+              : "(not counted)";
             return (
               <Table.Row key={date}>
                 <Table.Cell style={{ whiteSpace: "nowrap" }}>

@@ -88,52 +88,56 @@ export const OPERATOR_QUALIFICATION_REQUIREMENTS = [
     value: WRITTEN_TEST_REQUIREMENT,
     label: "Written/oral knowledge test",
     regCite:
-      "135.293(a) — 12 calendar months. Binds any pilot serving (not just PIC), not type-specific.",
+      "Due every 12 calendar months. It applies to any pilot flying for this operator, not only " +
+      "the PIC, and it is not tied to one aircraft type. (14 CFR 135.293(a))",
   },
   {
     value: COMPETENCY_CHECK_REQUIREMENT,
     label: "Competency check",
     regCite:
-      "135.293(b) — 12 calendar months. Binds any pilot serving. Keyed to CLASS (single-engine " +
-      "airplane, other than turbojet) or TYPE (helicopter, multiengine airplane, turbojet " +
-      "airplane, powered-lift) — one check per class/type you fly for this operator. " +
-      "135.293(d): an IPC done in a given type may substitute for that type's competency check " +
-      "— not applied automatically here; record whichever check you actually took.",
+      "Due every 12 calendar months for any pilot flying for this operator. (14 CFR 135.293(b)) " +
+      "It is keyed to aircraft class (single-engine airplane, other than turbojet) or type " +
+      "(helicopter, multiengine airplane, turbojet airplane, powered-lift), so you need one " +
+      "check per class or type you fly for this operator. An IPC flown in a given type can " +
+      "substitute for that type's competency check under 135.293(d), but this product does not " +
+      "apply that substitution automatically. Record whichever check you actually took.",
   },
   {
     value: IPC_REQUIREMENT,
     label: "Instrument proficiency check (IPC)",
     regCite:
-      "135.297(a) — 6 calendar months, PIC-under-IFR only. 135.297(e): if you're assigned more " +
-      "than one type for this operator, the check rotates through your types — one flight check " +
-      "per 6-month period, not one per type per period. This product records each check by the " +
-      "type it was flown in; only the type currently providing your live 6-month coverage is " +
-      "weighed against the window below, and older type rows show as rotation history, " +
-      "never as a lapse in their own right.",
+      "Due every 6 calendar months for PIC duty under IFR. (14 CFR 135.297(a)) If you fly more " +
+      "than one type for this operator, the check rotates through your types under 135.297(e). " +
+      "It is one flight check per 6-month period, not one per type. This product records each " +
+      "check by the type it was flown in. Only the type currently providing your live 6-month " +
+      "coverage is weighed against the window below; older type rows show as rotation history, " +
+      "never a lapse in their own right.",
   },
   {
     value: LINE_CHECK_REQUIREMENT,
     label: "Line check",
     regCite:
-      "135.299(a) — 12 calendar months, PIC only. One flight check in any one type you fly for " +
-      "this operator satisfies it for every type — the aircraft type below is an informational " +
-      "record of which type it was flown in, not a separate requirement per type.",
+      "Due every 12 calendar months for PIC duty. (14 CFR 135.299(a)) One flight check, in any " +
+      "one type you fly for this operator, satisfies it for every type you fly. The aircraft " +
+      "type below is just a record of which type the check was flown in, not a separate " +
+      "requirement per type.",
   },
   {
     value: "drug_alcohol_program_120",
     label: "Drug & alcohol program",
     regCite:
-      "120.105 (drug testing, Subpart E) & 120.215 (alcohol testing, Subpart F) — cover you " +
-      "directly or by contract, including subcontract at any tier. The operator's program; " +
-      "recorded as status only.",
+      "The operator's drug and alcohol testing program must cover you, whether directly or by " +
+      "contract, including subcontract at any tier. (14 CFR 120.105 for drug testing under " +
+      "Subpart E, and 120.215 for alcohol testing under Subpart F) This is the operator's " +
+      "program, so it is recorded here as status only.",
   },
   {
     value: "prd_consent_111",
     label: "PRD (Pilot Records Database) consent",
     regCite:
-      "111.310 (written consent) / 111.120 (pilot consent & right of review) — your consent for " +
-      "the operator to pull your PRD records before using you as a pilot (111.105 is the " +
-      "operator's separate duty to then evaluate what it pulled). Recorded as status only.",
+      "Your written consent lets the operator pull your PRD (Pilot Records Database) records " +
+      "before they use you as a pilot. (14 CFR 111.310 and 111.120) Evaluating what they pull " +
+      "is the operator's separate duty under 111.105. This is recorded here as status only.",
   },
   { value: "insurance_approval", label: "Insurance approval", regCite: null },
   { value: "company_manuals", label: "Company manuals issued/current", regCite: null },
@@ -248,10 +252,10 @@ export function currentIpcRotationId(
  */
 export const ROTATION_HISTORY_COPY: Record<string, string> = {
   [IPC_REQUIREMENT]:
-    "Rotation history, not a lapse — 135.297(e) allows one flight check per " +
-    "6-month period across your assigned types; the type expiring latest is " +
-    "the one judged against that window. Planning aid, not a determination " +
-    "of regulatory compliance.",
+    "This is rotation history, not a lapse. 135.297(e) allows one flight check per " +
+    "6-month period across your assigned types, and the type expiring latest is " +
+    "the one judged against that window below. This is a planning aid, not a " +
+    "determination of regulatory compliance.",
 };
 
 export const STATUS_OPTIONS = [

@@ -113,7 +113,7 @@ function parseCommonEntryFields(formData: FormData): {
   if (!purpose) {
     return {
       values: null,
-      error: "Say what the drive was for — this is what lets you (or your tax preparer) later tell business driving from commuting.",
+      error: "Say what the drive was for. This is what lets you (or your tax preparer) later tell business driving from commuting.",
     };
   }
   if (purpose.length > 500) return { values: null, error: "Keep the purpose under 500 characters." };
@@ -159,7 +159,7 @@ function parseEntryForm(formData: FormData): {
   if (rate === null) {
     return {
       values: null,
-      error: "Enter the rate for this drive's tax year — set it once under Settings → Mileage rates and it'll be offered here.",
+      error: "Enter the rate for this drive's tax year. Set it once under Settings → Mileage rates and it'll be offered here.",
     };
   }
 

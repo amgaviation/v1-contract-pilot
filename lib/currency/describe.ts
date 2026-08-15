@@ -55,7 +55,7 @@ function cardDate(iso: string | null): string | null {
 /** Names WHICH field is missing and WHERE to enter it — "not enough information" with no remedy trains a pilot to ignore the panel. */
 const MISSING_INPUT_COPY: Record<MissingInput, { label: string; href: string }> = {
   airman_unattributed: {
-    label: "One or more entries in this window aren't attributed to an airman — assign them in the logbook.",
+    label: "One or more entries in this window aren't attributed to an airman. Assign them in the logbook.",
     href: "/logbook",
   },
   role_unrecorded: {
@@ -75,11 +75,11 @@ const MISSING_INPUT_COPY: Record<MissingInput, { label: string; href: string }> 
     // — true for the 90-day cards, but the instrument card only ever fires
     // this gate on approaches, holds, or a course intercept, never a
     // takeoff or landing. Worded to be true on every card it can render on.
-    label: "Register the aircraft flown on the entries this card's notes name — it isn't in your registry yet.",
+    label: "Register the aircraft flown on the entries this card's notes name. It isn't in your registry yet.",
     href: "/logbook/aircraft",
   },
   aircraft_gear_unrecorded: {
-    label: "Record whether the intended aircraft is tailwheel, and the gear on any aircraft flown in this window — it changes which takeoffs and landings count.",
+    label: "Record whether the intended aircraft is tailwheel, and the gear on any aircraft flown in this window. It changes which takeoffs and landings count.",
     href: "/logbook/aircraft",
   },
   aircraft_category_class_unrecorded: {
@@ -89,7 +89,7 @@ const MISSING_INPUT_COPY: Record<MissingInput, { label: string; href: string }> 
     // current and not (that entry is named in this card's notes). Worded
     // to be true in EITHER case — never claiming a note exists when it
     // does not (P4).
-    label: "Record the intended aircraft's category and class — or, if those are already recorded, check this card's notes for an entry whose category could not be matched against it.",
+    label: "Record the intended aircraft's category and class; or, if those are already recorded, check this card's notes for an entry whose category could not be matched against it.",
     href: "/logbook/aircraft",
   },
   aircraft_type_unrecorded: {
@@ -100,7 +100,7 @@ const MISSING_INPUT_COPY: Record<MissingInput, { label: string; href: string }> 
     // only the first cause, which cannot be fixed by "recording the
     // intended aircraft's type" when it is already recorded and a
     // different entry is the actual reason.
-    label: "Record the intended aircraft's type rating or type designator — or, if those are already recorded, check this card's notes for an entry whose type could not be matched against it.",
+    label: "Record the intended aircraft's type rating or type designator; or, if those are already recorded, check this card's notes for an entry whose type could not be matched against it.",
     href: "/logbook/aircraft",
   },
   night_window_unasserted: {
@@ -116,7 +116,7 @@ const MISSING_INPUT_COPY: Record<MissingInput, { label: string; href: string }> 
     href: "/logbook",
   },
   device_category_unconfirmed: {
-    label: "A simulator/device session named in this card's notes could be the difference between current and not, and this schema has no field recording whether the device represents the category of aircraft for the instrument rating being maintained (61.57(c)(2)) — resolve it manually.",
+    label: "A simulator/device session named in this card's notes could be the difference between current and not, and this schema has no field recording whether the device represents the category of aircraft for the instrument rating being maintained (61.57(c)(2)). Resolve it manually.",
     href: "/logbook",
   },
   operating_rule_unspecified: {
@@ -128,15 +128,15 @@ const MISSING_INPUT_COPY: Record<MissingInput, { label: string; href: string }> 
     href: "/documents",
   },
   flight_review_completion_in_future: {
-    label: "The flight review completion date entered is in the future — correct it.",
+    label: "The flight review completion date entered is in the future. Correct it.",
     href: "/documents",
   },
   medical_never_computed: {
-    label: "This is never computed from your medical document — see the note on this card.",
+    label: "This is never computed from your medical document. See the note on this card.",
     href: "/documents",
   },
   window_truncated: {
-    label: "Too many entries to load in one request — contact support.",
+    label: "Too many entries to load in one request. Contact support.",
     href: "/logbook",
   },
 };
@@ -175,7 +175,7 @@ function limitingItemFor(r: CurrencyResult): string {
   const landings = r.observed.landings ?? 0;
   const requiredTakeoffs = r.required.takeoffs ?? 3;
   const requiredLandings = r.required.landings ?? 3;
-  const limiting = r.limitingDate ? ` — earliest qualifying entry ${cardDate(r.limitingDate)}` : "";
+  const limiting = r.limitingDate ? `; earliest qualifying entry ${cardDate(r.limitingDate)}` : "";
   return `${takeoffs} of ${requiredTakeoffs} takeoffs, ${landings} of ${requiredLandings} landings${limiting}.`;
 }
 

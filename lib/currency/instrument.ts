@@ -180,7 +180,7 @@ const AMBIGUOUS_FACT_PHRASE: Partial<Record<MissingInput, string>> = {
 
 function describeAmbiguousEntry(a: { entry: CurrencyEntry; missing: MissingInput[] }): string {
   const facts = a.missing.map((m) => AMBIGUOUS_FACT_PHRASE[m] ?? m).join("; ");
-  return `Entry ${a.entry.entryDate}: ${facts} — and its approaches/holds/course intercept could be the difference between current and not current, so this card asks rather than guesses.`;
+  return `Entry ${a.entry.entryDate}: ${facts}, and its approaches/holds/course intercept could be the difference between current and not current, so this card asks rather than guesses.`;
 }
 
 /**
@@ -199,7 +199,7 @@ function describeAmbiguousEntry(a: { entry: CurrencyEntry; missing: MissingInput
 function mixedSimulatorRowApproachAssumption(certain: readonly CurrencyEntry[]): string | null {
   const countedAMixedRow = certain.some((e) => (e.simulatorTime ?? 0) > 0 && e.approachCondition === "simulated");
   if (!countedAMixedRow) return null;
-  return "At least one counted entry also logs simulator/device time alongside real aircraft time (a mixed row) and was flown under simulated instrument conditions — this schema records no split of its approaches/holds/course intercept between the aircraft and the device, so they were taken as flown in the aircraft under 61.57(c)(1), not as 61.57(c)(2) device experience.";
+  return "At least one counted entry also logs simulator/device time alongside real aircraft time (a mixed row) and was flown under simulated instrument conditions. This schema records no split of its approaches/holds/course intercept between the aircraft and the device, so they were taken as flown in the aircraft under 61.57(c)(1), not as 61.57(c)(2) device experience.";
 }
 
 function approachesFrom(rows: readonly CurrencyEntry[]): number {
@@ -323,7 +323,7 @@ export function evaluateInstrumentExperience(input: {
   for (const e of qualifyingRows) {
     if (e.approachesCount > 1) {
       notes.push(
-        `${e.approachesCount} approaches counted from one entry on ${e.entryDate} tagged "${e.approachType}" — this schema records one approach type per entry, so if any of those were actually a different type, that can't be told apart here.`
+        `${e.approachesCount} approaches counted from one entry on ${e.entryDate} tagged "${e.approachType}". This schema records one approach type per entry, so if any of those were actually a different type, that can't be told apart here.`
       );
     }
   }
@@ -347,8 +347,8 @@ export function evaluateInstrumentExperience(input: {
   }
 
   const assumptions = [
-    "Assumes you hold the instrument rating for the intended aircraft's category — this engine has no airman/ratings record and gates on the aircraft instead.",
-    "Matched on the intended aircraft's full category/class field (e.g. \"ASEL\" vs \"AMEL\"), not category alone — this schema has no separate category field, so an approach flown in a different class of the same category will not count here even though 61.57(c) itself conditions only on category.",
+    "Assumes you hold the instrument rating for the intended aircraft's category. This engine has no airman/ratings record and gates on the aircraft instead.",
+    "Matched on the intended aircraft's full category/class field (e.g. \"ASEL\" vs \"AMEL\"), not category alone. This schema has no separate category field, so an approach flown in a different class of the same category will not count here even though 61.57(c) itself conditions only on category.",
   ];
   const mixedAssumption = mixedSimulatorRowApproachAssumption(certain);
   if (mixedAssumption) assumptions.push(mixedAssumption);

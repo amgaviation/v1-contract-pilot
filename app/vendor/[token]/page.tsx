@@ -228,7 +228,7 @@ export default async function VendorPage({
           )}
           {page.open_invoices_truncated ? (
             <Text as="p" size="1" color="gray" mt="3">
-              Showing the 200 soonest due — more are outstanding. The total
+              Showing the 200 soonest due. More are outstanding, and the total
               above includes all of them.
             </Text>
           ) : null}

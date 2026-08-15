@@ -71,7 +71,7 @@ export default function ConnectPanel({
                 action={formAction}
                 onSubmit={(e) => {
                   const ok = window.confirm(
-                    "Disconnect Stripe? You won't be able to generate new payment links, and \"Pay online\" will disappear from your invoices. A link already sent to a client keeps working on your own Stripe account until you deactivate it yourself from your Stripe Dashboard — including a bank payment (ACH) already authorised and still settling, which will land in your Stripe balance without being recorded here."
+                    "Disconnect Stripe? You won't be able to generate new payment links, and \"Pay online\" will disappear from your invoices. A link you already sent keeps working on your own Stripe account until you deactivate it yourself from your Stripe Dashboard. That includes a bank payment (ACH) already authorised and still settling. It will land in your Stripe balance without being recorded here."
                   );
                   if (!ok) e.preventDefault();
                 }}

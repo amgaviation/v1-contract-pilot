@@ -73,7 +73,7 @@ export default async function SalesTaxReportPage({
   return (
     <PageShell
       title="Sales tax"
-      subtitle={`${formatDate(period.from)} – ${formatDate(period.to)} · tax charged on invoices, cash-basis`}
+      subtitle={`${formatDate(period.from)} to ${formatDate(period.to)} · tax charged on invoices, cash-basis`}
       action={
         report.error === null && !report.truncated ? (
           <Button asChild variant="outline" size="2">
@@ -133,7 +133,8 @@ export default async function SalesTaxReportPage({
         <Callout.Text>
           <Text as="div" weight="medium">
             What your invoices charged as sales tax, and what&rsquo;s been
-            collected — figures for whoever prepares your filings.
+            collected. These are the figures for whoever prepares your
+            filings.
           </Text>
           <Text as="div" size="2">
             Cash-basis, matching this product&rsquo;s other reports: an
@@ -161,7 +162,7 @@ export default async function SalesTaxReportPage({
             </Callout.Icon>
             <Callout.Text>
               {friendlyDbError({ message: report.error }, "sales-tax.load")}{" "}
-              Nothing is shown rather than a partial figure — a short total
+              Nothing is shown rather than a partial figure. A short total
               here would misstate what was collected.
             </Callout.Text>
           </Callout.Root>
@@ -299,7 +300,7 @@ export default async function SalesTaxReportPage({
                 <Text as="div" size="2" color="gray">
                   Tax on invoices issued {formatDate(period.from)} through{" "}
                   {formatDate(period.to)} that are still awaiting full
-                  payment — not included in the totals above. Each will
+                  payment. It is not included in the totals above. Each will
                   count on the day it&rsquo;s paid in full.
                 </Text>
               </Box>

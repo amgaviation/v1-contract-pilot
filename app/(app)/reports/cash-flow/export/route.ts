@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Opening plus net movement doesn't equal closing — refusing to export a statement that doesn't tie. Contact support.",
+          "Opening plus net movement doesn't equal closing. Nothing was exported: this product never ships a statement that doesn't tie. Contact support.",
       },
       { status: 500 }
     );
@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
   const rows: string[] = [];
   rows.push(csvRow(["Cash flow", `${from} to ${to}`]));
   rows.push(
-    csvRow(["Basis", "Cash — movements of the ledger's Cash & bank account only"])
+    csvRow(["Basis", "Cash: movements of the ledger's Cash & bank account only"])
   );
   rows.push(csvRow([]));
   rows.push(csvRow(["Opening cash", centsToDollarsString(flow.openingCents)]));

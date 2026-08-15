@@ -41,7 +41,7 @@ export default function HelpBrowser() {
           autoFocus
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}
-          placeholder="Search — invoices, mileage, day types, tail numbers…"
+          placeholder="Search: invoices, mileage, day types, tail numbers…"
           aria-label="Search the guide"
           type="search"
         />
@@ -59,7 +59,7 @@ export default function HelpBrowser() {
           <Flex direction="column" gap="2" p="1">
             <Text size="2">Nothing in the guide matches that.</Text>
             <Text size="1" color="gray">
-              Try a single word — the name of a screen, or the thing you are looking
+              Try a single word: the name of a screen, or the thing you are looking
               at. Every word you type has to appear somewhere in a topic for it to
               show.
             </Text>

@@ -160,13 +160,13 @@ export async function sendEmail(message: Message): Promise<SendResult> {
       return {
         ok: false,
         error:
-          "The mail service didn't respond in time, so this may or may not have been sent — check with your client before sending it again, and mark the invoice's status by hand if it did arrive.",
+          "The mail service didn't respond in time, so this may or may not have been sent. Check with your client before sending it again, and mark the invoice's status by hand if it did arrive.",
       };
     }
     return {
       ok: false,
       error:
-        "Nothing was sent — the mail service couldn't be reached. Try again, or download the PDF and send it yourself.",
+        "Nothing was sent. The mail service couldn't be reached. Try again, or download the PDF and send it yourself.",
     };
   }
 
@@ -187,8 +187,8 @@ export async function sendEmail(message: Message): Promise<SendResult> {
     return {
       ok: false,
       error: detail
-        ? `Nothing was sent — the mail service refused it (${response.status}): ${detail}`
-        : `Nothing was sent — the mail service refused it (${response.status}).`,
+        ? `Nothing was sent. The mail service refused it (${response.status}): ${detail}`
+        : `Nothing was sent. The mail service refused it (${response.status}).`,
     };
   }
 

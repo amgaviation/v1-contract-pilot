@@ -153,7 +153,7 @@ export default function SignUpForm({ trialDays }: { trialDays: number }) {
               </SegmentedControl.Item>
             </SegmentedControl.Root>
             <Text as="div" id="account-kind-hint" size="1" color="gray">
-              You can change how you bill later — this just sets up your
+              You can change how you bill later. This just sets up your
               account.
             </Text>
           </Flex>

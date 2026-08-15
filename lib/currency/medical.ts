@@ -37,7 +37,7 @@ export function evaluateMedical(input: { pilotEnteredExpiresOn: IsoDate | null }
     displayDate: input.pilotEnteredExpiresOn,
     missing: ["medical_never_computed"],
     notes: [
-      "One medical certificate can carry different expiry dates for different privileges under 61.23(d) — the date shown is the one you entered, not a computed value.",
+      "One medical certificate can carry different expiry dates for different privileges under 61.23(d). The date shown is the one you entered, not a computed value.",
     ],
     assumptions: [],
   };

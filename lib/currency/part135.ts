@@ -187,7 +187,7 @@ function evaluateVariant(
   const assumptions: string[] = [NINETY_DAY_BOUNDARY_ASSUMPTION, CATEGORY_MATCH_ASSUMPTION];
   if (aircraft.gear === "tailwheel") {
     assumptions.push(
-      "135.247(b): because this is a tailwheel airplane, only full-stop landings count toward both the day and night variants — touch-and-goes are excluded, including for the night variant, where 61.57(b)(1) alone already requires full stop but 135.247(a)(2) alone would not."
+      "135.247(b): because this is a tailwheel airplane, only full-stop landings count toward both the day and night variants. Touch-and-goes are excluded, including for the night variant, where 61.57(b)(1) alone already requires full stop but 135.247(a)(2) alone would not."
     );
   }
   const typeAssumption = typeMatchAssumption(aircraft);
@@ -265,7 +265,7 @@ export function evaluatePart135Recency(input: {
       ruleBasis: "135.247(a)(2)",
       notes: [
         ...night.notes,
-        "Satisfied by 135.247(a)(2) night recency — complying with the night variant satisfies the day variant, per the trailing sentence of 135.247(a).",
+        "Satisfied by 135.247(a)(2) night recency. Complying with the night variant satisfies the day variant, per the trailing sentence of 135.247(a).",
       ],
     };
   }

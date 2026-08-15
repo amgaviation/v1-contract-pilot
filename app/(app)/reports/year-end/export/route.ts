@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "This year holds more trip days than the export can safely list in one file. Contact support — exporting a silently partial travel log would misstate your away-day counts.",
+            "This year holds more trip days than the export can safely list in one file. Contact support. Exporting a silently partial travel log would misstate your away-day counts.",
         },
         { status: 500 }
       );
@@ -118,7 +118,7 @@ export async function GET(request: NextRequest) {
     // pilot's tax preparer, not the pilot.
     logRows.push(
       csvRow([
-        "Per-diem day count only. No M&IE rate is applied and no deduction is computed here — the preparer applies the current rate to the counts above.",
+        "Per-diem day count only. No M&IE rate is applied and no deduction is computed here. The preparer applies the current rate to the counts above.",
       ])
     );
 
@@ -165,7 +165,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "This section has more rows than the export can safely total in one file. Narrow the date range or contact support — exporting a silently partial total would misstate your year-end figures.",
+          "This section has more rows than the export can safely total in one file. Narrow the date range or contact support. Exporting a silently partial total would misstate your year-end figures.",
       },
       { status: 500 }
     );

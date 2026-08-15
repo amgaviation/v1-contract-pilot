@@ -180,10 +180,10 @@ function parseEntryForm(formData: FormData): ParsedEntry {
     return {
       values: null,
       error:
-        "Pick a crew role. It can only be left blank when every hour on the entry is simulator time — for a flight, the logbook has to record who was flying.",
+        "Pick a crew role. It can only be left blank when every hour on the entry is simulator time. For a flight, the logbook has to record who was flying.",
     };
   } else {
-    return { values: null, error: "Pick a crew role — PIC or SIC." };
+    return { values: null, error: "Pick a crew role: PIC or SIC." };
   }
 
   const timeFields = [
@@ -248,7 +248,7 @@ function parseEntryForm(formData: FormData): ParsedEntry {
   if (approachType && counts.approaches_count === 0) {
     return {
       values: null,
-      error: "You picked an approach type but logged zero approaches — add the count.",
+      error: "You picked an approach type but logged zero approaches. Add the count.",
     };
   }
 
@@ -260,14 +260,14 @@ function parseEntryForm(formData: FormData): ParsedEntry {
   if (approachCondition && counts.approaches_count === 0) {
     return {
       values: null,
-      error: "You picked an approach condition but logged zero approaches — add the count.",
+      error: "You picked an approach condition but logged zero approaches. Add the count.",
     };
   }
   if (approachType === "visual" && (approachCondition === "actual" || approachCondition === "simulated")) {
     return {
       values: null,
       error:
-        "A visual approach can't be flown in actual instrument conditions or under a view-limiting device — pick \"Neither\" or leave the condition blank.",
+        "A visual approach can't be flown in actual instrument conditions or under a view-limiting device. Pick \"Neither\" or leave the condition blank.",
     };
   }
 

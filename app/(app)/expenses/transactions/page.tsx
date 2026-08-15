@@ -229,7 +229,7 @@ export default async function TransactionsPage() {
   return (
     <PageShell
       title="Review imported transactions"
-      subtitle="Nothing here is in your books yet. Pick a category and treatment for each transaction to turn it into an expense — or dismiss it if it isn't one."
+      subtitle="Nothing here is in your books yet. Pick a category and treatment for each transaction to turn it into an expense, or dismiss it if it isn't one."
     >
       {pickersDegraded ? (
         <Callout.Root color="amber" mb="3">
@@ -252,7 +252,7 @@ export default async function TransactionsPage() {
           </Callout.Icon>
           <Callout.Text>
             We couldn&rsquo;t check these against the expenses you&rsquo;ve already
-            filed, so none of them are flagged as possible duplicates — check for
+            filed, so none of them are flagged as possible duplicates. Check for
             yourself before confirming. A charge you already photographed a receipt
             for would otherwise be billed twice.
           </Callout.Text>
@@ -265,7 +265,7 @@ export default async function TransactionsPage() {
             Nothing to review
           </Text>
           <Text size="2" color="gray" align="center">
-            Import a bank statement and its transactions land here — pick
+            Import a bank statement and its transactions land here. Pick
             a category and treatment for each one to turn it into an
             expense.
           </Text>

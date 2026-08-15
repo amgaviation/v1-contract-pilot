@@ -272,7 +272,7 @@ export async function createInvoicePaymentLink(
     // because the pilot's own Stripe Dashboard is now the only place it
     // can be deactivated.
     console.error(
-      `payment link ${link.id} created on Stripe but NOT recorded on invoice ${invoiceId} — zero rows updated`
+      `payment link ${link.id} created on Stripe but NOT recorded on invoice ${invoiceId}. Zero rows updated`
     );
     return {
       error: `A payment link was created but couldn't be saved against this invoice. Deactivate ${link.id} in your Stripe Dashboard before generating another one.`,

@@ -260,7 +260,7 @@ export const FEATURES: Record<FeatureId, FeatureDef> = {
     routePatterns: [],
   },
   logbook: {
-    label: "Logbook — entries, import & export",
+    label: "Logbook: entries, import & export",
     minTier: "solo",
     routePatterns: [],
   },
@@ -316,7 +316,7 @@ export const FEATURES: Record<FeatureId, FeatureDef> = {
   // ----------------------------------------------------------- Business adds
   accounting: {
     label:
-      "Accounting — chart of accounts, ledger, reconciliation, balance sheet & cash flow",
+      "Accounting: chart of accounts, ledger, reconciliation, balance sheet & cash flow",
     minTier: "business",
     // The balance-sheet and cash-flow reports (plus their CSV exports)
     // live under /reports/*, not /accounting — they are gated today only
@@ -460,4 +460,4 @@ export function marketingMatrix(): MatrixRow[] {
  * readable in exports and reports and comes straight back on upgrade.
  */
 export const DOWNGRADE_NOTE =
-  "Downgrading never deletes anything. Records from features outside your new plan are preserved, and those screens come straight back the moment you upgrade again — they are your records, not ours. Your logbook, currency board, and documents are never gated on any plan.";
+  "Downgrading never deletes anything. Records from features outside your new plan are preserved, and those screens come straight back the moment you upgrade again. They are your records, not ours. Your logbook, currency board, and documents are never gated on any plan.";

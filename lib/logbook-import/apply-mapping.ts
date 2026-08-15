@@ -202,7 +202,7 @@ export function applyMapping(params: {
     // plain `number` below.
     if (totalTime === undefined || totalTime === null) {
       reject(
-        `Total time isn't a valid number of hours (at most one decimal place, up to 999.9 — "H:MM" and hundredths that land on a tenth are also accepted): "${totalRaw}".`
+        `Total time isn't a valid number of hours (at most one decimal place, up to 999.9; "H:MM" and hundredths that land on a tenth are also accepted): "${totalRaw}".`
       );
       return;
     }
@@ -347,7 +347,7 @@ export function applyMapping(params: {
       const residual = v - typedLandings;
       if (residual < 0) {
         reject(
-          `Landings total (${v}) is less than the typed landings on this row (${typedLandings}: ${dayFullStop} day full-stop + ${dayTouchGo} day touch-and-go + ${nightFullStop} night full-stop + ${nightTouchGo} night touch-and-go) — the source file contradicts itself.`
+          `Landings total (${v}) is less than the typed landings on this row (${typedLandings}: ${dayFullStop} day full-stop + ${dayTouchGo} day touch-and-go + ${nightFullStop} night full-stop + ${nightTouchGo} night touch-and-go). The source file contradicts itself.`
         );
         return;
       }
@@ -543,7 +543,7 @@ export function applyMapping(params: {
     const remarksMapped =
       remarksCells.length <= 1
         ? (remarksCells[0]?.raw ?? "")
-        : remarksCells.map((c) => `${c.header}: ${c.raw}`).join(" — ");
+        : remarksCells.map((c) => `${c.header}: ${c.raw}`).join("; ");
 
     const notes: string[] = [];
     if (remarksMapped) notes.push(remarksMapped);
@@ -553,7 +553,7 @@ export function applyMapping(params: {
       );
     }
     if (droppedApproachType) {
-      notes.push(`Approach type "${droppedApproachType}" noted in source with no approach count — not applied`);
+      notes.push(`Approach type "${droppedApproachType}" noted in source with no approach count; not applied`);
     }
     if (droppedApproachCondition) {
       notes.push(
@@ -564,13 +564,13 @@ export function applyMapping(params: {
       notes.push(
         `Aircraft type: source also had ${aircraftTypeAlternates
           .map((c) => `"${c.raw}" (${c.header})`)
-          .join(", ")} — used "${aircraftType}" (${aircraftTypeCells[aircraftTypeCells.length - 1]!.header})`
+          .join(", ")}; used "${aircraftType}" (${aircraftTypeCells[aircraftTypeCells.length - 1]!.header})`
       );
     }
     if (unmappedCountLabels.length) {
       notes.push(`Not recorded in this file (shown as 0): ${unmappedCountLabels.join(", ")}`);
     }
-    const remarks = notes.length ? notes.join(" — ") : null;
+    const remarks = notes.length ? notes.join("; ") : null;
 
     const values: ParsedRowValues = {
       entry_date: entryDate,

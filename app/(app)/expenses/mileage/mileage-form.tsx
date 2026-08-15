@@ -178,7 +178,7 @@ function EntryFields({
           />
           <Text size="1" color="gray">
             What the drive was for. This is the record that lets you (or your tax preparer) tell
-            business driving from ordinary commuting later — this product does not decide that
+            business driving from ordinary commuting later. This product does not decide that
             for you.
           </Text>
         </Flex>
@@ -478,7 +478,7 @@ function EntryRow({
               <AlertDialog.Content maxWidth="420px">
                 <AlertDialog.Title>Delete this drive?</AlertDialog.Title>
                 <AlertDialog.Description size="2">
-                  {formatDate(entry.drove_on)} — {entry.from_place} to {entry.to_place} (
+                  {formatDate(entry.drove_on)}, {entry.from_place} to {entry.to_place} (
                   {entry.miles} mi). This can&rsquo;t be undone.
                 </AlertDialog.Description>
                 {deleteError ? (
@@ -571,11 +571,11 @@ export default function MileageForm({
         <Callout.Text>
           <Text as="div" size="2">
             This is a record of drives, not a determination of what&rsquo;s deductible. Commuting
-            between home and a regular place of work generally isn&rsquo;t — whether a given drive
-            counts turns on facts about your situation this product can&rsquo;t see. The standard
-            mileage rate and actual vehicle expenses (tracked as fuel/rental-car expenses) are
-            alternatives, not additive — using both for the same vehicle in the same year can
-            double-count. Confirm your method and your deductions with a tax professional.
+            between home and a regular place of work generally isn&rsquo;t deductible. Whether a
+            given drive counts turns on facts about your situation this product can&rsquo;t see.
+            The standard mileage rate and actual vehicle expenses (tracked as fuel and rental-car
+            expenses) are alternatives, not additive. Using both for the same vehicle in the same
+            year can double-count. Confirm your method and your deductions with a tax professional.
           </Text>
         </Callout.Text>
       </Callout.Root>
@@ -589,7 +589,7 @@ export default function MileageForm({
               No drives logged yet
             </Text>
             <Text size="2" color="gray" align="center">
-              Log a drive above — date, miles, and what it was for.
+              Log a drive above: date, miles, and what it was for.
             </Text>
           </Flex>
         ) : (

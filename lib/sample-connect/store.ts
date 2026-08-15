@@ -112,7 +112,7 @@ export async function saveSampleAccountId(params: {
     if (error.code === "23505") {
       return {
         error:
-          "This user already has a sample Stripe account. Reload the page — the existing one is still there.",
+          "This user already has a sample Stripe account. Reload the page. The existing one is still there.",
       };
     }
     return { error: `Couldn't save the Stripe account id: ${error.message}` };

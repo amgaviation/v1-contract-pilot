@@ -79,7 +79,7 @@ export function getSampleStripe(): Stripe {
     throw new Error(
       "STRIPE_SECRET_KEY is not set, so the sample Connect integration cannot talk to Stripe. " +
         "Add it to .env.local (development) or your hosting provider's environment variables " +
-        "(production) — you can copy it from https://dashboard.stripe.com/apikeys. " +
+        "(production). You can copy it from https://dashboard.stripe.com/apikeys. " +
         "A test-mode key (sk_test_...) is all this sample needs."
     );
   }
@@ -106,7 +106,7 @@ export function getSampleStripe(): Stripe {
  */
 export function sampleConnectConfigError(): string | null {
   if (!process.env.STRIPE_SECRET_KEY) {
-    return "STRIPE_SECRET_KEY is not set. Add it to .env.local (or your hosting provider's environment variables) — copy it from https://dashboard.stripe.com/apikeys. A test-mode key (sk_test_...) is all this sample needs.";
+    return "STRIPE_SECRET_KEY is not set. Add it to .env.local (or your hosting provider's environment variables). Copy it from https://dashboard.stripe.com/apikeys. A test-mode key (sk_test_...) is all this sample needs.";
   }
   return null;
 }

@@ -196,7 +196,7 @@ export async function resubscribe(
   if (account.status !== "canceled" && account.status !== "incomplete_expired") {
     return {
       error:
-        "This account's subscription can still be updated directly — use Change plan or the billing portal below instead.",
+        "This account's subscription can still be updated directly. Use Change plan or the billing portal below instead.",
     };
   }
 

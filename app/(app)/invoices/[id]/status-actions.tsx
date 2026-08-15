@@ -57,8 +57,8 @@ function NoteTooLong({ value }: { value: string }) {
   return (
     <Text as="div" size="1" color="red" mt="1">
       {over.toLocaleString()} character{over === 1 ? "" : "s"} over the{" "}
-      {MAX_CUSTOM_MESSAGE_CHARS.toLocaleString()}-character limit. Shorten it —
-      nothing will be sent until you do.
+      {MAX_CUSTOM_MESSAGE_CHARS.toLocaleString()}-character limit. Shorten it.
+      Nothing will be sent until you do.
     </Text>
   );
 }
@@ -280,8 +280,8 @@ export default function StatusActions({
                 </AlertDialog.Title>
                 <AlertDialog.Description size="2">
                   {deliveryMethod === "platform_email"
-                    ? `It goes to ${clientEmail} with the PDF attached, and becomes read-only except for status, notes, and delivery. This can’t be undone — use “Preview PDF” above to see exactly what they’ll get first.`
-                    : "It becomes read-only except for status, notes, and delivery, and gets its permanent invoice number. This can’t be undone — use “Preview PDF” above to see exactly what the client will get before you send it."}
+                    ? `It goes to ${clientEmail} with the PDF attached, and becomes read-only except for status, notes, and delivery. This can't be undone. Use "Preview PDF" above to see exactly what they'll get first.`
+                    : "It becomes read-only except for status, notes, and delivery, and gets its permanent invoice number. This can't be undone. Use \"Preview PDF\" above to see exactly what the client will get before you send it."}
                 </AlertDialog.Description>
 
                 {/* OFFERED ONLY ON THE EMAIL PATH. "I'll send it myself"
@@ -318,7 +318,7 @@ export default function StatusActions({
                         ? "The standard opening line, the amount due and the PDF are sent as usual."
                         : hasDueDate
                           ? "Your saved opening line, the amount due and the PDF are sent as usual."
-                          : "Your saved opening line is used unless it mentions a due date — this invoice hasn’t got one, and the standard wording is sent instead. The amount due and the PDF go as usual."}
+                          : "Your saved opening line is used unless it mentions a due date. This invoice hasn’t got one, and the standard wording is sent instead. The amount due and the PDF go as usual."}
                     </Text>
                   </Box>
                 ) : null}
@@ -458,10 +458,10 @@ export default function StatusActions({
               </AlertDialog.Root>
               <Text as="div" size="1" color="gray" mt="2">
                 {automaticChase === "live"
-                  ? "Reminders for this client also go out on their own — see the Reminders panel below for what is scheduled, and to pause it for this invoice."
+                  ? "Reminders for this client also go out on their own. See the Reminders panel below for what is scheduled, and to pause it for this invoice."
                   : automaticChase === "paused"
-                    ? `Automatic reminders are paused for this invoice, so chasing it is up to you. ${clientName}’s other open invoices are still chased on their schedule — see the Reminders panel below.`
-                    : "You choose when to chase — nothing goes out automatically for this client."}
+                    ? `Automatic reminders are paused for this invoice, so chasing it is up to you. ${clientName}’s other open invoices are still chased on their schedule. See the Reminders panel below.`
+                    : "You choose when to chase. Nothing goes out automatically for this client."}
               </Text>
             </>
           ) : (

@@ -74,9 +74,9 @@ export type AgingBucket = (typeof AGING_BUCKETS)[number];
 
 export const AGING_BUCKET_LABEL: Record<AgingBucket, string> = {
   current: "Not yet due",
-  days1to30: "1–30 days late",
-  days31to60: "31–60 days late",
-  days61to90: "61–90 days late",
+  days1to30: "1-30 days late",
+  days31to60: "31-60 days late",
+  days61to90: "61-90 days late",
   over90: "Over 90 days late",
 };
 
@@ -166,7 +166,7 @@ export function assemblePaymentInsight(input: {
       // than bucketing an unknown balance as $0 (the statement-lib rule).
       return {
         ok: false,
-        reason: `invoice ${invoice.id} has no totals row — refusing to print figures over a partial join`,
+        reason: `invoice ${invoice.id} has no totals row. Refusing to print figures over a partial join.`,
       };
     }
 

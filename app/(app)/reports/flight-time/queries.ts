@@ -95,7 +95,7 @@ export async function loadFlightTimeReport(
   for (;;) {
     if (offset >= ENTRIES_LIMIT * MAX_ENTRY_PAGES) {
       return failed(
-        "your logbook holds more entries in this date range than the report can read completely — totals over a partial read would understate your flying, so none are shown"
+        "your logbook holds more entries in this date range than the report can read completely. Totals over a partial read would understate your flying, so none are shown"
       );
     }
     const page = rowsOf<FlightTimeEntry>(

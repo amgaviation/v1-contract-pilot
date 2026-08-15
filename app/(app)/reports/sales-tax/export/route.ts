@@ -76,18 +76,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "This period has more rows than the export can safely total in one file. Narrow the date range or contact support — exporting a silently partial total would misstate your figures.",
+          "This period has more rows than the export can safely total in one file. Narrow the date range or contact support. Exporting a silently partial total would misstate your figures.",
       },
       { status: 500 }
     );
   }
 
   const rows: string[] = [];
-  rows.push(csvRow(["Sales tax", `${period.from} – ${period.to}`]));
+  rows.push(csvRow(["Sales tax", `${period.from} to ${period.to}`]));
   rows.push(
     csvRow([
       "Basis",
-      "Cash: an invoice's tax counts on the day it was paid in full, matching this product's other reports. If a payment is corrected later, the period it was originally counted in stands unchanged and the correction appears as a negative row in the period the correction was made. Figures for whoever prepares your filings — this file does not calculate what to remit.",
+      "Cash: an invoice's tax counts on the day it was paid in full, matching this product's other reports. If a payment is corrected later, the period it was originally counted in stands unchanged and the correction appears as a negative row in the period the correction was made. These figures are for whoever prepares your filings. This file does not calculate what to remit.",
     ])
   );
   rows.push(csvRow([]));

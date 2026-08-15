@@ -81,7 +81,7 @@ export async function createProductAction(
 
   const accountId = await getSampleAccountId(user.id);
   if (!accountId) {
-    return { error: "Connect a Stripe account first — there is nowhere to put a product yet." };
+    return { error: "Connect a Stripe account first. There is nowhere to put a product yet." };
   }
 
   const name = String(formData.get("name") ?? "").trim();

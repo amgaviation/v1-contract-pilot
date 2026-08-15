@@ -121,7 +121,7 @@ export async function completeOnboarding(
   const legalName = String(formData.get("legal_name") ?? "").trim();
   if (!legalName) {
     return {
-      error: "Your business name prints on every invoice — it can't be blank.",
+      error: "Your business name prints on every invoice. It can't be blank.",
       values: echo(formData),
     };
   }
@@ -179,7 +179,7 @@ export async function completeOnboarding(
   if (prefixRaw !== "") {
     if (!/^[A-Z0-9]{1,8}$/.test(prefixRaw)) {
       return {
-        error: "Invoice prefix must be 1–8 letters or digits, such as INV.",
+        error: "Invoice prefix must be 1 to 8 letters or digits, such as INV.",
         values: echo(formData),
       };
     }

@@ -100,7 +100,7 @@ export function evaluateNightExperience(input: {
   for (const e of inWindow) {
     if ((e.nightTime ?? 0) > 0 && e.nightTakeoffs === 0 && e.nightLandingsFullStop === 0) {
       notes.push(
-        `Entry ${e.entryDate} logged night time with no night takeoff or full-stop night landing — a night flight ending in a daytime landing is legitimate and does not affect this result.`
+        `Entry ${e.entryDate} logged night time with no night takeoff or full-stop night landing. A night flight ending in a daytime landing is legitimate and does not affect this result.`
       );
     }
   }
@@ -137,7 +137,7 @@ export function evaluateNightExperience(input: {
       : null;
 
   const assumptions = [
-    "Full-stop landings only — 61.57(b)(1) requires a full stop for every aircraft, not only tailwheel; touch-and-go night landings never count here.",
+    "Full-stop landings only: 61.57(b)(1) requires a full stop for every aircraft, not only tailwheel; touch-and-go night landings never count here.",
     NINETY_DAY_BOUNDARY_ASSUMPTION,
     CATEGORY_MATCH_ASSUMPTION,
   ];

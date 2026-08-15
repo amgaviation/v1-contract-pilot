@@ -67,7 +67,7 @@ export default function StatusActions({
           Status
         </Text>
         <Text as="div" size="2" color="gray">
-          Accepted and converted to an invoice. This estimate is frozen — its
+          Accepted and converted to an invoice. This estimate is frozen. Its
           figures are the basis of that document.
         </Text>
       </Card>
@@ -93,7 +93,7 @@ export default function StatusActions({
       {expiredDays !== null ? (
         <Text as="div" size="1" color="amber" mb="3">
           The valid-until date passed {expiredDays === 1 ? "1 day" : `${expiredDays} days`} ago.
-          The quoted price no longer stands on its own — revise and re-send it,
+          The quoted price no longer stands on its own. Revise and re-send it,
           or record the client&rsquo;s answer if they gave one in time.
         </Text>
       ) : null}
@@ -107,7 +107,7 @@ export default function StatusActions({
                 // button is not focusable, so a tooltip there is silent to
                 // keyboards and assistive tech.
                 <Text as="div" size="1" color="gray" mb="2">
-                  Add at least one line before sending — a quote with nothing on
+                  Add at least one line before sending. A quote with nothing on
                   it totals $0.00.
                 </Text>
               ) : null}
@@ -122,7 +122,7 @@ export default function StatusActions({
                   <AlertDialog.Description size="2">
                     {estimate.estimate_number
                       ? `It keeps its number ${estimate.estimate_number} and moves back to Sent, waiting on ${clientName}'s answer.`
-                      : `It gets its permanent estimate number and today's date. Nothing is emailed from here — you send the quote to ${clientName} yourself. You can still revise and re-send it afterwards.`}
+                      : `It gets its permanent estimate number and today's date. Nothing is emailed from here. You send the quote to ${clientName} yourself. You can still revise and re-send it afterwards.`}
                   </AlertDialog.Description>
                   <Flex gap="3" mt="4" justify="end">
                     <AlertDialog.Cancel>
@@ -188,7 +188,7 @@ export default function StatusActions({
             variant="outline"
             style={{ width: "100%" }}
             disabled={pending}
-            onClick={() => run(reviseEstimate, "Back in draft — edit and re-send.")}
+            onClick={() => run(reviseEstimate, "Back in draft. Edit and re-send.")}
           >
             {pending ? "Working…" : "Revise"}
           </Button>
@@ -217,7 +217,7 @@ export default function StatusActions({
               <AlertDialog.Title>Convert this estimate to an invoice?</AlertDialog.Title>
               <AlertDialog.Description size="2">
                 Creates a draft invoice carrying every line and the tax rate as
-                quoted — you still review and send that invoice; nothing goes to{" "}
+                quoted. You still review and send that invoice; nothing goes to{" "}
                 {clientName} now. Afterwards this estimate is frozen and can&rsquo;t
                 convert a second time.
               </AlertDialog.Description>
@@ -270,7 +270,7 @@ export default function StatusActions({
       {estimate.status === "draft" && estimate.estimate_number !== null ? (
         <Text as="div" size="1" color="gray" mt="3">
           This estimate has been sent before, so it keeps its number and its
-          record — it can&rsquo;t be deleted, only revised and re-sent.
+          record. It can&rsquo;t be deleted, only revised and re-sent.
         </Text>
       ) : null}
 

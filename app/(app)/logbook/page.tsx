@@ -336,7 +336,7 @@ export default async function LogbookPage({
               <Callout.Text>
                 Your aircraft couldn&rsquo;t be loaded, so the Aircraft
                 picker above is empty and a tail filter shows as its plain
-                key. Nothing has been removed from your fleet — reload to
+                key. Nothing has been removed from your fleet. Reload to
                 try again.
               </Callout.Text>
             </Callout.Root>
@@ -349,8 +349,8 @@ export default async function LogbookPage({
               </Callout.Icon>
               <Callout.Text>
                 {filtered
-                  ? "The totals for this view couldn't be loaded, so they aren't shown — the entries below are still complete and correct."
-                  : "Your career totals couldn't be loaded, so they aren't shown — the entries below are still complete and correct."}
+                  ? "The totals for this view couldn't be loaded, so they aren't shown. The entries below are still complete and correct."
+                  : "Your career totals couldn't be loaded, so they aren't shown. The entries below are still complete and correct."}
               </Callout.Text>
             </Callout.Root>
           ) : null}
@@ -363,7 +363,7 @@ export default async function LogbookPage({
               draws a conclusion from them. */}
           {filtered ? (
             <Text size="2" color="gray">
-              {`Totals below cover ${filterLabel} — ${totalCount} entr${
+              {`Totals below cover ${filterLabel}: ${totalCount} entr${
                 totalCount === 1 ? "y" : "ies"
               }, not your whole logbook.`}
             </Text>
@@ -529,7 +529,7 @@ export default async function LogbookPage({
                   </Button>
                 }
               >
-                {`Nothing in your logbook matches ${filterLabel}. Your other entries are still there — this view just doesn't include any of them.`}
+                {`Nothing in your logbook matches ${filterLabel}. Your other entries are still there. This view just doesn't include any of them.`}
               </EmptyState>
             ) : entries.length === 0 && totalCount > 0 ? (
               // Empty because of WHERE YOU ARE, not because there is
@@ -551,7 +551,7 @@ export default async function LogbookPage({
               >
                 {`${
                   filtered ? `${totalCount} entr${totalCount === 1 ? "y" : "ies"} match this view` : `You have ${totalCount} entr${totalCount === 1 ? "y" : "ies"} on file`
-                } — page ${page} is past the last one, which is page ${pageCount}.`}
+                }. Page ${page} is past the last one, which is page ${pageCount}.`}
               </EmptyState>
             ) : entries.length === 0 ? (
               <EmptyState
@@ -578,7 +578,7 @@ export default async function LogbookPage({
                   </>
                 }
               >
-                This is your own copy of the 61.51 record — flight time, PIC and
+                This is your own copy of the 61.51 record: flight time, PIC and
                 SIC, night, instrument and landings, per entry and totalled for a
                 career. Log a flight by hand, or confirm the entries a completed
                 trip proposes.
@@ -681,7 +681,7 @@ export default async function LogbookPage({
                 </NextLink>
               </Button>
               <Text size="2" color="gray">
-                {`Showing ${from + 1}–${Math.min(from + PAGE_SIZE, totalCount)} of ${totalCount}`}
+                {`Showing ${from + 1} to ${Math.min(from + PAGE_SIZE, totalCount)} of ${totalCount}`}
               </Text>
               <Button asChild variant="soft" disabled={page >= pageCount}>
                 <NextLink

@@ -118,7 +118,7 @@ function estimateDbError(
  * turns zero matches into this sentence rather than "Saved."
  */
 const ESTIMATE_NOT_DRAFT_ERROR =
-  "This estimate is no longer a draft — reload the page to see where it stands.";
+  "This estimate is no longer a draft. Reload the page to see where it stands.";
 
 type Supa = Awaited<ReturnType<typeof createClient>>;
 
@@ -397,7 +397,7 @@ export async function updateEstimateHeader(
     if (error.code === "23514") {
       return {
         error:
-          "Those dates don't work together — the valid-until date can't be before the issue date this estimate already carries.",
+          "Those dates don't work together. The valid-until date can't be before the issue date this estimate already carries.",
         values: echo(formData),
       };
     }
@@ -540,7 +540,7 @@ export async function deleteEstimateDraft(id: string): Promise<{ error: string |
   if (count === 0) {
     return {
       error:
-        "This estimate couldn't be deleted. Once one has been sent it keeps its number and its record — it may have moved on since this page loaded.",
+        "This estimate couldn't be deleted. Once one has been sent it keeps its number and its record. It may have moved on since this page loaded.",
     };
   }
 
@@ -580,7 +580,7 @@ export async function convertEstimateToInvoice(
     // than saying so.
     return {
       error:
-        "The conversion didn't confirm. Reload this page — if the estimate shows as converted, open the invoice from here.",
+        "The conversion didn't confirm. Reload this page. If the estimate shows as converted, open the invoice from here.",
     };
   }
 
@@ -780,7 +780,7 @@ export async function sendEstimate(
   const note = customMessage?.trim() ?? "";
   if (note.length > MAX_CUSTOM_MESSAGE_CHARS) {
     return {
-      error: `That message is longer than ${MAX_CUSTOM_MESSAGE_CHARS} characters. Nothing was sent — shorten it and try again.`,
+      error: `That message is longer than ${MAX_CUSTOM_MESSAGE_CHARS} characters. Nothing was sent. Shorten it and try again.`,
     };
   }
 

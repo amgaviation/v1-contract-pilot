@@ -100,20 +100,20 @@ export default async function PilotHistoryReportPage() {
         </Callout.Icon>
         <Callout.Text>
           <Text as="div" weight="medium">
-            Arithmetic on your own records — nothing more.
+            Arithmetic on your own records. Nothing more.
           </Text>
           <Text as="div" size="2">
             Every figure below is a sum of the hours you logged and a
             restatement of the dates you entered. This page draws no
-            conclusion from them: it does not assess your experience
-            against anyone&rsquo;s minimums, an insurer&rsquo;s, an
-            operator&rsquo;s or anybody else&rsquo;s, and it does not tell
+            conclusion from them. It does not assess your experience
+            against anyone&rsquo;s minimums, whether an insurer&rsquo;s, an
+            operator&rsquo;s, or anybody else&rsquo;s, and it does not tell
             you what you may or may not fly. Those judgements belong to
             whoever is asking for this form, under the certificate or the
-            policy that governs. What this page is for is answering their
-            questions from one place instead of a calculator and an evening
-            with your logbook — and the numbers are exactly as complete as
-            the records behind them.
+            policy that governs. This page exists so you can answer their
+            questions from one place, instead of a calculator and an
+            evening with your logbook. The numbers are exactly as complete
+            as the records behind them.
           </Text>
         </Callout.Text>
       </Callout.Root>
@@ -133,7 +133,7 @@ export default async function PilotHistoryReportPage() {
                 save that. Try again." — a sentence about writing, on a page
                 that only reads, that threw away the one thing the pilot
                 needed to know. */}
-            <Callout.Text>{`Sorry — ${report.error}.`}</Callout.Text>
+            <Callout.Text>{`Sorry, ${report.error}.`}</Callout.Text>
           </Callout.Root>
         </Card>
       ) : data && !data.ok ? (
@@ -142,9 +142,9 @@ export default async function PilotHistoryReportPage() {
             No figures to state yet
           </Heading>
           <Text as="p" size="2" color="gray">
-            Your logbook has no entries, so this page shows no totals — a
-            column of 0.0-hour figures would be a claim about your flying
-            that there is no record behind. Log a flight or import your
+            Your logbook has no entries, so this page shows no totals. A
+            column of 0.0-hour figures would claim something about your
+            flying with no record behind it. Log a flight or import your
             history in{" "}
             <RadixLink asChild>
               <NextLink href="/logbook">Logbook</NextLink>
@@ -162,7 +162,7 @@ export default async function PilotHistoryReportPage() {
               <Text as="div" size="2" color="gray">
                 {`Compiled ${formatDate(data.compiledOn)}. Your logbook runs from ${formatDate(
                   data.earliestEntryDate
-                )} to ${formatDate(data.latestEntryDate)}. Simulator time is on its own line and is never added to a total — every hour above it is time in an aircraft.`}
+                )} to ${formatDate(data.latestEntryDate)}. Simulator time is on its own line and is never added to a total. Every hour above it is time in an aircraft.`}
               </Text>
               {/* Almost always a mistyped year. Said out loud, because the
                   entry is in the pilot's logbook and in none of these
@@ -194,7 +194,7 @@ export default async function PilotHistoryReportPage() {
                     <Text as="div">Last 90 days</Text>
                     <Text as="div" size="1" weight="regular" color="gray">
                       {formatDate(data.lastNinetyDays.window.from ?? data.lastNinetyDays.window.to)}
-                      {" – "}
+                      {" to "}
                       {formatDate(data.lastNinetyDays.window.to)}
                     </Text>
                   </Table.ColumnHeaderCell>
@@ -299,7 +299,7 @@ export default async function PilotHistoryReportPage() {
                in turbine/retractable/multi time, none of which is time in
                one registration. Naming the wrong instrument beside a figure
                is the kind of error a professional reader spots instantly. */
-            caption={`Per registered airframe — the figure an owner, or their insurer, asks for a specific aeroplane. ${
+            caption={`The figure an owner, or their insurer, asks for on one specific airframe. ${
               data.registeredAircraftCount === 0
                 ? "You have no aircraft on file yet."
                 : `${data.registeredAircraftCount} aircraft on file.`
@@ -320,7 +320,7 @@ export default async function PilotHistoryReportPage() {
                   <NextLink href="/documents">Documents</NextLink>
                 </RadixLink>
                 . Nothing here is derived, checked against a registry, or
-                calculated from another date — an expiry shown is one you
+                calculated from another date. An expiry shown is one you
                 typed, not one this page worked out.
               </Text>
             </Box>
@@ -384,7 +384,7 @@ export default async function PilotHistoryReportPage() {
                     A document marked &ldquo;No airman recorded&rdquo; is on
                     this account without saying whose it is. It is listed
                     because it is almost certainly yours on a single-pilot
-                    account — but this page will not assert that for you.
+                    account, but this page will not assert that for you.
                     Open the document and record the airman to remove the
                     mark.
                   </Text>
@@ -482,21 +482,21 @@ function hourRows(
     },
     { label: "Night", allTime: a.night, recent: r.night, ninety: n.night, decimals: 1 },
     {
-      label: "Instrument — actual",
+      label: "Instrument (actual)",
       allTime: a.instrumentActual,
       recent: r.instrumentActual,
       ninety: n.instrumentActual,
       decimals: 1,
     },
     {
-      label: "Instrument — simulated",
+      label: "Instrument (simulated)",
       allTime: a.instrumentSimulated,
       recent: r.instrumentSimulated,
       ninety: n.instrumentSimulated,
       decimals: 1,
     },
     {
-      label: "Instrument — total",
+      label: "Instrument (total)",
       note: "Actual and simulated added together, for a form that asks for one figure.",
       allTime: totalInstrument(a),
       recent: totalInstrument(r),
@@ -567,8 +567,8 @@ function FlagFigureRow({
         </Text>
         <Text as="div" size="2" color="gray">
           Not recorded. None of your aircraft says one way or the other, so
-          there is no figure to give — and a 0.0 here would read as an
-          answer rather than as a blank.
+          there is no figure to give. A 0.0 here would read as an answer
+          rather than as a blank.
         </Text>
       </Box>
     );

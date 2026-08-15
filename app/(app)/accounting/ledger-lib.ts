@@ -306,7 +306,7 @@ export function parseJournalLines(
   if (debitCents !== creditCents) {
     return {
       ok: false,
-      error: `Debits and credits must balance — debits total ${(debitCents / 100).toFixed(2)}, credits total ${(creditCents / 100).toFixed(2)}.`,
+      error: `Debits and credits must balance: debits total ${(debitCents / 100).toFixed(2)}, credits total ${(creditCents / 100).toFixed(2)}.`,
     };
   }
   return { ok: true, lines, debitCents, creditCents };

@@ -328,7 +328,7 @@ check("OFX-1: parses <STMTTRN> blocks, DTPOSTED with timezone suffix, NAME+MEMO 
   assert.equal(result.valid[0].description, "SHELL OIL 4471");
   assert.equal(result.valid[1].postedOn, "2026-03-05");
   assert.equal(result.valid[1].amountCents, 210000);
-  assert.equal(result.valid[1].description, "CLIENT WIRE — March retainer");
+  assert.equal(result.valid[1].description, "CLIENT WIRE: March retainer");
 });
 
 check("QFX-1: same STMTTRN shape, .qfx label, credit-card purchase stays negative (NOT flipped)", () => {

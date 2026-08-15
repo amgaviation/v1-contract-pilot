@@ -99,7 +99,7 @@ export default function AppearancePanel({
               </Text>
               <Text size="1" color="gray">
                 Used for the current section marker, buttons and links. These are the
-                colours that stay readable with white text on them — that is why the
+                colours that stay readable with white text on them, which is why the
                 list is short rather than a colour picker.
               </Text>
               <RadioGroup.Root
@@ -188,7 +188,7 @@ export default function AppearancePanel({
                   ))}
                 </RadioGroup.Root>
                 <Text size="1" color="gray">
-                  The section rail stays dark in both — in dark mode it sits a step
+                  The section rail stays dark in both. In dark mode it sits a step
                   above the page so the two never blur together.
                 </Text>
               </Flex>
@@ -255,7 +255,7 @@ export default function AppearancePanel({
                 </Text>
               ) : dirty ? (
                 <Text size="1" color="amber">
-                  Not saved yet — the preview above is showing your choice. Save to
+                  Not saved yet. The preview above is showing your choice. Save to
                   apply it to the whole account.
                 </Text>
               ) : null}

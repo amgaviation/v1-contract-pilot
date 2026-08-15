@@ -167,7 +167,7 @@ export default async function JournalPage() {
   return (
     <PageShell
       title="Journal"
-      subtitle="Every ledger entry — derived from your records automatically, plus your own."
+      subtitle="Every ledger entry, derived from your records automatically, plus your own."
       action={
         <Flex gap="2">
           {/* Plain <a href download>, not a client-side link — it's a file
@@ -202,9 +202,9 @@ export default async function JournalPage() {
                 <InfoCircledIcon />
               </Callout.Icon>
               <Callout.Text>
-                Showing the most recent {ENTRIES_LIMIT} entries — older history
-                exists but isn&rsquo;t listed here. The reports still count
-                everything.
+                Showing the most recent {ENTRIES_LIMIT} entries. Older
+                history exists but isn&rsquo;t listed here. The reports
+                still count everything.
               </Callout.Text>
             </Callout.Root>
           ) : null}

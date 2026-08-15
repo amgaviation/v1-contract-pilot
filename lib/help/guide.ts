@@ -62,7 +62,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         summary: "Log the trip once; the invoice lines and the logbook draft come from it.",
         href: "/trips",
         body: [
-          "A trip is the assignment. Inside it, legs are the flying and the day grid is what you bill: each calendar day is typed — a duty day, a travel day, standby, off — and each type carries its own rate.",
+          "A trip is the assignment. Inside it, legs are the flying and the day grid is what you bill: each calendar day is typed as a duty day, a travel day, standby, or off, and each type carries its own rate.",
           "Once a trip is complete you can draft an invoice straight from it. The lines come from the day grid and the rates agreed with that client, so the numbers on the invoice are the ones you recorded, not ones you retype.",
           "The same trip also produces a logbook draft for each leg, which you review before it becomes a logbook entry. One capture, several outputs.",
         ],
@@ -71,14 +71,14 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
       {
         id: "invoice-lifecycle",
         title: "Invoice statuses",
-        summary: "Draft, sent, viewed, partly paid, paid, overdue — and what moves an invoice between them.",
+        summary: "Draft, sent, viewed, partly paid, paid, overdue: what moves an invoice between them.",
         href: "/invoices",
         body: [
           "An invoice is a draft until you send it. Sending assigns its permanent number and stamps the date; a number, once minted, never changes, including if you revise and re-send.",
           "If you share a link, the invoice records when the client first opened it and when they last did. That is a record of the link being fetched, not proof a human read it.",
           "Voiding an invoice releases any rebilled expenses attached to it, so they become unbilled again and can go on a replacement.",
         ],
-        keywords: ["void", "numbering", "share link", "viewed", "overdue", "aging"],
+        keywords: ["void", "numbering", "share link", "viewed", "overdue", "aging", "partial payment"],
       },
       {
         id: "reminders",
@@ -88,7 +88,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         body: [
           "Reminders never change an invoice, and a paid or voided one is never chased.",
           "Schedules are per client and off until you set one. The daily run also needs the email service configured; the reminders screen says plainly whether the scheduled run is switched on, rather than implying it.",
-          "If a client has opened the share link recently, the schedule holds off — chasing someone who is looking at the invoice reads as noise.",
+          "If a client has opened the share link recently, the schedule holds off. Chasing someone who is looking at the invoice reads as noise.",
         ],
         keywords: ["chase", "follow up", "overdue", "dunning", "late"],
       },
@@ -98,9 +98,9 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         summary: "Connect your own Stripe account so clients can pay an invoice online.",
         href: "/settings?tab=business",
         body: [
-          "You are the merchant of record. Payments settle straight into your own Stripe balance — this platform never sees your Stripe keys, never holds your funds, and never takes a cut of what your clients pay you.",
+          "You are the merchant of record. Payments settle straight into your own Stripe balance: this platform never sees your Stripe keys, never holds your funds, and never takes a cut of what your clients pay you.",
           "Once connected, any sent invoice can generate a payment link. When the money actually settles, the payment is recorded against the invoice automatically.",
-          "A payment link's options are fixed when the link is created. Changing which methods you accept does not change a link you have already sent — change the setting, then generate a new link.",
+          "A payment link's options are fixed when the link is created. Changing which methods you accept does not change a link you have already sent. Change the setting, then generate a new link.",
           "Bank payments (ACH) settle over several business days. An invoice will show that a bank payment was started before the money has moved, and the payment is only recorded when it clears.",
         ],
         keywords: ["stripe", "connect", "ach", "card", "payment link", "merchant"],
@@ -111,7 +111,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         summary: "Quote a job, then convert the accepted quote into an invoice.",
         href: "/estimates",
         body: [
-          "An estimate can be sent, revised and re-sent — the number it was given the first time stays with it through the round trip.",
+          "An estimate can be sent, revised, and re-sent. The number it was given the first time stays with it through the round trip.",
           "Accepting an estimate lets you convert it to an invoice, carrying its lines across so the quote and the bill cannot drift apart.",
         ],
         keywords: ["quote", "proposal", "convert"],
@@ -128,7 +128,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         summary: "Photograph a receipt, file it, and rebill it to the client when it belongs to a trip.",
         href: "/expenses",
         body: [
-          "Scanning a receipt reads the vendor, date and amount where it can. It is a suggestion — check it before saving, because a misread total becomes a wrong number on an invoice.",
+          "Scanning a receipt reads the vendor, date, and amount where it can. It is a suggestion: check it before saving, because a misread total becomes a wrong number on an invoice.",
           "An expense filed against a trip and marked billable becomes an invoice line when you bill that trip, with the receipt attached to the invoice PDF.",
         ],
         keywords: ["receipt", "ocr", "scan", "rebill", "reimbursable", "billable"],
@@ -140,7 +140,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         href: "/expenses/import",
         body: [
           "Imported transactions land in a review queue rather than straight into your books. Nothing is filed until you confirm it.",
-          "Re-importing a statement you have already loaded does not duplicate what is in it — transactions are fingerprinted, so an overlapping date range is safe.",
+          "Re-importing a statement you have already loaded does not duplicate what is in it. Transactions are fingerprinted, so an overlapping date range is safe.",
         ],
         keywords: ["csv", "ofx", "statement", "reconcile", "transactions"],
       },
@@ -179,7 +179,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         href: "/logbook",
         body: [
           "Trip legs produce logbook drafts. A draft is not an entry: you review the numbers, then commit it.",
-          "You can import from an existing logbook and export what is here. Importing does not make this your legal record — keeping that record is yours, and this is a copy you can work from.",
+          "You can import from an existing logbook and export what is here. Importing does not make this your legal record: keeping that record is yours, and this is a copy you can work from.",
         ],
         keywords: ["hours", "flight time", "pic", "sic", "night", "approaches", "import", "export", "foreflight", "logten"],
       },
@@ -197,10 +197,10 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
       {
         id: "documents",
         title: "Documents and due dates",
-        summary: "Certificates, medical, passport, insurance — with the dates printed on them.",
+        summary: "Certificates, medical, passport, insurance, with the dates printed on them.",
         href: "/documents",
         body: [
-          "Enter the dates exactly as printed on the document. Nothing here is calculated from anything else — an issue date is not used to work out an expiry, because the document is the authority and the product is not.",
+          "Enter the dates exactly as printed on the document. Nothing here is calculated from anything else: an issue date is not used to work out an expiry, because the document is the authority and the product is not.",
           "Overview shows what is coming due. It shows the dates you entered and nothing more: it does not compute currency or tell you whether you are legal to fly. That judgement is yours and the operator's.",
         ],
         keywords: ["medical", "passport", "expiry", "due", "insurance", "coi", "w-9", "certificate"],
@@ -211,7 +211,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         summary: "Where you stand on a particular operator's certificate.",
         href: "/clients",
         body: [
-          "Flying for a Part 135 operator means being qualified under that operator's certificate — their training, their checks, their programs. Being typed and current personally is necessary and not sufficient.",
+          "Flying for a Part 135 operator means being qualified under that operator's certificate: their training, their checks, their programs. Being typed and current personally is necessary and not sufficient.",
           "These records are what a client has told or shown you about your standing with them. They are a place to keep track of it, not a determination that you are qualified.",
         ],
         keywords: ["135", "part 135", "checkride", "recurrent", "training", "ipc", "line check"],
@@ -228,7 +228,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         summary: "Who you fly for, what they pay, and what their agreement says.",
         href: "/clients",
         body: [
-          "Rates set on a client are defaults. Every trip can override them, and the rates a trip was confirmed at are what its invoice uses — renegotiating later does not rewrite work already done.",
+          "Rates set on a client are defaults. Every trip can override them, and the rates a trip was confirmed at are what its invoice uses. Renegotiating later does not rewrite work already done.",
           "A rate override sets what this client pays per day type. Left blank, the day type's own default applies.",
         ],
         keywords: ["operator", "owner", "rate", "day rate", "per diem", "terms", "contract"],
@@ -250,7 +250,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         summary: "The words the pickers use for expenses, trips and documents.",
         href: "/settings?tab=categories",
         body: [
-          "Renaming a category changes it everywhere at once, including on records you filed years ago. That is safe: the name is a label over a stable code underneath, so nothing you have already saved moves — it just gets called something else.",
+          "Renaming a category changes it everywhere at once, including on records you filed years ago. That is safe: the name is a label over a stable code underneath, so nothing you have already saved moves. It just gets called something else.",
         ],
         keywords: ["rename", "labels", "expense category", "picker"],
       },
@@ -271,7 +271,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         summary: "How the product looks and which sections the rail shows.",
         href: "/settings?tab=appearance",
         body: [
-          "Appearance applies to this account on every device you sign in from. It changes nothing about your records, your invoices or what your clients see — an invoice PDF and a shared invoice link look the same to them whatever you pick.",
+          "Appearance applies to this account on every device you sign in from. It changes nothing about your records, your invoices, or what your clients see: an invoice PDF and a shared invoice link look the same to them whatever you pick.",
           "Navigation sets the order of the sections in the rail and which of them it shows. Hiding a section only takes it out of the rail; the screen still exists and its records are untouched.",
         ],
         keywords: ["theme", "dark mode", "accent", "density", "rail", "hide", "reorder"],
@@ -279,7 +279,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
       {
         id: "profile-security",
         title: "Profile and security",
-        summary: "How you sign in — separate from your business details.",
+        summary: "How you sign in, separate from your business details.",
         href: "/settings?tab=profile",
         body: [
           "This is about you, not your business. The name and address that print on invoices live in your business details.",
@@ -313,7 +313,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         href: "/settings/billing",
         body: [
           "The billing screen shows your current plan, what is next to be charged and when, the card on file, and recent receipts.",
-          "Every amount shown comes from the live subscription, and the feature list is generated from the same table the product gates on — so what a plan opens cannot drift from what it says.",
+          "Every amount shown comes from the live subscription, and the feature list is generated from the same table the product gates on, so what a plan opens cannot drift from what it says.",
         ],
         keywords: ["subscription", "upgrade", "downgrade", "cancel", "trial", "invoice", "receipt", "seats"],
       },
@@ -323,7 +323,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         summary: "Your records, in files you keep.",
         href: "/settings/export",
         body: [
-          "The export hands back your records as files you can open elsewhere. It is there so that leaving is possible — your work is yours.",
+          "The export hands back your records as files you can open elsewhere. It is there so that leaving is possible: your work is yours.",
         ],
         keywords: ["export", "csv", "download", "backup", "leave", "data"],
       },

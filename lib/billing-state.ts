@@ -81,7 +81,7 @@ const STATUS_DISPLAY: Record<AccountStatus, StatusDisplay> = {
     label: "Past due",
     tone: "amber",
     meaning:
-      "Your last payment didn't go through, so this account is read-only until it clears. Everything stays readable and exportable — nothing is deleted. Update your card in the billing portal and Stripe will retry.",
+      "Your last payment didn't go through, so this account is read-only until it clears. Everything stays readable and exportable. Nothing is deleted. Update your card in the billing portal and Stripe will retry.",
   },
   canceled: {
     label: "Canceled",
@@ -99,7 +99,7 @@ const STATUS_DISPLAY: Record<AccountStatus, StatusDisplay> = {
     label: "Incomplete",
     tone: "amber",
     meaning:
-      "The first payment hasn't finished confirming — often a bank authentication step. The account is read-only until it does.",
+      "The first payment hasn't finished confirming (often a bank authentication step). The account is read-only until it does.",
   },
   incomplete_expired: {
     label: "Incomplete (expired)",

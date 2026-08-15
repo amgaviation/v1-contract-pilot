@@ -110,7 +110,7 @@ export default function VendorPanel({
         <Callout.Root color="red" size="1" mb="3">
           <Callout.Text>
             Couldn&rsquo;t check whether a live vendor page already exists for{" "}
-            {clientName} — this is not a statement that none is out. Reload
+            {clientName}. This is not a statement that none is out. Reload
             before creating a new one.
           </Callout.Text>
         </Callout.Root>
@@ -119,7 +119,7 @@ export default function VendorPanel({
       {url ? (
         <Flex direction="column" gap="2">
           <Text size="2" weight="medium">
-            {state.token ? "Here's the link — send it to their AP desk" : "The live link"}
+            {state.token ? "Here's the link. Send it to their AP desk." : "The live link"}
           </Text>
           <Flex gap="2" wrap="wrap" align="center">
             <TextField.Root value={url} readOnly aria-label="Vendor page link" style={undefined} />
@@ -193,7 +193,7 @@ export default function VendorPanel({
                 <AlertDialog.Title>Revoke this vendor page?</AlertDialog.Title>
                 <AlertDialog.Description size="2">
                   The link stops working immediately. If their AP desk has it
-                  bookmarked or in their email, it will 404 for them — create
+                  bookmarked or in their email, it will 404 for them. Create
                   a new one if they still need it.
                 </AlertDialog.Description>
                 <Flex gap="3" mt="4" justify="end">

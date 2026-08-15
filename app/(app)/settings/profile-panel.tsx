@@ -126,7 +126,7 @@ export default function ProfilePanel({
               <Callout.Text>
                 {`An email change to ${pendingEmail} is waiting for confirmation${
                   pendingEmailSentAt ? ` (requested ${pendingEmailSentAt})` : ""
-                }. It is NOT in effect yet — keep signing in with ${
+                }. It is NOT in effect yet. Keep signing in with ${
                   email ?? "your current address"
                 } until you've opened the link we sent. Starting a new change below replaces this one.`}
               </Callout.Text>
@@ -145,7 +145,7 @@ export default function ProfilePanel({
               </Text>
               <Text size="2" color="gray">
                 We send a confirmation link to the new address. The change takes effect
-                when you open it — not when you press this button. Until then your old
+                when you open it, not when you press this button. Until then your old
                 address is still the one that signs you in.
               </Text>
             </Flex>
@@ -197,7 +197,7 @@ export default function ProfilePanel({
                 Change your password
               </Text>
               <Text size="2" color="gray">
-                {`Your current password is required — a signed-in browser alone isn't enough to set a new one. At least ${MIN_PASSWORD_LENGTH} characters.`}
+                {`Your current password is required; a signed-in browser alone isn't enough to set a new one. At least ${MIN_PASSWORD_LENGTH} characters.`}
               </Text>
             </Flex>
 
@@ -261,7 +261,7 @@ export default function ProfilePanel({
                 Sign out everywhere else
               </Text>
               <Text size="2" color="gray">
-                Ends your session on every other device and browser — a phone left at an
+                Ends your session on every other device and browser: a phone left at an
                 FBO, a shared dispatch machine, a laptop you no longer have. This browser
                 stays signed in.
               </Text>

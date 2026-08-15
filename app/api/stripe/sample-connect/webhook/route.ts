@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
   const webhookSecret = process.env.SAMPLE_CONNECT_WEBHOOK_SECRET;
   if (!webhookSecret) {
     console.error(
-      "[sample-connect] SAMPLE_CONNECT_WEBHOOK_SECRET is not set — refusing the delivery. " +
+      "[sample-connect] SAMPLE_CONNECT_WEBHOOK_SECRET is not set. Refusing the delivery. " +
         "Set it from your webhook destination's signing secret (or from `stripe listen`)."
     );
     return NextResponse.json(

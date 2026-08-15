@@ -158,7 +158,7 @@ export function assembleTravelLog(input: {
       // dropping days from a log whose whole value is completeness.
       return {
         ok: false,
-        reason: `trip day ${day.id} references trip ${day.trip_id} which the trips read didn't return — refusing to print a partial travel log`,
+        reason: `trip day ${day.id} references trip ${day.trip_id} which the trips read didn't return, refusing to print a partial travel log`,
       };
     }
     if (trip.status === "canceled") {
@@ -171,7 +171,7 @@ export function assembleTravelLog(input: {
       // (archived types are still rows), so absence means a short read.
       return {
         ok: false,
-        reason: `trip day ${day.id} references day type ${day.day_type_id} which the day-types read didn't return — refusing to print a partial travel log`,
+        reason: `trip day ${day.id} references day type ${day.day_type_id} which the day-types read didn't return, refusing to print a partial travel log`,
       };
     }
 

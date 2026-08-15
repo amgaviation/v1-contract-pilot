@@ -184,7 +184,7 @@ export default async function EstimatePage({
               </NextLink>
             </RadixLink>
             {estimate.converted_at ? ` on ${formatDate(estimate.converted_at)}` : ""}. Its
-            figures are frozen here — any changes happen on the invoice.
+            figures are frozen here. Any changes happen on the invoice.
           </Callout.Text>
         </Callout.Root>
       ) : null}

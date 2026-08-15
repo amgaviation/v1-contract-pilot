@@ -207,7 +207,7 @@ function FormBody({
             id="je-memo"
             name="memo"
             required
-            placeholder="e.g. Owner draw — August"
+            placeholder="e.g. Owner draw, August"
             value={memo}
             onChange={(e) => setMemo(e.target.value)}
           />
@@ -231,7 +231,7 @@ function FormBody({
           </Button>
         ))}
         <Text size="1" color="gray">
-          — fills in the two accounts and a memo; you still set the date and
+          Fills in the two accounts and a memo. You still set the date and
           amount.
         </Text>
       </Flex>

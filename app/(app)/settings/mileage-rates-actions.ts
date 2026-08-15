@@ -75,7 +75,7 @@ export async function saveMileageRate(
   if (rate === undefined || rate === null) {
     return {
       error:
-        "Enter the rate for that year in cents per mile — look it up at the IRS standard mileage rates page rather than guessing.",
+        "Enter the rate for that year in cents per mile. Look it up at the IRS standard mileage rates page rather than guessing.",
       values: echoRate(),
     };
   }

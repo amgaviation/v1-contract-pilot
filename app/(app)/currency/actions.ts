@@ -39,7 +39,7 @@ export async function recomputeCurrency(
   if (!isCurrencyEngineEnabled()) {
     return {
       ok: false,
-      error: "Currency isn't enabled on this deployment — nothing was computed or recorded.",
+      error: "Currency isn't enabled on this deployment. Nothing was computed or recorded.",
     };
   }
 
@@ -70,7 +70,7 @@ export async function recomputeCurrency(
     return {
       ok: false,
       error:
-        "The recompute didn't complete, so no snapshot was recorded. The board still shows a fresh computation on every page load — try again, and if this keeps happening, contact support.",
+        "The recompute didn't complete, so no snapshot was recorded. The board still shows a fresh computation on every page load. Try again, and contact support if this keeps happening.",
     };
   }
 }

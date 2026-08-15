@@ -388,7 +388,7 @@ export default function TripForm({
             </Select.Root>
             <Text size="1" color="gray">
               {clients.length === 0
-                ? "No active clients yet — you can add one later."
+                ? "No active clients yet. You can add one later."
                 : "Who you're billing for this trip"}
             </Text>
           </Flex>
@@ -463,7 +463,7 @@ export default function TripForm({
               value={cancellationNoticeFrom}
             />
             <Text size="1" color="gray">
-              Who called off the trip — supports a cancellation fee line if
+              Who called off the trip. Supports a cancellation fee line if
               this contract has one. The cancellation timestamp itself is
               recorded automatically when status is set to Canceled.
             </Text>
@@ -523,7 +523,7 @@ export default function TripForm({
             </Select.Root>
             <input type="hidden" name="operating_rule" value={operatingRule} />
             <Text size="1" color="gray">
-              Which part this specific trip is flown under — fills in from the client, always
+              Which part this specific trip is flown under. Fills in from the client, always
               overridable per trip.
             </Text>
           </Flex>
@@ -561,8 +561,8 @@ export default function TripForm({
           </Heading>
           <Text size="1" color="gray">
             {hasDayRows
-              ? "The day grid below now sets what's actually billed — these fields are the old scalar input, kept only as the day grid's original seed. Editing them does not change the invoice."
-              : "Seeds the day grid below the first time it's opened. Once that grid has rows, they — not these fields — are what's actually billed."}
+              ? "The day grid below now sets what's actually billed. These fields are the old scalar input, kept only as the day grid's original seed. Editing them does not change the invoice."
+              : "Seeds the day grid below the first time it's opened. Once that grid has rows, they, not these fields, are what's actually billed."}
           </Text>
         </Flex>
         <Grid columns={{ initial: "1", md: "2" }} gap="3">

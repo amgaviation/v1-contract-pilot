@@ -135,7 +135,7 @@ function parseExpenseForm(formData: FormData): {
   if (treatment === "rebill" && !tripId) {
     return {
       values: null,
-      error: "Pick the trip this gets rebilled to — an expense can't be rebilled to nobody.",
+      error: "Pick the trip this gets rebilled to. An expense can't be rebilled to nobody.",
     };
   }
 
@@ -333,8 +333,8 @@ export async function createExpense(
         revalidatePath("/expenses");
         return {
           error: linkError
-            ? `${friendlyDbError(linkError, "expenses.update")} The receipt uploaded but wasn't linked — try attaching it again from the edit screen.`
-            : "The expense was saved without the receipt link — try attaching it again from the edit screen.",
+            ? `${friendlyDbError(linkError, "expenses.update")} The receipt uploaded but wasn't linked. Try attaching it again from the edit screen.`
+            : "The expense was saved without the receipt link. Try attaching it again from the edit screen.",
           values: echo(formData),
         };
       }

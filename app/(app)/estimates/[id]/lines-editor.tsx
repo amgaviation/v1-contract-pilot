@@ -173,7 +173,7 @@ function EditableRow({ estimateId, line }: { estimateId: string; line: EstimateL
             <Button
               variant="ghost"
               size="1"
-              aria-label={`Edit — ${line.description}`}
+              aria-label={`Edit: ${line.description}`}
               onClick={() => setEditing(true)}
             >
               Edit
@@ -185,7 +185,7 @@ function EditableRow({ estimateId, line }: { estimateId: string; line: EstimateL
                   color="red"
                   size="1"
                   disabled={deletePending}
-                  aria-label={`Remove — ${line.description}`}
+                  aria-label={`Remove: ${line.description}`}
                 >
                   {deletePending ? "Removing…" : "Remove"}
                 </Button>

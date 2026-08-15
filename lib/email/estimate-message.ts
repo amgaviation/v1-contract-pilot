@@ -59,7 +59,7 @@ export function buildEstimateMessage(input: EstimateMessageInput): EstimateMessa
   lines.push(
     `${ref} is attached, for ${formatCents(input.totalCents)}${
       input.validUntil ? `, valid until ${formatDate(input.validUntil)}` : ""
-    }. This is a price quote, not a bill — no payment is due.`
+    }. This is a price quote, not a bill. No payment is due.`
   );
 
   // THE PILOT'S OWN WORDS FOR THIS SEND, same placement rule as

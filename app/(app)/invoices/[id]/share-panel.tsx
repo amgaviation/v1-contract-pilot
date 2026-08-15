@@ -114,7 +114,7 @@ export default function SharePanel({
         Share with client
       </Text>
       <Text as="div" size="1" color="gray" mb="3">
-        A link your client can open without an account — the invoice, its status, and a Pay
+        A link your client can open without an account: the invoice, its status, and a Pay
         button if one is set up. You send it; nothing here emails it for you.
       </Text>
 
@@ -174,7 +174,7 @@ export default function SharePanel({
               <AlertDialog.Content maxWidth="420px">
                 <AlertDialog.Title>Replace this client link?</AlertDialog.Title>
                 <AlertDialog.Description size="2">
-                  The link you already sent stops working immediately — if your client
+                  The link you already sent stops working immediately. If your client
                   has it bookmarked or in their inbox, it will 404 for them. You&rsquo;ll
                   get a new link to send instead.
                 </AlertDialog.Description>
@@ -205,7 +205,7 @@ export default function SharePanel({
                 <AlertDialog.Title>Revoke this client link?</AlertDialog.Title>
                 <AlertDialog.Description size="2">
                   The link stops working immediately. If your client has it bookmarked or in
-                  their email, it will 404 for them — generate a new one if they still need
+                  their email, it will 404 for them. Generate a new one if they still need
                   access.
                 </AlertDialog.Description>
                 <Flex gap="3" mt="4" justify="end">

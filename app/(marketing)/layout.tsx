@@ -57,7 +57,7 @@ const OG_IMAGE = {
   url: "/brand/og-image.png",
   width: 1200,
   height: 630,
-  alt: `${BRAND.name} — ${BRAND.tagline}`,
+  alt: `${BRAND.name}: ${BRAND.tagline}`,
 } as const;
 
 export const metadata: Metadata = {

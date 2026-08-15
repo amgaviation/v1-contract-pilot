@@ -117,7 +117,7 @@ export default async function MileagePage() {
       subtitle={
         error
           ? "Couldn't load your mileage log."
-          : // A record of what was entered, not a determination — matches
+          : // A record of what was entered, not a determination, matches
             // the register of CURRENCY_DISCLAIMER (lib/brand.ts) and the
             // quarterly report's "planning aid" callout
             // (reports/quarterly/page.tsx). No single blended rate is
@@ -149,7 +149,7 @@ export default async function MileagePage() {
                   <ExclamationTriangleIcon />
                 </Callout.Icon>
                 <Callout.Text>
-                  {`Totals above may be partial — there are more than ${ENTRIES_LIMIT} drives logged and only the first ${ENTRIES_LIMIT} were totaled.`}
+                  {`Totals above may be partial. There are more than ${ENTRIES_LIMIT} drives logged and only the first ${ENTRIES_LIMIT} were totaled.`}
                 </Callout.Text>
               </Callout.Root>
             </Card>
@@ -167,7 +167,7 @@ export default async function MileagePage() {
                 </Callout.Icon>
                 <Callout.Text>
                   Couldn&rsquo;t load your mileage rates. This is not a
-                  statement that none are on file — the figures below are
+                  statement that none are on file. The figures below are
                   withheld rather than shown as $0 or &ldquo;no rate&rdquo;.
                   Reload to try again.
                 </Callout.Text>
@@ -223,7 +223,7 @@ export default async function MileagePage() {
               </Table.Root>
               <Text as="div" size="1" color="gray" mt="2">
                 {"Each year's figure is that year's own rate on file times that year's total miles, "}
-                {"rounded once — not a sum of individually rounded rows. This is a record computed "}
+                {"rounded once, not a sum of individually rounded rows. This is a record computed "}
                 {"from what you entered, not a tax determination."}
               </Text>
             </Card>
@@ -257,7 +257,7 @@ export default async function MileagePage() {
               <Text size="2" color="gray">
                 {"You haven't recorded a mileage rate yet. Add one under "}
                 <NextLink href="/settings?tab=mileage">Settings → Mileage</NextLink>
-                {" — drives can still be logged with a rate typed in by hand."}
+                {". Drives can still be logged with a rate typed in by hand."}
               </Text>
             </Card>
           ) : null}

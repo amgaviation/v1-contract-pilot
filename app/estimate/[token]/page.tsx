@@ -183,7 +183,7 @@ export default async function PublicEstimatePage({
 
           <Box mb="4" style={{ background: "var(--sunk)", borderRadius: "var(--radius)", padding: "8px 12px" }}>
             <Text as="div" size="2" color="gray">
-              This is a price quote, not an invoice — no payment is due.
+              This is a price quote, not an invoice. No payment is due.
             </Text>
           </Box>
 

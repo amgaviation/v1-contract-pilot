@@ -43,7 +43,7 @@ function FailedState() {
       </Callout.Icon>
       <Callout.Text>
         Couldn&rsquo;t load this client&rsquo;s payment history. The figures
-        are unavailable rather than zero — try reloading the page.
+        are unavailable rather than zero. Try reloading the page.
       </Callout.Text>
     </Callout.Root>
   );
@@ -64,9 +64,9 @@ export default async function PaymentInsightPanel({
         Payment behavior
       </Text>
       <Text as="div" size="2" color="gray" mb="3">
-        From your own ledger with this client — how fast they&rsquo;ve paid
-        and how the current balance ages. Computed from your records only;
-        nothing here comes from, or is shared with, anyone else.
+        How fast this client has paid, and how the current balance ages,
+        from your own ledger. Computed from your records only; nothing
+        here comes from, or is shared with, anyone else.
       </Text>
       {body}
     </Card>
@@ -90,7 +90,7 @@ export default async function PaymentInsightPanel({
   if (invoicesResult.rows.length === 0) {
     return shell(
       <Text size="2" color="gray">
-        No issued invoices yet — payment history appears once this client
+        No issued invoices yet. Payment history appears once this client
         has been billed.
       </Text>
     );
@@ -106,7 +106,7 @@ export default async function PaymentInsightPanel({
         </Callout.Icon>
         <Callout.Text>
           This client has more invoices than this panel can read in one
-          pass, so the figures aren&rsquo;t shown — a partial history would
+          pass, so the figures aren&rsquo;t shown. A partial history would
           be presented as the whole one.
         </Callout.Text>
       </Callout.Root>

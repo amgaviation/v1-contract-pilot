@@ -37,7 +37,7 @@ export default async function NewExpensePage({
   return (
     <PageShell
       title="Add expense"
-      subtitle="Tag it once — rebill or deduct — and it files itself against the trip."
+      subtitle="Tag it once as rebill or deduct. It files itself against the trip."
     >
       <ExpenseForm
         action={createExpense}

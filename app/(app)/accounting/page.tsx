@@ -65,21 +65,22 @@ export default async function AccountingPage() {
             <ExclamationTriangleIcon />
           </Callout.Icon>
           <Callout.Text>
-            Couldn&rsquo;t load your ledger. The balances below are unavailable —
-            nothing is shown rather than showing zeros that aren&rsquo;t true.
+            Couldn&rsquo;t load your ledger. The balances below are
+            unavailable. Nothing is shown rather than showing zeros that
+            aren&rsquo;t true.
           </Callout.Text>
         </Callout.Root>
       ) : (
         <>
           <Text size="2" color="gray">
-            Income, payments, expenses and mileage post here automatically —
-            see the{" "}
+            Income, payments, expenses, and mileage post here
+            automatically. See the{" "}
             <RadixLink asChild>
               <NextLink href="/accounting/journal">journal</NextLink>
             </RadixLink>{" "}
             for every entry. Owner pay is tracked as draws (an equity
-            account), the way a sole proprietor&rsquo;s books actually work — not
-            payroll.
+            account), the way a sole proprietor&rsquo;s books actually
+            work, not payroll.
           </Text>
           <ChartManager rows={rows} />
         </>

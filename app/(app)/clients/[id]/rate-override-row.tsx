@@ -47,7 +47,7 @@ export default function RateOverrideRow({
           </Text>
           {archived ? (
             <Text as="div" size="1" color="amber">
-              Archived — kept here only because this client still has an
+              Archived, kept here only because this client still has an
               override on it
             </Text>
           ) : null}

@@ -172,7 +172,7 @@ export function ReimbursablesPacketPdf({
               <Text style={styles.colCategory}>{item.category}</Text>
               <Text style={styles.colDescription}>
                 {item.description}
-                {item.vendor ? ` — ${item.vendor}` : ""}
+                {item.vendor ? ` (${item.vendor})` : ""}
               </Text>
               <Text style={styles.colAmount}>{formatCents(item.amountCents)}</Text>
             </View>
@@ -184,10 +184,10 @@ export function ReimbursablesPacketPdf({
           own receipt pages (lib/invoice-pdf.tsx). */}
       {receipts.map((receipt, i) => (
         <Page size="LETTER" style={styles.page} key={`receipt-${i}`}>
-          <Text style={styles.label}>Receipt — {invoiceRef}</Text>
+          <Text style={styles.label}>Receipt: {invoiceRef}</Text>
           <Text style={styles.receiptCaption}>
             {receipt.description}
-            {receipt.amountCents !== null ? ` — ${formatCents(receipt.amountCents)}` : ""}
+            {receipt.amountCents !== null ? ` (${formatCents(receipt.amountCents)})` : ""}
           </Text>
           {receipt.imageDataUri ? (
             /* eslint-disable-next-line jsx-a11y/alt-text -- react-pdf's

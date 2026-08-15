@@ -22,7 +22,7 @@ export default async function BankImportPage() {
   return (
     <PageShell
       title="Import a bank or card statement"
-      subtitle="Download a CSV, OFX, or QFX statement from your bank's online portal and bring it in — nothing is added to your books until you review and categorize each transaction."
+      subtitle="Download a CSV, OFX, or QFX statement from your bank's online portal and bring it in. Nothing is added to your books until you review and categorize each transaction."
     >
       {error ? (
         <Card size="3">

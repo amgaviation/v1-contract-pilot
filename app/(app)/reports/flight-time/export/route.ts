@@ -58,7 +58,7 @@ export async function GET() {
   }
 
   const rows: string[] = [];
-  rows.push(csvRow(["Flight time — cross-operator totals, 14 CFR 135.267"]));
+  rows.push(csvRow(["Flight time: cross-operator totals, 14 CFR 135.267"]));
   rows.push(csvRow(["Account", account.legal_name ?? account.id]));
   rows.push(csvRow(["Compiled", todayIso()]));
   rows.push(
@@ -75,12 +75,12 @@ export async function GET() {
   // exported artifact can never claim more (or less) than the page does.
   rows.push(
     csvRow([
-      "Your own cross-operator picture — totals, not a legality call.",
+      "Your own cross-operator picture: totals, not a legality call.",
     ])
   );
   rows.push(
     csvRow([
-      "14 CFR 135.267 limits a flight crewmember's total flight time in all commercial flying — 500 hours in any calendar quarter, 800 hours in any two consecutive calendar quarters, 1,400 hours in any calendar year, and a per-24-consecutive-hours limit on the day of flight (135.267(a), (b), current text retrieved 11 AUG 2026). Because those limits count your flying for every operator plus any other commercial flying, no single operator can see the whole picture from their own records — this page computes it from your own logbook, so you can answer the “what else have you flown” question a certificate holder must ask before assigning you. Whether an assignment may be accepted is determined under the assigning operator's certificate and the regulation — never by this page, which states totals and nothing more.",
+      "14 CFR 135.267 limits how much a flight crewmember can fly commercially, counting every operator together: 500 hours in any calendar quarter, 800 hours in any two consecutive calendar quarters, 1,400 hours in any calendar year, and a separate limit on hours in any 24 consecutive hours on the day of flight. (135.267(a), (b), current text retrieved 11 AUG 2026) Because those limits count your flying for every operator, plus any other commercial flying, no single operator can see the whole picture from their own records. This page computes it from your own logbook, so you can answer the “what else have you flown” question a certificate holder must ask before assigning you. Whether an assignment may be accepted is decided under the assigning operator's certificate and the regulation, never by this page. This page states totals only.",
     ])
   );
   rows.push(csvRow([]));
@@ -98,7 +98,7 @@ export async function GET() {
         figure.hours.toFixed(1),
         figure.entryCount,
         figure.coverageGapFrom
-          ? `Logbook's earliest entry is ${figure.coverageGapFrom} — flying before that isn't in this figure.`
+          ? `Logbook's earliest entry is ${figure.coverageGapFrom}. Flying before that isn't in this figure.`
           : "Logbook coverage spans the full window.",
       ])
     );
@@ -109,12 +109,12 @@ export async function GET() {
   // caveats that keep the numbers conservative-only.
   rows.push(
     csvRow([
-      "Block time, counted whole: trip-derived entries log block (out to in), which runs equal to or slightly longer than 14 CFR 1.1 flight time, and both commercial and personal flying are included — every approximation pushes these totals higher, never lower, than the regulation's own basis.",
+      "Block time, counted whole. Trip-derived entries log block time (out to in), which runs equal to or slightly longer than 14 CFR 1.1 flight time. Both commercial and personal flying are included. Every approximation pushes these totals higher, never lower, than the regulation's own basis.",
     ])
   );
   rows.push(
     csvRow([
-      "The trailing-24-hour row totals the last three calendar days, a span that contains every 24-hour window ending now no matter which timezone entries are dated in, so it can only over-cover, never miss flying.",
+      "The trailing-24-hour row totals the last three calendar days. That span contains every 24-hour window ending now, no matter which timezone entries are dated in, so it can only over-cover flying, never miss it.",
     ])
   );
 

@@ -142,12 +142,12 @@ function CorrectPaymentForm({
           <>
             <Text size="1" color="gray">
               {`This cancels the ${formatCents(payment.amount_cents)} entry with a matching
-                correction — both stay on the invoice, so the record shows what happened.
+                correction. Both stay on the invoice, so the record shows what happened.
                 Enter the right payment afterwards.`}
             </Text>
             <TextField.Root
               name="reversal_reason"
-              placeholder="Why? e.g. typo — meant 450.00"
+              placeholder="Why? e.g. typo, meant 450.00"
               aria-label="Why you're correcting this"
             />
             <Flex gap="2">
@@ -322,8 +322,8 @@ function PayOnlinePanel({
             // the URL below being read as something to send.
             <Text size="1" color="gray">
               {linkAmountCents !== null
-                ? `This link has been used — don't send it again. Your client authorised a bank payment of ${formatCents(linkAmountCents)} on it:`
-                : "This link has been used — don't send it again. Your client authorised a bank payment on it:"}
+                ? `This link has been used. Don't send it again. Your client authorised a bank payment of ${formatCents(linkAmountCents)} on it:`
+                : "This link has been used. Don't send it again. Your client authorised a bank payment on it:"}
             </Text>
           ) : !stale ? (
             <Text size="1" color="gray">
@@ -349,12 +349,12 @@ function PayOnlinePanel({
               bank payment (ACH) counts as gone through at authorisation, a few
               business days before the money actually lands. It is kept here so
               you can see what they were sent. Only generate a new link if you
-              need a second, separate payment on this invoice — if this debit
+              need a second, separate payment on this invoice. If this debit
               fails, this app clears the dead link and tells you to replace it.
             </Text>
           ) : (
             <Text size="1" color="gray">
-              It can only be paid once — Stripe switches it off after the first
+              It can only be paid once. Stripe switches it off after the first
               payment goes through. A bank payment (ACH) counts as gone through the
               moment your client authorises it, which is a few business days before
               the money actually lands. Generating a new link switches this one off
@@ -469,9 +469,9 @@ const initialReviewState: ReviewNoticeState = { error: null };
 function fallbackDetail(outcome: string | null | undefined): string {
   switch (outcome) {
     case "payment_pending":
-      return "A bank payment (ACH) was started on this invoice and has not settled yet — no money has arrived, nothing has been recorded, and the balance is unchanged. There is nothing to do but wait.";
+      return "A bank payment (ACH) was started on this invoice and has not settled yet. No money has arrived, nothing has been recorded, and the balance is unchanged. There is nothing to do but wait.";
     case "payment_failed":
-      return "A payment started on this invoice failed, so no money ever arrived and nothing was recorded. That payment link was used up when your client authorised it — generate a new one if they still want to pay online.";
+      return "A payment started on this invoice failed, so no money ever arrived and nothing was recorded. That payment link was used up when your client authorised it. Generate a new one if they still want to pay online.";
     default:
       return "A payment arrived through this invoice's payment link and was not recorded automatically. Check Stripe before recording it yourself.";
   }
@@ -658,7 +658,7 @@ export default function PaymentPanel({
       {paymentsLoadError ? (
         <Text color="red">
           Couldn&rsquo;t load payments on this invoice. This is not a
-          statement that none have been recorded — reload before assuming
+          statement that none have been recorded. Reload before assuming
           the balance below is current.
         </Text>
       ) : payments.length === 0 ? (
@@ -716,7 +716,7 @@ export default function PaymentPanel({
                     here. Matches settings/connect-panel.tsx's wording. */}
                 {paidOnline ? (
                   <Text size="1" color="gray">
-                    Recorded automatically from your payment link — the money is in
+                    Recorded automatically from your payment link. The money is in
                     your own Stripe account, paid out on Stripe&rsquo;s schedule.
                   </Text>
                 ) : null}

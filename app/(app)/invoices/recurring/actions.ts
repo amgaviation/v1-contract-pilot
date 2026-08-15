@@ -127,7 +127,7 @@ export async function computeDuePeriods(
     const periodStart = ymd(periodY, periodM0, 1);
     const dueOn = periodDueDate(schedule.anchor_date, periodStart);
 
-    if (dueOn > today) break; // periods are monotonically increasing — done.
+    if (dueOn > today) break; // periods are monotonically increasing, done.
     if (schedule.end_date && dueOn > schedule.end_date) break;
 
     if (!generatedPeriods.has(periodStart)) {
@@ -310,7 +310,7 @@ export async function updateRecurringSchedule(
     return { error: friendlyDbError(error, "recurring_invoice_schedules.update"), values };
   }
   if (!count) {
-    return { error: "That schedule no longer exists — nothing was changed.", values };
+    return { error: "That schedule no longer exists. Nothing was changed.", values };
   }
 
   revalidatePath("/invoices/recurring");
@@ -432,7 +432,7 @@ export async function generateRecurringInvoice(
   }
   const schedule = scheduleData as ScheduleRow | null;
   if (!schedule) return { error: "That schedule couldn't be found." };
-  if (!schedule.active) return { error: "This schedule is paused — resume it to create an invoice." };
+  if (!schedule.active) return { error: "This schedule is paused. Resume it to create an invoice." };
 
   // Recompute the schedule's own due set server-side and require the
   // requested period to be a member of it — never trust a submitted

@@ -203,7 +203,7 @@ function EditableRow({ invoiceId, line }: { invoiceId: string; line: LineRow }) 
             <Button
               variant="ghost"
               size="1"
-              aria-label={`Edit — ${line.description}`}
+              aria-label={`Edit: ${line.description}`}
               onClick={() => setEditing(true)}
             >
               Edit
@@ -215,7 +215,7 @@ function EditableRow({ invoiceId, line }: { invoiceId: string; line: LineRow }) 
                   color="red"
                   size="1"
                   disabled={deletePending}
-                  aria-label={`Remove — ${line.description}`}
+                  aria-label={`Remove: ${line.description}`}
                 >
                   {deletePending ? "Removing…" : "Remove"}
                 </Button>
@@ -508,7 +508,7 @@ function RebillRow({
   return (
     <Flex align="center" gap="4">
       <Text color="gray" style={{ flex: 1 }}>
-        {label} {expense.vendor ? `— ${expense.vendor}` : ""} (
+        {label} {expense.vendor ? `· ${expense.vendor}` : ""} (
         {formatDate(expense.incurred_on)}) ·{" "}
         <span className="tnum">{formatCents(expense.amount_cents)}</span>
       </Text>
@@ -516,8 +516,8 @@ function RebillRow({
         variant="outline"
         size="2"
         disabled={pending || added}
-        aria-label={`Add to invoice — ${label}${
-          expense.vendor ? ` — ${expense.vendor}` : ""
+        aria-label={`Add to invoice: ${label}${
+          expense.vendor ? `, ${expense.vendor}` : ""
         } (${formatDate(expense.incurred_on)})`}
         onClick={() => {
           startTransition(async () => {

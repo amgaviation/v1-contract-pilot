@@ -112,7 +112,7 @@ export default function DayTypeRow({
             </Text>
             {archived ? (
               <Text size="1" color="gray">
-                Archived — hidden from pickers, still used on past trips
+                Archived. Hidden from pickers, but still used on past trips
               </Text>
             ) : null}
           </Flex>
@@ -297,7 +297,7 @@ export default function DayTypeRow({
                     <AlertDialog.Description size="2">
                       This deletes the day type. Any client rate overrides set for it go too.
                       This can&rsquo;t be undone. (A day type in use on a trip, or a built-in
-                      type, can&rsquo;t be deleted — archive it instead.)
+                      type, can&rsquo;t be deleted. Archive it instead.)
                     </AlertDialog.Description>
                     {deleteDialogError ? (
                       <Box mt="2">

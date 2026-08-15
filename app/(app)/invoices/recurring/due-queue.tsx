@@ -128,7 +128,7 @@ export default function DueQueue({
             <Text weight="medium" className="tnum">
               {formatCents(confirmInfo?.amountCents ?? 0)}
             </Text>
-            {". That's more than usual for one click — double-check a schedule's first-bill date isn't further in the past than intended before continuing. Every invoice is still a draft you review before sending."}
+            {". That's more than usual for one click. Double-check a schedule's first-bill date isn't further in the past than intended before continuing. Every invoice is still a draft you review before sending."}
           </AlertDialog.Description>
           <Flex gap="3" mt="4" justify="end">
             <AlertDialog.Cancel>

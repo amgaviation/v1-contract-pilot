@@ -242,7 +242,7 @@ function linesDbError(
     error?.code === "23505" &&
     error.message?.toLowerCase().includes("expense_id")
   ) {
-    return "One of these receipts is already billed on another invoice — including any void one. Voiding an invoice now releases its receipts automatically, so an older void invoice may still need its lines cleared by support before this receipt can be rebilled.";
+    return "One of these receipts is already billed on another invoice, including any void one. Voiding an invoice now releases its receipts automatically, so an older void invoice may still need its lines cleared by support before this receipt can be rebilled.";
   }
   return friendlyDbError(error, context);
 }
@@ -396,7 +396,7 @@ export async function createInvoiceDraft(
     const committedLabel = committedByTrip.get(t.id);
     if (committedLabel) {
       preselectionWarnings.push(
-        `${formatDateRange(t.starts_on, t.ends_on)}: already billed on ${committedLabel} — not added to this invoice.`
+        `${formatDateRange(t.starts_on, t.ends_on)}: already billed on ${committedLabel}. Not added to this invoice.`
       );
       return false;
     }
@@ -793,7 +793,7 @@ export async function createInvoiceDraft(
           // (lib/format.ts) are the one date format this file uses
           // anywhere a pilot or client reads it — no second one invented
           // here.
-          description: `${dayType.label}s — ${describeDayDates(sortedDays)}`,
+          description: `${dayType.label}s: ${describeDayDates(sortedDays)}`,
           quantity: qty,
           unit_amount_cents: group.rateCents,
           taxable: true,
@@ -860,7 +860,7 @@ export async function createInvoiceDraft(
                 account_id: account.id,
                 invoice_id: invoiceId,
                 line_type: "other",
-                description: `Contract minimum — ${formatMinDays(minDays)}-day minimum, ${worked} ${
+                description: `Contract minimum: ${formatMinDays(minDays)}-day minimum, ${worked} ${
                   totalBillableQty === 1 ? "day" : "days"
                 } worked`,
                 quantity: shortfall,
@@ -896,7 +896,7 @@ export async function createInvoiceDraft(
             account_id: account.id,
             invoice_id: invoiceId,
             line_type: "flight_day",
-            description: `Flight days — ${formatDateRange(trip.starts_on, trip.ends_on)}`,
+            description: `Flight days: ${formatDateRange(trip.starts_on, trip.ends_on)}`,
             quantity: trip.day_count,
             unit_amount_cents: trip.day_rate_cents,
             taxable: true,
@@ -917,7 +917,7 @@ export async function createInvoiceDraft(
             account_id: account.id,
             invoice_id: invoiceId,
             line_type: "travel_day",
-            description: `Travel days — ${formatDateRange(trip.starts_on, trip.ends_on)}`,
+            description: `Travel days: ${formatDateRange(trip.starts_on, trip.ends_on)}`,
             quantity: trip.travel_day_count,
             unit_amount_cents: trip.travel_day_rate_cents,
             taxable: true,
@@ -954,7 +954,7 @@ export async function createInvoiceDraft(
             account_id: account.id,
             invoice_id: invoiceId,
             line_type: "per_diem",
-            description: `Per diem — ${formatDateRange(trip.starts_on, trip.ends_on)}`,
+            description: `Per diem: ${formatDateRange(trip.starts_on, trip.ends_on)}`,
             quantity: perDiemCount,
             unit_amount_cents: perDiemRateCents,
             // C10: a straight expense reimbursement is commonly not
@@ -1132,7 +1132,7 @@ export async function createInvoiceDraft(
           settledInvoiceLabelById.get(alreadySettled) ?? "a draft invoice";
         const addedDays = roundThousandthsToHundredths(bucket.qtyThousandths);
         warnings.push(
-          `${monthLabel}: this client's monthly guarantee was already settled on invoice ${settledLabel}, so no second top-up line was added — but this invoice still bills ${formatMinDays(
+          `${monthLabel}: this client's monthly guarantee was already settled on invoice ${settledLabel}, so no second top-up line was added, but this invoice still bills ${formatMinDays(
             addedDays
           )} ${addedDays === 1 ? "day" : "days"} in that month. Invoice ${settledLabel}'s top-up already charged for the guaranteed days, so check these aren't being billed twice before you send this.`
         );
@@ -1155,7 +1155,7 @@ export async function createInvoiceDraft(
           // Names the month explicitly — an aircraft owner's AP
           // department sees ONE line for a STATED month, backed by a
           // stated worked-vs-guaranteed day count, not one line per trip.
-          description: `Monthly guarantee — ${monthLabel} — ${formatMinDays(
+          description: `Monthly guarantee: ${monthLabel}, ${formatMinDays(
             minDays
           )}-day minimum, ${formatMinDays(worked)} ${
             worked === 1 ? "day" : "days"
@@ -1207,7 +1207,7 @@ export async function createInvoiceDraft(
       warnings.push(
         `This client has a cancellation policy on file: "${clientBilling.cancellation_policy_note}". ${formatDate(
           trip.starts_on
-        )} trip was ${describeCancellationTiming(trip)} — add a cancellation_fee line by hand if it applies.`
+        )} trip was ${describeCancellationTiming(trip)}. Add a cancellation_fee line by hand if it applies.`
       );
     }
   }
@@ -1229,7 +1229,7 @@ export async function createInvoiceDraft(
       line_type: "reimbursable_expense",
       description: `${
         expenseCategoryLabels[expense.category] ?? categoryLabel(expense.category)
-      }${expense.vendor ? ` — ${expense.vendor}` : ""} (${formatDate(expense.incurred_on)})`,
+      }${expense.vendor ? `, ${expense.vendor}` : ""} (${formatDate(expense.incurred_on)})`,
       quantity: 1,
       unit_amount_cents: expense.amount_cents,
       // C10: a straight expense reimbursement is commonly not taxable —
@@ -1329,7 +1329,7 @@ export async function createInvoiceDraft(
         );
       } else if (updateCount === 0) {
         warnings.push(
-          `Couldn't record ${settlement.monthLabel}'s guarantee settlement — no matching record to update. A later invoice for this client may re-offer the same month.`
+          `Couldn't record ${settlement.monthLabel}'s guarantee settlement. No matching record to update. A later invoice for this client may re-offer the same month.`
         );
       }
     } else {
@@ -1353,7 +1353,7 @@ export async function createInvoiceDraft(
         );
       } else if (insertCount !== 1) {
         warnings.push(
-          `Couldn't record ${settlement.monthLabel}'s guarantee settlement — the write didn't take. A later invoice for this client may re-offer the same month.`
+          `Couldn't record ${settlement.monthLabel}'s guarantee settlement. The write didn't take. A later invoice for this client may re-offer the same month.`
         );
       }
     }
@@ -1449,7 +1449,7 @@ function describeCancellationTiming(trip: {
     hours >= 0
       ? `${formatHoursSpan(hours)} before its start date`
       : `${formatHoursSpan(-hours)} after its start date`;
-  return `canceled ${canceledAtLabel} UTC — ${timingLabel}${noticeFrom}`;
+  return `canceled ${canceledAtLabel} UTC, ${timingLabel}${noticeFrom}`;
 }
 
 /** "6 hours" / "1.5 hours" / "1 hour" — rounded to a tenth, same reasoning
@@ -1637,7 +1637,7 @@ export async function sendInvoice(
   const note = customMessage?.trim() ?? "";
   if (note.length > MAX_CUSTOM_MESSAGE_CHARS) {
     return {
-      error: `That message is longer than ${MAX_CUSTOM_MESSAGE_CHARS} characters. Nothing was sent and the invoice is still a draft — shorten it and try again.`,
+      error: `That message is longer than ${MAX_CUSTOM_MESSAGE_CHARS} characters. Nothing was sent and the invoice is still a draft. Shorten it and try again.`,
     };
   }
 
@@ -1676,7 +1676,7 @@ export async function sendInvoice(
     );
     if (!sent.ok) {
       return {
-        error: `The invoice is now issued and numbered, but the email didn't go out — ${sent.error} Download the PDF and send it yourself; don't try to issue it again.`,
+        error: `The invoice is now issued and numbered, but the email didn't go out. ${sent.error} Download the PDF and send it yourself; don't try to issue it again.`,
       };
     }
   }
@@ -1706,7 +1706,7 @@ export async function sendInvoiceReminder(
   const note = customMessage?.trim() ?? "";
   if (note.length > MAX_CUSTOM_MESSAGE_CHARS) {
     return {
-      error: `That message is longer than ${MAX_CUSTOM_MESSAGE_CHARS} characters. Nothing was sent — shorten it and try again.`,
+      error: `That message is longer than ${MAX_CUSTOM_MESSAGE_CHARS} characters. Nothing was sent. Shorten it and try again.`,
     };
   }
 
@@ -1920,7 +1920,7 @@ export async function voidInvoice(id: string): Promise<{ error: string | null }>
       `voidInvoice: couldn't release lines for voided invoice ${id}: ${linesReleaseError.message}`
     );
     const releaseWarning =
-      "Voided, but this invoice's billed items couldn't be released — its trip and any rebilled expenses will stay unavailable to rebill until you remove its lines by hand.";
+      "Voided, but this invoice's billed items couldn't be released. Its trip and any rebilled expenses will stay unavailable to rebill until you remove its lines by hand.";
     warning = warning ? `${warning} ${releaseWarning}` : releaseWarning;
   }
 
@@ -2045,7 +2045,7 @@ export async function addRebillExpenseLine(
     line_type: "reimbursable_expense",
     description: `${
       expenseCategoryLabels[expense.category] ?? categoryLabel(expense.category)
-    }${expense.vendor ? ` — ${expense.vendor}` : ""} (${formatDate(expense.incurred_on)})`,
+    }${expense.vendor ? `, ${expense.vendor}` : ""} (${formatDate(expense.incurred_on)})`,
     quantity: 1,
     unit_amount_cents: expense.amount_cents,
     taxable: false,
@@ -2237,7 +2237,7 @@ export async function recordPayment(
   if (invoiceReadError) {
     return {
       error:
-        "The payment was recorded, but the invoice's status couldn't be updated — reopen it and check whether it still shows as awaiting payment.",
+        "The payment was recorded, but the invoice's status couldn't be updated. Reopen it and check whether it still shows as awaiting payment.",
       saved: true,
     };
   }
@@ -2256,7 +2256,7 @@ export async function recordPayment(
     if (totalsReadError) {
       return {
         error:
-          "The payment was recorded, but the invoice's status couldn't be updated — reopen it and check whether it still shows as awaiting payment.",
+          "The payment was recorded, but the invoice's status couldn't be updated. Reopen it and check whether it still shows as awaiting payment.",
         saved: true,
       };
     }
@@ -2379,7 +2379,7 @@ async function retirePaymentLink(params: {
     // landed — but the row still points at a link this app can no longer
     // manage, so the pilot needs telling, not just a server log.
     console.error(`[db] invoices.update(clear payment_link) ${error.message}`);
-    return `${notice} This invoice's own record of that link also failed to clear — reload the page before trusting what it shows.`;
+    return `${notice} This invoice's own record of that link also failed to clear. Reload the page before trusting what it shows.`;
   }
 
   if (count === 0) {
@@ -2392,7 +2392,7 @@ async function retirePaymentLink(params: {
     console.error(
       `[db] invoices.update(clear payment_link) matched 0 rows for invoice ${params.invoiceId}`
     );
-    return `${notice} This invoice's own record of that link couldn't be updated — reload the page before trusting what it shows.`;
+    return `${notice} This invoice's own record of that link couldn't be updated. Reload the page before trusting what it shows.`;
   }
 
   return notice;

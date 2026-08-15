@@ -34,14 +34,14 @@ export const FIELD_DEFS: FieldDef[] = [
     options: ["ffs", "ftd", "atd", "other"],
   },
   { key: "day_takeoffs", label: "Day takeoffs", kind: "count" },
-  { key: "day_landings_full_stop", label: "Day landings — full stop", kind: "count" },
-  { key: "day_landings_touch_go", label: "Day landings — touch & go", kind: "count" },
+  { key: "day_landings_full_stop", label: "Day landings: full stop", kind: "count" },
+  { key: "day_landings_touch_go", label: "Day landings: touch & go", kind: "count" },
   { key: "night_takeoffs", label: "Night takeoffs", kind: "count" },
-  { key: "night_landings_full_stop", label: "Night landings — full stop", kind: "count" },
-  { key: "night_landings_touch_go", label: "Night landings — touch & go", kind: "count" },
+  { key: "night_landings_full_stop", label: "Night landings: full stop", kind: "count" },
+  { key: "night_landings_touch_go", label: "Night landings: touch & go", kind: "count" },
   {
     key: "landings_total",
-    label: "Landings — undifferentiated total (day/night, full-stop/touch-and-go not split)",
+    label: "Landings: undifferentiated total (day/night, full-stop/touch-and-go not split)",
     kind: "count",
   },
   { key: "approaches_count", label: "Approaches (count)", kind: "count" },
@@ -53,7 +53,7 @@ export const FIELD_DEFS: FieldDef[] = [
   },
   {
     key: "approach_condition",
-    label: "Approach condition — actual/simulated/neither (61.57(c)(1))",
+    label: "Approach condition: actual/simulated/neither (61.57(c)(1))",
     kind: "enum",
     // A different axis from approach_type (see db.ts's ApproachCondition
     // comment) — 'neither' is a real, disqualifying, asserted value,

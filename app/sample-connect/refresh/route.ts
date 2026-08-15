@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
   const requested = request.nextUrl.searchParams.get("accountId");
   if (requested && requested !== accountId) {
     console.warn(
-      `[sample-connect] refresh requested ${requested} but the caller owns ${accountId} — ignoring the parameter and refreshing their own account.`
+      `[sample-connect] refresh requested ${requested} but the caller owns ${accountId}. Ignoring the parameter and refreshing their own account.`
     );
   }
 

@@ -23,7 +23,7 @@ export default async function NewDocumentPage() {
   return (
     <PageShell
       title="Add document"
-      subtitle="Enter the dates as printed — a medical, flight review, passport, certificate, insurance policy or W-9."
+      subtitle="Enter the dates as printed: medical, flight review, passport, certificate, insurance policy, or W-9."
     >
       <DocumentForm
         action={createDocument}

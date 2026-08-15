@@ -117,7 +117,7 @@ export async function saveOperatorQualification(
   }
   if (TYPE_SPECIFIC_REQUIREMENTS.has(requirement) && typeDesignator === "") {
     return {
-      error: "This check is class/type-specific — enter the aircraft class or type it was flown in.",
+      error: "This check is class or type-specific. Enter the aircraft class or type it was flown in.",
       values: echo,
     };
   }

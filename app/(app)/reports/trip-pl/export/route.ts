@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
 
   const period: TripPLPeriod = {
     kind: kindParam,
-    label: `${start} – ${end}`,
+    label: `${start} to ${end}`,
     start: start as string,
     end: end as string,
   };
@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "These figures don't reconcile, so they can't be exported. A margin is a subtraction — a partial join makes it too high, not too low. Contact support.",
+          "These figures don't reconcile, so they can't be exported. A margin is a subtraction, and a partial join makes it too high, not too low. Contact support.",
       },
       { status: 500 }
     );
@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "This period has more rows than the export can safely total in one file. Narrow the date range or contact support — exporting a silently partial margin would misstate your figures.",
+          "This period has more rows than the export can safely total in one file. Narrow the date range or contact support. Exporting a silently partial margin would misstate your figures.",
       },
       { status: 500 }
     );
@@ -121,19 +121,19 @@ export async function GET(request: NextRequest) {
   rows.push(
     csvRow([
       "Basis",
-      "INVOICED, NOT COLLECTED — what was billed for each trip, not what has been paid. Payments are recorded per invoice with no line-level allocation, so no payment can be honestly attributed to one trip. For collected cash see the profit & loss report (cash-basis).",
+      "INVOICED, NOT COLLECTED: what was billed for each trip, not what has been paid. Payments are recorded per invoice with no line-level allocation, so no payment can be honestly attributed to one trip. For collected cash see the profit & loss report (cash-basis).",
     ])
   );
   rows.push(
     csvRow([
       "Margin definition",
-      "Invoiced day money minus deductible expenses. Rebilled costs and their reimbursements (both legs), undecided receipts, mileage, and revenue not tied to a trip are all EXCLUDED — each is listed in its own section below.",
+      "Invoiced day money minus deductible expenses. Rebilled costs and their reimbursements (both legs), undecided receipts, mileage, and revenue not tied to a trip are all EXCLUDED. Each is listed in its own section below.",
     ])
   );
   rows.push(
     csvRow([
       "Period rule",
-      "A trip is included when its dates overlap the period. A trip straddling a boundary appears in full in both periods; its money is not split across the boundary.",
+      "A trip is included when its dates overlap the period. A trip straddling a boundary appears in full in both periods. Its money is not split across the boundary.",
     ])
   );
   rows.push(csvRow([]));
@@ -272,7 +272,7 @@ export async function GET(request: NextRequest) {
     csvRow([
       "Margin per day",
       report.totals.marginPerDayCents === null
-        ? "n/a — no billable days"
+        ? "n/a (no billable days)"
         : centsToDollarsString(report.totals.marginPerDayCents),
     ])
   );
@@ -281,13 +281,13 @@ export async function GET(request: NextRequest) {
   rows.push(csvRow(["Excluded from margin"]));
   rows.push(
     csvRow([
-      "Rebilled cost — money you fronted (excluded; the pass-through's other leg is below)",
+      "Rebilled cost: money you fronted (excluded; the pass-through's other leg is below)",
       centsToDollarsString(report.totals.rebilledCostCents),
     ])
   );
   rows.push(
     csvRow([
-      "Rebilled invoiced — money you billed back (excluded; pairs with the cost above)",
+      "Rebilled invoiced: money you billed back (excluded; pairs with the cost above)",
       centsToDollarsString(report.totals.rebillInvoicedCents),
     ])
   );
@@ -299,13 +299,13 @@ export async function GET(request: NextRequest) {
   );
   rows.push(
     csvRow([
-      "Undecided receipts — neither billed nor deducted (excluded)",
+      "Undecided receipts: neither billed nor deducted (excluded)",
       centsToDollarsString(report.totals.unassignedExpenseCents),
     ])
   );
   rows.push(
     csvRow([
-      "Revenue not tied to a trip — chiefly monthly guarantees (excluded from margin; real revenue). Sent invoices only, placed by ISSUE DATE, not by trip dates",
+      "Revenue not tied to a trip: chiefly monthly guarantees (excluded from margin; real revenue). Sent invoices only, placed by ISSUE DATE, not by trip dates",
       centsToDollarsString(report.totals.unattributedLineCents),
       `${report.totals.unattributedLineCount} lines`,
     ])
@@ -319,7 +319,7 @@ export async function GET(request: NextRequest) {
   );
   rows.push(
     csvRow([
-      "Mileage in MILES, not dollars — the standard mileage rate and actual vehicle expenses are alternative methods, never additive, so no mileage figure enters a margin",
+      "Mileage in MILES, not dollars. The standard mileage rate and actual vehicle expenses are alternative methods, never additive, so no mileage figure enters a margin",
       formatMiles(report.totals.mileageMiles),
     ])
   );

@@ -92,7 +92,7 @@ export default async function NewTripPage({
       title={cloneValues ? "New trip (duplicated)" : "New trip"}
       subtitle={
         cloneValues
-          ? "Client, aircraft and rates carried over — pick new dates and add legs once it's saved."
+          ? "Client, aircraft and rates carried over. Pick new dates and add legs once it's saved."
           : "The job you flew. Legs, expenses, and the invoice all hang off it."
       }
     >

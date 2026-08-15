@@ -57,17 +57,17 @@ export const CURRENCY_CARD_TITLES: Record<CurrencyType, { title: string; subtitl
   passenger_day: {
     title: "Takeoff and landing recency",
     subtitle:
-      "Three takeoffs and three landings within the preceding 90 days, as sole manipulator of the controls, in the same category, class, and type — required to act as PIC carrying persons, or of any aircraft certificated for more than one pilot. No time-of-day limit.",
+      "Required to act as PIC carrying persons, or in any aircraft certificated for more than one pilot. You need three takeoffs and three landings in the preceding 90 days, as sole manipulator of the controls, in the same category, class, and type. No time-of-day limit.",
   },
   passenger_night: {
     title: "Night takeoff and landing recency",
     subtitle:
-      "Three takeoffs and three landings to a full stop within the preceding 90 days, each between 1 hour after sunset and 1 hour before sunrise — required when carrying persons in that period. Not the same clock as logged night time.",
+      "Required when carrying persons between 1 hour after sunset and 1 hour before sunrise. You need three full-stop takeoffs and landings in that window, within the preceding 90 days. Not the same clock as logged night time.",
   },
   instrument: {
     title: "Instrument experience",
     subtitle:
-      "Within the 6 calendar months preceding the month of flight: six instrument approaches, holding procedures and tasks, and intercepting and tracking courses — in actual instrument conditions or simulated using a view-limiting device.",
+      "In the 6 calendar months before the month of flight, complete six instrument approaches, holding procedures and tasks, and intercepting and tracking courses. Do this in actual instrument conditions, or simulated using a view-limiting device.",
   },
   flight_review: {
     title: "Flight review",
@@ -77,7 +77,7 @@ export const CURRENCY_CARD_TITLES: Record<CurrencyType, { title: string; subtitl
   medical: {
     title: "Medical certificate",
     subtitle:
-      "Never computed. One medical certificate can carry different expiry dates for different privileges — class, age at exam, and the operation flown all change the answer — so the only date shown is the one you entered.",
+      "Never computed. One medical certificate can carry different expiry dates for different privileges. Class, age at exam, and the operation flown all change the answer, so the only date shown here is the one you entered.",
   },
 };
 

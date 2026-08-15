@@ -189,7 +189,7 @@ export function resolveOfferedMethods(input: {
  * desk, and what the pilot pays Stripe is none of their business.
  */
 export const BANK_PAYMENT_FEE_NOTE =
-  "Bank payments (ACH) usually carry a lower Stripe processing fee than cards, and take a few business days to settle instead of landing straight away. What you actually pay depends on your own Stripe pricing — check your Stripe Dashboard or stripe.com/pricing.";
+  "Bank payments (ACH) usually carry a lower Stripe processing fee than cards, and take a few business days to settle instead of landing straight away. What you actually pay depends on your own Stripe pricing. Check your Stripe Dashboard or stripe.com/pricing.";
 
 /**
  * When Stripe itself refused the bank method at create time.
@@ -203,7 +203,7 @@ export const BANK_PAYMENT_FEE_NOTE =
  * same place it would have.
  */
 export const BANK_PAYMENT_REJECTED_NOTE =
-  "Stripe wouldn't put a bank payment (ACH) option on this link, so it was created for cards only — your client can still pay it. That usually means ACH Direct Debit isn't active on your Stripe account: check Settings → Payment methods in your own Stripe Dashboard.";
+  "Stripe wouldn't put a bank payment (ACH) option on this link, so it was created for cards only. Your client can still pay it. That usually means ACH Direct Debit isn't active on your Stripe account: check Settings → Payment methods in your own Stripe Dashboard.";
 
 /**
  * WHEN THE INVOICE IS MARKED PAID, for the screen where a pilot chooses to
@@ -236,7 +236,7 @@ function achUnavailableNote(
 ): string {
   const consequence =
     choice === "ach"
-      ? "so this link takes cards only — your client can still pay it."
+      ? "so this link takes cards only; your client can still pay it."
       : "so this link takes cards only.";
 
   switch (capability) {

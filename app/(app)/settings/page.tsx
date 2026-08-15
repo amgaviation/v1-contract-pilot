@@ -276,7 +276,7 @@ export default async function SettingsPage({
                       Couldn&rsquo;t load your business details
                     </Text>
                     <Text size="2" color="gray">
-                      They&rsquo;re not shown because we couldn&rsquo;t read them —
+                      They&rsquo;re not shown because we couldn&rsquo;t read them,
                       not because they&rsquo;re empty. Don&rsquo;t save from this
                       screen until it loads, or you&rsquo;ll overwrite the name and
                       address that print on your invoices. Reload in a moment.
@@ -335,8 +335,8 @@ export default async function SettingsPage({
                     Your data
                   </Text>
                   <Text size="2" color="gray">
-                    Download everything this product holds for you — clients,
-                    trips, invoices, expenses, mileage and document details —
+                    Download everything this product holds for you: clients,
+                    trips, invoices, expenses, mileage and document details,
                     as CSV files.
                   </Text>
                   <Text size="2">

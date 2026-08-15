@@ -98,8 +98,8 @@ export default async function YearEndReportPage({
         </Callout.Icon>
         <Callout.Text>
           <Text as="div" weight="medium">
-            This is a summary of what you recorded — not tax advice, and not
-            a tax return.
+            This is a summary of what you recorded. It is not tax advice,
+            and it is not a tax return.
           </Text>
           <Text as="div" size="2">
             Every figure below comes directly from the trips, expenses, and
@@ -134,8 +134,9 @@ export default async function YearEndReportPage({
                 </Heading>
                 <Text as="div" size="2" color="gray">
                   Cash-basis: payments actually received between Jan 1 and
-                  Dec 31, {year} — not invoices issued or sent in{" "}
-                  {year}, which can land you in the wrong tax year.
+                  Dec 31, {year}. This does not include invoices issued or
+                  sent in {year}, which can land you in the wrong tax
+                  year.
                 </Text>
               </Box>
               <Button asChild variant="outline" size="2">
@@ -151,8 +152,8 @@ export default async function YearEndReportPage({
                   <ExclamationTriangleIcon />
                 </Callout.Icon>
                 <Callout.Text>
-                  There are more payments in {year} than this page totals —
-                  the downloaded CSV may also be partial. Contact support if
+                  There are more payments in {year} than this page totals.
+                  The downloaded CSV may also be partial. Contact support if
                   your totals look short.
                 </Callout.Text>
               </Callout.Root>
@@ -227,7 +228,7 @@ export default async function YearEndReportPage({
                 </Callout.Icon>
                 <Callout.Text>
                   There are more deductible expenses in {year} than this
-                  page totals — the downloaded CSV may also be partial.
+                  page totals. The downloaded CSV may also be partial.
                 </Callout.Text>
               </Callout.Root>
             ) : null}
@@ -304,7 +305,7 @@ export default async function YearEndReportPage({
                 </Callout.Icon>
                 <Callout.Text>
                   There are more rebilled expenses in {year} than this page
-                  totals — the downloaded CSV may also be partial.
+                  totals. The downloaded CSV may also be partial.
                 </Callout.Text>
               </Callout.Root>
             ) : null}
@@ -390,8 +391,8 @@ export default async function YearEndReportPage({
                 </Heading>
                 <Text as="div" size="2" color="gray">
                   Dated in {year}, neither billed to a client nor claimed as
-                  a deduction — money you&rsquo;re currently losing in both
-                  directions. Resolve them on{" "}
+                  a deduction. This is money you&rsquo;re currently losing
+                  in both directions. Resolve them on{" "}
                   <RadixLink asChild>
                     <NextLink href="/expenses">Expenses</NextLink>
                   </RadixLink>
@@ -412,14 +413,14 @@ export default async function YearEndReportPage({
                 </Callout.Icon>
                 <Callout.Text>
                   There are more unassigned receipts in {year} than this
-                  page totals — the downloaded CSV may also be partial.
+                  page totals. The downloaded CSV may also be partial.
                 </Callout.Text>
               </Callout.Root>
             ) : null}
 
             {report.unassigned.length === 0 ? (
               <Text size="2" color="gray">
-                Nothing unassigned in {year} — every receipt is either
+                Nothing unassigned in {year}. Every receipt is either
                 rebilled or deducted.
               </Text>
             ) : (
@@ -483,14 +484,14 @@ export default async function YearEndReportPage({
                   Mileage, standard rate
                 </Heading>
                 <Text as="div" size="2" color="gray">
-                  Standard-mileage-rate drives logged in {year} — excluded
-                  from Deductible expenses above. The standard mileage rate
-                  and actual vehicle expenses (fuel, rental car) are
-                  alternative deduction methods for the same vehicle, never
-                  additive, and this report can&rsquo;t tell which one
-                  applies to a given vehicle and year — folding this in
-                  automatically risks a double-claimed deduction. Review it
-                  in{" "}
+                  Standard-mileage-rate drives logged in {year}. These are
+                  excluded from Deductible expenses above. The standard
+                  mileage rate and actual vehicle expenses (fuel, rental
+                  car) are alternative deduction methods for the same
+                  vehicle, never additive. This report can&rsquo;t tell
+                  which one applies to a given vehicle and year, so folding
+                  this in automatically risks a double-claimed deduction.
+                  Review it in{" "}
                   <RadixLink asChild>
                     <NextLink href="/expenses/mileage">Mileage</NextLink>
                   </RadixLink>{" "}
@@ -511,7 +512,7 @@ export default async function YearEndReportPage({
                 </Callout.Icon>
                 <Callout.Text>
                   There are more drives logged in {year} than this page
-                  totals — the downloaded CSV may also be partial.
+                  totals. The downloaded CSV may also be partial.
                 </Callout.Text>
               </Callout.Root>
             ) : null}
@@ -595,7 +596,7 @@ export default async function YearEndReportPage({
                   Travel log &amp; per-diem days
                 </Heading>
                 <Text as="div" size="2" color="gray">
-                  One row per trip day you recorded in {year} — date,
+                  One row per trip day you recorded in {year}: date,
                   client, day type, away-from-home, and the route flown
                   that day. For whoever prepares your return: this log
                   counts days and never applies an M&amp;IE rate or
@@ -631,7 +632,7 @@ export default async function YearEndReportPage({
                     </Callout.Icon>
                     <Callout.Text>
                       There are more trip days in {year} than this page can
-                      list — the counts below may be short and the CSV will
+                      list. The counts below may be short, and the CSV will
                       refuse to download. Contact support if your log looks
                       incomplete.
                     </Callout.Text>
@@ -719,15 +720,16 @@ export default async function YearEndReportPage({
                   1099 reconciliation
                 </Heading>
                 <Text as="div" size="2" color="gray">
-                  Your cash-basis ledger for {year} against what each client
-                  told the IRS they paid you. A difference here usually
-                  means a payment crossed the Dec/Jan boundary — a client
-                  who mailed a cheque on Dec 28 and had you deposit it Jan 4
-                  reports it in one tax year while your own ledger, dated by
-                  when you actually received it, lands it in the other. That
-                  is not an error to fix in your books — it&rsquo;s a
-                  reason the two numbers won&rsquo;t match, worth having
-                  ready when your CPA asks about it.
+                  Your cash-basis ledger for {year}, compared against what
+                  each client told the IRS they paid you. A difference here
+                  usually means a payment crossed the Dec/Jan boundary. For
+                  example, a client who mailed a cheque on Dec 28 that you
+                  deposited on Jan 4 reports it in one tax year, while your
+                  own ledger, dated by when you actually received it, lands
+                  it in the other. That is not an error to fix in your
+                  books. It&rsquo;s a reason the two numbers won&rsquo;t
+                  match, and it&rsquo;s worth having ready when your CPA
+                  asks about it.
                 </Text>
               </Box>
               <Button asChild variant="outline" size="2">

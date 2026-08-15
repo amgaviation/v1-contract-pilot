@@ -203,7 +203,7 @@ export async function loadPilotHistoryReport(
   }
   if (aircraftResult.rows.length >= AIRCRAFT_LIMIT) {
     return failed(
-      "your fleet holds more aircraft than this report can read in one request — without all of them, hours would be filed under the wrong make and model, so no figures are shown"
+      "your fleet holds more aircraft than this report can read in one request. Without all of them, hours would be filed under the wrong make and model, so no figures are shown"
     );
   }
   // ARCHIVED AIRFRAMES ARE KEPT, deliberately. archived_at takes an
@@ -234,7 +234,7 @@ export async function loadPilotHistoryReport(
   for (;;) {
     if (offset >= MAX_ENTRIES) {
       return failed(
-        "your logbook holds more entries than this report can read completely — totals over a partial read would understate your flying on a form you have to sign, so none are shown"
+        "your logbook holds more entries than this report can read completely. Totals over a partial read would understate your flying on a form you have to sign, so none are shown"
       );
     }
     const wantCount = offset === 0;
@@ -265,7 +265,7 @@ export async function loadPilotHistoryReport(
   // that disagrees, and is never read as "must be fine".
   if (expectedTotal === null || entries.length !== expectedTotal) {
     return failed(
-      "your logbook could not be read completely just now — totals over a partial read would misstate your flying on a form you have to sign, so none are shown. Try again in a moment"
+      "your logbook could not be read completely just now. Totals over a partial read would misstate your flying on a form you have to sign, so none are shown. Try again in a moment"
     );
   }
 

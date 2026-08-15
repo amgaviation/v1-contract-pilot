@@ -48,7 +48,7 @@ export default async function StorefrontSuccessPage({
           <Callout.Root color="amber">
             <Callout.Text>
               We couldn&rsquo;t find that checkout session. If you were charged, your
-              receipt from Stripe is the record — nothing here changes it.
+              receipt from Stripe is the record. Nothing here changes it.
             </Callout.Text>
           </Callout.Root>
         ) : (
@@ -58,7 +58,7 @@ export default async function StorefrontSuccessPage({
                 {paid
                   ? "Payment received."
                   : pending
-                    ? "Payment started. Some methods take a few business days to settle — you'll get a receipt from Stripe when it does."
+                    ? "Payment started. Some methods take a few business days to settle. You'll get a receipt from Stripe when it does."
                     : `Payment status: ${session.payment_status}`}
               </Text>
               {session.amount_total !== null ? (

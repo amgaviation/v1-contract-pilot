@@ -183,7 +183,7 @@ export function ambiguousCommaReason(raw: string): string | null {
   if (stripped.includes(".") || !stripped.includes(",")) return null;
   const parts = stripped.split(",");
   if (parts.length === 2 && /^\d{1,2}$/.test(parts[1] ?? "") && /^\d+$/.test(parts[0] ?? "")) {
-    return `"${raw.trim()}" uses a comma where a decimal point was expected. This export looks like it uses European number formatting, which would be read 100x too large — re-export it with a decimal point, or enter this transaction by hand.`;
+    return `"${raw.trim()}" uses a comma where a decimal point was expected. This export looks like it uses European number formatting, which would be read 100x too large. Re-export it with a decimal point, or enter this transaction by hand.`;
   }
   return null;
 }

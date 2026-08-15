@@ -613,10 +613,10 @@ export function lateFeeLineDescription(
     : "an earlier invoice";
   const due = sourceDueOn ? `, due ${formatDate(sourceDueOn)}` : "";
   return quote.basis === "flat"
-    ? `Late fee as agreed — ${reference}${due}`
+    ? `Late fee as agreed: ${reference}${due}`
     : `Late fee as agreed, ${formatBps(quote.basisBps ?? 0)} per month for ${
         quote.monthsAccrued
-      } month${quote.monthsAccrued === 1 ? "" : "s"} — ${reference}${due}`;
+      } month${quote.monthsAccrued === 1 ? "" : "s"}: ${reference}${due}`;
 }
 
 /**

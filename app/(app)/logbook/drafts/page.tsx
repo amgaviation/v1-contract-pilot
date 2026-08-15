@@ -254,14 +254,14 @@ export default async function LogbookDraftsPage() {
       subtitle={
         pendingTrips.length === 0
           ? draftCheckIncomplete
-            ? "Nothing waiting in what this screen checked — see the note below before assuming your logbook is fully caught up."
+            ? "Nothing is waiting in the checks this screen ran. See the note below before assuming your logbook is fully caught up."
             : notYetFlownCount
-              ? `Nothing waiting here — but ${notYetFlownCount} trip${
+              ? `Nothing is waiting here, but ${notYetFlownCount} trip${
                   notYetFlownCount === 1 ? " is" : "s are"
                 } still marked Scheduled. Mark a trip flown and its legs show up here.`
               : notYetFlownCountFailed
-                ? "Nothing waiting here — but this screen couldn't check whether any trips are still marked Scheduled, so that isn't confirmed either."
-                : "Nothing waiting — every completed trip's legs are already in your logbook."
+                ? "Nothing is waiting here, but this screen couldn't check whether any trips are still marked Scheduled, so that isn't confirmed either."
+                : "Nothing is waiting. Every completed trip's legs are already in your logbook."
           : `${pendingTrips.length} completed trip${pendingTrips.length === 1 ? "" : "s"} with unconfirmed legs`
       }
     >
@@ -270,7 +270,7 @@ export default async function LogbookDraftsPage() {
           <Callout.Text>
             {`Showing drafts for your ${TRIP_LIMIT} most recently completed
               trips. Older completed trips aren't checked for drafts on
-              this screen — they're still in your account, but an
+              this screen. They're still in your account, but an
               unconfirmed leg on one of them won't show up here.`}
           </Callout.Text>
         </Callout.Root>
@@ -280,7 +280,7 @@ export default async function LogbookDraftsPage() {
           <Callout.Text>
             {`Checked your ${LEG_LIMIT} most recently flown legs on these
               trips for unconfirmed ones. Older legs aren't checked by this
-              screen — they're still in your account, but this list can't
+              screen. They're still in your account, but this list can't
               reach that far back.`}
           </Callout.Text>
         </Callout.Root>
@@ -293,10 +293,10 @@ export default async function LogbookDraftsPage() {
             </Heading>
             <Text size="2" color="gray" align="center">
               {draftCheckIncomplete
-                ? "This screen only checked your most recent completed trips and legs (see the note above) — an older unconfirmed leg could still be out there."
+                ? "This screen only checked your most recent completed trips and legs (see the note above). An older unconfirmed leg could still be out there."
                 : notYetFlownCount
-                  ? "Marking a trip flown proposes a logbook entry for each of its legs, and they wait here for you to confirm — nothing reaches your logbook automatically."
-                  : "Complete a trip with legs and its proposed entries will show up here for you to confirm — nothing reaches your logbook automatically."}
+                  ? "Marking a trip flown proposes a logbook entry for each of its legs, and they wait here for you to confirm. Nothing reaches your logbook automatically."
+                  : "Complete a trip with legs and its proposed entries will show up here for you to confirm. Nothing reaches your logbook automatically."}
             </Text>
             {/* A primary action rather than a dead end, and which one is
                 useful depends on why the queue is empty: mark a trip

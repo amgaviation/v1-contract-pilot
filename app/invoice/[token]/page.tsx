@@ -462,7 +462,7 @@ export default async function PublicInvoicePage({
               <Callout.Root color="amber" size="2">
                 <Callout.Text>
                   Balance due: {formatCents(invoice.totals.balance_due_cents)}. The
-                  online payment link for this invoice is out of date — contact
+                  online payment link for this invoice is out of date. Contact
                   your pilot for an updated one rather than using it.
                 </Callout.Text>
               </Callout.Root>

@@ -255,7 +255,7 @@ function parseClientForm(formData: FormData): ParsedClient {
   if (lateFeeKind === "flat" && (lateFeeFlat === undefined || !lateFeeFlat)) {
     return {
       ...empty,
-      error: "A flat late fee needs an amount, like 50 or 50.00. Choose “No late fee” if you haven't agreed one.",
+      error: "A flat late fee needs an amount, like 50 or 50.00. Choose \"No late fee\" if you haven't agreed one.",
     };
   }
   const lateFeeBps = parseRateToBps(String(formData.get("late_fee_rate_percent") ?? ""));
@@ -263,7 +263,7 @@ function parseClientForm(formData: FormData): ParsedClient {
     return {
       ...empty,
       error:
-        "A monthly late fee rate must be a percent like 1.5, up to 5%. Choose “No late fee” if you haven't agreed one.",
+        "A monthly late fee rate must be a percent like 1.5, up to 5%. Choose \"No late fee\" if you haven't agreed one.",
     };
   }
 

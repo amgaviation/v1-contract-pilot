@@ -135,12 +135,12 @@ export default function PacketPanel({
           <Callout.Text>
             Couldn&rsquo;t load this client&rsquo;s documents, so nothing is
             offered below. This is not a statement that none are on
-            file — reload before assuming there&rsquo;s nothing to send.
+            file. Reload before assuming there&rsquo;s nothing to send.
           </Callout.Text>
         </Callout.Root>
       ) : documents.length === 0 ? (
         <Text size="2" color="gray">
-          Nothing to send yet — add a W-9, a certificate of insurance or your
+          Nothing to send yet. Add a W-9, a certificate of insurance or your
           day-rate agreement under Documents first.
         </Text>
       ) : (
@@ -208,7 +208,7 @@ export default function PacketPanel({
         <Callout.Root color="red" size="1" mt="2">
           <Callout.Text>
             Couldn&rsquo;t check whether a live link already exists for{" "}
-            {clientName} — this is not a statement that none is out.
+            {clientName}. This is not a statement that none is out.
             Reload before creating a new one.
           </Callout.Text>
         </Callout.Root>
@@ -217,7 +217,7 @@ export default function PacketPanel({
       {url ? (
         <Flex direction="column" gap="2" mt="4">
           <Text size="2" weight="medium">
-            {state.token ? "Here's the link — send it to them" : "The live link"}
+            {state.token ? "Here's the link. Send it to them." : "The live link"}
           </Text>
           <Flex gap="2" wrap="wrap" align="center">
             <TextField.Root value={url} readOnly aria-label="Packet link" style={undefined} />
@@ -256,7 +256,7 @@ export default function PacketPanel({
               <AlertDialog.Title>Revoke this client link?</AlertDialog.Title>
               <AlertDialog.Description size="2">
                 The link stops working immediately. If your client has it bookmarked or in
-                their email, it will 404 for them — create a new one if they still need these
+                their email, it will 404 for them. Create a new one if they still need these
                 documents.
               </AlertDialog.Description>
               <Flex gap="3" mt="4" justify="end">

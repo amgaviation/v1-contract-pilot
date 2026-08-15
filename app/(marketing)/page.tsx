@@ -187,7 +187,7 @@ const SPEC: readonly SpecGroup[] = [
         // code and understated this product's strongest trust claim. This
         // line is the correction, and its tag is derived, so it cannot
         // drift back.
-        text: "Account-wide CSV export — every record type, on every plan",
+        text: "Account-wide CSV export: every record type, on every plan",
         features: ["account_export"],
       },
       { text: "Sales tax report", features: ["sales_tax_report"] },
@@ -324,7 +324,7 @@ export default async function LandingPage() {
                 style={{ maxWidth: "48rem" }}
               >
                 <Text size="1" weight="medium" className="v1-m-eyebrow" style={NAVY_INK_MUTED}>
-                  For the contract pilot — day rates, several operators,
+                  For the contract pilot: day rates, several operators,
                   one-person business
                 </Text>
 
@@ -340,7 +340,7 @@ export default async function LandingPage() {
                 {/* Its own element, not a <Text> nested inside the
                     <Heading> — which is what the old sub-line was. */}
                 <Text as="p" size={{ initial: "4", sm: "5" }} style={NAVY_INK_MUTED}>
-                  Type the dates, the legs and the tail number once — on the
+                  Type the dates, the legs and the tail number once, on the
                   trip. Everything after comes off that record.
                 </Text>
 
@@ -396,7 +396,7 @@ export default async function LandingPage() {
             <Card size="3" style={{ background: "var(--signal-soft)" }}>
               <Flex direction="column" gap="2">
                 <Text size="1" weight="medium" color="indigo">
-                  YOU TYPE — THE TRIP
+                  YOU TYPE THE TRIP
                 </Text>
                 <Text size="3">
                   The client, the aircraft, the legs, and each day as flight,

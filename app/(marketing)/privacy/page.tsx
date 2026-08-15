@@ -44,7 +44,7 @@ export default function PrivacyPage() {
               <InfoCircledIcon />
             </Callout.Icon>
             <Callout.Text>
-              <Text weight="medium">Placeholder — pending review by aviation counsel.</Text>{" "}
+              <Text weight="medium">Placeholder, pending review by aviation counsel.</Text>{" "}
               Nothing on this page is a binding privacy commitment.{" "}
               {BRAND.name} has not yet published a Privacy Policy, and no
               version of this text has been reviewed or approved.
@@ -66,7 +66,7 @@ export default function PrivacyPage() {
               scoped to your account.
             </Text>
             <Text size="2" color="gray">
-              · Receipt scanning runs in your own browser, not on a server —
+              · Receipt scanning runs in your own browser, not on a server:
               a receipt image is never uploaded just to be read.
             </Text>
           </Flex>
@@ -74,7 +74,7 @@ export default function PrivacyPage() {
           <Text size="2" color="gray">
             This is not the complete policy. It does not yet address data
             retention, deletion, or every detail a full policy has to
-            cover — that text is pending counsel review.
+            cover. That text is pending counsel review.
           </Text>
         </Flex>
       </Container>

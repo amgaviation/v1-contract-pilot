@@ -282,7 +282,7 @@ function FlagLine({
       <View style={styles.flagRow}>
         <Text style={styles.strong}>{label}</Text>
         <Text style={styles.muted}>
-          Not recorded — no aircraft on this account states one way or the
+          Not recorded. No aircraft on this account states one way or the
           other, so no figure is given.
         </Text>
       </View>
@@ -333,9 +333,9 @@ export function PilotHistoryPdf({
     { label: "Instructor given", allTime: hours(a.instructorGiven), recent: hours(r.instructorGiven), ninety: hours(n.instructorGiven) },
     { label: "Cross country", allTime: hours(a.crossCountry), recent: hours(r.crossCountry), ninety: hours(n.crossCountry) },
     { label: "Night", allTime: hours(a.night), recent: hours(r.night), ninety: hours(n.night) },
-    { label: "Instrument — actual", allTime: hours(a.instrumentActual), recent: hours(r.instrumentActual), ninety: hours(n.instrumentActual) },
-    { label: "Instrument — simulated", allTime: hours(a.instrumentSimulated), recent: hours(r.instrumentSimulated), ninety: hours(n.instrumentSimulated) },
-    { label: "Instrument — total", allTime: hours(totalInstrument(a)), recent: hours(totalInstrument(r)), ninety: hours(totalInstrument(n)) },
+    { label: "Instrument, actual", allTime: hours(a.instrumentActual), recent: hours(r.instrumentActual), ninety: hours(n.instrumentActual) },
+    { label: "Instrument, simulated", allTime: hours(a.instrumentSimulated), recent: hours(r.instrumentSimulated), ninety: hours(n.instrumentSimulated) },
+    { label: "Instrument, total", allTime: hours(totalInstrument(a)), recent: hours(totalInstrument(r)), ninety: hours(totalInstrument(n)) },
     { label: "Simulator (not aircraft time)", allTime: hours(a.simulator), recent: hours(r.simulator), ninety: hours(n.simulator), strong: true },
     { label: "Takeoffs", allTime: String(totalTakeoffs(a)), recent: String(totalTakeoffs(r)), ninety: String(totalTakeoffs(n)) },
     { label: "Landings", allTime: String(totalLandings(a)), recent: String(totalLandings(r)), ninety: String(totalLandings(n)) },
@@ -419,7 +419,7 @@ export function PilotHistoryPdf({
           recentLabel={lastTwelveMonths.window.label}
           ninetyLabel={`${lastNinetyDays.window.label} (${formatDate(
             lastNinetyDays.window.from ?? lastNinetyDays.window.to
-          )} – ${formatDate(lastNinetyDays.window.to)})`}
+          )} to ${formatDate(lastNinetyDays.window.to)})`}
         />
 
         <Text style={styles.h2}>Turbine and retractable gear</Text>
@@ -433,7 +433,7 @@ export function PilotHistoryPdf({
         <Text style={styles.h2}>By category and class</Text>
         {allTime.categoryClassUnrecorded ? (
           <Text style={styles.sectionNote}>
-            Not recorded — no aircraft on this account carries a category
+            Not recorded. No aircraft on this account carries a category
             and class, so the hours above are not broken down by one.
           </Text>
         ) : (

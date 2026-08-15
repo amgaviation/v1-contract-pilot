@@ -66,13 +66,13 @@ const EXPORTS: ExportCard[] = [
     href: "/settings/export/invoice-payments",
     title: "Invoice payments",
     description:
-      "The full payment ledger: date paid, client, invoice, method and amount — including corrections (negative rows naming the payment they cancel, with the reason) and payments on invoices that were later voided, flagged by the status column.",
+      "The full payment ledger: date paid, client, invoice, method and amount, including corrections (negative rows naming the payment they cancel, with the reason) and payments on invoices that were later voided, flagged by the status column.",
   },
   {
     href: "/settings/export/estimates",
     title: "Estimates",
     description:
-      "Every estimate: number, client, status, issued and valid-until dates, terms, the computed subtotal, tax and total, and — where a quote became an invoice — which invoice and when.",
+      "Every estimate: number, client, status, issued and valid-until dates, terms, and the computed subtotal, tax and total. Where a quote became an invoice, this also shows which invoice and when.",
   },
   {
     href: "/settings/export/estimate-lines",
@@ -96,13 +96,13 @@ const EXPORTS: ExportCard[] = [
     href: "/settings/export/documents",
     title: "Documents (details only)",
     description:
-      "What's on file and when it expires — kind, label, issued and expiry dates, and filename. The uploaded files themselves are not in this CSV; download each one from its page in Documents.",
+      "What's on file and when it expires: kind, label, issued and expiry dates, and filename. The uploaded files themselves are not in this CSV; download each one from its page in Documents.",
   },
   {
     href: "/settings/export/operator-qualifications",
     title: "Operator qualifications",
     description:
-      "Your per-operator training and check records: requirement, status, completed and expiry dates, and type designator — the 135.293/.297/.299 compliance history an operator or an insurer may ask to see.",
+      "Your per-operator training and check records: requirement, status, completed and expiry dates, and type designator. This is the 135.293/.297/.299 compliance history an operator or an insurer may ask to see.",
   },
   {
     href: "/settings/export/aircraft",
@@ -120,7 +120,7 @@ const EXPORTS: ExportCard[] = [
     href: "/settings/export/client-tax-forms",
     title: "Client 1099s",
     description:
-      "The 1099 each client reported for each tax year, as the client reported it — for reconciling against your own payment ledger.",
+      "The 1099 each client reported for each tax year, as they reported it. Use it to reconcile against your own payment ledger.",
   },
   {
     href: "/settings/export/guarantee-periods",
@@ -185,7 +185,7 @@ export default async function ExportPage() {
   return (
     <PageShell
       title="Export your data"
-      subtitle="One CSV per record type — every business, compliance and accounting record this product holds for you, in files a spreadsheet can open."
+      subtitle="One CSV per record type: every business, compliance and accounting record this product holds for you, in files a spreadsheet can open."
     >
       <Flex direction="column" gap="3">
         <Text size="2" color="gray">
@@ -236,7 +236,7 @@ export default async function ExportPage() {
                 Logbook
               </Heading>
               <Text as="div" size="2" color="gray">
-                Your flight time already has its own full CSV export — the same
+                Your flight time already has its own full CSV export, the same
                 download as the button on the{" "}
                 <RadixLink asChild>
                   <NextLink href="/logbook">Logbook</NextLink>
@@ -259,7 +259,7 @@ export default async function ExportPage() {
           expenses and documents CSVs say whether a file is on record; the
           files themselves stay downloadable one at a time from their own
           pages. Also not included: internal bookkeeping trails with no
-          data of your own in them — bank-import batch/source-file records
+          data of your own in them, such as bank-import batch/source-file records
           and payment-reminder send logs.
         </Text>
       </Flex>

@@ -84,7 +84,7 @@ export default async function ClientsPage() {
               <ExclamationTriangleIcon />
             </Callout.Icon>
             <Callout.Text>
-              {`This list may be partial — there are more than ${CLIENTS_LIMIT} clients and only the first ${CLIENTS_LIMIT} are shown.`}
+              {`This list may be partial. There are more than ${CLIENTS_LIMIT} clients and only the first ${CLIENTS_LIMIT} are shown.`}
             </Callout.Text>
           </Callout.Root>
         </Box>

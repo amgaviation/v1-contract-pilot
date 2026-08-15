@@ -326,7 +326,10 @@ test("refuses when a trip's client is missing from the clients read", () => {
   });
   assert.equal(assembly.ok, false);
   assert.match(assembly.reason, /client-missing/);
-  assert.match(assembly.reason, /refusing/i);
+  // Pinned on what the reason SAYS, not on one word of its phrasing:
+  // the refusal must name the thing it will not do, so a reader knows a
+  // rollup is missing rather than empty.
+  assert.match(assembly.reason, /won't print a partial per-client rollup/i);
 });
 
 test("refuses when draft day money exceeds the total it is a subset of", () => {

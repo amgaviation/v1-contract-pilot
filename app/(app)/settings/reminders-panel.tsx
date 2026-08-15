@@ -80,7 +80,7 @@ export default function RemindersPanel({
             <Text as="div" size="2" color={schedulerConfigured ? "gray" : "amber"}>
               {schedulerConfigured
                 ? "The daily run is switched on."
-                : "The daily run is switched off — nothing goes out on its own until CRON_SECRET is set on the deployment. You can still run it by hand below."}
+                : "The daily run is switched off. Nothing goes out on its own until CRON_SECRET is set on the deployment. You can still run it by hand below."}
             </Text>
             <Text as="div" size="2" color={mailConfigured ? "gray" : "amber"}>
               {mailConfigured
@@ -101,7 +101,7 @@ export default function RemindersPanel({
             {clientsLoadFailed ? (
               <Text as="div" size="2" color="amber">
                 Your client schedules couldn&rsquo;t be loaded just now, so this
-                list may be incomplete — it is not a sign that nothing is
+                list may be incomplete. It is not a sign that nothing is
                 scheduled. Reload the page to try again; the daily run is
                 unaffected either way.
               </Text>
@@ -119,7 +119,7 @@ export default function RemindersPanel({
                       <NextLink href={`/clients/${client.id}`}>{client.name}</NextLink>
                     </RadixLink>{" "}
                     <Text as="span" size="1" color="gray">
-                      — {client.summary}
+                      · {client.summary}
                     </Text>
                   </Text>
                 ))}
@@ -151,7 +151,7 @@ export default function RemindersPanel({
                 refresh. */}
             <Text size="1" color="gray">
               Sends anything that is due right now, exactly as the daily run
-              would. Safe to press twice — a reminder that has already gone out
+              would. Safe to press twice: a reminder that has already gone out
               is never sent again.
             </Text>
             {lines ? (

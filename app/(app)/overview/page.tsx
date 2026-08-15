@@ -1111,7 +1111,7 @@ export default async function OverviewPage() {
     {
       id: "invoice",
       label: "Turn it into an invoice",
-      detail: "Flight days, travel days, and rebilled expenses come across from the trip — you review before anything is sent.",
+      detail: "Flight days, travel days, and rebilled expenses come across from the trip. You review before anything is sent.",
       href: "/invoices/new",
       cta: "Draft an invoice",
       done: anyInvoiceCount.ok && anyInvoiceCount.count > 0,
@@ -1119,7 +1119,7 @@ export default async function OverviewPage() {
     {
       id: "stripe",
       label: "Connect Stripe to get paid",
-      detail: "Optional, and it only affects how a client can pay you — invoices work without it.",
+      detail: "Optional, and it only affects how a client can pay you. Invoices work without it.",
       href: "/settings",
       cta: "Open settings",
       done: Boolean(account.connect_account_id),
@@ -1132,14 +1132,14 @@ export default async function OverviewPage() {
       title="Overview"
       subtitle={
         errors.length
-          ? "Some figures below couldn't load — see the notice."
+          ? "Some figures below couldn't load. See the notice."
           : `${pluralize(readyCount, "trip")} flown and logged but not yet invoiced. ${
               overdue.length
                 ? `${pluralize(overdue.length, "invoice")} past due.`
                 : "No invoices past due."
             }${
               unmarkedTripCount
-                ? ` ${pluralize(unmarkedTripCount, "trip")} still marked Scheduled — mark them flown to invoice them.`
+                ? ` ${pluralize(unmarkedTripCount, "trip")} still marked Scheduled. Mark them flown to invoice them.`
                 : ""
             }`
       }
@@ -1174,7 +1174,7 @@ export default async function OverviewPage() {
           <Callout.Text>
             {`Figures using ${truncatedAggregates.join(
               ", "
-            )} may be partial — there are more than ${AGGREGATE_LIMIT} rows and only the first ${AGGREGATE_LIMIT} were totaled.`}
+            )} may be partial: there are more than ${AGGREGATE_LIMIT} rows and only the first ${AGGREGATE_LIMIT} were totaled.`}
           </Callout.Text>
         </Callout.Root>
       ) : null}
@@ -1191,7 +1191,7 @@ export default async function OverviewPage() {
                 Getting started
               </Text>
               <Text size="2" color="gray">
-                {`${stepsDone} of ${GETTING_STARTED_STEPS.length} done. Log the trip once — its legs feed your logbook, its days feed the invoice, and its expenses file themselves against it. The figures below fill in from there.`}
+                {`${stepsDone} of ${GETTING_STARTED_STEPS.length} done. Log the trip once: its legs feed your logbook, its days feed the invoice, and its expenses file themselves against it. The figures below fill in from there.`}
               </Text>
             </Flex>
             {/* The list reset is written out because Radix's is
@@ -1231,7 +1231,7 @@ export default async function OverviewPage() {
                         asChild
                         size="1"
                         variant={step.done ? "outline" : "solid"}
-                        aria-label={`${step.cta} — step ${index + 1}, ${step.label}`}
+                        aria-label={`${step.cta}, step ${index + 1}, ${step.label}`}
                       >
                         <NextLink href={step.href}>{step.done ? "Review" : step.cta}</NextLink>
                       </Button>
@@ -1352,7 +1352,7 @@ export default async function OverviewPage() {
         {errors.length ? (
           <Flex direction="column" align="center" gap="3" py="5">
             <Text size="2" color="gray" align="center">
-              Couldn&rsquo;t load your unbilled work — see the notice above.
+              Couldn&rsquo;t load your unbilled work. See the notice above.
               This is not a statement that you are caught up.
             </Text>
           </Flex>
@@ -1373,7 +1373,7 @@ export default async function OverviewPage() {
           </EmptyState>
         ) : readyCount === 0 ? (
           <EmptyState
-            title="Nothing unbilled — you’re caught up"
+            title="Nothing unbilled. You’re caught up"
             action={
               <Button asChild variant="outline">
                 <NextLink href="/trips/new">Log a trip</NextLink>
@@ -1432,7 +1432,7 @@ export default async function OverviewPage() {
                             asChild
                             size="2"
                             variant={row.clientId ? "solid" : "outline"}
-                            aria-label={`${draftAction(row.clientId)} — ${row.label}`}
+                            aria-label={`${draftAction(row.clientId)}, ${row.label}`}
                           >
                             <NextLink href={draftHref(row.clientId)}>
                               {draftAction(row.clientId)}
@@ -1530,7 +1530,7 @@ export default async function OverviewPage() {
                         asChild
                         size="1"
                         variant={row.clientId ? "solid" : "outline"}
-                        aria-label={`${draftAction(row.clientId)} — ${row.label}`}
+                        aria-label={`${draftAction(row.clientId)}, ${row.label}`}
                       >
                         <NextLink href={draftHref(row.clientId)}>
                           {draftAction(row.clientId)}
@@ -1602,14 +1602,14 @@ export default async function OverviewPage() {
                     unbilledCents - unbilledShortfallCents
                   )} of the ${formatCents(
                     unbilledCents
-                  )} total — the client list came back incomplete, so this breakdown is partial in its money, its trip counts and its days alike. The total row is not: it is one read that cannot be shortened.`}
+                  )} total. The client list came back incomplete, so this breakdown is partial in its money, its trip counts and its days alike. The total row is not: it is one read that cannot be shortened.`}
                 </Text>
               </Flex>
             ) : unbilledBreakdown === "inconsistent" ? (
               <Flex mt="3">
                 <Text size="1" color="gray">
                   These rows and the total were read a moment apart and
-                  don&rsquo;t reconcile — something changed in between, most
+                  don&rsquo;t reconcile. Something changed in between, most
                   likely an invoice issued or voided while this page loaded.
                   Reload to see one consistent picture.
                 </Text>
@@ -1626,7 +1626,7 @@ export default async function OverviewPage() {
                   written as one. */}
               <Text size="1" color="gray">
                 Billable day money plus rebillable receipts, for completed
-                trips not yet on an issued invoice — the same figure as
+                trips not yet on an issued invoice. It&rsquo;s the same figure as
                 &ldquo;Unbilled work&rdquo; above, which is why the total row
                 matches it. Per diem and any contract minimum are added when
                 the invoice is drafted, so a draft can come out higher than
@@ -1660,7 +1660,7 @@ export default async function OverviewPage() {
         {errors.length ? (
           <Flex direction="column" align="center" gap="3" py="5">
             <Text size="2" color="gray" align="center">
-              Couldn&rsquo;t load your document expirations — see the notice
+              Couldn&rsquo;t load your document expirations. See the notice
               above. This is not a statement that you have none on file.
             </Text>
           </Flex>
@@ -1749,7 +1749,7 @@ export default async function OverviewPage() {
           {errors.length ? (
             <Flex direction="column" align="center" gap="3" py="5">
               <Text size="2" color="gray" align="center">
-                Couldn&rsquo;t load your unbilled trips — see the notice
+                Couldn&rsquo;t load your unbilled trips. See the notice
                 above. This is not a statement that none are waiting.
               </Text>
             </Flex>
@@ -1840,7 +1840,7 @@ export default async function OverviewPage() {
           {errors.length ? (
             <Flex align="center" justify="center" py="5">
               <Text size="2" color="gray" align="center">
-                Couldn&rsquo;t load — see the notice above. This is not a
+                Couldn&rsquo;t load. See the notice above. This is not a
                 statement that nothing needs attention.
               </Text>
             </Flex>
@@ -1892,7 +1892,7 @@ export default async function OverviewPage() {
                         asChild
                         variant="outline"
                         size="1"
-                        aria-label={`${item.action} — ${item.label}`}
+                        aria-label={`${item.action}, ${item.label}`}
                       >
                         <NextLink href={item.href}>{item.action}</NextLink>
                       </Button>
