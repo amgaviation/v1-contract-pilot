@@ -12,7 +12,7 @@ import { BRAND } from "@/lib/brand";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import type { NavItem } from "@/lib/nav";
 import type { ResolvedTheme } from "@/lib/theme-slots";
-import { CommandPalette } from "./command-palette";
+import { CommandPaletteProvider, CommandPaletteTrigger } from "./command-palette";
 import { NavRail, NavStrip } from "./nav-rail";
 import SkipLink from "./skip-link";
 
@@ -83,6 +83,18 @@ export function AppShell({
   // below, which carries data-appearance="dark" and inherits a dark palette
   // with no second stylesheet and no component-level override.
   return (
+    // Wraps the shell's own content rather than being mounted inside it.
+    // The dialog, its open state and its ⌘K listener all live in
+    // command-palette.tsx's CommandPaletteProvider — see that file's
+    // header comment for why one provider high up the tree, rather than
+    // either trigger owning its own copy, is what keeps this a single
+    // dialog no matter how many CommandPaletteTrigger's render below it.
+    // A client component rendering server-rendered content passed to it
+    // as `children` does not pull that content across the server/client
+    // boundary, so this stays a server component with no "use client" of
+    // its own. (Not re-indented below — this wraps the existing tree
+    // without reflowing it, so the diff stays readable.)
+    <CommandPaletteProvider sections={sections}>
     <Box
       // .v1-nozoom-fields (app/globals.css): every field at the app's
       // default size="2" renders at 13px (--text-2), below iOS Safari's
@@ -137,12 +149,32 @@ export function AppShell({
                 prefers-reduced-transparency and prefers-contrast. */}
             <Box className="i-chrome i-chrome-edge">
               <Flex align="center" justify="between" gap="2" px="3" pt="3">
-                <Link
-                  href={DASHBOARD_PATH}
-                  aria-label={`${BRAND.name}: ${BRAND.descriptor}`}
-                >
-                  <Logo />
-                </Link>
+                <Flex align="center" gap="2">
+                  <Link
+                    href={DASHBOARD_PATH}
+                    aria-label={`${BRAND.name}: ${BRAND.descriptor}`}
+                  >
+                    <Logo />
+                  </Link>
+                  {/* The phone entry point to the command palette. The
+                      desktop header carrying the other one (below, in
+                      this file) is display:none at this width, and there
+                      is no physical ⌘/Ctrl key here for the keyboard
+                      shortcut either — without this, search had no way
+                      in on a phone at all. Lives in THIS row, beside the
+                      logo, rather than inside NavStrip below: NavStrip is
+                      a horizontally-scrolling strip of equal-priority
+                      section links, and a control that is not a section
+                      would either eat into that scroll area or force it
+                      to wrap, so this costs the strip nothing. Icon-only
+                      with aria-label="Search" for the same reason the
+                      strip has no labelled buttons of its own — there is
+                      no room to spare — and size="2" rather than the
+                      default for the same WCAG 2.5.8 target-size floor
+                      the desktop Sign out button's comment below
+                      documents. */}
+                  <CommandPaletteTrigger variant="icon" />
+                </Flex>
                 {/* The only Sign out control reachable below `md` — the
                     desktop header carrying it is hidden at this width (see
                     the header's own comment), and Settings offers only
@@ -280,15 +312,18 @@ export function AppShell({
                   {userEmail}
                 </Text>
               </Box>
-              {/* The one visible entry point to the command palette — see
-                  command-palette.tsx's own header comment for why the
-                  button lives in that client component rather than here.
-                  `sections` is the SAME server-filtered prop passed to
+              {/* The desktop entry point to the command palette — one of
+                  two now; the phone top bar above carries the other (see
+                  its own comment). Both open the SAME dialog: see
+                  command-palette.tsx's header comment for why splitting
+                  the trigger from the provider is what keeps that true
+                  rather than this being a second copy of it. `sections`
+                  still travels as the SAME server-filtered prop passed to
                   NavRail/NavStrip below (nav-rail.tsx's header comment:
                   the currency-flag filter runs server-side, before this
-                  prop exists), so the palette can never offer a pilot a
+                  prop exists), so neither trigger can ever offer a pilot a
                   section their tenant does not have. */}
-              <CommandPalette sections={sections} />
+              <CommandPaletteTrigger />
               {/* A form, not a link: signing out mutates session state, and
                   a GET that a prefetcher or a link-scanner can fire would
                   end the session behind the pilot's back. */}
@@ -377,5 +412,6 @@ export function AppShell({
         </Flex>
       </Flex>
     </Box>
+    </CommandPaletteProvider>
   );
 }
