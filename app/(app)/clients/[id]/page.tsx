@@ -370,7 +370,11 @@ export default async function EditClientPage({
           (20260815130000). Sits next to "what do they owe me" because it
           is the other half of the same question. */}
       <Box mt="4">
-        <CostPanel clientId={client.id} clientName={client.name} />
+        <CostPanel
+          clientId={client.id}
+          clientName={client.name}
+          archived={Boolean(client.archived_at)}
+        />
       </Box>
 
       <Box mt="4">

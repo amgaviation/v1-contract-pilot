@@ -68,25 +68,85 @@ export function expenseClientId(
 }
 
 /**
- * The client the form must post for a given trip choice.
+ * What goes in client_id when the row is written.
  *
- * Picking a trip DECIDES the client: the trip is the stronger statement of
- * who the work was for, and the database refuses any other pairing. So the
- * form derives rather than asks, and a client the pilot had chosen before
- * picking a trip is replaced, not merged. Picking a trip with no client on
- * it clears the field too, because "this trip has no client" and "this
- * expense is for client X" is precisely the combination that has no
- * storable form.
+ * A TRIP MEANS NULL. Not "the trip's client" -- null. The column means "the
+ * pilot attributed this directly", and the trip-derived answer is
+ * deliberately not materialised into it. Three things depend on that and
+ * break together if this ever starts copying the trip's client in:
  *
- * `null` trip means the pilot's own choice stands.
+ *   * the no-backfill argument (20260815130000). Existing rows keep null
+ *     BECAUSE null is the normal, correct state for a trip-attached
+ *     expense. Writing the derived value on new rows would leave the table
+ *     split between two conventions for the same fact, which is the
+ *     "two sources for one number" defect this product treats as a bug.
+ *   * the "Via trip" marker. resolveExpenseClient reports `direct` for
+ *     anything with a stored client_id, so materialising it would label
+ *     every trip expense as a direct attribution and the marker would
+ *     never appear.
+ *   * ON DELETE SET NULL (trip_id). Deleting a trip is meant to leave a
+ *     DIRECT attribution standing and nothing else. A materialised value
+ *     would survive the trip it was copied from and become an attribution
+ *     the pilot never made, on a trip that no longer exists.
+ *
+ * Nothing is weakened by storing null: the composite FK on (account_id,
+ * trip_id, client_id) is MATCH SIMPLE, so a null client_id satisfies it
+ * trivially, and the trip's own FK still proves the trip is in the account.
  */
-export function clientIdForTrip(
-  tripClientId: string | null | undefined,
+export function clientIdForStorage(
   chosenClientId: string | null,
   hasTrip: boolean
 ): string | null {
-  if (!hasTrip) return chosenClientId;
-  return tripClientId ?? null;
+  return hasTrip ? null : chosenClientId;
+}
+
+/**
+ * The trip-to-client map the reading rule needs, or a refusal.
+ *
+ * WHY THIS IS A RESULT TYPE AND NOT A MAP. Every expense written before
+ * 20260815130000, and every one the bank import confirms, carries a null
+ * client_id and reaches its client THROUGH the trip. So a trip whose client
+ * this lookup does not know is not a harmless gap: that expense reads as
+ * belonging to nobody. It disappears from its client's filter, appears
+ * wrongly under "No client", and drops out of that client's cost total --
+ * silently, and in the direction that understates. An incomplete lookup and
+ * a complete one must therefore not be the same value, and this is the
+ * boundary that keeps them apart (the lib/supabase/rows.ts rule, applied to
+ * a join rather than a list).
+ *
+ * INCOMPLETE HAS TWO CAUSES, both fatal to the same figures:
+ *   * the read failed -- `rows` is null;
+ *   * the read succeeded but did not return every trip asked for, which
+ *     means it was truncated. pilot.expenses.trip_id is a foreign key with
+ *     ON DELETE SET NULL, so a referenced trip always exists and always
+ *     belongs to the same account; a missing one is never "deleted" or
+ *     "not yours", it is only ever "not all of them came back".
+ */
+export type TripClientLookup =
+  | { ok: true; clientIdByTrip: ReadonlyMap<string, string | null> }
+  | { ok: false };
+
+export function buildTripClientLookup(
+  neededTripIds: readonly string[],
+  rows: readonly { id: string; client_id: string | null }[] | null
+): TripClientLookup {
+  if (rows === null) return { ok: false };
+  const clientIdByTrip = new Map(rows.map((trip) => [trip.id, trip.client_id]));
+  for (const id of neededTripIds) {
+    if (!clientIdByTrip.has(id)) return { ok: false };
+  }
+  return { ok: true, clientIdByTrip };
+}
+
+/** Every distinct trip an expense list refers to. The bound on the lookup. */
+export function referencedTripIds(
+  expenses: readonly ExpenseClientInput[]
+): string[] {
+  const ids = new Set<string>();
+  for (const expense of expenses) {
+    if (expense.trip_id) ids.add(expense.trip_id);
+  }
+  return [...ids];
 }
 
 /**

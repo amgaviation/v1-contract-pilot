@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { parseDollarsToCents } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+import { clientIdForStorage } from "@/lib/expense-client";
 import type { Database } from "@/lib/supabase/database.types";
 
 type ExpenseInsert = Database["pilot"]["Tables"]["expenses"]["Insert"];
@@ -152,38 +153,29 @@ function parseExpenseForm(formData: FormData): {
       amount_cents: amount,
       treatment,
       trip_id: tripId,
-      // Provisional. When a trip is named, the client is DERIVED from it
-      // server-side (resolveClientForTrip below) and whatever was posted
-      // here is discarded -- see that function for why the posted value is
-      // never trusted in that case.
-      client_id: clientId,
+      // A trip stores NULL here, not the trip's client. See
+      // clientIdForStorage for the three things that depend on the column
+      // meaning "attributed directly" and nothing else. The trip itself is
+      // still checked (settleTripAndClient below) so a bad trip id is
+      // caught rather than filed.
+      client_id: clientIdForStorage(clientId, Boolean(tripId)),
       notes: optional(formData, "notes"),
     },
   };
 }
 
 /**
- * Settles the trip-and-client question before the row is written.
+ * Checks the trip before the row is written.
  *
- * The database already refuses a disagreement: with both columns set, the
- * composite FK to pilot.trips (account_id, id, client_id) admits only a
- * pair that trip actually has. This function exists so the pilot never
- * meets that constraint as an error. It reads the trip's OWN client and
- * uses that, discarding whatever `client_id` the request carried, so:
- *
- *   * the form's derived-and-disabled Client field cannot drift from the
- *     truth if a trip's client is changed in another tab;
- *   * a hand-crafted POST naming a foreign or simply wrong client with a
- *     valid trip is corrected rather than rejected, because there is
- *     exactly one right answer and the trip is it;
- *   * a trip with no client on it clears the field, which is the only
- *     storable state for that pair.
- *
- * The read is RLS-scoped like every other, so a trip id from another
- * account returns no row -- reported as an unknown trip rather than
- * silently filed with no client.
+ * `client_id` is already null for anything with a trip (clientIdForStorage
+ * decided that in parseExpenseForm), so there is no pair for the composite
+ * FK to reject and nothing here corrects a value. What this does is refuse
+ * a trip that is not the caller's: without it, a POST carrying another
+ * account's trip id would be filed and only fail at the FK, reported as a
+ * generic "that record is linked to something else". The read is RLS-scoped
+ * like every other, so another account's trip simply returns no row.
  */
-async function resolveClientForTrip(
+async function settleTripAndClient(
   supabase: Awaited<ReturnType<typeof createClient>>,
   accountId: string,
   values: ExpenseFields
@@ -192,7 +184,7 @@ async function resolveClientForTrip(
 
   const { data, error } = await supabase
     .from("trips")
-    .select("client_id")
+    .select("id")
     .eq("id", values.trip_id)
     .eq("account_id", accountId)
     .maybeSingle();
@@ -200,10 +192,7 @@ async function resolveClientForTrip(
   if (error) return { values: null, error: friendlyDbError(error, "trips.select") };
   if (!data) return { values: null, error: "That trip no longer exists." };
 
-  return {
-    values: { ...values, client_id: (data as { client_id: string | null }).client_id },
-    error: null,
-  };
+  return { values: { ...values, client_id: null }, error: null };
 }
 
 /**
@@ -335,7 +324,7 @@ export async function createExpense(
   }
 
   const supabase = await createClient();
-  const { values: filed, error: clientError } = await resolveClientForTrip(
+  const { values: filed, error: clientError } = await settleTripAndClient(
     supabase,
     account.id,
     values
@@ -422,7 +411,7 @@ export async function updateExpense(
 
   const supabase = await createClient();
 
-  const { values: filed, error: clientError } = await resolveClientForTrip(
+  const { values: filed, error: clientError } = await settleTripAndClient(
     supabase,
     account.id,
     values
@@ -581,27 +570,28 @@ export async function fileExpense(
   const filedTripId = UUID_RE.test(tripId) ? tripId : null;
   const payload: ExpenseUpdate = { trip_id: filedTripId, treatment };
 
-  // Filing onto a trip settles the client the same way the form does. It
-  // is not optional here: a receipt that already names client A directly,
-  // filed onto a trip belonging to client B, is the exact pair the
-  // composite FK refuses -- so without this the queue's two-click fix would
-  // fail with a constraint error on precisely the receipts a pilot had
-  // already taken the trouble to attribute.
+  // Filing onto a trip clears client_id, the same rule the form follows
+  // (clientIdForStorage): with a trip, the client is derived, never stored.
+  // Clearing is required rather than tidy -- a receipt already attributed
+  // to client A, filed onto client B's trip, is the exact pair the
+  // composite FK refuses, so leaving the old value would fail the queue's
+  // two-click fix on precisely the receipts a pilot had taken the trouble
+  // to attribute. The trip is read first so an unknown one is reported as
+  // itself instead of as a foreign key error.
   //
-  // Filing with NO trip deliberately leaves client_id alone rather than
-  // clearing it. "This receipt is client A's" is something the pilot said
-  // on purpose; deciding to deduct it rather than rebill it is not a
-  // retraction of that.
+  // Filing with NO trip leaves client_id alone. "This receipt is client
+  // A's" is something the pilot said on purpose; deciding to deduct it
+  // rather than rebill it is not a retraction of that.
   if (filedTripId) {
     const { data: trip, error: tripError } = await supabase
       .from("trips")
-      .select("client_id")
+      .select("id")
       .eq("id", filedTripId)
       .eq("account_id", account.id)
       .maybeSingle();
     if (tripError) return { error: friendlyDbError(tripError, "trips.select") };
     if (!trip) return { error: "That trip no longer exists." };
-    payload.client_id = (trip as { client_id: string | null }).client_id;
+    payload.client_id = null;
   }
 
   const { error, count } = await supabase

@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import NextLink from "next/link";
 import { Box, Button, Callout, Card, Flex, Grid, Text, TextField, Select, TextArea } from "@/components/ui";
 import { centsToInput } from "@/lib/format";
+import { clientIdForStorage } from "@/lib/expense-client";
 import { matchTrip } from "@/lib/receipt-ocr/match-trip";
 import ReceiptScan, { type ScanOutcome } from "./receipt-scan";
 import type { OptionChoice } from "@/lib/custom-options";
@@ -193,9 +194,16 @@ export default function ExpenseForm({
   // anyway, so the field is shown filled and disabled rather than left
   // editable and then quietly overruled.
   const tripDecidesClient = selectedTrip !== null;
+  // What the picker SHOWS. With a trip, that is the trip's client, which is
+  // a display of a derived fact rather than a value this form stores.
   const effectiveClientId = tripDecidesClient
     ? selectedTrip.clientId ?? NO_CLIENT
     : chosenClientId;
+  // What the form STORES, which is null for anything with a trip.
+  const storedClientId = clientIdForStorage(
+    chosenClientId === NO_CLIENT ? null : chosenClientId,
+    tripDecidesClient
+  );
   const clientsById = new Map(clients.map((client) => [client.id, client.name]));
   // A client that no longer appears in the picker (archived since this
   // expense was filed) still has to render as itself, not as "No client" --
@@ -302,10 +310,11 @@ export default function ExpenseForm({
       <form
         action={(formData) => {
           formData.set("trip_id", tripId === NO_TRIP ? "" : tripId);
-          // Posted for the trip-less case. With a trip named, the action
-          // discards this and re-reads the trip's own client -- see
-          // resolveClientForTrip in actions.ts.
-          formData.set("client_id", effectiveClientId === NO_CLIENT ? "" : effectiveClientId);
+          // Only ever posted for the trip-less case. A trip means the
+          // client is derived and NOT stored, so the field posts blank
+          // rather than the name shown in the disabled picker beside it --
+          // see clientIdForStorage.
+          formData.set("client_id", storedClientId ?? "");
           formData.set("category", category);
           formData.set("treatment", treatment);
           return formAction(formData);

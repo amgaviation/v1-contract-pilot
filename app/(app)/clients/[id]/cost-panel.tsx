@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { rowsOf } from "@/lib/supabase/rows";
 import { formatCents } from "@/lib/format";
 import { clientCostTotals } from "@/lib/expense-client";
+import { idChunks } from "@/lib/id-chunks";
 
 /**
  * WHAT THIS CLIENT HAS COST, both ways a cost can reach them.
@@ -43,9 +44,19 @@ type CostExpenseRow = {
 export default async function CostPanel({
   clientId,
   clientName,
+  archived,
 }: {
   clientId: string;
   clientName: string;
+  /**
+   * Archived means "don't offer this for new work". The Record-a-cost
+   * action is withheld rather than left to fail politely: /expenses/new
+   * validates ?client= against the pickable clients, which deliberately
+   * exclude archived ones, so the form would open with nothing selected
+   * and a pilot who did not notice would file the cost unattributed --
+   * the exact opposite of what the button offered.
+   */
+  archived: boolean;
 }) {
   const supabase = await createClient();
 
@@ -58,31 +69,38 @@ export default async function CostPanel({
   if (!tripsResult.ok) return <FailedState />;
   const tripIds = tripsResult.rows.map((trip) => trip.id);
 
-  // Two reads rather than one `.or()` string: the trip-id list goes into a
-  // URL, and building an `or=(...)` filter by string concatenation around
-  // a list of unknown length is how a query silently stops matching. Rows
-  // appearing in both are deduplicated by id below.
-  const [directResult, viaTripResult] = await Promise.all([
+  // Two reads rather than one `.or()` string: building an `or=(...)` filter
+  // by string concatenation around a list of unknown length is how a query
+  // silently stops matching. Rows appearing in both are deduplicated by id.
+  //
+  // The trip-attached half is CHUNKED (lib/id-chunks.ts). `.in()` puts every
+  // trip uuid in the GET query string, so a pilot with a thousand trips for
+  // one client produced a ~39 KB URL: rejected by a proxy long before
+  // Postgres saw it, which turned a figure that was merely partial into the
+  // panel's hard-failure state.
+  const [directResult, ...tripChunkResults] = await Promise.all([
     supabase
       .from("expenses")
       .select("id, amount_cents, treatment, trip_id, client_id")
       .eq("client_id", clientId)
       .limit(COST_LIMIT),
-    tripIds.length > 0
-      ? supabase
-          .from("expenses")
-          .select("id, amount_cents, treatment, trip_id, client_id")
-          .in("trip_id", tripIds)
-          .limit(COST_LIMIT)
-      : Promise.resolve({ data: [] as CostExpenseRow[], error: null }),
+    ...idChunks(tripIds).map((chunk) =>
+      supabase
+        .from("expenses")
+        .select("id, amount_cents, treatment, trip_id, client_id")
+        .in("trip_id", chunk)
+        .limit(COST_LIMIT)
+    ),
   ]);
 
   const direct = rowsOf<CostExpenseRow>(directResult);
-  const viaTrip = rowsOf<CostExpenseRow>(viaTripResult);
-  if (!direct.ok || !viaTrip.ok) return <FailedState />;
+  if (!direct.ok) return <FailedState />;
+  const viaTripChunks = tripChunkResults.map((result) => rowsOf<CostExpenseRow>(result));
+  if (viaTripChunks.some((chunk) => !chunk.ok)) return <FailedState />;
+  const viaTripRows = viaTripChunks.flatMap((chunk) => (chunk.ok ? chunk.rows : []));
 
   const byId = new Map<string, CostExpenseRow>();
-  for (const row of [...direct.rows, ...viaTrip.rows]) byId.set(row.id, row);
+  for (const row of [...direct.rows, ...viaTripRows]) byId.set(row.id, row);
   const expenses = [...byId.values()];
 
   // Every row here already belongs to this client by construction, but the
@@ -92,9 +110,11 @@ export default async function CostPanel({
   const tripClientIds = new Map(tripIds.map((id) => [id, clientId as string | null]));
   const totals = clientCostTotals(expenses, tripClientIds, clientId);
 
+  // Any single read hitting the cap means the total is partial. Checked per
+  // chunk, not on the merged list, because the cap applies per request.
   const truncated =
     direct.rows.length === COST_LIMIT ||
-    viaTrip.rows.length === COST_LIMIT ||
+    viaTripChunks.some((chunk) => chunk.ok && chunk.rows.length === COST_LIMIT) ||
     tripsResult.rows.length === COST_LIMIT;
 
   return (
@@ -107,9 +127,11 @@ export default async function CostPanel({
           <Button asChild size="1" variant="soft">
             <NextLink href={`/expenses?client=${clientId}`}>See every cost</NextLink>
           </Button>
-          <Button asChild size="1" variant="soft">
-            <NextLink href={`/expenses/new?client=${clientId}`}>Record a cost</NextLink>
-          </Button>
+          {archived ? null : (
+            <Button asChild size="1" variant="soft">
+              <NextLink href={`/expenses/new?client=${clientId}`}>Record a cost</NextLink>
+            </Button>
+          )}
         </Flex>
       </Flex>
       <Text as="div" size="2" color="gray" mb="3">

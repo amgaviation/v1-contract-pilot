@@ -1,8 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { resolveExpenseClient, expenseClientId, clientIdForTrip, clientCostTotals } =
-  await import("../lib/expense-client.ts");
+const {
+  resolveExpenseClient,
+  expenseClientId,
+  clientIdForStorage,
+  clientCostTotals,
+  buildTripClientLookup,
+  referencedTripIds,
+} = await import("../lib/expense-client.ts");
+const { idChunks, ID_CHUNK_SIZE } = await import("../lib/id-chunks.ts");
 
 /**
  * WHICH CLIENT AN EXPENSE BELONGS TO. All fixtures synthetic.
@@ -72,35 +79,99 @@ test("an unknown trip reads as no client rather than throwing", () => {
   assert.equal(resolved.clientId, null);
 });
 
-test("THE DISAGREEMENT CASE: picking a trip decides the client", () => {
+test("THE DISAGREEMENT CASE: a trip decides the client, and stores nothing", () => {
   // The pilot attributed this cost to client B, then filed it against a
-  // trip belonging to client A. The trip wins, every time -- it is the
-  // stronger statement of who the work was for, and it is the only pairing
-  // the database will store.
-  assert.equal(clientIdForTrip(CLIENT_A, CLIENT_B, true), CLIENT_A);
-
-  // And a trip with NO client clears the field rather than keeping the
-  // pilot's earlier choice. "This trip has no client" together with "this
-  // expense is client B's" is precisely the pair the composite FK refuses,
-  // so the form must never present it as available.
-  assert.equal(clientIdForTrip(null, CLIENT_B, true), null);
-
+  // trip belonging to client A. The trip wins -- it is the stronger
+  // statement of who the work was for, and it is the only pairing the
+  // database will store. What gets WRITTEN is null, not client A: the
+  // column means "attributed directly", and the trip-derived answer is
+  // read through the trip rather than copied into the row.
+  assert.equal(clientIdForStorage(CLIENT_B, true), null);
+  // A trip with no client stores null too, for the same reason.
+  assert.equal(clientIdForStorage(CLIENT_B, true), null);
   // With no trip in play, the pilot's own choice is the answer.
-  assert.equal(clientIdForTrip(null, CLIENT_B, false), CLIENT_B);
-  assert.equal(clientIdForTrip(null, null, false), null);
+  assert.equal(clientIdForStorage(CLIENT_B, false), CLIENT_B);
+  assert.equal(clientIdForStorage(null, false), null);
 });
 
 test("a resolved expense can never carry a client its trip contradicts", () => {
-  // The end-to-end statement of the rule above: whatever the form was
-  // showing, what gets stored for a trip-attached expense is the trip's
-  // client, so resolveExpenseClient can only ever see an agreeing pair.
-  const chosen = CLIENT_B;
-  const stored = {
-    trip_id: TRIP_A,
-    client_id: clientIdForTrip(TRIP_CLIENTS.get(TRIP_A), chosen, true),
-  };
-  assert.equal(stored.client_id, CLIENT_A);
-  assert.equal(expenseClientId(stored, TRIP_CLIENTS), CLIENT_A);
+  // End to end: whatever the form was showing, a trip-attached expense
+  // stores null and resolves through the trip, so the pair can never
+  // disagree and the row reports itself as trip-derived rather than
+  // as something the pilot attributed by hand.
+  const stored = { trip_id: TRIP_A, client_id: clientIdForStorage(CLIENT_B, true) };
+  assert.equal(stored.client_id, null);
+  const resolved = resolveExpenseClient(stored, TRIP_CLIENTS);
+  assert.equal(resolved.clientId, CLIENT_A);
+  assert.equal(resolved.source, "trip");
+});
+
+test("P1: a trip missing from the lookup is refused, never read as no client", () => {
+  // The live shape: the trips lookup came back short (capped, paged, or
+  // partly failed) and one expense's trip is not in it. Every expense
+  // written before 20260815130000 has a null client_id and reaches its
+  // client THROUGH the trip, so treating the gap as "no client" would drop
+  // a real cost out of its client's filter and total, and wrongly add it to
+  // "No client". The lookup has to say it is incomplete instead.
+  const needed = [TRIP_A, "44444444-4444-4444-4444-444444444444"];
+  const lookup = buildTripClientLookup(needed, [{ id: TRIP_A, client_id: CLIENT_A }]);
+  assert.equal(lookup.ok, false);
+
+  // And the naked resolver, used on a map built from that short read,
+  // is exactly what would have gone wrong: it answers "nobody" for a
+  // cost that has an owner. This is why the caller must check ok first.
+  const short = new Map([[TRIP_A, CLIENT_A]]);
+  const missing = { trip_id: "44444444-4444-4444-4444-444444444444", client_id: null };
+  assert.equal(resolveExpenseClient(missing, short).clientId, null);
+});
+
+test("P1: a failed trip lookup is refused, and is not an empty map", () => {
+  // A failed read and "this account has no trips" must not produce the
+  // same value -- that is the lib/supabase/rows.ts rule applied to a join.
+  assert.equal(buildTripClientLookup([TRIP_A], null).ok, false);
+  // Nothing needed, nothing read: complete, and legitimately empty.
+  const none = buildTripClientLookup([], []);
+  assert.equal(none.ok, true);
+  assert.equal(none.clientIdByTrip.size, 0);
+});
+
+test("a complete lookup carries every trip asked for, clientless ones included", () => {
+  const lookup = buildTripClientLookup(
+    [TRIP_A, TRIP_NO_CLIENT],
+    [
+      { id: TRIP_A, client_id: CLIENT_A },
+      { id: TRIP_NO_CLIENT, client_id: null },
+    ]
+  );
+  assert.equal(lookup.ok, true);
+  // A trip present with a null client is COMPLETE, not missing. Confusing
+  // the two would refuse the page for the ordinary case of a trip nobody
+  // has assigned a client to yet.
+  assert.equal(lookup.clientIdByTrip.get(TRIP_NO_CLIENT), null);
+  assert.equal(lookup.clientIdByTrip.get(TRIP_A), CLIENT_A);
+});
+
+test("the lookup is asked only for the trips on the page, each once", () => {
+  const ids = referencedTripIds([
+    { trip_id: TRIP_A, client_id: null },
+    { trip_id: TRIP_A, client_id: CLIENT_A },
+    { trip_id: null, client_id: CLIENT_B },
+    { trip_id: TRIP_NO_CLIENT, client_id: null },
+  ]);
+  assert.deepEqual(ids.sort(), [TRIP_A, TRIP_NO_CLIENT].sort());
+  assert.deepEqual(referencedTripIds([]), []);
+});
+
+test("id lists are chunked into requests a URL can carry", () => {
+  // 1000 uuids in one .in() is a ~39 KB query string, which a proxy
+  // rejects outright -- turning a partial figure into a failed panel.
+  const ids = Array.from({ length: 250 }, (_, i) => `id-${i}`);
+  const chunks = idChunks(ids);
+  assert.equal(chunks.length, Math.ceil(250 / ID_CHUNK_SIZE));
+  assert.ok(chunks.every((chunk) => chunk.length <= ID_CHUNK_SIZE));
+  // Every id survives, in order, exactly once.
+  assert.deepEqual(chunks.flat(), ids);
+  assert.deepEqual(idChunks([]), []);
 });
 
 test("a client's cost picture counts both paths, and counts each cost once", () => {

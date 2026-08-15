@@ -20,7 +20,12 @@ import EmptyState from "@/components/ui/empty-state";
 import PageShell from "../page-shell";
 import { loadOptionLabels } from "@/lib/custom-options-read";
 import { scheduleCMileageCents, type RatesByYear } from "@/lib/mileage";
-import { resolveExpenseClient } from "@/lib/expense-client";
+import {
+  buildTripClientLookup,
+  referencedTripIds,
+  resolveExpenseClient,
+} from "@/lib/expense-client";
+import { idChunks } from "@/lib/id-chunks";
 import UnassignedQueue, { type QueueRow } from "./unassigned-queue";
 
 export const metadata = { title: "Expenses" };
@@ -88,7 +93,12 @@ export default async function ExpensesPage({
 }) {
   await requireAccount("/expenses");
   const params = await searchParams;
-  const clientFilter =
+  // Shape only. Whether the id names a client this account actually has is
+  // settled below, against the loaded rows -- a syntactically valid uuid
+  // from a stale bookmark or another account would otherwise pass this and
+  // replace the whole ledger with an "Unknown client" empty state, which is
+  // the opposite of the "unrecognized values are ignored" promise above.
+  const requestedClient =
     params.client === NO_CLIENT_FILTER
       ? NO_CLIENT_FILTER
       : params.client && UUID_RE.test(params.client)
@@ -173,15 +183,62 @@ export default async function ExpensesPage({
   const clientsLoadError = Boolean(clientsError);
   const clientChoices = clientRows.filter((c) => !c.archived_at);
 
+  // WHICH TRIPS THIS PAGE NEEDS, and only those.
+  //
+  // The trips read above is for the LABELS and the filing queue's picker.
+  // It cannot also serve the client lookup: it is capped at the Data API's
+  // 1000 rows and ordered newest-first, so on a career pilot's account a
+  // recent expense attached to an older trip would find no entry and read
+  // as belonging to nobody. That is not a cosmetic gap -- every expense
+  // written before 20260815130000, and every one the bank import confirms,
+  // has a null client_id and reaches its client THROUGH the trip, so those
+  // are exactly the rows that would silently leave their client's filter
+  // and their client's totals.
+  //
+  // Asked for by id instead, the read is bounded by the page size rather
+  // than by the account's history, and chunked because a thousand uuids in
+  // one `.in()` is a ~39 KB URL that a proxy rejects outright. Completeness
+  // is then checked, not assumed (buildTripClientLookup).
+  const neededTripIds = referencedTripIds(allExpenses);
+  let tripClientRows: { id: string; client_id: string | null }[] | null = [];
+  if (neededTripIds.length > 0) {
+    const chunks = await Promise.all(
+      idChunks(neededTripIds).map((chunk) =>
+        supabase.from("trips").select("id, client_id").in("id", chunk)
+      )
+    );
+    tripClientRows = chunks.some((chunk) => chunk.error)
+      ? null
+      : chunks.flatMap((chunk) => (chunk.data ?? []) as { id: string; client_id: string | null }[]);
+  }
+  const tripClients = buildTripClientLookup(neededTripIds, tripClientRows);
+
   // The reading rule lives in lib/expense-client.ts so this screen, the
   // client record's cost panel, and anything added later cannot drift into
   // three different answers to "whose cost is this".
-  const tripClientIds = new Map(trips.map((trip) => [trip.id, trip.client_id]));
-  const clientOf = (expense: ExpenseRow) => resolveExpenseClient(expense, tripClientIds);
+  const clientOf = (expense: ExpenseRow) =>
+    tripClients.ok
+      ? resolveExpenseClient(expense, tripClients.clientIdByTrip)
+      : null;
+
+  // A filter is only honoured once it names a client this account has AND
+  // the lookup that decides membership is complete. Filtering on a partial
+  // lookup would put a real cost under "No client" and drop it from its
+  // own client's total, with a figure on screen that looks authoritative.
+  const clientFilter =
+    !tripClients.ok || clientsLoadError
+      ? null
+      : requestedClient === NO_CLIENT_FILTER
+        ? NO_CLIENT_FILTER
+        : requestedClient && clientRows.some((c) => c.id === requestedClient)
+          ? requestedClient
+          : null;
+  // Asked for something, got nothing: say which of the two reasons it was.
+  const filterUnavailable = requestedClient !== null && clientFilter === null;
 
   const expenses = clientFilter
     ? allExpenses.filter((expense) => {
-        const resolved = clientOf(expense).clientId;
+        const resolved = clientOf(expense)?.clientId ?? null;
         return clientFilter === NO_CLIENT_FILTER
           ? resolved === null
           : resolved === clientFilter;
@@ -326,12 +383,32 @@ export default async function ExpensesPage({
             </Box>
           ) : null}
 
+          {/* The lookup that decides whose cost each row is came back
+              incomplete. Every figure that depends on it is withheld
+              rather than shown wrong: no filter, no Client column. The
+              treatment totals above are unaffected -- they never read a
+              client. */}
+          {!tripClients.ok ? (
+            <Box mb="4">
+              <Callout.Root color="red">
+                <Callout.Icon>
+                  <ExclamationTriangleIcon />
+                </Callout.Icon>
+                <Callout.Text>
+                  Couldn&rsquo;t work out which client these expenses belong
+                  to, so the Client column and the client filter are off.
+                  Every expense is listed. Reload to try again.
+                </Callout.Text>
+              </Callout.Root>
+            </Box>
+          ) : null}
+
           {/* Costs by client. A cost reaches a client two ways -- the pilot
               attributed it directly, or it sits on one of that client's
               trips -- and both count here, because a client's cost picture
               that omitted either would be wrong in the direction that
               matters (too low). */}
-          {clientsLoadError ? (
+          {!tripClients.ok ? null : clientsLoadError ? (
             <Box mb="4">
               <Callout.Root color="amber">
                 <Callout.Icon>
@@ -377,6 +454,25 @@ export default async function ExpensesPage({
                 </NextLink>
               </Button>
             </Flex>
+          ) : null}
+
+          {/* A link arrived naming a client this account does not have, or
+              naming one while the reads that decide membership were down.
+              Showing every expense under a heading that claims one client's
+              name would be the wrong kind of quiet. */}
+          {filterUnavailable ? (
+            <Box mb="4">
+              <Callout.Root color="amber">
+                <Callout.Icon>
+                  <ExclamationTriangleIcon />
+                </Callout.Icon>
+                <Callout.Text>
+                  {tripClients.ok && !clientsLoadError
+                    ? "That link points at a client this account doesn't have, so every expense is shown."
+                    : "That client filter couldn't be applied, so every expense is shown."}
+                </Callout.Text>
+              </Callout.Root>
+            </Box>
           ) : null}
 
           {/* U5: a failed count read must not silently look identical to
@@ -554,7 +650,9 @@ export default async function ExpensesPage({
                     <Table.ColumnHeaderCell>Category</Table.ColumnHeaderCell>
                     <Table.ColumnHeaderCell>Vendor</Table.ColumnHeaderCell>
                     <Table.ColumnHeaderCell>Trip</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
+                    {tripClients.ok ? (
+                      <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
+                    ) : null}
                     <Table.ColumnHeaderCell justify="end">Amount</Table.ColumnHeaderCell>
                     <Table.ColumnHeaderCell>Treatment</Table.ColumnHeaderCell>
                     <Table.ColumnHeaderCell>Receipt</Table.ColumnHeaderCell>
@@ -590,27 +688,29 @@ export default async function ExpensesPage({
                             <Text color="gray">—</Text>
                           )}
                         </Table.Cell>
-                        <Table.Cell>
-                          {client.clientId === null ? (
-                            <Text color="gray">No client</Text>
-                          ) : (
-                            <RadixLink asChild color="gray">
-                              <NextLink href={`/clients/${client.clientId}`}>
-                                {clientsLoadError
-                                  ? "View client"
-                                  : clientNames.get(client.clientId) ?? "View client"}
-                              </NextLink>
-                            </RadixLink>
-                          )}
-                          {/* Says which of the two answers this is. "Via
-                              trip" is not the pilot's own attribution and
-                              will follow the trip if its client changes. */}
-                          {client.source === "trip" ? (
-                            <Text as="div" size="1" color="gray">
-                              Via trip
-                            </Text>
-                          ) : null}
-                        </Table.Cell>
+                        {client === null ? null : (
+                          <Table.Cell>
+                            {client.clientId === null ? (
+                              <Text color="gray">No client</Text>
+                            ) : (
+                              <RadixLink asChild color="gray">
+                                <NextLink href={`/clients/${client.clientId}`}>
+                                  {clientsLoadError
+                                    ? "View client"
+                                    : clientNames.get(client.clientId) ?? "View client"}
+                                </NextLink>
+                              </RadixLink>
+                            )}
+                            {/* Says which of the two answers this is. "Via
+                                trip" is not the pilot's own attribution and
+                                will follow the trip if its client changes. */}
+                            {client.source === "trip" ? (
+                              <Text as="div" size="1" color="gray">
+                                Via trip
+                              </Text>
+                            ) : null}
+                          </Table.Cell>
+                        )}
                         <Table.Cell justify="end">
                           <Text weight="medium" className="tnum">
                             {formatCents(expense.amount_cents)}

@@ -75,6 +75,17 @@
 --                                   that has none.
 --   * both null                  -> not checked. The unassigned queue.
 --
+-- WHAT THE APP ACTUALLY WRITES, which is narrower than what the schema
+-- allows: when an expense has a trip, the app stores NULL here and reads
+-- the client through the trip. It never copies the trip's client into the
+-- column. The both-set case above is therefore a guard rather than a state
+-- the product produces on its own, and it stays because a future writer
+-- (an import, a script, a later feature) must not be able to build the
+-- mismatch either. See lib/expense-client.ts's clientIdForStorage for why
+-- the app declines to materialise a derived value: it would split the table
+-- between two conventions for one fact, and it would survive the deletion
+-- of the trip it was copied from as an attribution the pilot never made.
+--
 -- ON UPDATE CASCADE, not the default NO ACTION: re-pointing a trip at a
 -- different client carries that trip's expenses with it, rather than
 -- failing the pilot's edit with a constraint error about rows they were not
