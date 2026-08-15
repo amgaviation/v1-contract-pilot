@@ -108,12 +108,27 @@ export async function createLateFeeInvoice(
     return { error: friendlyDbError(invoiceError, "invoices.select") };
   }
   const source = invoiceData as {
-    client_id: string;
+    client_id: string | null;
     invoice_number: string | null;
     status: string;
     due_on: string | null;
   } | null;
   if (!source) return { error: "That invoice no longer exists." };
+
+  // A LATE FEE IS A RATE THE PILOT AGREED WITH A PARTICULAR CLIENT, and an
+  // invoice raised without one (20260815100000) has no such agreement to
+  // apply. Refused here, before the client read, for two reasons: this is a
+  // server action and therefore a public endpoint, so the panel not offering
+  // the button is not enforcement; and without this the read below would find
+  // no client and return "that invoice's client no longer exists", which is a
+  // false statement about a relationship that never existed and sends the
+  // pilot looking for a deleted record.
+  if (source.client_id === null) {
+    return {
+      error:
+        "No fee was raised. Late fees come from a client's agreed terms, and this invoice has no client. Add a line for it yourself if you have agreed one.",
+    };
+  }
 
   // RE-READ AT WRITE TIME, never trusted from the screen that offered the
   // button — the same reason sendInvoiceReminder re-reads status. The gap

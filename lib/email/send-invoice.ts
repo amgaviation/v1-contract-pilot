@@ -19,6 +19,7 @@ import {
   lateFeeReminderSentence,
   normalizeLateFeePolicy,
 } from "@/lib/reminders/policy";
+import { billToEmail } from "@/lib/invoice-bill-to";
 
 /**
  * THE SHARED HALF OF EVERY INVOICE EMAIL: load the client, render the
@@ -124,7 +125,11 @@ export async function sendInvoiceEmail(
   const { data: invoiceRow, error: invoiceError } = await supabase
     .from("invoices")
     .select(
-      "id, client_id, notes, stripe_payment_link_url, stripe_payment_link_livemode"
+      // bill_to_name/bill_to_email ride along for the clientless case
+      // (20260815100000). The address columns are NOT read here: the PDF
+      // builder below resolves the printed block itself, and reading them
+      // twice would be two sources for one address.
+      "id, client_id, bill_to_name, bill_to_email, notes, stripe_payment_link_url, stripe_payment_link_livemode"
     )
     .eq("id", invoiceId)
     .eq("account_id", accountId)
@@ -138,7 +143,9 @@ export async function sendInvoiceEmail(
     };
   }
   const invoice = invoiceRow as {
-    client_id: string;
+    client_id: string | null;
+    bill_to_name: string | null;
+    bill_to_email: string | null;
     notes: string | null;
     stripe_payment_link_url: string | null;
     stripe_payment_link_livemode: boolean | null;
@@ -147,17 +154,23 @@ export async function sendInvoiceEmail(
     return { ok: false, kind: "refused", error: "That invoice no longer exists." };
   }
 
-  const { data: clientRow, error: clientError } = await supabase
-    .from("clients")
-    .select(
-      // The late-fee columns ride the same read the greeting already needed.
-      // They are used ONLY to compose a sentence about what was agreed, and
-      // only when late_fee_note_on_reminders is on — see below.
-      "name, contact_name, contact_email, billing_email, late_fee_flat_cents, late_fee_bps_per_month, late_fee_grace_days, late_fee_note_on_reminders"
-    )
-    .eq("id", invoice.client_id)
-    .eq("account_id", accountId)
-    .maybeSingle();
+  // NO CLIENT, NO CLIENT READ. An invoice raised without one (20260815100000)
+  // carries its own bill-to details, and the query that would fetch a client
+  // for it has no id to filter on.
+  const { data: clientRow, error: clientError } =
+    invoice.client_id === null
+      ? { data: null, error: null }
+      : await supabase
+          .from("clients")
+          .select(
+            // The late-fee columns ride the same read the greeting already
+            // needed. They are used ONLY to compose a sentence about what was
+            // agreed, and only when late_fee_note_on_reminders is on.
+            "name, contact_name, contact_email, billing_email, late_fee_flat_cents, late_fee_bps_per_month, late_fee_grace_days, late_fee_note_on_reminders"
+          )
+          .eq("id", invoice.client_id)
+          .eq("account_id", accountId)
+          .maybeSingle();
 
   if (clientError) {
     return {
@@ -176,30 +189,44 @@ export async function sendInvoiceEmail(
     late_fee_grace_days: number | null;
     late_fee_note_on_reminders: boolean | null;
   } | null;
-  if (!client) {
+  // Only a MISSING row for an invoice that names a client is an error. A
+  // clientless invoice legitimately has none, and saying "that invoice's
+  // client no longer exists" about one would be a false statement about a
+  // relationship that never existed.
+  if (invoice.client_id !== null && !client) {
     return {
       ok: false,
       kind: "refused",
       error: "That invoice's client no longer exists.",
     };
   }
-  // WHERE THE MONEY PAPERWORK GOES. billing_email (20260814092000) is an
-  // optional AP/accounting inbox, distinct from contact_email — a real
-  // operator's scheduler books the trip and never touches payables, so an
-  // invoice addressed to them instead of ap@ is a common, silent cause of
-  // slow payment. Preferred whenever it looks like a real address; falls
-  // back to contact_email exactly as every account did before this column
-  // existed.
-  const recipientEmail = looksLikeEmail(client.billing_email)
-    ? (client.billing_email as string)
-    : client.contact_email;
+
+  // Who this is addressed to, in the greeting and in the failure sentences
+  // below. The client's name when there is one, the typed name when there is
+  // not; never a placeholder, because bill_to_name is non-null whenever
+  // client_id is null (invoices_bill_to_or_client).
+  const billedName = client?.name ?? invoice.bill_to_name ?? "This invoice";
+
+  // WHERE THE MONEY PAPERWORK GOES, resolved by the one function the invoice
+  // screen also calls so "Goes to {email}" can never name an address this
+  // send does not use. For a client: billing_email (20260814092000) when it
+  // looks real, contact_email otherwise, because a real operator's scheduler
+  // books the trip and never touches payables. For a clientless invoice:
+  // the single address typed on it, since there is no relationship to keep
+  // two inboxes for.
+  const recipientEmail = billToEmail(invoice, client, looksLikeEmail);
   // The most common reason a send cannot happen, and the one the pilot can fix
-  // in ten seconds — so it names the client and points at the screen.
+  // in ten seconds, so it names the target and points at the right screen. The
+  // two screens are different: a client's address lives on the client, a typed
+  // one lives on the invoice itself.
   if (!looksLikeEmail(recipientEmail)) {
     return {
       ok: false,
       kind: "refused",
-      error: `${client.name} has no email address on file, so nothing was sent. Add one on the client's page and try again.`,
+      error:
+        invoice.client_id === null
+          ? `${billedName} has no email address on this invoice, so nothing was sent. Add one in the invoice's bill-to details and try again.`
+          : `${billedName} has no email address on file, so nothing was sent. Add one on the client's page and try again.`,
     };
   }
 
@@ -264,8 +291,8 @@ export async function sendInvoiceEmail(
 
   const shared = {
     accountName: doc.accountName,
-    clientName: client.name,
-    contactName: client.contact_name,
+    clientName: billedName,
+    contactName: client?.contact_name ?? null,
     invoiceNumber: doc.invoiceNumber,
     dueOn: doc.dueOn,
     totalCents: doc.totalCents,
@@ -285,14 +312,21 @@ export async function sendInvoiceEmail(
       ...shared,
       daysOverdue: daysOverdue(doc.dueOn, now),
       linkActivity: await readLinkActivity(supabase, accountId, invoiceId),
-      lateFeeNote: lateFeeReminderSentence(
-        normalizeLateFeePolicy({
-          flatCents: client.late_fee_flat_cents,
-          bpsPerMonth: client.late_fee_bps_per_month,
-          graceDays: client.late_fee_grace_days ?? 0,
-          noteOnReminders: client.late_fee_note_on_reminders === true,
-        })
-      ),
+      // A LATE FEE IS SOMETHING AGREED WITH A PARTICULAR CLIENT, so a
+      // clientless invoice has no policy and this sentence is omitted
+      // entirely rather than composed from zeros. Inventing a consequence
+      // the pilot has not agreed with the person being billed is the one
+      // thing this whole reminder path refuses to do.
+      lateFeeNote: client
+        ? lateFeeReminderSentence(
+            normalizeLateFeePolicy({
+              flatCents: client.late_fee_flat_cents,
+              bpsPerMonth: client.late_fee_bps_per_month,
+              graceDays: client.late_fee_grace_days ?? 0,
+              noteOnReminders: client.late_fee_note_on_reminders === true,
+            })
+          )
+        : null,
     });
   } else {
     message = buildInvoiceMessage(shared);

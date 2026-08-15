@@ -69,6 +69,7 @@ export default function StatusActions({
   canEmail,
   clientEmail,
   clientName,
+  hasClient,
   receiptCount,
   hasInvoiceTemplate,
   automaticChase,
@@ -81,6 +82,14 @@ export default function StatusActions({
   /** The client's address on file, if any — the other half of "can we send". */
   clientEmail: string | null;
   clientName: string;
+  /**
+   * Whether this invoice bills a saved client (20260815100000). It changes
+   * only WHERE a missing email is fixed: on the client's page, or in this
+   * invoice's own bill-to block. Pointing a pilot at a client page for an
+   * invoice that has no client is the kind of instruction that gets followed
+   * for a minute before it is doubted.
+   */
+  hasClient: boolean;
   /**
    * Rebill lines whose expense has a receipt on file — resolved on the
    * server ([id]/page.tsx). 0 hides the receipts checkbox entirely; the
@@ -247,8 +256,9 @@ export default function StatusActions({
             </Text>
           ) : (
             <Text as="div" size="1" color="gray" mt="2">
-              {clientName} has no email address on file. Add one on their page to
-              send from here.
+              {hasClient
+                ? `${clientName} has no email address on file. Add one on their page to send from here.`
+                : `This invoice has no email address on it. Add one in the bill-to details to send from here.`}
             </Text>
           )}
 
@@ -461,13 +471,17 @@ export default function StatusActions({
                   ? "Reminders for this client also go out on their own. See the Reminders panel below for what is scheduled, and to pause it for this invoice."
                   : automaticChase === "paused"
                     ? `Automatic reminders are paused for this invoice, so chasing it is up to you. ${clientName}’s other open invoices are still chased on their schedule. See the Reminders panel below.`
-                    : "You choose when to chase. Nothing goes out automatically for this client."}
+                    : hasClient
+                      ? "You choose when to chase. Nothing goes out automatically for this client."
+                      : "You choose when to chase. Scheduled reminders follow a client's schedule, and this invoice has no client, so nothing goes out for it on its own."}
               </Text>
             </>
           ) : (
             <Text as="div" size="1" color="gray">
               {canEmail
-                ? `${clientName} has no email address on file, so reminders can’t be sent from here.`
+                ? hasClient
+                  ? `${clientName} has no email address on file, so reminders can’t be sent from here.`
+                  : "This invoice has no email address on it, so reminders can’t be sent from here."
                 : "Emailing isn’t set up on this account yet, so reminders can’t be sent from here."}
             </Text>
           )}

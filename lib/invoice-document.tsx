@@ -8,6 +8,11 @@ import {
   RECEIPTS_UNAVAILABLE_NOTE,
   type ReceiptAttachment,
 } from "@/lib/invoice-receipts";
+import {
+  resolveBillTo,
+  type BillTo,
+  type BillToInvoiceRow,
+} from "@/lib/invoice-bill-to";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -67,14 +72,22 @@ type AddressFields = {
   country: string | null;
 };
 
-type InvoiceRow = {
+type InvoiceRow = BillToInvoiceRow & {
   id: string;
-  client_id: string;
   invoice_number: string | null;
   issued_on: string | null;
   due_on: string | null;
   notes: string | null;
 };
+
+/**
+ * Every column resolveBillTo needs, in the order the select below asks for
+ * them. Named here so the select string and the type cannot drift: a column
+ * dropped from the query would otherwise arrive as undefined and render an
+ * empty line on a client's bill with nothing to say so.
+ */
+const BILL_TO_COLUMNS =
+  "bill_to_name, bill_to_contact_name, bill_to_address_line1, bill_to_address_line2, bill_to_city, bill_to_state, bill_to_postal_code, bill_to_country";
 
 type TotalsRow = {
   subtotal_cents: number;
@@ -117,7 +130,9 @@ export async function buildInvoiceDocument(
   ] = await Promise.all([
     supabase
       .from("invoices")
-      .select("id, client_id, invoice_number, issued_on, due_on, notes")
+      .select(
+        `id, client_id, invoice_number, issued_on, due_on, notes, ${BILL_TO_COLUMNS}`
+      )
       .eq("id", invoiceId)
       .eq("account_id", accountId) // defence in depth alongside RLS
       .maybeSingle(),
@@ -165,7 +180,11 @@ export async function buildInvoiceDocument(
     };
   }
 
-  const [{ data: accountRow }, { data: clientRow }] = await Promise.all([
+  // THE CLIENT READ IS SKIPPED ENTIRELY WHEN THERE IS NO CLIENT. Not issued
+  // and discarded: `.eq("id", null)` is a query that means nothing, and a
+  // round trip whose result is thrown away is a round trip that can fail and
+  // be misread as a missing client.
+  const [{ data: accountRow }, clientResult] = await Promise.all([
     supabase
       .from("accounts")
       .select(
@@ -173,24 +192,37 @@ export async function buildInvoiceDocument(
       )
       .eq("id", accountId)
       .maybeSingle(),
-    supabase
-      .from("clients")
-      .select(
-        "name, contact_name, address_line1, address_line2, city, state, postal_code, country"
-      )
-      .eq("id", invoice.client_id)
-      .eq("account_id", accountId)
-      .maybeSingle(),
+    invoice.client_id === null
+      ? Promise.resolve({ data: null })
+      : supabase
+          .from("clients")
+          .select(
+            "name, contact_name, address_line1, address_line2, city, state, postal_code, country"
+          )
+          .eq("id", invoice.client_id)
+          .eq("account_id", accountId)
+          .maybeSingle(),
   ]);
 
   const accountInfo = accountRow as
     | (AddressFields & { legal_name: string; logo_url: string | null })
     | null;
-  const clientInfo = clientRow as
+  const clientInfo = clientResult.data as
     | (AddressFields & { name: string; contact_name: string | null })
     | null;
 
-  if (!accountInfo || !clientInfo) {
+  // resolveBillTo (lib/invoice-bill-to.ts) returns null for exactly one
+  // reason: this invoice NAMES a client and that client row did not come
+  // back. That stays a hard failure, unchanged from when it was written as
+  // `!clientInfo` here, because a bill with an empty "Bill to" block is a
+  // document that cannot be paid and looks like nobody's fault.
+  //
+  // A clientless invoice never takes that branch: bill_to_name is non-null
+  // whenever client_id is null (invoices_bill_to_or_client, 20260815100000),
+  // so there is always a name to head the block with.
+  const billTo: BillTo | null = resolveBillTo(invoice, clientInfo);
+
+  if (!accountInfo || !billTo) {
     return { ok: false, reason: "not_found", error: "Not found." };
   }
 
@@ -333,7 +365,7 @@ export async function buildInvoiceDocument(
     <InvoicePdf
       logoDataUri={logoDataUri}
       account={accountInfo}
-      client={clientInfo}
+      client={billTo}
       invoice={invoice}
       lines={lines}
       totals={totals}
@@ -348,7 +380,7 @@ export async function buildInvoiceDocument(
       filename: `${invoice.invoice_number ?? `invoice-${invoice.id.slice(0, 8)}`}.pdf`,
       invoiceNumber: invoice.invoice_number,
       dueOn: invoice.due_on,
-      clientName: clientInfo.name,
+      clientName: billTo.name,
       accountName: accountInfo.legal_name,
       totalCents: totals.total_cents,
       balanceDueCents: totals.balance_due_cents,

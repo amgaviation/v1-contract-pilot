@@ -16,6 +16,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+import { billToListLabel } from "@/lib/invoice-bill-to";
 import EmptyState from "@/components/ui/empty-state";
 import PageShell from "../page-shell";
 import { computeDuePeriods } from "./recurring/actions";
@@ -26,8 +27,14 @@ export const metadata = { title: "Invoices" };
 type RecurringScheduleRow = Database["pilot"]["Tables"]["recurring_invoice_schedules"]["Row"];
 
 type InvoiceListRow = {
+  // Nullable since 20260815100000: an invoice may bill typed bill-to details
+  // instead of a client, and bill_to_name is what the Client column shows for
+  // one. A/R is deliberately NOT split by that: the aging strip, the totals
+  // and the past-due counts below read every live invoice regardless of
+  // whether it has a client, because money owed is money owed.
+  client_id: string | null;
+  bill_to_name: string | null;
   id: string;
-  client_id: string;
   invoice_number: string | null;
   status: "draft" | "sent" | "partial" | "paid" | "void";
   issued_on: string | null;
@@ -108,7 +115,7 @@ export default async function InvoicesPage({
   ] = await Promise.all([
     supabase
       .from("invoices")
-      .select("id, client_id, invoice_number, status, issued_on, due_on")
+      .select("id, client_id, bill_to_name, invoice_number, status, issued_on, due_on")
       .order("created_at", { ascending: false })
       .limit(LIST_LIMIT),
     supabase
@@ -442,7 +449,7 @@ export default async function InvoicesPage({
                       </RadixLink>
                     </Table.RowHeaderCell>
                     <Table.Cell>
-                      <Text color="gray">{clientNames.get(invoice.client_id) ?? "—"}</Text>
+                      <Text color="gray">{billToListLabel(invoice, clientNames)}</Text>
                     </Table.Cell>
                     <Table.Cell>
                       <Text color="gray">{formatDate(invoice.issued_on)}</Text>

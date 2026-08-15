@@ -330,7 +330,9 @@ export type TripRef = {
 export type InvoiceRef = {
   invoice_number: string | null;
   status: string;
-  client_id: string;
+  /** Null since 20260815100000 when the invoice bills typed details. */
+  client_id: string | null;
+  bill_to_name: string | null;
 };
 
 export type InvoiceTotalsRef = Pick<
@@ -401,6 +403,25 @@ export function emptyLookups(): Lookups {
 function clientName(lookups: Lookups, clientId: string | null | undefined): string {
   if (!clientId) return "";
   return lookups.clientNameById.get(clientId) ?? "Unknown client";
+}
+
+/**
+ * WHO AN INVOICE BILLS, for the Client column of every invoice-derived
+ * export. A clientless invoice (20260815100000) prints the name typed on it
+ * rather than a blank: a blank in this column has always meant "no client",
+ * and while that is still literally true here, the export's job is to say who
+ * was billed, and this row knows.
+ *
+ * The Client ID column stays blank for one, which is the honest answer to a
+ * question about a foreign key that is genuinely null.
+ */
+function invoicePayerName(
+  lookups: Lookups,
+  invoice: { client_id: string | null; bill_to_name: string | null } | undefined
+): string {
+  if (!invoice) return "";
+  if (invoice.client_id === null) return invoice.bill_to_name ?? "";
+  return clientName(lookups, invoice.client_id);
 }
 
 // ---------------------------------------------------------------------------
@@ -697,6 +718,7 @@ export type InvoiceExportRow = Pick<
   Tables["invoices"]["Row"],
   | "id"
   | "client_id"
+  | "bill_to_name"
   | "invoice_number"
   | "status"
   | "issued_on"
@@ -737,7 +759,7 @@ export function invoiceValues(row: InvoiceExportRow, lookups: Lookups): CsvValue
   const totals = row.id ? lookups.totalsByInvoiceId.get(row.id) : undefined;
   return [
     row.invoice_number,
-    clientName(lookups, row.client_id),
+    invoicePayerName(lookups, row),
     INVOICE_STATUS_LABEL[row.status] ?? "",
     row.issued_on,
     row.due_on,
@@ -796,7 +818,7 @@ export function invoiceLineValues(
     // Blank for a draft invoice — numbers are assigned at issue. The
     // Invoice ID column still says exactly which invoice the line is on.
     invoice?.invoice_number,
-    clientName(lookups, invoice?.client_id),
+    invoicePayerName(lookups, invoice),
     LINE_TYPE_LABEL[row.line_type] ?? "",
     row.description,
     row.quantity,
@@ -846,7 +868,7 @@ export function invoicePaymentValues(
   const invoice = row.invoice_id ? lookups.invoiceById.get(row.invoice_id) : undefined;
   return [
     row.paid_on,
-    clientName(lookups, invoice?.client_id),
+    invoicePayerName(lookups, invoice),
     invoice?.invoice_number,
     // The full payment ledger, INCLUDING payments whose invoice was later
     // voided — the year-end income figure excludes those, and this status
@@ -1766,7 +1788,7 @@ export const EXPORT_ENTITIES: Record<string, EntitySpec> = {
     key: "invoices",
     table: "invoices",
     select:
-      "id, client_id, invoice_number, status, issued_on, due_on, sent_at, tax_rate_bps, delivery_method, notes, created_at",
+      "id, client_id, bill_to_name, invoice_number, status, issued_on, due_on, sent_at, tax_rate_bps, delivery_method, notes, created_at",
     orderBy: [
       { column: "created_at", ascending: true },
       { column: "id", ascending: true },

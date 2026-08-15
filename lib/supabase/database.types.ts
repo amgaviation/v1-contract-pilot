@@ -1146,7 +1146,23 @@ export type Database = {
         Row: {
           id: string;
           account_id: string;
-          client_id: string;
+          // Nullable since 20260815100000: an invoice may bill typed
+          // bill_to_* details instead of a pilot.clients row.
+          client_id: string | null;
+          // 20260815100000. The typed bill-to block, present exactly when
+          // client_id is null and never read when it is set (enforced by the
+          // invoices_bill_to_or_client check constraint). Field names match
+          // the pilot.clients projection every invoice renderer already asks
+          // for, so one resolved object feeds one component either way.
+          bill_to_name: string | null;
+          bill_to_contact_name: string | null;
+          bill_to_email: string | null;
+          bill_to_address_line1: string | null;
+          bill_to_address_line2: string | null;
+          bill_to_city: string | null;
+          bill_to_state: string | null;
+          bill_to_postal_code: string | null;
+          bill_to_country: string | null;
           invoice_number: string | null;
           status: "draft" | "sent" | "partial" | "paid" | "void";
           issued_on: string | null;
@@ -1182,7 +1198,21 @@ export type Database = {
         Insert: {
           id?: string;
           account_id: string;
-          client_id: string;
+          client_id?: string | null;
+          // 20260815100000. The typed bill-to block, present exactly when
+          // client_id is null and never read when it is set (enforced by the
+          // invoices_bill_to_or_client check constraint). Field names match
+          // the pilot.clients projection every invoice renderer already asks
+          // for, so one resolved object feeds one component either way.
+          bill_to_name?: string | null;
+          bill_to_contact_name?: string | null;
+          bill_to_email?: string | null;
+          bill_to_address_line1?: string | null;
+          bill_to_address_line2?: string | null;
+          bill_to_city?: string | null;
+          bill_to_state?: string | null;
+          bill_to_postal_code?: string | null;
+          bill_to_country?: string | null;
           invoice_number?: string | null;
           status?: "draft" | "sent" | "partial" | "paid" | "void";
           issued_on?: string | null;
@@ -1213,7 +1243,21 @@ export type Database = {
         Update: {
           id?: string;
           account_id?: string;
-          client_id?: string;
+          client_id?: string | null;
+          // 20260815100000. The typed bill-to block, present exactly when
+          // client_id is null and never read when it is set (enforced by the
+          // invoices_bill_to_or_client check constraint). Field names match
+          // the pilot.clients projection every invoice renderer already asks
+          // for, so one resolved object feeds one component either way.
+          bill_to_name?: string | null;
+          bill_to_contact_name?: string | null;
+          bill_to_email?: string | null;
+          bill_to_address_line1?: string | null;
+          bill_to_address_line2?: string | null;
+          bill_to_city?: string | null;
+          bill_to_state?: string | null;
+          bill_to_postal_code?: string | null;
+          bill_to_country?: string | null;
           invoice_number?: string | null;
           status?: "draft" | "sent" | "partial" | "paid" | "void";
           issued_on?: string | null;

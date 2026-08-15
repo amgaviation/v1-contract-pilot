@@ -15,6 +15,10 @@ import {
   Text,
 } from "@/components/ui";
 import { setInvoiceRemindersSuppressed, createLateFeeInvoice } from "../reminder-actions";
+import {
+  NO_CLIENT_LATE_FEE_NOTICE,
+  NO_CLIENT_REMINDER_NOTICE,
+} from "@/lib/invoice-bill-to";
 
 /**
  * WHAT THE SCHEDULER IS GOING TO DO, ON THE SCREEN, BEFORE IT DOES IT.
@@ -70,6 +74,7 @@ export default function ReminderPanel({
   invoiceId,
   clientName,
   clientId,
+  noClient,
   suppressed: initialSuppressed,
   scheduleIsEmpty,
   rungs,
@@ -82,7 +87,15 @@ export default function ReminderPanel({
 }: {
   invoiceId: string;
   clientName: string;
-  clientId: string;
+  /** Null when this invoice bills typed details rather than a saved client. */
+  clientId: string | null;
+  /**
+   * This invoice has no client, so the scheduled run never reaches it: it
+   * filters clientless invoices out explicitly (lib/reminders/run.ts). The
+   * panel says that outright instead of rendering a ladder that would never
+   * advance and a "Set a schedule" link that leads nowhere.
+   */
+  noClient: boolean;
   suppressed: boolean;
   /** This client has no reminder schedule at all — the default state. */
   scheduleIsEmpty: boolean;
@@ -110,7 +123,11 @@ export default function ReminderPanel({
         {suppressed ? <Badge color="gray">Off for this invoice</Badge> : null}
       </Flex>
 
-      {scheduleIsEmpty ? (
+      {noClient ? (
+        <Text as="div" size="2" color="gray">
+          {NO_CLIENT_REMINDER_NOTICE}
+        </Text>
+      ) : scheduleIsEmpty ? (
         <Text as="div" size="2" color="gray">
           Nothing goes out automatically for {clientName}.{" "}
           <RadixLink asChild>
@@ -242,7 +259,19 @@ export default function ReminderPanel({
           A product that suggests charging somebody's client extra is making a
           commercial decision it has no standing to make.
           ------------------------------------------------------------------ */}
-      {lateFee.policy ? (
+      {noClient ? (
+        <>
+          <Separator size="4" my="4" />
+          <Text as="div" size="2" weight="medium" mb="1">
+            Late fee
+          </Text>
+          <Text as="div" size="1" color="gray">
+            {NO_CLIENT_LATE_FEE_NOTICE}
+          </Text>
+        </>
+      ) : null}
+
+      {!noClient && lateFee.policy ? (
         <>
           <Separator size="4" my="4" />
           <Text as="div" size="2" weight="medium" mb="1">

@@ -124,7 +124,7 @@ async function buildLookups(
 
   if (spec.needs.invoices) {
     const invoices = await fetchAll<InvoiceRef & { id: string }>(
-      supabase, accountId, "invoices", "id, invoice_number, status, client_id", "id"
+      supabase, accountId, "invoices", "id, invoice_number, status, client_id, bill_to_name", "id"
     );
     if (!invoices.ok) return { ok: false, what: "invoices", error: invoices.error };
     for (const i of invoices.rows) {
@@ -132,6 +132,7 @@ async function buildLookups(
         invoice_number: i.invoice_number,
         status: i.status,
         client_id: i.client_id,
+        bill_to_name: i.bill_to_name,
       });
     }
   }

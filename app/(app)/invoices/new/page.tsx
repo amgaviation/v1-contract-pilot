@@ -240,7 +240,7 @@ export default async function NewInvoicePage({
   return (
     <PageShell
       title="New invoice"
-      subtitle="Pick a client and the trips you've already flown for them. Flight days, travel days, and rebilled expenses become lines automatically."
+      subtitle="Bill a client, or type the details in for a one-off. Pick trips you have already flown to turn flight days, travel days and rebilled expenses into lines, or take an empty invoice and write the lines yourself."
     >
       <DraftForm
         action={createInvoiceDraft}

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/format";
+import { billToListLabel } from "@/lib/invoice-bill-to";
 import type { Database } from "@/lib/supabase/database.types";
 
 /**
@@ -38,7 +39,15 @@ type ClientRow = Pick<
 >;
 type InvoiceRow = Pick<
   Database["pilot"]["Tables"]["invoices"]["Row"],
-  "id" | "client_id" | "invoice_number" | "status" | "issued_on" | "due_on"
+  | "id"
+  | "client_id"
+  // 20260815100000: an invoice may bill typed details instead of a client,
+  // so the label below has a second source and needs the column to read it.
+  | "bill_to_name"
+  | "invoice_number"
+  | "status"
+  | "issued_on"
+  | "due_on"
 >;
 type TripRow = Pick<
   Database["pilot"]["Tables"]["trips"]["Row"],
@@ -143,7 +152,7 @@ export async function GET(request: NextRequest) {
         .limit(PER_TYPE_LIMIT),
       supabase
         .from("invoices")
-        .select("id, client_id, invoice_number, status, issued_on, due_on")
+        .select("id, client_id, bill_to_name, invoice_number, status, issued_on, due_on")
         .ilike("invoice_number", pattern)
         .order("created_at", { ascending: false })
         .limit(PER_TYPE_LIMIT),
@@ -192,7 +201,7 @@ export async function GET(request: NextRequest) {
       clientIds.length > 0
         ? supabase
             .from("invoices")
-            .select("id, client_id, invoice_number, status, issued_on, due_on")
+            .select("id, client_id, bill_to_name, invoice_number, status, issued_on, due_on")
             .in("client_id", clientIds)
             .order("created_at", { ascending: false })
             .limit(PER_TYPE_LIMIT)
@@ -233,10 +242,16 @@ export async function GET(request: NextRequest) {
     // itself: the client name behind an invoice/trip that was found by
     // something OTHER than its client (invoice number, leg ICAO), and one
     // representative leg (earliest by date) per trip for the route label.
-    const namedClientIds = new Set([
-      ...invoices.map((i) => i.client_id),
-      ...trips.map((t) => t.client_id).filter((id): id is string => id !== null),
-    ]);
+    // Both sides filter nulls now: pilot.trips.client_id has always been
+    // nullable and pilot.invoices.client_id is since 20260815100000. A null in
+    // this set becomes `.in("id", [null])`, which matches nothing and wastes a
+    // round trip at best.
+    const namedClientIds = new Set(
+      [
+        ...invoices.map((i) => i.client_id),
+        ...trips.map((t) => t.client_id),
+      ].filter((id): id is string => id !== null)
+    );
     const tripIds = trips.map((t) => t.id);
 
     const [clientNamesResult, tripLegsResult] = await Promise.all([
@@ -286,7 +301,7 @@ export async function GET(request: NextRequest) {
       href: `/invoices/${inv.id}`,
       label: inv.invoice_number ?? "Draft invoice",
       sublabel: [
-        clientNameById.get(inv.client_id) ?? "Unknown client",
+        billToListLabel(inv, clientNameById),
         INVOICE_STATUS_LABEL[inv.status] ?? inv.status,
         inv.due_on ? `due ${formatDate(inv.due_on)}` : null,
       ]

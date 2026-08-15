@@ -24,6 +24,7 @@ import { countOf } from "@/lib/supabase/rows";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import { formatCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+import { billToListLabel } from "@/lib/invoice-bill-to";
 import { STAT_ROW_LAYOUT } from "@/components/ui/skeletons";
 import EmptyState from "@/components/ui/empty-state";
 import { EXPIRY_LADDER_BADGE, type ExpiryBadge } from "../documents/expiry-badge";
@@ -96,7 +97,13 @@ type ExpenseRow = {
 
 type LiveInvoiceRow = {
   id: string;
-  client_id: string;
+  // Nullable since 20260815100000. The awaiting-payment total and the overdue
+  // queue below read every live invoice, with or without a client, because a
+  // clientless invoice that is genuinely owed money belongs in the pilot's
+  // receivables exactly as much as any other. Only the LABEL differs, and
+  // billToListLabel is what supplies it.
+  client_id: string | null;
+  bill_to_name: string | null;
   invoice_number: string | null;
   due_on: string | null;
 };
@@ -306,7 +313,7 @@ export default async function OverviewPage() {
     // guard against, just missed when this query was written.
     supabase
       .from("invoices")
-      .select("id, client_id, invoice_number, due_on")
+      .select("id, client_id, bill_to_name, invoice_number, due_on")
       .in("status", ["sent", "partial"])
       .limit(AGGREGATE_LIMIT),
     supabase
@@ -895,7 +902,7 @@ export default async function OverviewPage() {
       tone: "amber" as const,
       label: `${invoice?.invoice_number ?? "Invoice"} past due`,
       detail: `${
-        invoice?.client_id ? clientName.get(invoice.client_id) ?? "Unknown client" : "Unknown client"
+        invoice ? billToListLabel(invoice, clientName) : "Unknown client"
       } · ${formatCents(balanceByInvoice.get(row.invoice_id) ?? 0)} · ${pluralize(
         row.days_overdue,
         "day"
@@ -966,7 +973,7 @@ export default async function OverviewPage() {
             ? `Reminder not confirmed · ${invoice.invoice_number ?? "Invoice"}`
             : `Reminder didn't send · ${invoice.invoice_number ?? "Invoice"}`,
         detail: `${
-          invoice.client_id ? clientName.get(invoice.client_id) ?? "Unknown client" : "Unknown client"
+          billToListLabel(invoice, clientName)
         } · ${formatDate(row.created_at)} · ${
           // The mail service's own words, trimmed to fit the row. Truncated
           // rather than replaced by a generic line: "The domain is not
