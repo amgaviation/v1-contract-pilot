@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { Badge, Box, Button, Callout, Card, Container, Flex, Heading, Separator, Table, Text } from "@/components/ui";
+import { LAlert, LCard, LPill, LSeparator, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
 import { Logo } from "@/components/ui/logo";
 import { createClient } from "@/lib/supabase/server";
 import { isLiveMode } from "@/lib/stripe/server";
@@ -239,10 +239,15 @@ function addressLines(entity: {
   return lines;
 }
 
-const STATUS_LABEL: Record<string, { color: "blue" | "amber" | "green"; label: string }> = {
-  sent: { color: "blue", label: "Awaiting payment" },
-  partial: { color: "amber", label: "Partially paid" },
-  paid: { color: "green", label: "Paid" },
+// Tone follows Ledger's status-pill vocabulary, translated straight from
+// the old blue/amber/green scheme rather than re-judged: blue (live,
+// nothing wrong yet) -> neutral; amber (a balance still moving) -> warn;
+// green (resolved) -> good. Same dictionary app/(app)/overview/page.tsx's
+// ladderToPillTone uses for its own color-name translation.
+const STATUS_LABEL: Record<string, { tone: "neutral" | "warn" | "good"; label: string }> = {
+  sent: { tone: "neutral", label: "Awaiting payment" },
+  partial: { tone: "warn", label: "Partially paid" },
+  paid: { tone: "good", label: "Paid" },
 };
 
 export default async function PublicInvoicePage({
@@ -341,118 +346,110 @@ export default async function PublicInvoicePage({
     invoice.totals.balance_due_cents > 0 && linkLooksLive && !linkCurrent;
 
   return (
-    <Box style={{ minHeight: "100dvh", background: "var(--canvas)" }}>
-      <Container size="3" p={{ initial: "4", sm: "6" }}>
-        <Flex align="center" justify="between" mb="5">
+    // Ledger's softer marketing variant, hand-painted (this page owns its
+    // own ground rather than composing through LPageShell — see the
+    // migration task header): bg-canvas root, more air than the app
+    // (larger container padding, size-up'd card padding below) and
+    // absolutely trust-first, since the reader is an AP clerk deciding
+    // whether to pay, not the pilot.
+    <div className="min-h-dvh bg-canvas font-ledger text-body text-ink">
+      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8 sm:py-12">
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
           <Logo />
-          <Badge color={status.color} size="2">
-            {status.label}
-          </Badge>
-        </Flex>
+          <LPill tone={status.tone}>{status.label}</LPill>
+        </div>
 
-        <Card size="4">
-          <Flex justify="between" wrap="wrap" gap="4" mb="4">
-            <Box>
-              <Text as="div" size="5" weight="bold">
-                {invoice.account.legal_name}
-              </Text>
+        <LCard className="p-6 sm:p-8">
+          <div className="mb-6 flex flex-wrap justify-between gap-6">
+            <div>
+              <div className="text-h3 font-bold text-ink">{invoice.account.legal_name}</div>
               {addressLines(invoice.account).map((line, i) => (
-                <Text as="div" key={i} color="gray" size="2">
+                <div key={i} className="text-body-s text-ink-2">
                   {line}
-                </Text>
+                </div>
               ))}
-            </Box>
-            <Box>
-              <Text as="div" size="2" color="gray">
-                Invoice
-              </Text>
-              <Text as="div" size="5" weight="bold">
+            </div>
+            <div>
+              <div className="text-caption font-semibold text-ink-3">Invoice</div>
+              <div className="text-h3 font-bold text-ink">
                 {invoice.invoice.invoice_number ?? "—"}
-              </Text>
-              <Text as="div" size="2" color="gray">
-                {invoice.invoice.issued_on ? `Issued ${formatDate(invoice.invoice.issued_on)}` : null}
-              </Text>
-              <Text as="div" size="2" color="gray">
-                {invoice.invoice.due_on ? `Due ${formatDate(invoice.invoice.due_on)}` : null}
-              </Text>
-            </Box>
-          </Flex>
+              </div>
+              {invoice.invoice.issued_on ? (
+                <div className="text-body-s text-ink-2">
+                  Issued {formatDate(invoice.invoice.issued_on)}
+                </div>
+              ) : null}
+              {invoice.invoice.due_on ? (
+                <div className="text-body-s text-ink-2">
+                  Due {formatDate(invoice.invoice.due_on)}
+                </div>
+              ) : null}
+            </div>
+          </div>
 
-          <Separator size="4" mb="4" />
+          <LSeparator className="my-6" />
 
-          <Box mb="4">
-            <Text as="div" size="1" color="gray" mb="1">
-              Bill to
-            </Text>
-            <Text as="div" weight="medium">
-              {invoice.client.name}
-            </Text>
+          {/* "Bill to" always resolves — pilot.invoice_public coalesces
+              the linked client's row with the invoice's own typed bill_to_*
+              columns field by field (20260815100000), so invoice.client.name
+              is never empty even for an invoice with no client row. This
+              page renders whichever the database already picked; there is
+              no client-side fallback to keep in sync with that migration. */}
+          <div className="mb-6">
+            <div className="mb-1 text-caption font-semibold text-ink-3">Bill to</div>
+            <div className="text-body font-medium text-ink">{invoice.client.name}</div>
             {invoice.client.contact_name ? (
-              <Text as="div" color="gray" size="2">
-                Attn: {invoice.client.contact_name}
-              </Text>
+              <div className="text-body-s text-ink-2">Attn: {invoice.client.contact_name}</div>
             ) : null}
             {addressLines(invoice.client).map((line, i) => (
-              <Text as="div" key={i} color="gray" size="2">
+              <div key={i} className="text-body-s text-ink-2">
                 {line}
-              </Text>
+              </div>
             ))}
-          </Box>
+          </div>
 
-          <Table.Root variant="surface" mb="4">
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Description</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell align="right">Qty</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell align="right">Rate</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell align="right">Amount</Table.ColumnHeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
+          <LTable className="mb-6">
+            <thead>
+              <tr>
+                <LTh>Description</LTh>
+                <LTh numeric>Qty</LTh>
+                <LTh numeric>Rate</LTh>
+                <LTh numeric>Amount</LTh>
+              </tr>
+            </thead>
+            <tbody>
               {invoice.lines.map((line, i) => (
-                <Table.Row key={i}>
-                  <Table.Cell>{line.description}</Table.Cell>
-                  <Table.Cell align="right" className="tnum">
-                    {line.quantity}
-                  </Table.Cell>
-                  <Table.Cell align="right" className="tnum">
-                    {formatCents(line.unit_amount_cents)}
-                  </Table.Cell>
-                  <Table.Cell align="right" className="tnum">
-                    {formatCents(line.amount_cents)}
-                  </Table.Cell>
-                </Table.Row>
+                <tr key={i}>
+                  <LTd>{line.description}</LTd>
+                  <LTd numeric>{line.quantity}</LTd>
+                  <LTd numeric>{formatCents(line.unit_amount_cents)}</LTd>
+                  <LTd numeric>{formatCents(line.amount_cents)}</LTd>
+                </tr>
               ))}
-            </Table.Body>
-          </Table.Root>
+            </tbody>
+          </LTable>
 
-          <Flex direction="column" gap="1" align="end" mb="4">
+          <div className="mb-6 flex flex-col items-end gap-1">
             {/* BALANCE DUE IS THE SOLE EMPHASIZED LINE. Bolding both Total
                 and Balance due on a partially paid invoice put two
                 equal-weight figures in front of a check-writer whose only
-                question is "what do I owe now" — Total now renders like
-                Subtotal/Tax/Paid, and Balance due's amount steps up one
-                type size beyond the shared `emphasize` bold (still tnum)
-                so it reads as the answer, not just as more bold text next
-                to bold text. */}
+                question is "what do I owe now" — Total renders like
+                Subtotal/Tax/Paid, and Balance due steps all the way up to
+                Ledger's figure size (the same treatment LStat gives a
+                headline number), still tabular via tnum-l, so it reads as
+                the answer rather than merely more bold text next to bold
+                text. */}
             <TotalsLine label="Subtotal" value={invoice.totals.subtotal_cents} />
             <TotalsLine label="Tax" value={invoice.totals.tax_cents} />
             <TotalsLine label="Total" value={invoice.totals.total_cents} />
             <TotalsLine label="Paid" value={invoice.totals.amount_paid_cents} />
-            <TotalsLine
-              label="Balance due"
-              value={invoice.totals.balance_due_cents}
-              emphasize
-              size="4"
-            />
-          </Flex>
+            <TotalsLine label="Balance due" value={invoice.totals.balance_due_cents} emphasize />
+          </div>
 
           {invoice.invoice.notes ? (
             <>
-              <Separator size="4" mb="3" />
-              <Text as="div" size="2" color="gray">
-                {invoice.invoice.notes}
-              </Text>
+              <LSeparator className="my-6" />
+              <p className="text-body-s text-ink-2">{invoice.invoice.notes}</p>
             </>
           ) : null}
 
@@ -460,28 +457,32 @@ export default async function PublicInvoicePage({
             // Labelled with the LINK's own snapshotted amount, never
             // balance_due_cents — `payable` already proved the two are
             // equal, but the button states what Stripe will actually
-            // charge, not what this page separately computed.
+            // charge, not what this page separately computed. THE ONE
+            // FILLED ACCENT ACTION on this page — every other element
+            // here is text, a pill, or a hairline, exactly as Ledger's
+            // "one filled accent action per view" rule requires.
             <>
-              <Separator size="4" my="4" />
-              <Button asChild size="3" style={{ width: "100%" }}>
-                <a href={invoice.payment.url!} target="_blank" rel="noopener noreferrer">
-                  Pay {formatCents(invoice.payment.amount_cents!)} online
-                </a>
-              </Button>
+              <LSeparator className="my-6" />
+              <a
+                href={invoice.payment.url!}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={lButtonClass({ variant: "primary", size: "lg", className: "w-full" })}
+              >
+                Pay {formatCents(invoice.payment.amount_cents!)} online
+              </a>
             </>
           ) : linkStale ? (
             <>
-              <Separator size="4" my="4" />
-              <Callout.Root color="amber" size="2">
-                <Callout.Text>
-                  Balance due: {formatCents(invoice.totals.balance_due_cents)}. The
-                  online payment link for this invoice is out of date. Contact
-                  your pilot for an updated one rather than using it.
-                </Callout.Text>
-              </Callout.Root>
+              <LSeparator className="my-6" />
+              <LAlert tone="warn">
+                Balance due: {formatCents(invoice.totals.balance_due_cents)}. The
+                online payment link for this invoice is out of date. Contact
+                your pilot for an updated one rather than using it.
+              </LAlert>
             </>
           ) : null}
-        </Card>
+        </LCard>
 
         {/* APPENDED BELOW THE INVOICE, not folded into it — the same place
             the PDF puts them (receipt pages follow the invoice page). It
@@ -490,8 +491,8 @@ export default async function PublicInvoicePage({
         <Suspense fallback={null}>
           <ShareReceipts token={token} />
         </Suspense>
-      </Container>
-    </Box>
+      </div>
+    </div>
   );
 }
 
@@ -517,28 +518,24 @@ async function ShareReceipts({ token }: { token: string }) {
   if (attachments.length === 0) return null;
 
   return (
-    <Box mt="4">
-      <Card size="4">
-        <Heading as="h2" size="4" mb="1">
-          Receipts
-        </Heading>
-        <Text as="div" size="2" color="gray" mb="4">
+    <div className="mt-6">
+      <LCard className="p-6 sm:p-8">
+        <h2 className="mb-1 text-h3 font-semibold text-ink">Receipts</h2>
+        <p className="mb-6 text-body-s text-ink-2">
           Supporting the rebilled expenses on this invoice.
-        </Text>
+        </p>
 
-        <Flex direction="column" gap="4">
+        <div className="flex flex-col gap-6">
           {attachments.map((receipt, index) => (
-            <Box key={index}>
-              <Flex justify="between" gap="3" wrap="wrap" mb="2">
-                <Text size="2" weight="medium">
-                  {receipt.description}
-                </Text>
+            <div key={index}>
+              <div className="mb-2 flex flex-wrap justify-between gap-3">
+                <span className="text-body-s font-medium text-ink">{receipt.description}</span>
                 {receipt.amountCents === null ? null : (
-                  <Text size="2" color="gray" className="tnum">
+                  <span className="tnum-l text-body-s text-ink-2">
                     {formatCents(receipt.amountCents)}
-                  </Text>
+                  </span>
                 )}
-              </Flex>
+              </div>
               {receipt.imageDataUri ? (
                 // A plain <img>, deliberately. The source is a data: URI
                 // built server-side this request, so there is no remote
@@ -552,20 +549,18 @@ async function ShareReceipts({ token }: { token: string }) {
                 <img
                   src={receipt.imageDataUri}
                   alt={`Receipt for ${receipt.description}`}
-                  style={{ maxWidth: "100%", height: "auto", display: "block" }}
+                  className="block h-auto max-w-full"
                 />
               ) : (
                 // The same sentence lib/invoice-receipts.ts gives the PDF's
                 // caption pages. Never rewritten here — one explanation,
                 // whichever surface the client opened.
-                <Text as="div" size="2" color="gray">
-                  {receipt.note}
-                </Text>
+                <p className="text-body-s text-ink-2">{receipt.note}</p>
               )}
-              {index < attachments.length - 1 ? <Separator size="4" mt="4" /> : null}
-            </Box>
+              {index < attachments.length - 1 ? <LSeparator className="mt-6" /> : null}
+            </div>
           ))}
-        </Flex>
+        </div>
 
         {omitted > 0 ? (
           // Stated, not silently dropped: a client counting rebilled lines
@@ -575,14 +570,14 @@ async function ShareReceipts({ token }: { token: string }) {
           // than pointing at the emailed PDF, because whether this reader
           // has that PDF, and whether it carried receipts at all (the send
           // dialog's checkbox), are both things this page cannot know.
-          <Text as="div" size="2" color="gray" mt="4">
+          <p className="mt-6 text-body-s text-ink-2">
             {omitted === 1
               ? "One further receipt for a rebilled expense on this invoice is on file. A copy is available on request."
               : `${omitted} further receipts for rebilled expenses on this invoice are on file. Copies are available on request.`}
-          </Text>
+          </p>
         ) : null}
-      </Card>
-    </Box>
+      </LCard>
+    </div>
   );
 }
 
@@ -590,24 +585,29 @@ function TotalsLine({
   label,
   value,
   emphasize = false,
-  size,
 }: {
   label: string;
   value: number;
+  /** Balance due only — steps the label to text-ink/semibold and the
+   *  amount all the way up to Ledger's figure size, tnum-l and bold,
+   *  the same shape LStat gives a headline number, so it reads as the
+   *  answer next to the merely-regular lines around it. */
   emphasize?: boolean;
-  /** One extra step of size on the amount alone, layered on top of
-   *  `emphasize`'s bold — used only for Balance due, so the figure a
-   *  check-writer needs outranks the merely-bold ones around it. */
-  size?: string;
 }) {
   return (
-    <Flex gap="4" minWidth="220px" justify="between">
-      <Text color="gray" weight={emphasize ? "bold" : "regular"}>
+    <div className="flex min-w-56 justify-between gap-4">
+      <span className={emphasize ? "text-body font-semibold text-ink" : "text-body-s text-ink-2"}>
         {label}
-      </Text>
-      <Text size={size} weight={emphasize ? "bold" : "regular"} className="tnum">
+      </span>
+      <span
+        className={
+          emphasize
+            ? "tnum-l text-figure font-bold tracking-tight text-ink"
+            : "tnum-l text-body-s text-ink-2"
+        }
+      >
         {formatCents(value)}
-      </Text>
-    </Flex>
+      </span>
+    </div>
   );
 }
