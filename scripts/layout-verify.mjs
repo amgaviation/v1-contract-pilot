@@ -58,12 +58,10 @@ const BASE = process.env.BASE ?? "http://localhost:3000";
 /** Shell harness first — it is the chrome every other page inherits. */
 const ROUTES = [
   "/layout-harness",
-  // The INSTRUMENT specimen sheet. Added when the design system replaced Radix
-  // Themes: the responsive contract is about the SHELL, but every primitive
-  // the shell is built from now lives here, and a table or a grid that breaks
-  // the contract should fail on the sheet rather than on whichever screen
-  // happens to use it first.
-  "/design-harness",
+  // The Ledger specimen sheet (app/(dev)/seam-harness) — every primitive
+  // rendered in the prop shapes real screens actually use, so a table or a
+  // grid that breaks the contract fails here rather than on whichever
+  // screen happens to use it first.
   "/seam-harness",
   "/",
   "/pricing",
