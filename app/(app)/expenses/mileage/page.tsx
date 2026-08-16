@@ -1,6 +1,6 @@
 import NextLink from "next/link";
-import { Button, Callout, Card, Table, Text } from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { LAlert, LCard, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
@@ -8,7 +8,6 @@ import { formatCents, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import { rowsOf } from "@/lib/supabase/rows";
 import type { Database } from "@/lib/supabase/database.types";
-import PageShell from "../../page-shell";
 import { computeYearTotals } from "@/lib/mileage";
 import MileageForm, { type ClientOption, type RatesByYear, type TripOption } from "./mileage-form";
 
@@ -112,7 +111,7 @@ export default async function MileagePage() {
   const yearTotals = computeYearTotals(entries, ratesByYear);
 
   return (
-    <PageShell
+    <LPageShell
       title="Mileage"
       subtitle={
         error
@@ -126,33 +125,27 @@ export default async function MileagePage() {
             `${totalMiles.toFixed(1)} mi logged across ${entries.length} drive${entries.length === 1 ? "" : "s"}`
       }
       action={
-        <Button asChild variant="outline">
-          <NextLink href="/expenses">Back to expenses</NextLink>
-        </Button>
+        <NextLink href="/expenses" className={lButtonClass({ variant: "outline" })}>
+          Back to expenses
+        </NextLink>
       }
     >
       {error ? (
-        <Card size="3">
-          <Callout.Root color="red">
-            <Callout.Icon>
-              <ExclamationTriangleIcon />
-            </Callout.Icon>
-            <Callout.Text>{friendlyDbError(error, "mileage_entries.select")}</Callout.Text>
-          </Callout.Root>
-        </Card>
+        <LCard>
+          <LAlert tone="crit" className="flex items-start gap-2">
+            <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+            <span>{friendlyDbError(error, "mileage_entries.select")}</span>
+          </LAlert>
+        </LCard>
       ) : (
         <>
           {truncated ? (
-            <Card size="3" mb="4">
-              <Callout.Root color="amber">
-                <Callout.Icon>
-                  <ExclamationTriangleIcon />
-                </Callout.Icon>
-                <Callout.Text>
-                  {`Totals above may be partial. There are more than ${ENTRIES_LIMIT} drives logged and only the first ${ENTRIES_LIMIT} were totaled.`}
-                </Callout.Text>
-              </Callout.Root>
-            </Card>
+            <LAlert tone="warn" className="flex items-start gap-2">
+              <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+              <span>
+                {`Totals above may be partial. There are more than ${ENTRIES_LIMIT} drives logged and only the first ${ENTRIES_LIMIT} were totaled.`}
+              </span>
+            </LAlert>
           ) : null}
           {/* S1: same shape as U2 — see the ratesByYear comment above. A
               failed mileage_rates read must not render as "no rate on
@@ -160,91 +153,80 @@ export default async function MileagePage() {
               phrase prints "Couldn't load" instead, and the day-one hint
               beneath the form is suppressed in favour of this callout. */}
           {mileageRatesFailed ? (
-            <Card size="3" mb="4">
-              <Callout.Root color="red">
-                <Callout.Icon>
-                  <ExclamationTriangleIcon />
-                </Callout.Icon>
-                <Callout.Text>
-                  Couldn&rsquo;t load your mileage rates. This is not a
-                  statement that none are on file. The figures below are
-                  withheld rather than shown as $0 or &ldquo;no rate&rdquo;.
-                  Reload to try again.
-                </Callout.Text>
-              </Callout.Root>
-            </Card>
+            <LAlert tone="crit" className="flex items-start gap-2">
+              <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+              <span>
+                Couldn&rsquo;t load your mileage rates. This is not a
+                statement that none are on file. The figures below are
+                withheld rather than shown as $0 or &ldquo;no rate&rdquo;.
+                Reload to try again.
+              </span>
+            </LAlert>
           ) : null}
           {yearTotals.length > 0 ? (
-            <Card size="3" mb="4">
-              <Text as="div" size="3" weight="bold" mb="2">
-                By tax year
-              </Text>
-              <Table.Root variant="ghost">
-                <Table.Header>
-                  <Table.Row>
-                    <Table.ColumnHeaderCell>Tax year</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell justify="end">Miles</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell justify="end">Rate</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell justify="end">
-                      Standard mileage figure
-                    </Table.ColumnHeaderCell>
-                  </Table.Row>
-                </Table.Header>
-                <Table.Body>
+            <LCard>
+              <p className="mb-2 text-lead font-bold">By tax year</p>
+              <LTable>
+                <thead>
+                  <tr>
+                    <LTh>Tax year</LTh>
+                    <LTh numeric>Miles</LTh>
+                    <LTh numeric>Rate</LTh>
+                    <LTh numeric>Standard mileage figure</LTh>
+                  </tr>
+                </thead>
+                <tbody>
                   {yearTotals.map((yt) => (
-                    <Table.Row key={yt.year}>
-                      <Table.RowHeaderCell>
-                        <Text weight="medium">{yt.year}</Text>
-                      </Table.RowHeaderCell>
-                      <Table.Cell justify="end">
-                        <Text className="tnum">{yt.miles.toFixed(1)}</Text>
-                      </Table.Cell>
-                      <Table.Cell justify="end">
-                        <Text className="tnum" color="gray">
+                    <tr key={yt.year}>
+                      <th
+                        scope="row"
+                        className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                      >
+                        {yt.year}
+                      </th>
+                      <LTd numeric>{yt.miles.toFixed(1)}</LTd>
+                      <LTd numeric>
+                        <span className="text-ink-2">
                           {mileageRatesFailed
                             ? "Couldn't load"
                             : yt.rateCentsPerMile === null
                               ? "—"
                               : `${yt.rateCentsPerMile}¢/mi`}
-                        </Text>
-                      </Table.Cell>
-                      <Table.Cell justify="end">
-                        <Text weight="medium" className="tnum">
+                        </span>
+                      </LTd>
+                      <LTd numeric>
+                        <span className="font-medium">
                           {mileageRatesFailed
                             ? "Couldn't load"
                             : yt.amountCents === null
                               ? "No rate on file"
                               : formatCents(yt.amountCents)}
-                        </Text>
-                      </Table.Cell>
-                    </Table.Row>
+                        </span>
+                      </LTd>
+                    </tr>
                   ))}
-                </Table.Body>
-              </Table.Root>
-              <Text as="div" size="1" color="gray" mt="2">
+                </tbody>
+              </LTable>
+              <p className="mt-2 text-caption text-ink-3">
                 {"Each year's figure is that year's own rate on file times that year's total miles, "}
                 {"rounded once, not a sum of individually rounded rows. This is a record computed "}
                 {"from what you entered, not a tax determination."}
-              </Text>
-            </Card>
+              </p>
+            </LCard>
           ) : null}
           {/* S1, advisory half: a failed trips/clients read only empties
               this form's pickers — it never asserts a wrong dollar figure
               the way the rate read above does, so it gets a note rather
               than withholding the whole form. */}
           {tripsOrClientsFailed ? (
-            <Card size="3" mb="4">
-              <Callout.Root color="amber">
-                <Callout.Icon>
-                  <ExclamationTriangleIcon />
-                </Callout.Icon>
-                <Callout.Text>
-                  Couldn&rsquo;t load your trips or clients, so those
-                  pickers below are empty. Drives can still be logged;
-                  reload before assigning one to a trip or client.
-                </Callout.Text>
-              </Callout.Root>
-            </Card>
+            <LAlert tone="warn" className="flex items-start gap-2">
+              <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+              <span>
+                Couldn&rsquo;t load your trips or clients, so those
+                pickers below are empty. Drives can still be logged;
+                reload before assigning one to a trip or client.
+              </span>
+            </LAlert>
           ) : null}
           <MileageForm
             entries={entries}
@@ -253,16 +235,42 @@ export default async function MileagePage() {
             rates={ratesByYear}
           />
           {!mileageRatesFailed && Object.keys(ratesByYear).length === 0 ? (
-            <Card size="3" mt="4">
-              <Text size="2" color="gray">
+            <LCard>
+              <p className="text-body-s text-ink-2">
                 {"You haven't recorded a mileage rate yet. Add one under "}
-                <NextLink href="/settings?tab=mileage">Settings → Mileage</NextLink>
+                <NextLink href="/settings?tab=mileage" className="text-accent underline-offset-2 hover:underline">
+                  Settings → Mileage
+                </NextLink>
                 {". Drives can still be logged with a rate typed in by hand."}
-              </Text>
-            </Card>
+              </p>
+            </LCard>
           ) : null}
         </>
       )}
-    </PageShell>
+    </LPageShell>
+  );
+}
+
+/* ── Inline icon ───────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

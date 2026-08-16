@@ -2,7 +2,8 @@
 
 import { useActionState, useState } from "react";
 import NextLink from "next/link";
-import { Box, Button, Callout, Card, Flex, Grid, Text, TextField, Select, TextArea } from "@/components/ui";
+import { LAlert, LButton, LCard, lButtonClass } from "@/components/ledger";
+import { LField, LInput, LSelect, LTextarea } from "@/components/ledger/forms";
 import { centsToInput } from "@/lib/format";
 import { clientIdForStorage } from "@/lib/expense-client";
 import { matchTrip } from "@/lib/receipt-ocr/match-trip";
@@ -43,10 +44,9 @@ const TREATMENTS = [
   { value: "deduct", label: "Keep as a deduction" },
 ];
 
-// Radix Select forbids an item with value="" — "No trip" uses this
-// sentinel and is translated back to "" on submit, so the FormData field
-// name (`trip_id`) never changes and actions.ts's optionalUuid() still
-// reads a blank trip exactly as before.
+// "No trip" uses this sentinel and is translated back to "" on submit, so
+// the FormData field name (`trip_id`) never changes and actions.ts's
+// optionalUuid() still reads a blank trip exactly as before.
 const NO_TRIP = "none";
 /** Same sentinel trick for the Client picker, translated back to "" on submit. */
 const NO_CLIENT = "none";
@@ -108,17 +108,6 @@ export default function ExpenseForm({
   // meaningful with a trip attached (the database refuses the pair), so
   // the trip field becomes required in front of the pilot rather than
   // after a round trip.
-  //
-  // Radix's Select.Root always renders its posting <select> with
-  // `defaultValue`, never `value` (@radix-ui/react-select's
-  // SelectBubbleInput) — so it's uncontrolled from React's point of view
-  // regardless of what Select.Root gets passed, and React 19's post-action
-  // form.reset() restores it to its mount-time option even on a rejected
-  // submit. The wrapped submit handler below (already relied on for
-  // tripId) sidesteps this for every Select value by overwriting the
-  // FormData entry from React state at dispatch time, so the state the
-  // pilot actually sees is what's actually posted, regardless of what the
-  // native <select> reverted to.
   const [category, setCategory] = useState(() => initial("category", values.category, "other"));
   // "other" is not a proxy for "untouched" — it is a real answer a pilot
   // picks deliberately, and a Signature Flight Support HANGAR RENTAL filed
@@ -207,7 +196,8 @@ export default function ExpenseForm({
   const clientsById = new Map(clients.map((client) => [client.id, client.name]));
   // A client that no longer appears in the picker (archived since this
   // expense was filed) still has to render as itself, not as "No client" --
-  // Radix would otherwise show an empty trigger for a real attribution.
+  // the picker would otherwise show an empty selection for a real
+  // attribution.
   const missingClientName =
     effectiveClientId !== NO_CLIENT && !clientsById.has(effectiveClientId)
       ? selectedTrip?.clientName ?? "Client no longer listed"
@@ -306,7 +296,7 @@ export default function ExpenseForm({
       : null;
 
   return (
-    <Card size="3">
+    <LCard>
       <form
         action={(formData) => {
           formData.set("trip_id", tripId === NO_TRIP ? "" : tripId);
@@ -322,12 +312,10 @@ export default function ExpenseForm({
       >
         {values.id ? <input type="hidden" name="id" value={values.id} /> : null}
 
-        <Text as="div" size="4" weight="bold" mb="1">
-          The receipt
-        </Text>
-        <Text as="div" size="2" color="gray" mb="3">
+        <p className="mb-1 text-h3 font-bold">The receipt</p>
+        <p className="mb-3 text-body-s text-ink-2">
           Attach the photo first and the fields below fill themselves in.
-        </Text>
+        </p>
 
         <ReceiptScan
           hasExistingReceipt={Boolean(values.receipt_path)}
@@ -343,37 +331,32 @@ export default function ExpenseForm({
         />
 
         {conflicts.length > 0 ? (
-          <Box mt="3">
-            <Callout.Root color="amber" size="1">
-              <Callout.Text>
-                The scan read these differently from what you have. Yours is kept unless you say
-                otherwise.
-              </Callout.Text>
-              <Flex mt="2" direction="column" gap="2">
-                {conflicts.map((conflict) => (
-                  <Flex key={conflict.field} gap="3" align="center" wrap="wrap">
-                    <Text size="1">{`${conflict.label}: ${conflict.scanned}`}</Text>
-                    <Button
-                      type="button"
-                      size="1"
-                      variant="soft"
-                      onClick={() => takeConflict(conflict)}
-                    >
-                      Use this
-                    </Button>
-                  </Flex>
-                ))}
-              </Flex>
-            </Callout.Root>
-          </Box>
+          <LAlert tone="warn" className="mt-3">
+            <p>
+              The scan read these differently from what you have. Yours is kept unless you say
+              otherwise.
+            </p>
+            <div className="mt-2 flex flex-col gap-2">
+              {conflicts.map((conflict) => (
+                <div key={conflict.field} className="flex flex-wrap items-center gap-3">
+                  <span className="text-caption">{`${conflict.label}: ${conflict.scanned}`}</span>
+                  <LButton
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => takeConflict(conflict)}
+                  >
+                    Use this
+                  </LButton>
+                </div>
+              ))}
+            </div>
+          </LAlert>
         ) : null}
 
-        <Grid columns={{ initial: "1", md: "4" }} gap="3" mt="4">
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="incurred_on">
-              Date
-            </Text>
-            <TextField.Root
+        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+          <LField label="Date" htmlFor="incurred_on">
+            <LInput
               id="incurred_on"
               type="date"
               name="incurred_on"
@@ -381,47 +364,36 @@ export default function ExpenseForm({
               value={incurredOn}
               onChange={(event) => setIncurredOn(event.currentTarget.value)}
             />
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" id="category-label">
+          </LField>
+          <div className="flex flex-col gap-1.5">
+            <label id="category-label" className="text-body-s font-medium text-ink">
               Category
-            </Text>
-            <Select.Root
+            </label>
+            <LSelect
+              aria-labelledby="category-label"
               value={category}
-              onValueChange={(next) => {
-                setCategory(next);
+              onChange={(event) => {
+                setCategory(event.target.value);
                 setCategoryTouched(true);
               }}
             >
-              <Select.Trigger aria-labelledby="category-label" />
-              <Select.Content>
-                {categories.map((option) => (
-                  <Select.Item key={option.value} value={option.value}>
-                    {option.label}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="vendor">
-              Vendor
-            </Text>
-            <TextField.Root
+              {categories.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </LSelect>
+          </div>
+          <LField label="Vendor" htmlFor="vendor" hint="Who you paid">
+            <LInput
               id="vendor"
               name="vendor"
               value={vendor}
               onChange={(event) => setVendor(event.currentTarget.value)}
             />
-            <Text size="1" color="gray">
-              Who you paid
-            </Text>
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="amount">
-              Amount (USD)
-            </Text>
-            <TextField.Root
+          </LField>
+          <LField label="Amount (USD)" htmlFor="amount">
+            <LInput
               id="amount"
               name="amount"
               required
@@ -429,89 +401,81 @@ export default function ExpenseForm({
               value={amount}
               onChange={(event) => setAmount(event.currentTarget.value)}
             />
-          </Flex>
-        </Grid>
+          </LField>
+        </div>
 
-        <Box mt="6" mb="3">
-          <Text as="div" size="4" weight="bold">
-            How it&rsquo;s treated
-          </Text>
-          <Text as="div" size="2" color="gray">
-            Set once, here. Nothing downstream asks again.
-          </Text>
-        </Box>
-        <Grid columns={{ initial: "1", md: "2" }} gap="3">
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" id="treatment-label">
+        <div className="mt-6 mb-3">
+          <p className="text-h3 font-bold">How it&rsquo;s treated</p>
+          <p className="text-body-s text-ink-2">Set once, here. Nothing downstream asks again.</p>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <label id="treatment-label" className="text-body-s font-medium text-ink">
               Treatment
-            </Text>
-            <Select.Root value={treatment} onValueChange={handleTreatmentChange}>
-              <Select.Trigger aria-labelledby="treatment-label" />
-              <Select.Content>
-                {TREATMENTS.map((option) => (
-                  <Select.Item key={option.value} value={option.value}>
-                    {option.label}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
+            </label>
+            <LSelect
+              aria-labelledby="treatment-label"
+              value={treatment}
+              onChange={(event) => handleTreatmentChange(event.target.value)}
+            >
+              {TREATMENTS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </LSelect>
             {defaultedFromClient ? (
-              <Text size="1" color="gray">
+              <p className="text-caption text-ink-3">
                 {`Defaulted from ${defaultedFromClient}'s billing preference. Change it anytime.`}
-              </Text>
+              </p>
             ) : null}
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" id="trip-label">
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label id="trip-label" className="text-body-s font-medium text-ink">
               Trip
-            </Text>
-            <Select.Root value={tripId} onValueChange={handleTripChange}>
-              <Select.Trigger aria-labelledby="trip-label" />
-              <Select.Content>
-                <Select.Item value={NO_TRIP}>No trip</Select.Item>
-                {trips.map((trip) => (
-                  <Select.Item key={trip.id} value={trip.id}>
-                    {trip.label}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-            {tripHint ? (
-              <Text size="1" color="gray">
-                {tripHint}
-              </Text>
-            ) : null}
-            <Text size="1" color={rebilling ? "amber" : "gray"}>
+            </label>
+            <LSelect
+              aria-labelledby="trip-label"
+              value={tripId}
+              onChange={(event) => handleTripChange(event.target.value)}
+            >
+              <option value={NO_TRIP}>No trip</option>
+              {trips.map((trip) => (
+                <option key={trip.id} value={trip.id}>
+                  {trip.label}
+                </option>
+              ))}
+            </LSelect>
+            {tripHint ? <p className="text-caption text-ink-3">{tripHint}</p> : null}
+            <p className={rebilling ? "text-caption text-warn" : "text-caption text-ink-3"}>
               {trips.length === 0
                 ? "No trips yet. Log one first if this expense should be rebilled."
                 : rebilling
                   ? "Required. A rebilled expense has to land on an invoice"
                   : "Optional. Leave blank and it waits in the unassigned queue."}
-            </Text>
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" id="client-label">
+            </p>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label id="client-label" className="text-body-s font-medium text-ink">
               Client
-            </Text>
-            <Select.Root
+            </label>
+            <LSelect
+              aria-labelledby="client-label"
               value={effectiveClientId}
-              onValueChange={setChosenClientId}
+              onChange={(event) => setChosenClientId(event.target.value)}
               disabled={tripDecidesClient}
             >
-              <Select.Trigger aria-labelledby="client-label" />
-              <Select.Content>
-                <Select.Item value={NO_CLIENT}>No client</Select.Item>
-                {missingClientName ? (
-                  <Select.Item value={effectiveClientId}>{missingClientName}</Select.Item>
-                ) : null}
-                {clients.map((client) => (
-                  <Select.Item key={client.id} value={client.id}>
-                    {client.name}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-            <Text size="1" color="gray">
+              <option value={NO_CLIENT}>No client</option>
+              {missingClientName ? (
+                <option value={effectiveClientId}>{missingClientName}</option>
+              ) : null}
+              {clients.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.name}
+                </option>
+              ))}
+            </LSelect>
+            <p className="text-caption text-ink-3">
               {tripDecidesClient
                 ? selectedTrip?.clientId
                   ? "Set by the trip. Change it on the trip itself."
@@ -519,35 +483,28 @@ export default function ExpenseForm({
                 : clients.length === 0
                   ? "No clients yet. Add one to attribute costs you spend on them."
                   : "Optional. Use it for money you spent on a client with no trip, like training they required."}
-            </Text>
-          </Flex>
-          <Box gridColumn="1 / -1">
-            <Flex direction="column" gap="1">
-              <Text as="label" size="2" weight="medium" htmlFor="notes">
-                Notes
-              </Text>
-              <TextArea id="notes" name="notes" rows={2} defaultValue={initial("notes", values.notes)} />
-            </Flex>
-          </Box>
-        </Grid>
+            </p>
+          </div>
+          <div className="md:col-span-2">
+            <LField label="Notes" htmlFor="notes">
+              <LTextarea id="notes" name="notes" rows={2} defaultValue={initial("notes", values.notes)} />
+            </LField>
+          </div>
+        </div>
 
-        <Flex mt="4" role="alert" aria-live="polite">
-          {state.error ? (
-            <Text size="1" color="red">
-              {state.error}
-            </Text>
-          ) : null}
-        </Flex>
+        <div className="mt-4" role="alert" aria-live="polite">
+          {state.error ? <p className="text-caption font-medium text-crit">{state.error}</p> : null}
+        </div>
 
-        <Flex mt="4" gap="3">
-          <Button type="submit" disabled={pending}>
+        <div className="mt-4 flex gap-3">
+          <LButton type="submit" disabled={pending}>
             {pending ? "Saving…" : submitLabel}
-          </Button>
-          <Button asChild variant="outline">
-            <NextLink href="/expenses">Cancel</NextLink>
-          </Button>
-        </Flex>
+          </LButton>
+          <NextLink href="/expenses" className={lButtonClass({ variant: "outline" })}>
+            Cancel
+          </NextLink>
+        </div>
       </form>
-    </Card>
+    </LCard>
   );
 }

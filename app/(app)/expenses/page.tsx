@@ -1,23 +1,11 @@
 import NextLink from "next/link";
-import {
-  Badge,
-  Box,
-  Button,
-  Callout,
-  Card,
-  Flex,
-  Link as RadixLink,
-  Table,
-  Text,
-} from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { LAlert, LCard, LEmpty, LPill, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
-import EmptyState from "@/components/ui/empty-state";
-import PageShell from "../page-shell";
 import { loadOptionLabels } from "@/lib/custom-options-read";
 import { scheduleCMileageCents, type RatesByYear } from "@/lib/mileage";
 import {
@@ -61,12 +49,12 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  */
 const NO_CLIENT_FILTER = "none";
 
-type Badge = { color: "amber" | "blue" | "green"; label: string };
-const TREATMENT_FALLBACK: Badge = { color: "amber", label: "Unassigned" };
+type Badge = { tone: "warn" | "accent" | "good"; label: string };
+const TREATMENT_FALLBACK: Badge = { tone: "warn", label: "Unassigned" };
 const TREATMENT_BADGE: Record<string, Badge> = {
   unassigned: TREATMENT_FALLBACK,
-  rebill: { color: "blue", label: "Rebill" },
-  deduct: { color: "green", label: "Deduct" },
+  rebill: { tone: "accent", label: "Rebill" },
+  deduct: { tone: "good", label: "Deduct" },
 };
 
 // Supabase's Data API caps rows (commonly 1000) and TRUNCATES SILENTLY on
@@ -330,7 +318,7 @@ export default async function ExpensesPage({
   }));
 
   return (
-    <PageShell
+    <LPageShell
       title="Expenses"
       subtitle={
         error
@@ -344,43 +332,38 @@ export default async function ExpensesPage({
             }`
       }
       action={
-        <Flex gap="3">
-          <Button asChild variant="soft">
-            <NextLink href="/expenses/import">Import statement</NextLink>
-          </Button>
-          <Button asChild variant="outline">
-            <NextLink href="/expenses/mileage">Mileage log</NextLink>
-          </Button>
-          <Button asChild>
-            <NextLink href="/expenses/new">Add expense</NextLink>
-          </Button>
-        </Flex>
+        <>
+          <NextLink href="/expenses/import" className={lButtonClass({ variant: "outline" })}>
+            Import statement
+          </NextLink>
+          <NextLink href="/expenses/mileage" className={lButtonClass({ variant: "outline" })}>
+            Mileage log
+          </NextLink>
+          {/* THE ONE FILLED ACCENT BUTTON on this screen. */}
+          <NextLink href="/expenses/new" className={lButtonClass({ variant: "primary" })}>
+            Add expense
+          </NextLink>
+        </>
       }
     >
       {error ? (
-        <Card size="3">
-          <Callout.Root color="red">
-            <Callout.Icon>
-              <ExclamationTriangleIcon />
-            </Callout.Icon>
-            <Callout.Text>{friendlyDbError(error, "expenses.select")}</Callout.Text>
-          </Callout.Root>
-        </Card>
+        <LCard>
+          <LAlert tone="crit" className="flex items-start gap-2">
+            <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+            <span>{friendlyDbError(error, "expenses.select")}</span>
+          </LAlert>
+        </LCard>
       ) : (
         <>
           {truncatedExpenses ? (
-            <Box mb="4">
-              <Callout.Root color="amber">
-                <Callout.Icon>
-                  <ExclamationTriangleIcon />
-                </Callout.Icon>
-                <Callout.Text>
-                  {clientFilter
-                    ? `Totals above may be partial. This client's costs were picked out of your ${EXPENSES_LIMIT} most recent expenses, and you have more than that.`
-                    : `Totals above may be partial. There are more than ${EXPENSES_LIMIT} expenses and only the first ${EXPENSES_LIMIT} were totaled.`}
-                </Callout.Text>
-              </Callout.Root>
-            </Box>
+            <LAlert tone="warn" className="flex items-start gap-2">
+              <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+              <span>
+                {clientFilter
+                  ? `Totals above may be partial. This client's costs were picked out of your ${EXPENSES_LIMIT} most recent expenses, and you have more than that.`
+                  : `Totals above may be partial. There are more than ${EXPENSES_LIMIT} expenses and only the first ${EXPENSES_LIMIT} were totaled.`}
+              </span>
+            </LAlert>
           ) : null}
 
           {/* The lookup that decides whose cost each row is came back
@@ -389,18 +372,14 @@ export default async function ExpensesPage({
               treatment totals above are unaffected -- they never read a
               client. */}
           {!tripClients.ok ? (
-            <Box mb="4">
-              <Callout.Root color="red">
-                <Callout.Icon>
-                  <ExclamationTriangleIcon />
-                </Callout.Icon>
-                <Callout.Text>
-                  Couldn&rsquo;t work out which client these expenses belong
-                  to, so the Client column and the client filter are off.
-                  Every expense is listed. Reload to try again.
-                </Callout.Text>
-              </Callout.Root>
-            </Box>
+            <LAlert tone="crit" className="flex items-start gap-2">
+              <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+              <span>
+                Couldn&rsquo;t work out which client these expenses belong
+                to, so the Client column and the client filter are off.
+                Every expense is listed. Reload to try again.
+              </span>
+            </LAlert>
           ) : null}
 
           {/* Costs by client. A cost reaches a client two ways -- the pilot
@@ -409,51 +388,49 @@ export default async function ExpensesPage({
               that omitted either would be wrong in the direction that
               matters (too low). */}
           {!tripClients.ok ? null : clientsLoadError ? (
-            <Box mb="4">
-              <Callout.Root color="amber">
-                <Callout.Icon>
-                  <ExclamationTriangleIcon />
-                </Callout.Icon>
-                <Callout.Text>
-                  Couldn&rsquo;t load your clients, so you can&rsquo;t filter
-                  by one right now and the Client column below shows a link
-                  instead of a name. Reload to try again.
-                </Callout.Text>
-              </Callout.Root>
-            </Box>
+            <LAlert tone="warn" className="flex items-start gap-2">
+              <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+              <span>
+                Couldn&rsquo;t load your clients, so you can&rsquo;t filter
+                by one right now and the Client column below shows a link
+                instead of a name. Reload to try again.
+              </span>
+            </LAlert>
           ) : clientChoices.length > 0 ? (
-            <Flex gap="2" wrap="wrap" mb="4">
-              <Button asChild size="1" variant={clientFilter === null ? "solid" : "soft"}>
-                <NextLink href={clientFilterHref(null)}>Any client</NextLink>
-              </Button>
-              {clientChoices.map((client) => (
-                <Button
-                  key={client.id}
-                  asChild
-                  size="1"
-                  variant={clientFilter === client.id ? "solid" : "soft"}
-                >
-                  <NextLink
-                    href={clientFilterHref(clientFilter === client.id ? null : client.id)}
-                  >
-                    {client.name}
-                  </NextLink>
-                </Button>
-              ))}
-              <Button
-                asChild
-                size="1"
-                variant={clientFilter === NO_CLIENT_FILTER ? "solid" : "soft"}
+            <div className="flex flex-wrap gap-2">
+              <NextLink
+                href={clientFilterHref(null)}
+                className={lButtonClass({
+                  variant: clientFilter === null ? "primary" : "outline",
+                  size: "sm",
+                })}
               >
+                Any client
+              </NextLink>
+              {clientChoices.map((client) => (
                 <NextLink
-                  href={clientFilterHref(
-                    clientFilter === NO_CLIENT_FILTER ? null : NO_CLIENT_FILTER
-                  )}
+                  key={client.id}
+                  href={clientFilterHref(clientFilter === client.id ? null : client.id)}
+                  className={lButtonClass({
+                    variant: clientFilter === client.id ? "primary" : "outline",
+                    size: "sm",
+                  })}
                 >
-                  No client
+                  {client.name}
                 </NextLink>
-              </Button>
-            </Flex>
+              ))}
+              <NextLink
+                href={clientFilterHref(
+                  clientFilter === NO_CLIENT_FILTER ? null : NO_CLIENT_FILTER
+                )}
+                className={lButtonClass({
+                  variant: clientFilter === NO_CLIENT_FILTER ? "primary" : "outline",
+                  size: "sm",
+                })}
+              >
+                No client
+              </NextLink>
+            </div>
           ) : null}
 
           {/* A link arrived naming a client this account does not have, or
@@ -461,177 +438,151 @@ export default async function ExpensesPage({
               Showing every expense under a heading that claims one client's
               name would be the wrong kind of quiet. */}
           {filterUnavailable ? (
-            <Box mb="4">
-              <Callout.Root color="amber">
-                <Callout.Icon>
-                  <ExclamationTriangleIcon />
-                </Callout.Icon>
-                <Callout.Text>
-                  {tripClients.ok && !clientsLoadError
-                    ? "That link points at a client this account doesn't have, so every expense is shown."
-                    : "That client filter couldn't be applied, so every expense is shown."}
-                </Callout.Text>
-              </Callout.Root>
-            </Box>
+            <LAlert tone="warn" className="flex items-start gap-2">
+              <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+              <span>
+                {tripClients.ok && !clientsLoadError
+                  ? "That link points at a client this account doesn't have, so every expense is shown."
+                  : "That client filter couldn't be applied, so every expense is shown."}
+              </span>
+            </LAlert>
           ) : null}
 
           {/* U5: a failed count read must not silently look identical to
               "nothing to review" — it used to, because `count ?? 0` cannot
               tell "checked, found none" from "couldn't check" apart. */}
           {unreviewedCountError ? (
-            <Box mb="4">
-              <Callout.Root color="amber">
-                <Callout.Icon>
-                  <ExclamationTriangleIcon />
-                </Callout.Icon>
-                <Callout.Text>
-                  Couldn&rsquo;t check for imported transactions awaiting
-                  review. This is not a statement that there are none.
-                  Reload, or check{" "}
-                  <NextLink href="/expenses/transactions">
-                    the review queue
-                  </NextLink>{" "}
-                  directly.
-                </Callout.Text>
-              </Callout.Root>
-            </Box>
+            <LAlert tone="warn" className="flex items-start gap-2">
+              <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+              <span>
+                Couldn&rsquo;t check for imported transactions awaiting
+                review. This is not a statement that there are none.
+                Reload, or check{" "}
+                <NextLink href="/expenses/transactions" className="text-accent underline-offset-2 hover:underline">
+                  the review queue
+                </NextLink>{" "}
+                directly.
+              </span>
+            </LAlert>
           ) : unreviewedTransactions > 0 ? (
-            <Box mb="4">
-              <Card size="3">
-                <Flex align="center" justify="between" wrap="wrap" gap="3">
-                  <Box>
-                    <Text as="div" size="4" weight="bold">
-                      Imported transactions to review
-                    </Text>
-                    <Text as="div" color="gray" className="tnum">
-                      {unreviewedTransactions} transaction{unreviewedTransactions === 1 ? "" : "s"} from a bank
-                      statement import {unreviewedTransactions === 1 ? "hasn't" : "haven't"} been categorized yet.
-                      Nothing here is in your books until you review each one.
-                    </Text>
-                  </Box>
-                  <Button asChild variant="soft">
-                    <NextLink href="/expenses/transactions">Review now</NextLink>
-                  </Button>
-                </Flex>
-              </Card>
-            </Box>
+            <LCard>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-h3 font-bold">Imported transactions to review</p>
+                  <p className="tnum-l text-body-s text-ink-2">
+                    {unreviewedTransactions} transaction{unreviewedTransactions === 1 ? "" : "s"} from a bank
+                    statement import {unreviewedTransactions === 1 ? "hasn't" : "haven't"} been categorized yet.
+                    Nothing here is in your books until you review each one.
+                  </p>
+                </div>
+                <NextLink href="/expenses/transactions" className={lButtonClass({ variant: "outline" })}>
+                  Review now
+                </NextLink>
+              </div>
+            </LCard>
           ) : null}
 
           {queueRows.length > 0 ? (
-            <Box mb="4">
-              <Card size="3">
-                <Text as="div" size="4" weight="bold">
-                  Needs filing
-                </Text>
-                <Text as="div" color="gray" mb="3">
-                  {queueRows.length} receipt
-                  {queueRows.length === 1 ? "" : "s"} that are neither billed
-                  to a client nor claimed as a deduction.
-                </Text>
-                {/* U5: a failed trips read used to leave every row's Trip
-                    picker offering just "No trip" with the Rebill button
-                    disabled and no explanation why. */}
-                {tripsLoadError ? (
-                  <Callout.Root color="amber" size="1" mb="3">
-                    <Callout.Text>
-                      Couldn&rsquo;t load your trips, so the Trip picker
-                      below only offers &ldquo;No trip&rdquo; and
-                      Rebill is unavailable. Reload before filing these.
-                    </Callout.Text>
-                  </Callout.Root>
-                ) : null}
-                <UnassignedQueue rows={queueRows} trips={tripOptions} />
-              </Card>
-            </Box>
+            <LCard>
+              <p className="text-h3 font-bold">Needs filing</p>
+              <p className="mb-3 text-body-s text-ink-2">
+                {queueRows.length} receipt
+                {queueRows.length === 1 ? "" : "s"} that are neither billed
+                to a client nor claimed as a deduction.
+              </p>
+              {/* U5: a failed trips read used to leave every row's Trip
+                  picker offering just "No trip" with the Rebill button
+                  disabled and no explanation why. */}
+              {tripsLoadError ? (
+                <LAlert tone="warn" className="mb-3">
+                  Couldn&rsquo;t load your trips, so the Trip picker
+                  below only offers &ldquo;No trip&rdquo; and
+                  Rebill is unavailable. Reload before filing these.
+                </LAlert>
+              ) : null}
+              <UnassignedQueue rows={queueRows} trips={tripOptions} />
+            </LCard>
           ) : null}
 
-          <Box mb="4">
-            <Card size="3">
-              <Flex justify="between" align="center" wrap="wrap" gap="3">
-                <Flex direction="column" gap="1">
-                  <Text as="div" size="4" weight="bold">
-                    Mileage
-                  </Text>
-                  <Text as="div" size="2" color="gray">
-                    {mileageFailed
-                      ? "Couldn't load your mileage total."
-                      : `${mileageTotalMiles.toFixed(1)} mi logged at the standard mileage rate${
-                          mileageTruncated ? " (partial, see the mileage log)" : ""
-                        }`}
-                  </Text>
-                </Flex>
-                <Flex align="center" gap="4">
-                  {!mileageFailed ? (
-                    // A rate-less year must never render as a $0.00
-                    // deduction — that reads as "your mileage is worth
-                    // nothing" to a pilot who logged real drives. Same
-                    // "No rate on file" wording as /expenses/mileage's
-                    // by-tax-year table, which is the correct handling of
-                    // this exact case. A MIXED set (some years priced, some
-                    // not) falls through to the total below instead — see
-                    // the Callout beneath the Card for how that case says
-                    // so.
-                    mileageTotalCents === 0 && milesWithoutRate > 0 ? (
-                      <Text size="2" color="gray">
-                        No rate on file
-                      </Text>
-                    ) : (
-                      <Text size="5" weight="bold" className="tnum">
-                        {formatCents(mileageTotalCents)}
-                      </Text>
-                    )
-                  ) : null}
-                  <Button asChild variant="soft">
-                    <NextLink href="/expenses/mileage">Log a drive</NextLink>
-                  </Button>
-                </Flex>
-              </Flex>
-              {/* Same wording and shape as /reports/profit-loss's own
-                  mileageMilesWithoutRate Callout — a MIXED set (some tax
-                  years priced, some not) prints the total above with no
-                  caveat otherwise, which quietly omits the rate-less
-                  years' miles from a figure that looks complete. */}
-              {!mileageFailed && mileageTotalCents > 0 && milesWithoutRate > 0 ? (
-                <Callout.Root color="amber" mt="3">
-                  <Callout.Icon>
-                    <ExclamationTriangleIcon />
-                  </Callout.Icon>
-                  <Callout.Text>
-                    {`${milesWithoutRate} miles are not in the figure above. There's no IRS standard rate on file for their tax year. Add it in Settings and this recomputes.`}
-                  </Callout.Text>
-                </Callout.Root>
-              ) : null}
-            </Card>
-          </Box>
+          <LCard>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-col gap-1">
+                <p className="text-h3 font-bold">Mileage</p>
+                <p className="text-body-s text-ink-2">
+                  {mileageFailed
+                    ? "Couldn't load your mileage total."
+                    : `${mileageTotalMiles.toFixed(1)} mi logged at the standard mileage rate${
+                        mileageTruncated ? " (partial, see the mileage log)" : ""
+                      }`}
+                </p>
+              </div>
+              <div className="flex items-center gap-4">
+                {!mileageFailed ? (
+                  // A rate-less year must never render as a $0.00
+                  // deduction — that reads as "your mileage is worth
+                  // nothing" to a pilot who logged real drives. Same
+                  // "No rate on file" wording as /expenses/mileage's
+                  // by-tax-year table, which is the correct handling of
+                  // this exact case. A MIXED set (some years priced, some
+                  // not) falls through to the total below instead — see
+                  // the callout beneath the card for how that case says
+                  // so.
+                  mileageTotalCents === 0 && milesWithoutRate > 0 ? (
+                    <span className="text-body-s text-ink-2">No rate on file</span>
+                  ) : (
+                    <span className="tnum-l text-figure font-bold tracking-tight">
+                      {formatCents(mileageTotalCents)}
+                    </span>
+                  )
+                ) : null}
+                <NextLink href="/expenses/mileage" className={lButtonClass({ variant: "outline" })}>
+                  Log a drive
+                </NextLink>
+              </div>
+            </div>
+            {/* Same wording and shape as /reports/profit-loss's own
+                mileageMilesWithoutRate callout — a MIXED set (some tax
+                years priced, some not) prints the total above with no
+                caveat otherwise, which quietly omits the rate-less
+                years' miles from a figure that looks complete. */}
+            {!mileageFailed && mileageTotalCents > 0 && milesWithoutRate > 0 ? (
+              <LAlert tone="warn" className="mt-3 flex items-start gap-2">
+                <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+                <span>
+                  {`${milesWithoutRate} miles are not in the figure above. There's no IRS standard rate on file for their tax year. Add it in Settings and this recomputes.`}
+                </span>
+              </LAlert>
+            ) : null}
+          </LCard>
 
-          <Card size="3">
+          <LCard>
             {expenses.length === 0 && clientFilter ? (
               // Filtered to nothing is a third case, distinct from both an
               // empty account and a failed read: the expenses exist, none
               // of them belong to this client.
-              <EmptyState
+              <LEmpty
                 title={
                   clientFilter === NO_CLIENT_FILTER
                     ? "Every expense is attributed"
                     : "No expenses for this client"
                 }
                 action={
-                  <Button asChild variant="soft">
-                    <NextLink href="/expenses">Show all expenses</NextLink>
-                  </Button>
+                  <NextLink href="/expenses" className={lButtonClass({ variant: "outline" })}>
+                    Show all expenses
+                  </NextLink>
                 }
               >
                 {clientFilter === NO_CLIENT_FILTER
                   ? "Nothing is sitting against no client at all."
                   : "Nothing here is attributed to them, directly or through one of their trips."}
-              </EmptyState>
+              </LEmpty>
             ) : expenses.length === 0 ? (
-              <EmptyState
+              <LEmpty
                 title="No expenses yet"
                 action={
-                  <Button asChild>
-                    <NextLink href="/expenses/new">Add your first expense</NextLink>
-                  </Button>
+                  <NextLink href="/expenses/new" className={lButtonClass({ variant: "primary" })}>
+                    Add your first expense
+                  </NextLink>
                 }
                 // No "import a statement" secondary action here on purpose:
                 // bank import is Pro-gated (FEATURES.bank_import), and an
@@ -641,98 +592,127 @@ export default async function ExpensesPage({
               >
                 Capture the receipt once and tag it rebill or deduct. It files
                 itself against the trip from there.
-              </EmptyState>
+              </LEmpty>
             ) : (
-              <Table.Root variant="ghost">
-                <Table.Header>
-                  <Table.Row>
-                    <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell>Category</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell>Vendor</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell>Trip</Table.ColumnHeaderCell>
-                    {tripClients.ok ? (
-                      <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
-                    ) : null}
-                    <Table.ColumnHeaderCell justify="end">Amount</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell>Treatment</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell>Receipt</Table.ColumnHeaderCell>
-                  </Table.Row>
-                </Table.Header>
-                <Table.Body>
+              <LTable>
+                <caption>
+                  <span className="sr-only">Expenses</span>
+                </caption>
+                <thead>
+                  <tr>
+                    <LTh>Date</LTh>
+                    <LTh>Category</LTh>
+                    <LTh>Vendor</LTh>
+                    <LTh>Trip</LTh>
+                    {tripClients.ok ? <LTh>Client</LTh> : null}
+                    <LTh numeric>Amount</LTh>
+                    <LTh>Treatment</LTh>
+                    <LTh>Receipt</LTh>
+                  </tr>
+                </thead>
+                <tbody>
                   {expenses.map((expense) => {
                     const badge = TREATMENT_BADGE[expense.treatment] ?? TREATMENT_FALLBACK;
                     const client = clientOf(expense);
                     return (
-                      <Table.Row key={expense.id}>
-                        <Table.RowHeaderCell>
-                          <RadixLink asChild weight="medium">
-                            <NextLink href={`/expenses/${expense.id}`}>
-                              {formatDate(expense.incurred_on)}
-                            </NextLink>
-                          </RadixLink>
-                        </Table.RowHeaderCell>
-                        <Table.Cell>
-                          <Text color="gray">{categoryLabels[expense.category] ?? "Other"}</Text>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Text color="gray">{expense.vendor ?? "—"}</Text>
-                        </Table.Cell>
-                        <Table.Cell>
+                      <tr key={expense.id}>
+                        <th
+                          scope="row"
+                          className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                        >
+                          <NextLink
+                            href={`/expenses/${expense.id}`}
+                            className="text-accent hover:underline"
+                          >
+                            {formatDate(expense.incurred_on)}
+                          </NextLink>
+                        </th>
+                        <LTd>
+                          <span className="text-ink-2">{categoryLabels[expense.category] ?? "Other"}</span>
+                        </LTd>
+                        <LTd>
+                          <span className="text-ink-2">{expense.vendor ?? "—"}</span>
+                        </LTd>
+                        <LTd>
                           {expense.trip_id ? (
-                            <RadixLink asChild color="gray">
-                              <NextLink href={`/trips/${expense.trip_id}`}>
-                                {tripLabels.get(expense.trip_id) ?? "View trip"}
-                              </NextLink>
-                            </RadixLink>
+                            <NextLink
+                              href={`/trips/${expense.trip_id}`}
+                              className="text-ink-2 hover:underline"
+                            >
+                              {tripLabels.get(expense.trip_id) ?? "View trip"}
+                            </NextLink>
                           ) : (
-                            <Text color="gray">—</Text>
+                            <span className="text-ink-3">—</span>
                           )}
-                        </Table.Cell>
+                        </LTd>
                         {client === null ? null : (
-                          <Table.Cell>
+                          <LTd>
                             {client.clientId === null ? (
-                              <Text color="gray">No client</Text>
+                              <span className="text-ink-3">No client</span>
                             ) : (
-                              <RadixLink asChild color="gray">
-                                <NextLink href={`/clients/${client.clientId}`}>
-                                  {clientsLoadError
-                                    ? "View client"
-                                    : clientNames.get(client.clientId) ?? "View client"}
-                                </NextLink>
-                              </RadixLink>
+                              <NextLink
+                                href={`/clients/${client.clientId}`}
+                                className="text-ink-2 hover:underline"
+                              >
+                                {clientsLoadError
+                                  ? "View client"
+                                  : clientNames.get(client.clientId) ?? "View client"}
+                              </NextLink>
                             )}
                             {/* Says which of the two answers this is. "Via
                                 trip" is not the pilot's own attribution and
                                 will follow the trip if its client changes. */}
                             {client.source === "trip" ? (
-                              <Text as="div" size="1" color="gray">
-                                Via trip
-                              </Text>
+                              <div className="text-caption text-ink-3">Via trip</div>
                             ) : null}
-                          </Table.Cell>
+                          </LTd>
                         )}
-                        <Table.Cell justify="end">
-                          <Text weight="medium" className="tnum">
-                            {formatCents(expense.amount_cents)}
-                          </Text>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Badge color={badge.color}>{badge.label}</Badge>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Text size="1" color={expense.receipt_path ? "gray" : "red"}>
+                        <LTd numeric>
+                          <span className="font-medium">{formatCents(expense.amount_cents)}</span>
+                        </LTd>
+                        <LTd>
+                          <LPill tone={badge.tone}>{badge.label}</LPill>
+                        </LTd>
+                        <LTd>
+                          <span className={expense.receipt_path ? "text-caption text-ink-3" : "text-caption text-crit"}>
                             {expense.receipt_path ? "Attached" : "Missing"}
-                          </Text>
-                        </Table.Cell>
-                      </Table.Row>
+                          </span>
+                        </LTd>
+                      </tr>
                     );
                   })}
-                </Table.Body>
-              </Table.Root>
+                </tbody>
+              </LTable>
             )}
-          </Card>
+          </LCard>
         </>
       )}
-    </PageShell>
+    </LPageShell>
+  );
+}
+
+/* ── Inline icon ───────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. Defined once here, aria-hidden, stroke="currentColor" so it
+ * inherits its caller's tone utility (text-warn, text-crit). Same shape as
+ * overview/page.tsx's own WarningIcon. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

@@ -1,7 +1,6 @@
-import { Callout, Card } from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { LAlert, LCard } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
-import PageShell from "../../page-shell";
 import ImportWorkspace from "./import-workspace";
 import { listBankAccounts } from "./actions";
 
@@ -20,25 +19,47 @@ export default async function BankImportPage() {
   const { accounts, error } = await listBankAccounts();
 
   return (
-    <PageShell
+    <LPageShell
       title="Import a bank or card statement"
       subtitle="Download a CSV, OFX, or QFX statement from your bank's online portal and bring it in. Nothing is added to your books until you review and categorize each transaction."
     >
       {error ? (
-        <Card size="3">
-          <Callout.Root color="red">
-            <Callout.Icon>
-              <ExclamationTriangleIcon />
-            </Callout.Icon>
-            {/* listBankAccounts already runs error through friendlyDbError
-                before returning it, so `error` here is a sentence, not a
-                raw PostgREST message. */}
-            <Callout.Text>{error}</Callout.Text>
-          </Callout.Root>
-        </Card>
+        <LCard>
+          {/* listBankAccounts already runs error through friendlyDbError
+              before returning it, so `error` here is a sentence, not a
+              raw PostgREST message. */}
+          <LAlert tone="crit" className="flex items-start gap-2">
+            <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+            <span>{error}</span>
+          </LAlert>
+        </LCard>
       ) : (
         <ImportWorkspace initialAccounts={accounts} />
       )}
-    </PageShell>
+    </LPageShell>
+  );
+}
+
+/* ── Inline icon ───────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

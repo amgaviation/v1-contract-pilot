@@ -1,5 +1,5 @@
 import { requireAccount } from "@/lib/supabase/account";
-import PageShell from "../../page-shell";
+import { LPageShell } from "@/components/ledger/page-shell";
 import ExpenseForm from "../expense-form";
 import { createExpense } from "../actions";
 import { loadClientOptions, loadTripOptions } from "../trip-options";
@@ -48,7 +48,7 @@ export default async function NewExpensePage({
       : undefined;
 
   return (
-    <PageShell
+    <LPageShell
       title="Add expense"
       subtitle="Tag it once as rebill or deduct. It files itself against the trip."
     >
@@ -63,6 +63,6 @@ export default async function NewExpensePage({
         }}
         submitLabel="Save expense"
       />
-    </PageShell>
+    </LPageShell>
   );
 }
