@@ -312,9 +312,13 @@ export default async function LandingPage() {
       <Band>
         <div className="flex flex-col gap-6">
           <div className="flex max-w-3xl flex-col items-start gap-4">
-            <LPill tone="accent">
+            {/* Not an LPill: that primitive's whitespace-nowrap is correct
+                for a short status badge ("Paid", "Overdue") and wrong for a
+                sentence — a pill that cannot wrap just runs off the edge of
+                a phone. Plain eyebrow text instead, which wraps normally. */}
+            <p className="text-caption font-semibold text-accent">
               For the contract pilot: day rates, several operators, one-person business
-            </LPill>
+            </p>
 
             {/* THE page's only h1. Ledger's type scale is fixed rather than
                 responsive per breakpoint (docs/design/LEDGER.md), so this
