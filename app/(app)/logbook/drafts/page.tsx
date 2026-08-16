@@ -1,12 +1,11 @@
 import NextLink from "next/link";
-import { Button, Callout, Card, Flex, Heading, Text } from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { LAlert, LCard, LEmpty, lButtonClass } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { friendlyDbError } from "@/lib/db-errors";
 import { countOf } from "@/lib/supabase/rows";
-import PageShell from "../../page-shell";
 import { logbookFrom, type DraftLegRow, type DraftTripRow } from "../db";
 import TripDraftCard from "./trip-draft-card";
 
@@ -141,14 +140,12 @@ export default async function LogbookDraftsPage() {
   // isn't useful to a pilot, so it never belongs on screen.
   if (tripError) {
     return (
-      <PageShell title="Trip drafts" subtitle="Legs from completed trips, waiting on your review.">
-        <Callout.Root color="red">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>{friendlyDbError(tripError, "trips.select")}</Callout.Text>
-        </Callout.Root>
-      </PageShell>
+      <LPageShell title="Trip drafts" subtitle="Legs from completed trips, waiting on your review.">
+        <LAlert tone="crit" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+          <span>{friendlyDbError(tripError, "trips.select")}</span>
+        </LAlert>
+      </LPageShell>
     );
   }
 
@@ -193,26 +190,22 @@ export default async function LogbookDraftsPage() {
 
   if (legsError) {
     return (
-      <PageShell title="Trip drafts" subtitle="Legs from completed trips, waiting on your review.">
-        <Callout.Root color="red">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>{friendlyDbError(legsError, "trip_legs.select")}</Callout.Text>
-        </Callout.Root>
-      </PageShell>
+      <LPageShell title="Trip drafts" subtitle="Legs from completed trips, waiting on your review.">
+        <LAlert tone="crit" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+          <span>{friendlyDbError(legsError, "trip_legs.select")}</span>
+        </LAlert>
+      </LPageShell>
     );
   }
   if (confirmedError) {
     return (
-      <PageShell title="Trip drafts" subtitle="Legs from completed trips, waiting on your review.">
-        <Callout.Root color="red">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>{friendlyDbError(confirmedError, "logbook_entries.select")}</Callout.Text>
-        </Callout.Root>
-      </PageShell>
+      <LPageShell title="Trip drafts" subtitle="Legs from completed trips, waiting on your review.">
+        <LAlert tone="crit" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+          <span>{friendlyDbError(confirmedError, "logbook_entries.select")}</span>
+        </LAlert>
+      </LPageShell>
     );
   }
 
@@ -245,11 +238,11 @@ export default async function LogbookDraftsPage() {
   // empty pendingTrips list means "nothing found in what was checked," not
   // "there is nothing." fetchAllConfirmedLegIds isn't part of this check
   // — its own comment above covers why, and confirmedError above already
-  // turns any of its failures into a visible red Callout.
+  // turns any of its failures into a visible red LAlert.
   const draftCheckIncomplete = tripsTruncated || legsTruncated;
 
   return (
-    <PageShell
+    <LPageShell
       title="Trip drafts"
       subtitle={
         pendingTrips.length === 0
@@ -266,60 +259,83 @@ export default async function LogbookDraftsPage() {
       }
     >
       {tripsTruncated ? (
-        <Callout.Root color="amber" mb="3">
-          <Callout.Text>
+        <LAlert tone="warn" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+          <span>
             {`Showing drafts for your ${TRIP_LIMIT} most recently completed
               trips. Older completed trips aren't checked for drafts on
               this screen. They're still in your account, but an
               unconfirmed leg on one of them won't show up here.`}
-          </Callout.Text>
-        </Callout.Root>
+          </span>
+        </LAlert>
       ) : null}
       {legsTruncated ? (
-        <Callout.Root color="amber" mb="3">
-          <Callout.Text>
+        <LAlert tone="warn" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+          <span>
             {`Checked your ${LEG_LIMIT} most recently flown legs on these
               trips for unconfirmed ones. Older legs aren't checked by this
               screen. They're still in your account, but this list can't
               reach that far back.`}
-          </Callout.Text>
-        </Callout.Root>
+          </span>
+        </LAlert>
       ) : null}
       {pendingTrips.length === 0 ? (
-        <Card>
-          <Flex direction="column" align="center" gap="2" py="6">
-            <Heading as="h3" size="4">
-              {draftCheckIncomplete ? "Nothing found in what could be checked" : "Nothing to review"}
-            </Heading>
-            <Text size="2" color="gray" align="center">
-              {draftCheckIncomplete
-                ? "This screen only checked your most recent completed trips and legs (see the note above). An older unconfirmed leg could still be out there."
-                : notYetFlownCount
-                  ? "Marking a trip flown proposes a logbook entry for each of its legs, and they wait here for you to confirm. Nothing reaches your logbook automatically."
-                  : "Complete a trip with legs and its proposed entries will show up here for you to confirm. Nothing reaches your logbook automatically."}
-            </Text>
-            {/* A primary action rather than a dead end, and which one is
-                useful depends on why the queue is empty: mark a trip
-                flown if any are still Scheduled, otherwise log one. */}
-            <Flex gap="3" mt="2" wrap="wrap">
-              <Button asChild>
-                <NextLink href={notYetFlownCount ? "/trips" : "/trips/new"}>
-                  {notYetFlownCount ? "Mark a trip flown" : "Log a trip"}
-                </NextLink>
-              </Button>
-              <Button asChild variant="outline">
-                <NextLink href="/logbook">Open your logbook</NextLink>
-              </Button>
-            </Flex>
-          </Flex>
-        </Card>
+        <LCard>
+          <LEmpty
+            title={draftCheckIncomplete ? "Nothing found in what could be checked" : "Nothing to review"}
+            action={
+              <NextLink
+                href={notYetFlownCount ? "/trips" : "/trips/new"}
+                className={lButtonClass({ variant: "primary" })}
+              >
+                {notYetFlownCount ? "Mark a trip flown" : "Log a trip"}
+              </NextLink>
+            }
+            secondaryAction={
+              <NextLink href="/logbook" className={lButtonClass({ variant: "outline" })}>
+                Open your logbook
+              </NextLink>
+            }
+          >
+            {draftCheckIncomplete
+              ? "This screen only checked your most recent completed trips and legs (see the note above). An older unconfirmed leg could still be out there."
+              : notYetFlownCount
+                ? "Marking a trip flown proposes a logbook entry for each of its legs, and they wait here for you to confirm. Nothing reaches your logbook automatically."
+                : "Complete a trip with legs and its proposed entries will show up here for you to confirm. Nothing reaches your logbook automatically."}
+          </LEmpty>
+        </LCard>
       ) : (
-        <Flex direction="column" gap="4">
+        <div className="flex flex-col gap-4">
           {pendingTrips.map(({ trip, legs: tripLegs }) => (
             <TripDraftCard key={trip.id} trip={trip} legs={tripLegs} />
           ))}
-        </Flex>
+        </div>
       )}
-    </PageShell>
+    </LPageShell>
+  );
+}
+
+/* ── Inline icon ───────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. Same shape as invoices/page.tsx's own WarningIcon. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

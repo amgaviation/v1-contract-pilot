@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { loadFleetOptions } from "@/lib/fleet";
 import { formatDate } from "@/lib/format";
-import PageShell from "../../page-shell";
+import { LPageShell } from "@/components/ledger/page-shell";
 import LogbookEntryForm, { type LogbookEntryFormValues } from "../logbook-entry-form";
 import { updateLogbookEntry } from "../actions";
 import { logbookFrom, type LogbookEntryRow, type LogbookSource } from "../db";
@@ -48,7 +48,7 @@ export default async function LogbookEntryPage({
   const fleet = await loadFleetOptions();
 
   return (
-    <PageShell
+    <LPageShell
       title={`${entry.from_icao ?? "—"} → ${entry.to_icao ?? "—"}`}
       subtitle={`${formatDate(entry.entry_date)} · ${Number(entry.total_time).toFixed(1)} hours`}
       action={<DeleteLogbookEntryButton id={entry.id} />}
@@ -60,6 +60,6 @@ export default async function LogbookEntryPage({
         provenanceNote={`${SOURCE_LABEL[entry.source]} You can correct the flight data below, but where it came from can't be changed here.`}
         fleet={fleet}
       />
-    </PageShell>
+    </LPageShell>
   );
 }

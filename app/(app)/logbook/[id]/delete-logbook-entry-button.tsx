@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { AlertDialog, Button, Flex, Text } from "@/components/ui";
+import { LButton } from "@/components/ledger";
+import { LConfirmDialog } from "@/components/ledger/dialog";
 import { deleteLogbookEntry } from "../actions";
 
 export default function DeleteLogbookEntryButton({ id }: { id: string }) {
@@ -23,35 +24,25 @@ export default function DeleteLogbookEntryButton({ id }: { id: string }) {
   }
 
   return (
-    <Flex direction="column" align="end" gap="1">
-      <AlertDialog.Root open={open} onOpenChange={setOpen}>
-        <AlertDialog.Trigger>
-          <Button variant="outline" color="red">
-            Delete entry
-          </Button>
-        </AlertDialog.Trigger>
-        <AlertDialog.Content maxWidth="450px">
-          <AlertDialog.Title>Delete this logbook entry?</AlertDialog.Title>
-          <AlertDialog.Description size="2">
-            This can&rsquo;t be undone.
-          </AlertDialog.Description>
-          {error ? (
-            <Text size="1" color="red" role="alert" mt="2">
-              {error}
-            </Text>
-          ) : null}
-          <Flex gap="3" mt="4" justify="end">
-            <AlertDialog.Cancel>
-              <Button variant="soft" color="gray" disabled={pending}>
-                Cancel
-              </Button>
-            </AlertDialog.Cancel>
-            <Button variant="solid" color="red" disabled={pending} onClick={doDelete}>
-              {pending ? "Deleting…" : "Delete entry"}
-            </Button>
-          </Flex>
-        </AlertDialog.Content>
-      </AlertDialog.Root>
-    </Flex>
+    <div className="flex flex-col items-end gap-1">
+      <LButton variant="outline" onClick={() => setOpen(true)}>
+        Delete entry
+      </LButton>
+      {error ? (
+        <p role="alert" className="text-caption text-crit">
+          {error}
+        </p>
+      ) : null}
+      <LConfirmDialog
+        open={open}
+        onOpenChange={setOpen}
+        title="Delete this logbook entry?"
+        description="This can’t be undone."
+        confirmLabel={pending ? "Deleting…" : "Delete entry"}
+        confirmVariant="danger"
+        onConfirm={doDelete}
+        pending={pending}
+      />
+    </div>
   );
 }

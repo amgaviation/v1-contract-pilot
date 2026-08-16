@@ -1,8 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { Button, Callout, Flex, Grid, Select, Text, TextArea, TextField } from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { LAlert, LButton } from "@/components/ledger";
+import { LField, LInput, LSelect, LTextarea } from "@/components/ledger/forms";
 import type { AircraftFormState } from "./actions";
 import {
   CATEGORY_CLASS_SUGGESTIONS,
@@ -27,9 +27,13 @@ export type AircraftFormValues = {
   notes?: string | null;
 };
 
-// Radix Select.Item forbids an empty-string value, and "not recorded" is a
-// real answer here rather than an absence — 61.57(a)(1)'s full-stop rule
-// turns on gear, so a pilot who does not know must be able to say so.
+// The sentinel "not recorded" carries from the pre-Ledger Select.Item-era
+// vocabulary — "not recorded" is a real answer here rather than an
+// absence (61.57(a)(1)'s full-stop rule turns on gear, so a pilot who does
+// not know must be able to say so) and the controlled + hidden-input
+// wiring around it is this form's submission logic, not its skin (HARD
+// RULE 5 keeps that untouched even though LSelect is a real native
+// <select> that would not itself require it).
 const GEAR_UNSTATED = "__unstated__";
 
 const initialState: AircraftFormState = { error: null };
@@ -45,12 +49,6 @@ const initialState: AircraftFormState = { error: null };
  * unannotated instead of quietly totalling a short figure, and a control
  * that cannot express "not recorded" would silently destroy it on the
  * first save of any existing airframe.
- *
- * Same Radix mechanics as the gear picker below it: Radix's Select posts
- * through a bubble <select> rendered with `defaultValue`, so React 19's
- * post-action form.reset() would restore it to its mount-time option even
- * on a rejected submit. `name` is kept off it and the real value posts
- * from a controlled hidden input.
  */
 function TriStateField({
   name,
@@ -76,27 +74,14 @@ function TriStateField({
 
   const labelId = `${name}-label`;
   return (
-    <Flex direction="column" gap="1">
-      <Text as="label" size="1" color="gray" id={labelId}>
-        {label}
-      </Text>
-      <Select.Root value={value} onValueChange={setValue}>
-        <Select.Trigger aria-labelledby={labelId} />
-        <Select.Content>
-          <Select.Item value={TRISTATE_UNSTATED}>Not recorded</Select.Item>
-          <Select.Item value={TRISTATE_YES}>Yes</Select.Item>
-          <Select.Item value={TRISTATE_NO}>No</Select.Item>
-        </Select.Content>
-      </Select.Root>
-      <input
-        type="hidden"
-        name={name}
-        value={value === TRISTATE_UNSTATED ? "" : value}
-      />
-      <Text size="1" color="gray">
-        {hint}
-      </Text>
-    </Flex>
+    <LField label={<span id={labelId}>{label}</span>} hint={hint}>
+      <LSelect aria-labelledby={labelId} value={value} onChange={(e) => setValue(e.target.value)}>
+        <option value={TRISTATE_UNSTATED}>Not recorded</option>
+        <option value={TRISTATE_YES}>Yes</option>
+        <option value={TRISTATE_NO}>No</option>
+      </LSelect>
+      <input type="hidden" name={name} value={value === TRISTATE_UNSTATED ? "" : value} />
+    </LField>
   );
 }
 
@@ -120,10 +105,6 @@ export default function AircraftForm({
     return stored === null || stored === undefined ? fallback : String(stored);
   };
 
-  // Radix's Select posts through a bubble <select> rendered with
-  // `defaultValue`, so React 19's post-action form.reset() would restore
-  // it to its mount-time option even on a rejected submit. `name` is kept
-  // off it and the real value posts from a controlled hidden input.
   const [gear, setGear] = useState(
     () => submitted?.gear ?? (values.gear ? String(values.gear) : GEAR_UNSTATED)
   );
@@ -143,15 +124,16 @@ export default function AircraftForm({
 
   return (
     <form action={formAction}>
-      <Flex direction="column" gap="4">
+      <div className="flex flex-col gap-4">
         {values.id ? <input type="hidden" name="id" value={values.id} /> : null}
 
-        <Grid columns={{ initial: "1", sm: "2" }} gap="3">
-          <Flex direction="column" gap="1">
-            <Text as="label" size="1" color="gray" htmlFor="tail_number">
-              Registration
-            </Text>
-            <TextField.Root
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <LField
+            label="Registration"
+            htmlFor="tail_number"
+            hint="Write it however you like: N447SP, N-447SP, and n447sp are the same airframe here."
+          >
+            <LInput
               id="tail_number"
               name="tail_number"
               required
@@ -160,22 +142,15 @@ export default function AircraftForm({
               placeholder="N447SP"
               defaultValue={initial("tail_number", values.tail_number)}
             />
-            <Text size="1" color="gray">
-              Write it however you like: N447SP, N-447SP, and n447sp are the same
-              airframe here.
-            </Text>
-          </Flex>
+          </LField>
 
-          <Flex direction="column" gap="1">
-            <Text as="label" size="1" color="gray" htmlFor="type_designator">
-              ICAO type designator
-            </Text>
+          <LField label="ICAO type designator" htmlFor="type_designator" hint="Optional: C560, BE40, PC12.">
             {/* No maxLength. Truncating at 4 turned "Citation V" into
                 "CITA" — which passes the 2-4 character rule, so the
                 server's explanatory error never fired and 412 hours
                 silently grouped under a type that does not exist. Better
                 to accept it and say why it is wrong. */}
-            <TextField.Root
+            <LInput
               id="type_designator"
               name="type_designator"
               autoCapitalize="characters"
@@ -183,18 +158,16 @@ export default function AircraftForm({
               placeholder="C560"
               defaultValue={initial("type_designator", values.type_designator)}
             />
-            <Text size="1" color="gray">
-              Optional: C560, BE40, PC12.
-            </Text>
-          </Flex>
-        </Grid>
+          </LField>
+        </div>
 
-        <Grid columns={{ initial: "1", sm: "2" }} gap="3">
-          <Flex direction="column" gap="1">
-            <Text as="label" size="1" color="gray" htmlFor="type_rating">
-              Type rating
-            </Text>
-            <TextField.Root
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <LField
+            label="Type rating"
+            htmlFor="type_rating"
+            hint="Your hours group under this when you set it. Worth doing: one CE-500 rating covers the Citation 500, 501, 550, 551, S550, 552 and 560, which ICAO splits into five separate designators."
+          >
+            <LInput
               id="type_rating"
               name="type_rating"
               autoCapitalize="characters"
@@ -202,35 +175,25 @@ export default function AircraftForm({
               placeholder="CE-500"
               defaultValue={initial("type_rating", values.type_rating)}
             />
-            <Text size="1" color="gray">
-              Your hours group under this when you set it. Worth doing: one CE-500
-              rating covers the Citation 500, 501, 550, 551, S550, 552 and 560, which
-              ICAO splits into five separate designators.
-            </Text>
-          </Flex>
-        </Grid>
+          </LField>
+        </div>
 
-        <Grid columns={{ initial: "1", sm: "2" }} gap="3">
-          <Flex direction="column" gap="1">
-            <Text as="label" size="1" color="gray" htmlFor="make_model">
-              Make and model
-            </Text>
-            <TextField.Root
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <LField
+            label="Make and model"
+            htmlFor="make_model"
+            hint="How an underwriter’s pilot-history form asks for it."
+          >
+            <LInput
               id="make_model"
               name="make_model"
               placeholder="Cessna 560 Citation V"
               defaultValue={initial("make_model", values.make_model)}
             />
-            <Text size="1" color="gray">
-              How an underwriter&rsquo;s pilot-history form asks for it.
-            </Text>
-          </Flex>
+          </LField>
 
-          <Flex direction="column" gap="1">
-            <Text as="label" size="1" color="gray" htmlFor="category_class">
-              Category and class
-            </Text>
-            <TextField.Root
+          <LField label="Category and class" htmlFor="category_class" hint="Pick one, or type your own.">
+            <LInput
               id="category_class"
               name="category_class"
               placeholder="AMEL"
@@ -247,11 +210,8 @@ export default function AircraftForm({
                 <option key={option} value={option} />
               ))}
             </datalist>
-            <Text size="1" color="gray">
-              Pick one, or type your own.
-            </Text>
-          </Flex>
-        </Grid>
+          </LField>
+        </div>
 
         {/* The two lines an insurance pilot-history form rates separately
             from total time, and the two this product could not answer at
@@ -259,7 +219,7 @@ export default function AircraftForm({
             anything already on file: `gear` below records what the
             aeroplane stands on, not whether the legs fold, and nothing
             anywhere says what is under the cowling. */}
-        <Grid columns={{ initial: "1", sm: "2" }} gap="3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <TriStateField
             name="is_turbine"
             label="Turbine powered"
@@ -274,61 +234,70 @@ export default function AircraftForm({
             storedValue={values.is_retractable}
             hint="Also its own rated line. Separate from the landing gear below: a Bonanza is tricycle and retractable, a Super Cub is tailwheel and fixed."
           />
-        </Grid>
+        </div>
 
-        <Flex direction="column" gap="1">
-          <Text as="label" size="1" color="gray" id="gear-label">
-            Landing gear
-          </Text>
-          <Select.Root value={gear} onValueChange={setGear}>
-            <Select.Trigger aria-labelledby="gear-label" />
-            <Select.Content>
-              <Select.Item value={GEAR_UNSTATED}>Not recorded</Select.Item>
-              {(Object.keys(GEAR_LABEL) as AircraftGear[]).map((value) => (
-                <Select.Item key={value} value={value}>
-                  {GEAR_LABEL[value]}
-                </Select.Item>
-              ))}
-            </Select.Content>
-          </Select.Root>
+        <LField
+          label={<span id="gear-label">Landing gear</span>}
+          hint="Worth setting on a taildragger. Under 14 CFR 61.57(a)(1)(ii), if the airplane to be flown is an airplane with a tailwheel, the three required takeoffs and landings must have been made to a full stop in a tailwheel airplane. Leaving this unrecorded is fine. Nothing here will assume tricycle."
+        >
+          <LSelect aria-labelledby="gear-label" value={gear} onChange={(e) => setGear(e.target.value)}>
+            <option value={GEAR_UNSTATED}>Not recorded</option>
+            {(Object.keys(GEAR_LABEL) as AircraftGear[]).map((value) => (
+              <option key={value} value={value}>
+                {GEAR_LABEL[value]}
+              </option>
+            ))}
+          </LSelect>
           <input type="hidden" name="gear" value={gear === GEAR_UNSTATED ? "" : gear} />
-          <Text size="1" color="gray">
-            Worth setting on a taildragger. Under 14 CFR 61.57(a)(1)(ii), if the
-            airplane to be flown is an airplane with a tailwheel, the three required
-            takeoffs and landings must have been made to a full stop in a tailwheel
-            airplane. Leaving this unrecorded is fine. Nothing here will assume
-            tricycle.
-          </Text>
-        </Flex>
+        </LField>
 
-        <Flex direction="column" gap="1">
-          <Text as="label" size="1" color="gray" htmlFor="notes">
-            Notes
-          </Text>
-          <TextArea
+        <LField label="Notes" htmlFor="notes">
+          <LTextarea
             id="notes"
             name="notes"
             rows={2}
             placeholder="Owner, management company, insurance open-pilot minimums…"
             defaultValue={initial("notes", values.notes)}
           />
-        </Flex>
+        </LField>
 
         {state.error ? (
-          <Callout.Root color="red" size="1">
-            <Callout.Icon>
-              <ExclamationTriangleIcon />
-            </Callout.Icon>
-            <Callout.Text>{state.error}</Callout.Text>
-          </Callout.Root>
+          <LAlert tone="crit" className="flex items-start gap-2">
+            <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+            <span>{state.error}</span>
+          </LAlert>
         ) : null}
 
-        <Flex gap="2">
-          <Button type="submit" disabled={pending}>
+        <div className="flex gap-2">
+          <LButton type="submit" disabled={pending}>
             {pending ? "Saving…" : submitLabel}
-          </Button>
-        </Flex>
-      </Flex>
+          </LButton>
+        </div>
+      </div>
     </form>
+  );
+}
+
+/* ── Inline icon ───────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. Same shape as invoices/page.tsx's own WarningIcon. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

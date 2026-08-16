@@ -3,19 +3,8 @@
 import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import NextLink from "next/link";
-import {
-  Badge,
-  Button,
-  Callout,
-  Card,
-  Flex,
-  Grid,
-  Select,
-  Separator,
-  Text,
-  TextField,
-} from "@/components/ui";
-import { Cross2Icon, ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { LAlert, LButton, LCard, LPill, LSeparator, lButtonClass } from "@/components/ledger";
+import { LInput, LSelect } from "@/components/ledger/forms";
 
 import {
   LOGBOOK_VIEW_ROLES,
@@ -41,16 +30,14 @@ import type { LogbookViewFormState } from "./views-actions";
  * only the DRAFT — what the pilot has picked but not yet applied — and
  * applying navigates.
  *
- * Radix's Select posts through a bubble <select> rendered with
- * `defaultValue`, which React 19's post-action form.reset() would restore
- * to its mount-time option; the same reason aircraft-form.tsx keeps `name`
- * off its Select and posts from a controlled input. Here the draft is
- * pushed through the router instead of submitted, so the picker values
- * never ride a form at all.
+ * The pickers below are real native <select>s (LSelect), so unlike the
+ * pre-Ledger Radix Select they need no workaround for React 19's
+ * post-action form reset — this filter form is never posted anyway
+ * (apply() calls router.push, not a server action).
  */
 
-// Radix Select.Item forbids an empty-string value, and "any" is a real
-// choice rather than an absence.
+// "any" is a real choice rather than an absence, so it keeps its own
+// sentinel rather than collapsing to "".
 const ANY = "__any__";
 
 const initialState: LogbookViewFormState = { error: null };
@@ -150,114 +137,102 @@ export default function SavedViews({
   }
 
   return (
-    <Card>
-      <Flex direction="column" gap="3" p="1">
+    <LCard>
+      <div className="flex flex-col gap-3">
         {views.length > 0 ? (
           <>
-            <Flex align="center" gap="2" wrap="wrap">
-              <Text size="1" color="gray" weight="bold" style={{ textTransform: "uppercase" }}>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-caption font-bold uppercase text-ink-3">
                 Saved views
-              </Text>
+              </span>
               {views.map((view) => {
                 const isActive = logbookFiltersEqual(view.filter, activeFilter);
                 return (
-                  <Flex key={view.name} align="center" gap="1">
-                    <Button
-                      asChild
-                      size="1"
-                      variant={isActive ? "solid" : "soft"}
+                  <div key={view.name} className="flex items-center gap-1">
+                    <NextLink
+                      href={logbookFilterHref(view.filter)}
+                      className={lButtonClassSm(isActive)}
                     >
-                      <NextLink href={logbookFilterHref(view.filter)}>
-                        {view.name}
-                      </NextLink>
-                    </Button>
+                      {view.name}
+                    </NextLink>
                     {/* Its own tiny form rather than a button inside the
                         filter form: nesting forms is invalid HTML and the
                         delete must not carry the filter's fields. */}
                     <form action={deleteAction}>
                       <input type="hidden" name="name" value={view.name} />
-                      <Button
+                      <LButton
                         type="submit"
-                        size="1"
-                        variant="ghost"
-                        color="gray"
+                        variant="quiet"
+                        size="sm"
+                        className="px-1.5"
                         aria-label={`Delete the saved view ${view.name}`}
                       >
-                        <Cross2Icon />
-                      </Button>
+                        <CrossIcon />
+                      </LButton>
                     </form>
-                  </Flex>
+                  </div>
                 );
               })}
-            </Flex>
-            <Separator size="4" />
+            </div>
+            <LSeparator className="my-0" />
           </>
         ) : null}
 
         <form onSubmit={apply}>
-          <Grid columns={{ initial: "1", sm: "2", lg: "5" }} gap="3" align="end">
-            <Flex direction="column" gap="1">
-              <Text as="label" size="1" color="gray" id="filter-tail-label">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="flex flex-col gap-1">
+              <span id="filter-tail-label" className="text-body-s font-medium text-ink">
                 Aircraft
-              </Text>
-              <Select.Root value={tail} onValueChange={setTail}>
-                <Select.Trigger aria-labelledby="filter-tail-label" />
-                <Select.Content>
-                  <Select.Item value={ANY}>Any aircraft</Select.Item>
-                  {tails.map((option) => (
-                    <Select.Item key={option.tailKey} value={option.tailKey}>
-                      {/* A retired airframe still filters — archiving takes
-                          it out of the pickers for NEW work, and its hours
-                          are still the pilot's history. Marked rather than
-                          hidden. */}
-                      {option.archived
-                        ? `${option.tailNumber} (retired)`
-                        : option.tailNumber}
-                    </Select.Item>
-                  ))}
-                </Select.Content>
-              </Select.Root>
-            </Flex>
+              </span>
+              <LSelect aria-labelledby="filter-tail-label" value={tail} onChange={(e) => setTail(e.target.value)}>
+                <option value={ANY}>Any aircraft</option>
+                {tails.map((option) => (
+                  <option key={option.tailKey} value={option.tailKey}>
+                    {/* A retired airframe still filters — archiving takes
+                        it out of the pickers for NEW work, and its hours
+                        are still the pilot's history. Marked rather than
+                        hidden. */}
+                    {option.archived
+                      ? `${option.tailNumber} (retired)`
+                      : option.tailNumber}
+                  </option>
+                ))}
+              </LSelect>
+            </div>
 
-            <Flex direction="column" gap="1">
-              <Text as="label" size="1" color="gray" id="filter-type-label">
+            <div className="flex flex-col gap-1">
+              <span id="filter-type-label" className="text-body-s font-medium text-ink">
                 Type
-              </Text>
-              <Select.Root value={type} onValueChange={setType}>
-                <Select.Trigger aria-labelledby="filter-type-label" />
-                <Select.Content>
-                  <Select.Item value={ANY}>Any type</Select.Item>
-                  {typeLabels.map((label) => (
-                    <Select.Item key={label} value={label}>
-                      {label}
-                    </Select.Item>
-                  ))}
-                </Select.Content>
-              </Select.Root>
-            </Flex>
+              </span>
+              <LSelect aria-labelledby="filter-type-label" value={type} onChange={(e) => setType(e.target.value)}>
+                <option value={ANY}>Any type</option>
+                {typeLabels.map((label) => (
+                  <option key={label} value={label}>
+                    {label}
+                  </option>
+                ))}
+              </LSelect>
+            </div>
 
-            <Flex direction="column" gap="1">
-              <Text as="label" size="1" color="gray" id="filter-role-label">
+            <div className="flex flex-col gap-1">
+              <span id="filter-role-label" className="text-body-s font-medium text-ink">
                 Role
-              </Text>
-              <Select.Root value={role} onValueChange={setRole}>
-                <Select.Trigger aria-labelledby="filter-role-label" />
-                <Select.Content>
-                  <Select.Item value={ANY}>Any role</Select.Item>
-                  {LOGBOOK_VIEW_ROLES.map((value) => (
-                    <Select.Item key={value} value={value}>
-                      {LOGBOOK_VIEW_ROLE_LABEL[value]}
-                    </Select.Item>
-                  ))}
-                </Select.Content>
-              </Select.Root>
-            </Flex>
+              </span>
+              <LSelect aria-labelledby="filter-role-label" value={role} onChange={(e) => setRole(e.target.value)}>
+                <option value={ANY}>Any role</option>
+                {LOGBOOK_VIEW_ROLES.map((value) => (
+                  <option key={value} value={value}>
+                    {LOGBOOK_VIEW_ROLE_LABEL[value]}
+                  </option>
+                ))}
+              </LSelect>
+            </div>
 
-            <Flex direction="column" gap="1">
-              <Text as="label" size="1" color="gray" htmlFor="filter-from">
+            <div className="flex flex-col gap-1">
+              <label htmlFor="filter-from" className="text-body-s font-medium text-ink">
                 From
-              </Text>
-              <TextField.Root
+              </label>
+              <LInput
                 id="filter-from"
                 type="date"
                 value={from}
@@ -266,13 +241,13 @@ export default function SavedViews({
                   setRangeError(null);
                 }}
               />
-            </Flex>
+            </div>
 
-            <Flex direction="column" gap="1">
-              <Text as="label" size="1" color="gray" htmlFor="filter-to">
+            <div className="flex flex-col gap-1">
+              <label htmlFor="filter-to" className="text-body-s font-medium text-ink">
                 To
-              </Text>
-              <TextField.Root
+              </label>
+              <LInput
                 id="filter-to"
                 type="date"
                 value={to}
@@ -281,42 +256,38 @@ export default function SavedViews({
                   setRangeError(null);
                 }}
               />
-            </Flex>
-          </Grid>
+            </div>
+          </div>
 
-          <Flex gap="2" mt="3" wrap="wrap" align="center">
-            <Button type="submit" variant="soft">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <LButton type="submit" variant="outline">
               Show these entries
-            </Button>
+            </LButton>
             {activeIsEmpty ? null : (
-              <Button asChild variant="ghost" color="gray">
-                <NextLink href="/logbook">Clear</NextLink>
-              </Button>
+              <NextLink href="/logbook" className={lButtonClassGhost()}>
+                Clear
+              </NextLink>
             )}
-          </Flex>
+          </div>
 
           {rangeError ? (
-            <Callout.Root color="amber" size="1" mt="3">
-              <Callout.Icon>
-                <ExclamationTriangleIcon />
-              </Callout.Icon>
-              <Callout.Text>{rangeError}</Callout.Text>
-            </Callout.Root>
+            <LAlert tone="warn" className="mt-3 flex items-start gap-2">
+              <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+              <span>{rangeError}</span>
+            </LAlert>
           ) : null}
         </form>
 
         {activeIsEmpty ? null : (
           <>
-            <Separator size="4" />
+            <LSeparator className="my-0" />
             {alreadySaved ? (
-              <Flex align="center" gap="2">
-                <Badge color="gray" variant="outline">
-                  Saved
-                </Badge>
-                <Text size="1" color="gray">
+              <div className="flex items-center gap-2">
+                <LPill tone="neutral">Saved</LPill>
+                <span className="text-caption text-ink-3">
                   You already have a saved view for exactly this filter.
-                </Text>
-              </Flex>
+                </span>
+              </div>
             ) : (
               <form action={formAction}>
                 {/* THE APPLIED FILTER, not the draft above: what gets saved
@@ -327,36 +298,90 @@ export default function SavedViews({
                 <input type="hidden" name="role" value={activeFilter.role ?? ""} />
                 <input type="hidden" name="from" value={activeFilter.dateFrom ?? ""} />
                 <input type="hidden" name="to" value={activeFilter.dateTo ?? ""} />
-                <Flex gap="2" align="end" wrap="wrap">
-                  <Flex direction="column" gap="1">
-                    <Text as="label" size="1" color="gray" htmlFor="view-name">
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="flex flex-col gap-1">
+                    <label htmlFor="view-name" className="text-body-s font-medium text-ink">
                       Save this view as
-                    </Text>
-                    <TextField.Root
+                    </label>
+                    <LInput
                       id="view-name"
                       name="name"
                       placeholder="Citation V, as PIC"
                       value={name}
                       onChange={(event) => setName(event.target.value)}
                     />
-                  </Flex>
-                  <Button type="submit" disabled={pending}>
+                  </div>
+                  <LButton type="submit" disabled={pending}>
                     {pending ? "Saving…" : "Save view"}
-                  </Button>
-                </Flex>
+                  </LButton>
+                </div>
               </form>
             )}
             {state.error ? (
-              <Callout.Root color="red" size="1">
-                <Callout.Icon>
-                  <ExclamationTriangleIcon />
-                </Callout.Icon>
-                <Callout.Text>{state.error}</Callout.Text>
-              </Callout.Root>
+              <LAlert tone="crit" className="flex items-start gap-2">
+                <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+                <span>{state.error}</span>
+              </LAlert>
             ) : null}
           </>
         )}
-      </Flex>
-    </Card>
+      </div>
+    </LCard>
+  );
+}
+
+/* ── Small button-link skins local to this screen ─────────────────────
+ * The saved-view chips need a size/active-state combination lButtonClass
+ * doesn't have a direct variant for (a small solid-vs-soft toggle) and the
+ * "Clear" link needs the quiet ghost treatment — both built from the same
+ * button primitive's class list rather than a bespoke one. */
+function lButtonClassSm(active: boolean) {
+  return lButtonClass({ variant: active ? "primary" : "outline", size: "sm" });
+}
+
+function lButtonClassGhost() {
+  return lButtonClass({ variant: "quiet", size: "sm" });
+}
+
+/* ── Inline icons ──────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. Defined once here, aria-hidden, stroke="currentColor" so it
+ * inherits its caller's tone utility. Same shape as invoices/page.tsx's own
+ * WarningIcon. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function CrossIcon() {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="12"
+      height="12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M3 3l10 10M13 3 3 13" />
+    </svg>
   );
 }
