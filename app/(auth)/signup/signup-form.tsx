@@ -2,25 +2,63 @@
 
 import { useActionState, useState } from "react";
 import NextLink from "next/link";
-import {
-  Box,
-  Flex,
-  Grid,
-  Link,
-  SegmentedControl,
-  Text,
-  TextField,
-} from "@/components/ui";
-import {
-  AuthFooter,
-  AuthHeading,
-  Field,
-  FormError,
-  SubmitButton,
-} from "../auth-parts";
+import { LCard } from "@/components/ledger";
+import { LInput } from "@/components/ledger/forms";
+import { cn } from "@/lib/ledger/cn";
+import { AuthFooter, AuthHeading, Field, FormError, SubmitButton } from "../auth-parts";
 import { signUp, type SignUpState } from "./actions";
 
 const initialState: SignUpState = { error: null };
+
+/**
+ * A two-option pill toggle, styled in place of Radix's SegmentedControl.
+ * `role="radiogroup"` + `role="radio"` buttons, not a native control — same
+ * accessibility shape the Radix version carried, and the same reason this
+ * field is named by `aria-labelledby` and described by the hint rather than
+ * a `<label htmlFor>`: nothing here is a single focusable element a label
+ * could point at.
+ */
+function SegmentedToggle<T extends string>({
+  value,
+  onChange,
+  options,
+  labelledBy,
+  describedBy,
+}: {
+  value: T;
+  onChange: (value: T) => void;
+  options: { value: T; label: string }[];
+  labelledBy: string;
+  describedBy?: string;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-labelledby={labelledBy}
+      aria-describedby={describedBy}
+      className="inline-flex w-full gap-1 rounded-control border border-hair-strong bg-sunk p-1"
+    >
+      {options.map((opt) => {
+        const active = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(opt.value)}
+            className={cn(
+              "flex-1 rounded-control px-3 py-1.5 text-body-s font-medium transition-colors",
+              active ? "bg-card text-ink shadow-card" : "text-ink-2 hover:text-ink"
+            )}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 /**
  * `trialDays` is passed down from the server page rather than imported:
@@ -47,7 +85,7 @@ export default function SignUpForm({ trialDays }: { trialDays: number }) {
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
   const [homeBase, setHomeBase] = useState("");
-  const [accountKind, setAccountKind] = useState("solo");
+  const [accountKind, setAccountKind] = useState<"solo" | "business">("solo");
 
   // The "check your email" state used to be rendered here, inline. It is a
   // page now (/check-email): the address it names comes from an httpOnly
@@ -55,7 +93,7 @@ export default function SignUpForm({ trialDays }: { trialDays: number }) {
   // reload, which an action state does not. signUp redirects there.
 
   return (
-    <Flex direction="column" gap="6">
+    <LCard className="flex flex-col gap-6 p-6 sm:p-8">
       {/*
         NOT "your next trip bills itself". Nothing bills itself: an invoice
         exists only when the pilot invokes createInvoiceDraft from
@@ -71,163 +109,132 @@ export default function SignUpForm({ trialDays }: { trialDays: number }) {
         logbook entries.
       </AuthHeading>
 
-      <form action={formAction}>
-        <Flex direction="column" gap="4">
-          {/* Name and base sit on one row so the form reads as four
-              questions rather than six. */}
-          <Grid columns={{ initial: "1", xs: "3fr 2fr" }} gap="4">
-            <Field id="full_name" label="Your name">
-              <TextField.Root
-                id="full_name"
-                name="full_name"
-                size="3"
-                autoComplete="name"
-                autoFocus
-                required
-                disabled={pending}
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-              />
-            </Field>
-
-            <Field id="home_base" label="Based airport" optional>
-              <TextField.Root
-                id="home_base"
-                name="home_base"
-                size="3"
-                autoCapitalize="characters"
-                placeholder="KTEB"
-                disabled={pending}
-                value={homeBase}
-                onChange={(e) => setHomeBase(e.target.value)}
-              />
-            </Field>
-          </Grid>
-
-          {/* NOT a <label>: SegmentedControl.Root is Radix ToggleGroup —
-              role="group" with <button> items, not a native control — so a
-              <label> with no htmlFor and nothing wrapped is dropped from the
-              accessibility tree entirely, and this field decides whether the
-              account is a sole proprietor or a business. The group is named
-              by aria-labelledby and described by the hint instead, which is
-              the only wiring a non-native control has. Field() in
-              ../auth-parts does the native equivalent with htmlFor. */}
-          <Flex direction="column" gap="1">
-            <Text as="div" id="account-kind-label" size="2" weight="medium">
-              Account type
-            </Text>
-            {/* A hidden input carries the value: SegmentedControl is not a
-                native form control, so a plain <form> POST (the no-JS path)
-                would not otherwise submit it. */}
-            <input type="hidden" name="account_kind" value={accountKind} />
-            <SegmentedControl.Root
-              value={accountKind}
-              onValueChange={setAccountKind}
-              size="3"
-              aria-labelledby="account-kind-label"
-              aria-describedby="account-kind-hint"
-            >
-              <SegmentedControl.Item value="solo">Just me</SegmentedControl.Item>
-              <SegmentedControl.Item value="business">
-                A business
-              </SegmentedControl.Item>
-            </SegmentedControl.Root>
-            <Text as="div" id="account-kind-hint" size="1" color="gray">
-              You can change how you bill later. This just sets up your
-              account.
-            </Text>
-          </Flex>
-
-          <Field id="email" label="Email">
-            <TextField.Root
-              id="email"
-              type="email"
-              name="email"
-              size="3"
-              autoComplete="email"
+      <form action={formAction} className="flex flex-col gap-4">
+        {/* Name and base sit on one row so the form reads as four
+            questions rather than six. */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[3fr_2fr]">
+          <Field id="full_name" label="Your name">
+            <LInput
+              id="full_name"
+              name="full_name"
+              autoComplete="name"
+              autoFocus
               required
               disabled={pending}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
             />
           </Field>
 
-          <Field id="password" label="Password" hint="At least 8 characters">
-            <TextField.Root
-              id="password"
-              type="password"
-              name="password"
-              size="3"
-              autoComplete="new-password"
-              aria-describedby="password-hint"
-              required
+          <Field id="home_base" label="Based airport" optional>
+            <LInput
+              id="home_base"
+              name="home_base"
+              autoCapitalize="characters"
+              placeholder="KTEB"
               disabled={pending}
+              value={homeBase}
+              onChange={(e) => setHomeBase(e.target.value)}
             />
           </Field>
+        </div>
 
-          {/* THE TRIAL TERMS, stated before the button rather than under
-              it. trialDays is the checkout's own constant; the card is
-              entered at Stripe's checkout on the next screen, which is why
-              this says "next step" and does not ask for one here. */}
-          <Box
-            p="3"
-            style={{
-              background: "var(--canvas)",
-              border: "1px solid var(--edge)",
-              borderRadius: "var(--radius)",
-            }}
-          >
-            <Flex direction="column" gap="1">
-              <Text size="2" weight="medium">
-                {trialDays} days free.
-              </Text>
-              <Text size="1" color="gray">
-                You pick a plan and enter a card on the next step. Nothing is
-                charged until the trial ends.
-              </Text>
-            </Flex>
-          </Box>
-
-          <FormError message={state.error} />
-
-          <SubmitButton
-            pending={pending}
-            idle="Create account"
-            busy="Creating account…"
+        <div className="flex flex-col gap-1.5">
+          <span id="account-kind-label" className="text-body-s font-medium text-ink">
+            Account type
+          </span>
+          {/* A hidden input carries the value: the toggle is not a native
+              form control, so a plain <form> POST (the no-JS path) would
+              not otherwise submit it. */}
+          <input type="hidden" name="account_kind" value={accountKind} />
+          <SegmentedToggle
+            value={accountKind}
+            onChange={setAccountKind}
+            labelledBy="account-kind-label"
+            describedBy="account-kind-hint"
+            options={[
+              { value: "solo", label: "Just me" },
+              { value: "business", label: "A business" },
+            ]}
           />
+          <p id="account-kind-hint" className="text-caption text-ink-3">
+            You can change how you bill later. This just sets up your
+            account.
+          </p>
+        </div>
 
-          {/*
-            "See our", NOT "by creating an account you agree to our". Both
-            linked pages say in their own bodies that no document has been
-            published yet and that nothing on them is binding. Printing an
-            agreement sentence over them would assert a legal fact at the exact
-            moment a pilot hands over a card — one this product has no basis
-            for and records nowhere. The links are honest; the sentence was
-            not. It comes back when counsel's text lands and acceptance is
-            actually captured (docs/LAUNCH-GATES.md G3).
-          */}
-          <Text size="1" color="gray" align="center">
-            See our{" "}
-            <Link asChild size="1">
-              <NextLink href="/terms">Terms</NextLink>
-            </Link>{" "}
-            and{" "}
-            <Link asChild size="1">
-              <NextLink href="/privacy">Privacy Policy</NextLink>
-            </Link>
-            .
-          </Text>
-        </Flex>
+        <Field id="email" label="Email">
+          <LInput
+            id="email"
+            type="email"
+            name="email"
+            autoComplete="email"
+            required
+            disabled={pending}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+        </Field>
+
+        <Field id="password" label="Password" hint="At least 8 characters">
+          <LInput
+            id="password"
+            type="password"
+            name="password"
+            autoComplete="new-password"
+            aria-describedby="password-hint"
+            required
+            disabled={pending}
+          />
+        </Field>
+
+        {/* THE TRIAL TERMS, stated before the button rather than under
+            it. trialDays is the checkout's own constant; the card is
+            entered at Stripe's checkout on the next screen, which is why
+            this says "next step" and does not ask for one here. */}
+        <div className="rounded-control border border-hair bg-sunk p-3">
+          <p className="text-body-s font-medium text-ink">{trialDays} days free.</p>
+          <p className="text-caption text-ink-3">
+            You pick a plan and enter a card on the next step. Nothing is
+            charged until the trial ends.
+          </p>
+        </div>
+
+        <FormError message={state.error} />
+
+        <SubmitButton pending={pending} idle="Create account" busy="Creating account…" />
+
+        {/*
+          "See our", NOT "by creating an account you agree to our". Both
+          linked pages say in their own bodies that no document has been
+          published yet and that nothing on them is binding. Printing an
+          agreement sentence over them would assert a legal fact at the exact
+          moment a pilot hands over a card — one this product has no basis
+          for and records nowhere. The links are honest; the sentence was
+          not. It comes back when counsel's text lands and acceptance is
+          actually captured (docs/LAUNCH-GATES.md G3).
+        */}
+        <p className="text-center text-caption text-ink-3">
+          See our{" "}
+          <NextLink href="/terms" className="text-accent hover:underline">
+            Terms
+          </NextLink>{" "}
+          and{" "}
+          <NextLink href="/privacy" className="text-accent hover:underline">
+            Privacy Policy
+          </NextLink>
+          .
+        </p>
       </form>
 
       <AuthFooter>
-        <Text size="2" color="gray">
+        <p className="text-body-s text-ink-2">
           Already have an account?{" "}
-          <Link asChild size="2">
-            <NextLink href="/login">Sign in</NextLink>
-          </Link>
-        </Text>
+          <NextLink href="/login" className="font-medium text-accent hover:underline">
+            Sign in
+          </NextLink>
+        </p>
       </AuthFooter>
-    </Flex>
+    </LCard>
   );
 }

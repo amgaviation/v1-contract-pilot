@@ -1,16 +1,19 @@
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
-import { Box, Button, Callout, Flex, Heading, Separator, Text } from "@/components/ui";
+import { LAlert, LButton, LSeparator, LSpinner, type LButtonProps } from "@/components/ledger";
+import { cn } from "@/lib/ledger/cn";
 
 /**
  * The pieces every auth screen is built from, so the five of them read as
  * one product rather than five forms that happen to share a stylesheet.
  *
- * No hooks and no event handlers here — these are presentation only, which
- * is why the file carries no "use client" directive: it compiles into
- * whichever graph imports it (the four form components are client, the
- * welcome page is server) instead of forcing a boundary on either.
+ * LEDGER PASS: this file used to compose Radix (components/ui); it is now
+ * plain elements styled with Ledger's Tailwind utilities and `cn()`-free
+ * (nothing here needs conditional classes). No hooks and no event handlers
+ * — presentation only, which is why the file still carries no "use client"
+ * directive: it compiles into whichever graph imports it (the form
+ * components are client, the welcome page is server) instead of forcing a
+ * boundary on either.
  *
- * The layout (../layout.tsx) supplies the panel and the measure. These
+ * The layout (../layout.tsx) supplies the canvas and the measure. These
  * supply the hierarchy inside it: one heading, one supporting line, fields
  * grouped with real space between them, one strong primary action, and
  * secondary links pushed below a rule where they cannot compete with it.
@@ -25,23 +28,20 @@ export function AuthHeading({
   children?: React.ReactNode;
 }) {
   return (
-    <Flex direction="column" gap="2">
-      <Heading as="h1" size="7" trim="start">
-        {title}
-      </Heading>
-      {children ? (
-        <Text as="p" size="2" color="gray">
-          {children}
-        </Text>
-      ) : null}
-    </Flex>
+    <div className="flex flex-col gap-2">
+      <h1 className="text-h1 font-bold text-ink">{title}</h1>
+      {children ? <p className="text-body-s text-ink-2">{children}</p> : null}
+    </div>
   );
 }
 
 /**
- * A labelled field. The hint is wired to the input with aria-describedby by
- * the caller passing the same id — the label/hint/control spacing is set
- * once here so no screen drifts into its own rhythm.
+ * A labelled field. The hint carries its own id (`${id}-hint`) so the
+ * caller can wire it to the control with aria-describedby exactly as every
+ * call site already does — the label/hint/control spacing is set once here
+ * so no screen drifts into its own rhythm. Not LField (components/ledger/
+ * forms.tsx): that primitive has no id on its hint line, and this wiring is
+ * load-bearing accessibility behavior this migration must not drop.
  */
 export function Field({
   id,
@@ -57,23 +57,39 @@ export function Field({
   children: React.ReactNode;
 }) {
   return (
-    <Flex direction="column" gap="1">
-      <Text as="label" size="2" weight="medium" htmlFor={id}>
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={id} className="text-body-s font-medium text-ink">
         {label}
-        {optional ? (
-          <Text size="2" color="gray" weight="regular">
-            {" "}
-            (optional)
-          </Text>
-        ) : null}
-      </Text>
+        {optional ? <span className="font-normal text-ink-3"> (optional)</span> : null}
+      </label>
       {children}
       {hint ? (
-        <Text as="div" id={`${id}-hint`} size="1" color="gray">
+        <p id={`${id}-hint`} className="text-caption text-ink-3">
           {hint}
-        </Text>
+        </p>
       ) : null}
-    </Flex>
+    </div>
+  );
+}
+
+function AlertTriangleIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }
 
@@ -88,58 +104,68 @@ export function FormError({ message }: { message: string | null }) {
   return (
     <div role="alert" aria-live="polite">
       {message ? (
-        <Callout.Root color="red" size="1">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>{message}</Callout.Text>
-        </Callout.Root>
+        <LAlert tone="crit" className="flex items-start gap-2">
+          <AlertTriangleIcon className="mt-0.5 shrink-0 text-crit" />
+          <span>{message}</span>
+        </LAlert>
       ) : null}
     </div>
   );
 }
 
 /**
- * The one primary action per screen. `loading` is Radix's own pending
- * treatment (a spinner in place of the label, and the button disabled), so
- * a submit cannot be double-fired and the wait is visible rather than
- * inferred; the label still changes underneath for anyone reading it back.
+ * The one primary action per screen. `pending` swaps the label for a
+ * spinner+busy-label pair rather than merely disabling the button, so a
+ * submit cannot be double-fired and the wait is visible rather than
+ * inferred. `size="lg"` is Ledger's 44px control — the touch-target floor
+ * the old size="3" style prop used to state by hand.
  */
 export function SubmitButton({
   pending,
   idle,
   busy,
+  variant = "primary",
+  className,
   ...rest
 }: {
   pending: boolean;
   idle: string;
   busy: string;
-} & Omit<React.ComponentProps<typeof Button>, "type" | "loading" | "children">) {
+} & Omit<LButtonProps, "type" | "children">) {
   return (
-    <Button
+    <LButton
       type="submit"
-      size="3"
+      size="lg"
+      variant={variant}
       disabled={pending}
-      loading={pending}
-      // minHeight, not a bigger size: a size="3" button is --space-7, which
-      // is 36px at the Theme's 90% scaling and under the 44px minimum touch
-      // target. The floor is stated here once rather than at five call sites.
-      style={{ width: "100%", minHeight: "44px" }}
+      className={cn("w-full", className)}
       {...rest}
     >
-      {pending ? busy : idle}
-    </Button>
+      {pending ? (
+        <>
+          <LSpinner
+            className={
+              variant === "primary"
+                ? "border-accent-ink/40 border-t-accent-ink"
+                : undefined
+            }
+            label={busy}
+          />
+          {busy}
+        </>
+      ) : (
+        idle
+      )}
+    </LButton>
   );
 }
 
 /** Secondary links, below a rule and deliberately quiet. */
 export function AuthFooter({ children }: { children: React.ReactNode }) {
   return (
-    <Box>
-      <Separator size="4" mb="4" />
-      <Flex direction="column" gap="2" align="center">
-        {children}
-      </Flex>
-    </Box>
+    <div>
+      <LSeparator className="mb-4" />
+      <div className="flex flex-col items-center gap-2 text-center">{children}</div>
+    </div>
   );
 }

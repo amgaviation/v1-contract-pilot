@@ -2,13 +2,32 @@
 
 import { useActionState } from "react";
 import NextLink from "next/link";
-import { EnvelopeClosedIcon } from "@radix-ui/react-icons";
-import { Callout, Flex, Heading, Link, Text } from "@/components/ui";
+import { LAlert, LCard } from "@/components/ledger";
 import { RESEND_SENT_MESSAGE } from "@/lib/auth/confirmation";
 import { AuthFooter, FormError, SubmitButton } from "../auth-parts";
 import { resendConfirmation, type ResendState } from "../resend-actions";
 
 const initialState: ResendState = { error: null, sent: false };
+
+function MailIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="28"
+      height="28"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3 7 9 6 9-6" />
+    </svg>
+  );
+}
 
 /**
  * The resend form carries NO email field: the action reads the address from
@@ -23,54 +42,36 @@ export default function CheckEmailView({ email }: { email: string }) {
   );
 
   return (
-    <Flex direction="column" gap="6">
-      <Flex direction="column" gap="3" align="start">
-        <Text color="indigo" aria-hidden>
-          <EnvelopeClosedIcon width="32" height="32" />
-        </Text>
-        <Heading as="h1" size="7" trim="start">
-          Check your email
-        </Heading>
-        <Text as="p" size="2" color="gray">
+    <LCard className="flex flex-col gap-6 p-6 sm:p-8">
+      <div className="flex flex-col items-start gap-3">
+        <MailIcon className="text-accent" />
+        <h1 className="text-h1 font-bold text-ink">Check your email</h1>
+        <p className="text-body-s text-ink-2">
           Open the confirmation link we sent to{" "}
-          <Text size="2" weight="medium">
-            {email}
-          </Text>
-          , then pick your plan. The link is single-use and expires, so use it
-          soon.
-        </Text>
-      </Flex>
+          <span className="font-medium text-ink">{email}</span>, then pick
+          your plan. The link is single-use and expires, so use it soon.
+        </p>
+      </div>
 
-      <form action={formAction}>
-        <Flex direction="column" gap="3">
-          {state.sent ? (
-            <Callout.Root color="green" size="1">
-              <Callout.Text>{RESEND_SENT_MESSAGE}</Callout.Text>
-            </Callout.Root>
-          ) : null}
+      <form action={formAction} className="flex flex-col gap-3">
+        {state.sent ? <LAlert tone="good">{RESEND_SENT_MESSAGE}</LAlert> : null}
 
-          <FormError message={state.error} />
+        <FormError message={state.error} />
 
-          <SubmitButton
-            pending={pending}
-            idle="Send it again"
-            busy="Sending…"
-            variant="soft"
-          />
-        </Flex>
+        <SubmitButton pending={pending} idle="Send it again" busy="Sending…" variant="outline" />
       </form>
 
       <AuthFooter>
-        <Text size="2" color="gray">
+        <p className="text-body-s text-ink-2">
           Wrong address?{" "}
-          <Link asChild size="2">
-            <NextLink href="/signup">Sign up again</NextLink>
-          </Link>
-        </Text>
-        <Link asChild size="2">
-          <NextLink href="/login">Back to sign in</NextLink>
-        </Link>
+          <NextLink href="/signup" className="font-medium text-accent hover:underline">
+            Sign up again
+          </NextLink>
+        </p>
+        <NextLink href="/login" className="text-body-s font-medium text-accent hover:underline">
+          Back to sign in
+        </NextLink>
       </AuthFooter>
-    </Flex>
+    </LCard>
   );
 }

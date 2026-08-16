@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Flex } from "@/components/ui";
 import { BRAND } from "@/lib/brand";
 import SiteHeader from "./site-header";
 import SiteFooter from "./site-footer";
@@ -18,21 +17,22 @@ import SiteFooter from "./site-footer";
  * root's — these four pages are the only public-facing surface this
  * product has any reason to let a crawler see; the authenticated product
  * stays noindex exactly as app/layout.tsx's own comment explains.
- */
-/**
- * INDEXABLE ONLY ON THE PRODUCTION DEPLOYMENT, and that condition is the whole
- * point. docs/LAUNCH-GATES.md G2 and G7 both draw their line at "existing in
- * the repo and rendering on a preview host is not publishing" — that carve-out
- * is only honest if a preview genuinely cannot be found by a stranger. A flat
- * `index: true` made it false: every preview deployment of every branch would
- * have invited crawlers to an unsigned price and to counsel-gated feature
- * copy, which is exactly what those gates exist to prevent.
  *
- * VERCEL_ENV is "production", "preview" or "development", and is absent on a
- * local machine — so anything that is not the production deployment reads as
- * not-production and stays noindex. Erring that way costs nothing: the worst
- * case is that the real site needs one deploy to become indexable, whereas the
- * opposite default leaks a price the owner has not signed.
+ * INDEXABLE ONLY ON THE PRODUCTION DEPLOYMENT, and that condition is the
+ * whole point. docs/LAUNCH-GATES.md G2 and G7 both draw their line at
+ * "existing in the repo and rendering on a preview host is not publishing"
+ * — that carve-out is only honest if a preview genuinely cannot be found
+ * by a stranger. A flat `index: true` made it false: every preview
+ * deployment of every branch would have invited crawlers to an unsigned
+ * price and to counsel-gated feature copy, which is exactly what those
+ * gates exist to prevent.
+ *
+ * VERCEL_ENV is "production", "preview" or "development", and is absent on
+ * a local machine — so anything that is not the production deployment
+ * reads as not-production and stays noindex. Erring that way costs
+ * nothing: the worst case is that the real site needs one deploy to
+ * become indexable, whereas the opposite default leaks a price the owner
+ * has not signed.
  */
 const isProductionDeployment = process.env.VERCEL_ENV === "production";
 
@@ -48,11 +48,11 @@ const isProductionDeployment = process.env.VERCEL_ENV === "production";
  * each page's og:url is its own canonical URL, not a shared one.
  */
 // public/brand/og-image.png — the mark plus BRAND.tagline on the brand
-// kit's navy ground, rasterized once (see public/brand/og-image.svg's own
-// header) from the same source as public/brand/expanded.svg. No fake
-// screenshot, no AMG attribution (that stays confined to the footer/about
-// page per lib/brand.ts) — a link preview in a group text or a pilot forum
-// gets the mark and the one sentence, nothing else.
+// kit's navy ground, rasterized once from the same source as
+// public/brand/expanded.svg. No fake screenshot, no AMG attribution
+// (that stays confined to the footer/about page per lib/brand.ts) — a
+// link preview in a group text or a pilot forum gets the mark and the
+// one sentence, nothing else.
 const OG_IMAGE = {
   url: "/brand/og-image.png",
   width: 1200,
@@ -81,16 +81,16 @@ export default function MarketingLayout({
   children: React.ReactNode;
 }) {
   return (
-    // 100dvh, not 100vh: app-shell.tsx's own comment documents why (mobile
-    // URL-bar overhang creates phantom scroll on a fixed 100vh) — the same
-    // fix, here so the signed-out marketing surface stops carrying the
-    // defect the authenticated shell already fixed.
-    <Flex direction="column" minHeight="100dvh">
+    // Ledger's softer marketing variant: the same
+    // `bg-canvas font-ledger text-body text-ink` root as the two
+    // client-facing portals (app/vendor/[token], app/packet/[token]) and
+    // the auth/onboarding surfaces this migration groups it with. dvh, not
+    // vh: the app shell's own comment documents why (mobile URL-bar
+    // overhang creates phantom scroll on a fixed 100vh).
+    <div className="flex min-h-dvh flex-col bg-canvas font-ledger text-body text-ink">
       <SiteHeader />
-      <Flex flexGrow="1" direction="column" asChild>
-        <main>{children}</main>
-      </Flex>
+      <main className="flex flex-1 flex-col">{children}</main>
       <SiteFooter />
-    </Flex>
+    </div>
   );
 }
