@@ -2,6 +2,8 @@ import { applyNavLayout, visibleNavSections } from "@/lib/nav";
 import { isCurrencyEngineEnabled } from "@/lib/currency/gate";
 import { loadPreferences, themeFor } from "@/lib/preferences";
 import { accountIsReadOnly, requireAccount } from "@/lib/supabase/account";
+import { accountLogoUrl } from "@/lib/account-logo";
+import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "./app-shell";
 import { signOut } from "./actions";
 
@@ -63,6 +65,12 @@ export default async function AppLayout({
     preferences.nav
   );
 
+  // The tenant's own uploaded logo, if any (Settings → logo-panel.tsx),
+  // shown in place of the V1 mark. Null (no upload, or a mint failure)
+  // falls back to the default mark inside AppShell.
+  const supabase = await createClient();
+  const logoUrl = await accountLogoUrl(supabase, account.id);
+
   return (
     <AppShell
       userEmail={user.email ?? ""}
@@ -71,6 +79,7 @@ export default async function AppLayout({
       theme={theme}
       readOnly={readOnly}
       signOutAction={signOut}
+      logoUrl={logoUrl}
     >
       {children}
     </AppShell>
