@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Button, Callout, Card, Flex, Heading, RadioGroup, Text } from "@/components/ui";
+import { LAlert, LButton, LCard } from "@/components/ledger";
 import {
   achCapabilityNotice,
   BANK_PAYMENT_FEE_NOTE,
@@ -40,6 +40,11 @@ const initialState: PaymentMethodsState = { error: null };
  * Rendered only when Stripe is connected: the choice is meaningless without
  * an account to mint links on, and an enabled control that does nothing is
  * how a settings screen starts lying.
+ *
+ * THE RADIO ROW IS PLAIN NATIVE `<input type="radio">`, not a shared Ledger
+ * primitive — see this migration's hard rule 9: no primitive here is used
+ * a second time across this panel set, so it stays local rather than
+ * joining components/ledger/.
  */
 export default function PaymentMethodsPanel({
   methods,
@@ -66,68 +71,64 @@ export default function PaymentMethodsPanel({
   // capability it is not using.
   const showCapabilityNotice = capabilityNotice !== null && wantsBank;
   /**
-   * AMBER ONLY WHEN THE CAPABILITY CONTRADICTS AN EXPLICIT CHOICE.
+   * WARN ONLY WHEN THE CAPABILITY CONTRADICTS AN EXPLICIT CHOICE.
    *
    * "Card and bank payment (ACH)" is the DEFAULT for every account
    * (DEFAULT_PAYMENT_METHOD_CHOICE), and most connected Stripe accounts do
-   * not have `us_bank_account_ach_payments` active to begin with — so an
-   * amber callout here is the ROUTINE state for a pilot who never asked for
-   * ACH at all, on a screen they opened for something else. That is exactly
-   * the failure this codebase argues against elsewhere in its own words
-   * (20260813120000: dressing information as a warning is how a pilot learns
-   * to dismiss warnings), and the warning it would teach them to skim is the
-   * amber one on an invoice saying a client paid five figures through a link
-   * on a voided document.
+   * not have `us_bank_account_ach_payments` active to begin with — so a
+   * warn-toned callout here is the ROUTINE state for a pilot who never
+   * asked for ACH at all, on a screen they opened for something else. That
+   * is exactly the failure this codebase argues against elsewhere in its
+   * own words (20260813120000: dressing information as a warning is how a
+   * pilot learns to dismiss warnings), and the warning it would teach them
+   * to skim is the one on an invoice saying a client paid five figures
+   * through a link on a voided document.
    *
-   * So: gray for 'card_ach', where nothing the pilot asked for is being
+   * So: neutral for 'card_ach', where nothing the pilot asked for is being
    * denied — links still work, they take cards, and the bank option appears
-   * when Stripe switches it on. Amber for 'ach', where the pilot has
+   * when Stripe switches it on. Warn for 'ach', where the pilot has
    * deliberately turned cards OFF and every link this account mints will
    * silently come out card-only anyway; that is a live contradiction between
    * a saved setting and what actually happens, and it has earned the colour.
    *
-   * The per-link `methodNotice` on the invoice screen stays amber in both
+   * The per-link `methodNotice` on the invoice screen stays warn in both
    * cases — it answers an explicit "generate a link for THIS invoice" and
    * reports what that one link actually got.
    */
-  const capabilityColor = choice === "ach" ? "amber" : "gray";
+  const capabilityTone = choice === "ach" ? "warn" : "neutral";
 
   return (
-    <Card>
+    <LCard>
       <form action={formAction}>
-        <Flex direction="column" gap="3" p="1">
+        <div className="flex flex-col gap-3">
           <input type="hidden" name="methods" value={choice} />
 
-          <Flex direction="column" gap="1">
-            <Heading size="4">How clients can pay</Heading>
-          </Flex>
+          <h3 className="text-h3 font-semibold text-ink">How clients can pay</h3>
 
-          <RadioGroup.Root
-            value={choice}
-            onValueChange={(value) => setChoice(value as PaymentMethodChoice)}
-            disabled={!canEdit}
+          <div
+            role="radiogroup"
             aria-label="What a new payment link offers"
+            className="flex flex-col gap-2"
           >
-            <Flex direction="column" gap="2">
-              {PAYMENT_METHOD_CHOICES.map((option) => (
-                <Text as="label" size="2" key={option.value}>
-                  <Flex gap="2" align="start">
-                    <RadioGroup.Item value={option.value} />
-                    <Flex direction="column">
-                      <Text size="2">{option.label}</Text>
-                      <Text size="1" color="gray">
-                        {option.hint}
-                      </Text>
-                    </Flex>
-                  </Flex>
-                </Text>
-              ))}
-            </Flex>
-          </RadioGroup.Root>
+            {PAYMENT_METHOD_CHOICES.map((option) => (
+              <label key={option.value} className="flex items-start gap-2">
+                <input
+                  type="radio"
+                  value={option.value}
+                  checked={choice === option.value}
+                  disabled={!canEdit}
+                  onChange={() => setChoice(option.value)}
+                  className="mt-0.5 size-4 shrink-0 accent-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent disabled:opacity-50"
+                />
+                <span className="flex flex-col">
+                  <span className="text-body-s text-ink">{option.label}</span>
+                  <span className="text-caption text-ink-3">{option.hint}</span>
+                </span>
+              </label>
+            ))}
+          </div>
 
-          <Text size="1" color="gray">
-            {BANK_PAYMENT_FEE_NOTE}
-          </Text>
+          <p className="text-caption text-ink-3">{BANK_PAYMENT_FEE_NOTE}</p>
 
           {/* WHEN THE INVOICE IS MARKED PAID, said on the screen where the
               pilot chooses to be paid this way. The fee note above covers
@@ -138,47 +139,31 @@ export default function PaymentMethodsPanel({
               unsettled money has not been received. One exported sentence
               (BANK_PAYMENT_SETTLES_NOTE) rather than a fourth hand-written
               wording of it. */}
-          {wantsBank ? (
-            <Text size="1" color="gray">
-              {BANK_PAYMENT_SETTLES_NOTE}
-            </Text>
-          ) : null}
+          {wantsBank ? <p className="text-caption text-ink-3">{BANK_PAYMENT_SETTLES_NOTE}</p> : null}
 
-          {showCapabilityNotice ? (
-            <Callout.Root color={capabilityColor} size="1">
-              <Callout.Text>{capabilityNotice}</Callout.Text>
-            </Callout.Root>
-          ) : null}
+          {showCapabilityNotice ? <LAlert tone={capabilityTone}>{capabilityNotice}</LAlert> : null}
 
           <div role="alert" aria-live="polite">
             {state.error ? (
-              <Text size="1" color="red">
-                {state.error}
-              </Text>
+              <p className="text-caption font-medium text-crit">{state.error}</p>
             ) : state.saved && !dirty ? (
-              <Text size="1" color="green">
-                Saved.
-              </Text>
+              <p className="text-caption font-medium text-good">Saved.</p>
             ) : dirty ? (
-              <Text size="1" color="amber">
-                Not saved yet.
-              </Text>
+              <p className="text-caption font-medium text-warn">Not saved yet.</p>
             ) : null}
           </div>
 
           {canEdit ? (
-            <Flex>
-              <Button type="submit" variant="outline" disabled={pending}>
+            <div className="flex">
+              <LButton type="submit" variant="outline" disabled={pending}>
                 {pending ? "Saving…" : "Save"}
-              </Button>
-            </Flex>
+              </LButton>
+            </div>
           ) : (
-            <Text size="1" color="gray">
-              Only the account owner can change this.
-            </Text>
+            <p className="text-body-s text-ink-3">Only the account owner can change this.</p>
           )}
-        </Flex>
+        </div>
       </form>
-    </Card>
+    </LCard>
   );
 }

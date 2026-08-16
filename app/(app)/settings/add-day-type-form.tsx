@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { Button, Card, Flex, Grid, Heading, Select, Switch, Text, TextField } from "@/components/ui";
+import { LButton, LCard, LSwitch } from "@/components/ledger";
+import { LField, LInput, LSelect } from "@/components/ledger/forms";
 import { createDayType, type DayTypeFormState } from "./day-types-actions";
 
 const initialState: DayTypeFormState = { error: null };
@@ -25,10 +26,9 @@ export default function AddDayTypeForm() {
     return echoed === undefined ? fallback : echoed === "on";
   };
 
-  // See the fix note in day-type-row.tsx: Select.Root's posting <select>
-  // is always uncontrolled from React's point of view, so `name` is
-  // dropped here too and the real value posts from a controlled hidden
-  // input, re-seeded from the echoed submission on a rejected add.
+  // See the fix note in day-type-row.tsx: the select stays name-less and
+  // controlled for display, and the real value posts from a controlled
+  // hidden input, re-seeded from the echoed submission on a rejected add.
   const [invoiceLineType, setInvoiceLineType] = useState(() =>
     initial("invoice_line_type", "flight_day")
   );
@@ -40,109 +40,108 @@ export default function AddDayTypeForm() {
   }, [submitted]);
 
   return (
-    <Card>
+    <LCard>
       <form action={formAction}>
-        <Flex direction="column" gap="4" p="1">
-          <Flex direction="column" gap="1">
-            <Heading as="h2" size="4">Add a day type</Heading>
-          </Flex>
+        <div className="flex flex-col gap-4">
+          <h2 className="text-h3 font-semibold text-ink">Add a day type</h2>
 
-          <Grid columns={{ initial: "2", md: "12" }} gap="3" align="start">
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 4" }}>
-              <Text size="1" color="gray">
-                Label
-              </Text>
-              <TextField.Root name="label" required defaultValue={initial("label")} />
-              <Text size="1" color="gray">
-                Ground school day, for example
-              </Text>
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
-              <Text as="label" size="2" color="gray">
-                <Flex gap="2" align="center" mt="4">
-                  <Switch
-                    name="billable"
-                    value="on"
-                    defaultChecked={checked("billable", true)}
-                    aria-label="Billable"
-                  />
-                  Billable
-                </Flex>
-              </Text>
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
-              <Text as="label" size="2" color="gray">
-                <Flex gap="2" align="center" mt="4">
-                  <Switch
-                    name="counts_for_per_diem"
-                    value="on"
-                    defaultChecked={checked("counts_for_per_diem", true)}
-                    aria-label="Counts for per diem"
-                  />
-                  Per diem
-                </Flex>
-              </Text>
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
-              <Text size="1" color="gray">
-                Default rate (USD)
-              </Text>
-              <TextField.Root name="default_rate" inputMode="decimal" defaultValue={initial("default_rate")} />
-              <Text size="1" color="gray">
-                Optional
-              </Text>
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
-              <Text size="1" color="gray">
-                Default rate fraction
-              </Text>
-              <TextField.Root
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-12">
+            <LField
+              label="Label"
+              htmlFor="add-day-type-label"
+              hint="Ground school day, for example"
+              className="md:col-span-4"
+            >
+              <LInput
+                id="add-day-type-label"
+                name="label"
+                required
+                defaultValue={initial("label")}
+              />
+            </LField>
+
+            <div className="flex items-center gap-2 md:col-span-2 md:self-end md:pb-2">
+              <LSwitch
+                name="billable"
+                value="on"
+                defaultChecked={checked("billable", true)}
+                aria-label="Billable"
+              />
+              <span className="text-body-s text-ink-2">Billable</span>
+            </div>
+
+            <div className="flex items-center gap-2 md:col-span-2 md:self-end md:pb-2">
+              <LSwitch
+                name="counts_for_per_diem"
+                value="on"
+                defaultChecked={checked("counts_for_per_diem", true)}
+                aria-label="Counts for per diem"
+              />
+              <span className="text-body-s text-ink-2">Per diem</span>
+            </div>
+
+            <LField
+              label="Default rate (USD)"
+              htmlFor="add-default-rate"
+              hint="Optional"
+              className="md:col-span-2"
+            >
+              <LInput
+                id="add-default-rate"
+                name="default_rate"
+                inputMode="decimal"
+                className="tnum-l"
+                defaultValue={initial("default_rate")}
+              />
+            </LField>
+
+            <LField
+              label="Default rate fraction"
+              htmlFor="add-default-units"
+              hint="0.5 = half rate. Optional, defaults to full rate"
+              className="md:col-span-2"
+            >
+              <LInput
+                id="add-default-units"
                 name="default_units"
                 inputMode="decimal"
                 placeholder="1"
+                className="tnum-l"
                 defaultValue={initial("default_units")}
               />
-              <Text size="1" color="gray">
-                0.5 = half rate. Optional, defaults to full rate
-              </Text>
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
-              <Text as="label" size="1" color="gray" id="add-bills-as-label">
-                Bills as
-              </Text>
-              <Select.Root value={invoiceLineType} onValueChange={setInvoiceLineType}>
-                <Select.Trigger aria-labelledby="add-bills-as-label" />
-                <Select.Content>
-                  {LINE_TYPE_OPTIONS.map((option) => (
-                    <Select.Item key={option.value} value={option.value}>
-                      {option.label}
-                    </Select.Item>
-                  ))}
-                </Select.Content>
-              </Select.Root>
+            </LField>
+
+            <LField label="Bills as" htmlFor="add-bills-as" className="md:col-span-2">
+              <LSelect
+                id="add-bills-as"
+                value={invoiceLineType}
+                onChange={(e) => setInvoiceLineType(e.target.value)}
+              >
+                {LINE_TYPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </LSelect>
               <input type="hidden" name="invoice_line_type" value={invoiceLineType} />
-            </Flex>
-          </Grid>
+            </LField>
+          </div>
 
           <div role="alert" aria-live="polite">
             {state.error ? (
-              <Text size="1" color="red">
-                {state.error}
-              </Text>
+              <p className="text-caption font-medium text-crit">{state.error}</p>
             ) : state.saved ? (
-              <Text size="1" color="green">
-                Added.
-              </Text>
+              <p className="text-caption font-medium text-good">Added.</p>
             ) : null}
           </div>
 
-          <Flex>
-            <Button type="submit" disabled={pending}>
+          <div className="flex">
+            <LButton type="submit" disabled={pending}>
               {pending ? "Adding…" : "Add day type"}
-            </Button>
-          </Flex>
-        </Flex>
+            </LButton>
+          </div>
+        </div>
       </form>
-    </Card>
+    </LCard>
   );
 }
