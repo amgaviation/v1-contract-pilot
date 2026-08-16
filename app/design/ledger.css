@@ -5,13 +5,16 @@
  * soft elevation), because a contract pilot is a business of one and this
  * product is, above all, how they get paid.
  *
- * ── COEXISTENCE, THE ONE RULE THAT MAKES MIGRATION SAFE ────────────────
- * This file imports Tailwind's THEME and UTILITIES layers only — never
- * `tailwindcss/preflight`. Preflight is a global reset; importing it would
- * restyle every un-migrated INSTRUMENT screen in the app at once. Without
- * it, Tailwind utilities are purely additive: a screen changes appearance
- * only when its own markup starts using them. Preflight gets turned on in
- * the final migration phase, when no INSTRUMENT screen remains.
+ * ── PREFLIGHT (docs/design/LEDGER.md, phase 6) ──────────────────────────
+ * For the whole migration this file imported Tailwind's THEME and
+ * UTILITIES layers only, never `tailwindcss/preflight` — preflight is a
+ * global reset, and importing it while any screen still rendered
+ * INSTRUMENT markup would have restyled every one of them at once.
+ * INSTRUMENT (components/ds, components/ui, app/design/tokens.css,
+ * app/design/system.generated.css) is now deleted — every screen in the
+ * product is Ledger — so preflight is imported below like the other two
+ * layers. If a future third design system ever coexists with Ledger
+ * during its own migration, this is the line to remove again first.
  *
  * ── TOKENS ─────────────────────────────────────────────────────────────
  * The palette is declared twice below: literal values on `:root` (day) and
@@ -28,6 +31,7 @@
  */
 
 @import "tailwindcss/theme" layer(theme);
+@import "tailwindcss/preflight" layer(base);
 @import "tailwindcss/utilities" layer(utilities);
 
 /* The night side follows the tenant appearance attribute, not the OS.

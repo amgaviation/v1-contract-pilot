@@ -131,24 +131,18 @@ export default function AppearancePanel({
                     onChange={setAccent}
                   >
                     <span className="flex items-center gap-2">
-                      {/* The swatch resolves --signal per-slot rather than
-                          from the account's CURRENT accent: it stamps its
-                          own data-accent (and the previewed appearance, so
-                          a dark-mode preview picks the lifted dark hue) so
-                          the compound selectors in app/design/tokens.css
-                          §3b match on this element rather than being
-                          inherited from the ancestor's real, unrelated
-                          accent. */}
+                      {/* data-accent/data-appearance are stamped for parity
+                          with the app shell, not because they do anything:
+                          Ledger has no [data-accent] rule (see the note
+                          above ACCENT_SLOTS in lib/theme-slots.ts), so
+                          every swatch renders the one real --ledger-accent
+                          regardless of slot. */}
                       <span
                         aria-hidden="true"
                         data-accent={slot.value}
                         data-appearance={appearance}
-                        className="size-4 shrink-0"
-                        style={{
-                          background: slot.swatch,
-                          borderRadius: "var(--radius)",
-                          border: "1px solid var(--edge)",
-                        }}
+                        className="size-4 shrink-0 rounded-control"
+                        style={{ background: slot.swatch, border: "1px solid var(--ledger-hair)" }}
                       />
                       {slot.label}
                     </span>
@@ -219,66 +213,53 @@ export default function AppearancePanel({
             <LSeparator />
 
             {/* THE PREVIEW. The same three data attributes the app shell
-                stamps, on a real element, so what a pilot sees here is the
-                actual token cascade rather than a drawing of it — the palette
-                in app/design/tokens.css is declared against these attributes,
-                and custom properties inherit, so this subtree genuinely
-                re-themes. Every value still comes from lib/theme-slots.ts. */}
+                stamps, on a real element — but under Ledger only
+                data-appearance has any CSS behind it (app/design/ledger.css
+                has no [data-accent]/[data-density] rule; see the note above
+                ACCENT_SLOTS). data-accent/data-density stay stamped for
+                parity with the shell and because they're harmless, not
+                because anything here reacts to them: this preview now only
+                demonstrates day/night. Every value comes from real Ledger
+                tokens (components/ledger's own recipe), not a drawing of
+                them. */}
             <div className="flex flex-col gap-2">
               <div className="text-body-s font-medium text-ink">Preview</div>
               <div
                 data-appearance={previewAppearance.value}
                 data-accent={previewAccent.value}
                 data-density={previewDensity.density}
-                className="p-4"
-                style={{
-                  background: "var(--canvas)",
-                  borderRadius: "var(--radius)",
-                  border: "1px solid var(--edge)",
-                }}
+                className="rounded-card p-4"
+                style={{ background: "var(--ledger-canvas)", border: "1px solid var(--ledger-hair)" }}
               >
                 <div
-                  className="flex flex-col gap-3 p-4"
-                  style={{
-                    background: "var(--paper)",
-                    borderRadius: "var(--radius)",
-                    border: "1px solid var(--edge)",
-                  }}
+                  className="flex flex-col gap-3 rounded-card p-4"
+                  style={{ background: "var(--ledger-card)", border: "1px solid var(--ledger-hair)" }}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <span style={{ color: "var(--ink)" }} className="font-bold">
+                    <span style={{ color: "var(--ledger-ink)" }} className="font-bold">
                       Trip to KTEB
                     </span>
                     <span
                       className="rounded-full px-2 py-0.5 text-xs font-semibold"
-                      style={{ background: "var(--ok-soft)", color: "var(--ok)" }}
+                      style={{ background: "var(--ledger-good-soft)", color: "var(--ledger-good)" }}
                     >
                       Paid
                     </span>
                   </div>
-                  <p style={{ color: "var(--ink-2)" }} className="text-sm">
-                    Two flight days, one travel day. This card, this badge and the
-                    button below use the token values at the size and colour you
-                    just picked.
+                  <p style={{ color: "var(--ledger-ink-2)" }} className="text-sm">
+                    Two flight days, one travel day. This card and this badge use
+                    Ledger's real colours in day or night, whichever you just picked.
                   </p>
                   <div className="flex gap-2">
                     <span
-                      className="px-3 py-1.5 text-sm font-medium"
-                      style={{
-                        background: "var(--btn-primary-bg)",
-                        color: "var(--btn-primary-ink)",
-                        borderRadius: "var(--radius)",
-                      }}
+                      className="rounded-control px-3 py-1.5 text-sm font-medium"
+                      style={{ background: "var(--ledger-accent)", color: "var(--ledger-accent-ink)" }}
                     >
                       Primary
                     </span>
                     <span
-                      className="px-3 py-1.5 text-sm font-medium"
-                      style={{
-                        background: "var(--sunk)",
-                        color: "var(--ink-2)",
-                        borderRadius: "var(--radius)",
-                      }}
+                      className="rounded-control px-3 py-1.5 text-sm font-medium"
+                      style={{ background: "var(--ledger-sunk)", color: "var(--ledger-ink-2)" }}
                     >
                       Secondary
                     </span>
