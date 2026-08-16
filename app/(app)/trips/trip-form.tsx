@@ -2,18 +2,8 @@
 
 import { useActionState, useEffect, useId, useState } from "react";
 import NextLink from "next/link";
-import {
-  Button,
-  Callout,
-  Card,
-  Flex,
-  Grid,
-  Heading,
-  Select,
-  Text,
-  TextArea,
-  TextField,
-} from "@/components/ui";
+import { LAlert, LButton, LCard, lButtonClass } from "@/components/ledger";
+import { LField, LInput, LSelect, LTextarea } from "@/components/ledger/forms";
 import { centsToInput } from "@/lib/format";
 import { TRIP_OPERATING_RULES } from "@/lib/operating-rule";
 import TailNumberField from "@/components/tail-number-field";
@@ -80,14 +70,14 @@ const CANCELLATION_NOTICE_FROM_OPTIONS = [
   { value: "maintenance", label: "Maintenance" },
   { value: "other", label: "Other" },
 ];
-/** Radix forbids an empty-string Select.Item value — see NO_CLIENT below
- * for the same reason. "Not recorded" is the real, postable null choice. */
+/** "Not recorded" is the real, postable null choice — a leftover sentinel
+ * from this form's Radix Select days (a native <select> has no trouble
+ * with an empty-string option value), kept so the value posted through
+ * the hidden input below is unchanged. */
 const NO_NOTICE_FROM = "__none__";
 
-/** Radix forbids an empty-string Select.Item value. "No client yet" is a
- * real, postable choice (client_id is optional), so it gets a sentinel
- * that never leaves this component — the hidden input below always posts
- * the real client_id, translating the sentinel back to "". */
+/** "No client yet" is a real, postable choice (client_id is optional) —
+ * same leftover-sentinel note as NO_NOTICE_FROM above. */
 const NO_CLIENT = "__none__";
 
 const initialState: TripFormState = { error: null };
@@ -232,17 +222,14 @@ export default function TripForm({
       seedDefaults?.travel_day_rate_cents !== null &&
       seedDefaults?.travel_day_rate_cents !== undefined
   );
-  // Radix's Select.Root always renders its posting <select> with
-  // `defaultValue`, never `value` (@radix-ui/react-select's
-  // SelectBubbleInput) — so it is uncontrolled from React's point of view
-  // regardless of what Select.Root is given, and it is what the browser
-  // actually posts if `name` stays on it. React 19's post-action
-  // form.reset() restores it to its mount-time option even on a rejected
-  // submit, silently discarding the pilot's pick. Fix: no `name` on any
-  // Select.Root here — the real value is posted from a controlled hidden
-  // input instead, which React re-asserts after a reset. `genTick` forces
-  // a remount of every Select on each dispatch so a stray reset-driven
-  // onValueChange has no stale instance left to fire against.
+  // React 19's post-action form.reset() restores every listed element to
+  // its mount-time state, including a plain, controlled native <select> —
+  // this form keeps NO `name` on any visible select and posts the real
+  // value through a controlled hidden input instead (React re-asserts a
+  // hidden input's controlled value on every render, reset or not), the
+  // same defense-in-depth this form used under Radix's Select. `genTick`
+  // still forces a remount of every select on each dispatch, preserved
+  // exactly rather than removed now that the control itself is native.
   const [genTick, setGenTick] = useState(0);
   useEffect(() => {
     setGenTick((g) => g + 1);
@@ -351,334 +338,297 @@ export default function TripForm({
   }
 
   return (
-    <Card size="3">
+    <LCard>
       <form action={formAction}>
         {values.id ? <input type="hidden" name="id" value={values.id} /> : null}
         {/* The real client_id, always in sync with clientId — see NO_CLIENT
-            above for why the Select itself can't post this directly. */}
+            above for why the visible select doesn't post it directly. */}
         <input type="hidden" name="client_id" value={clientId} />
 
-        <Heading as="h2" size="4" mb="3">
-          The job
-        </Heading>
-        <Grid columns={{ initial: "1", md: "2" }} gap="3">
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
-            <Text as="label" size="2" weight="medium" id={`${clientLabelId}-label`}>
-              Client
-            </Text>
-            <Select.Root
-              key={`client-${genTick}`}
-              value={clientId === "" ? NO_CLIENT : clientId}
-              onValueChange={(next) => pickClient(next === NO_CLIENT ? "" : next)}
-              disabled={locked}
-            >
-              <Select.Trigger
-                id={clientLabelId}
-                aria-labelledby={`${clientLabelId}-label`}
-                placeholder="No client yet"
-              />
-              <Select.Content>
-                <Select.Item value={NO_CLIENT}>No client yet</Select.Item>
-                {clients.map((client) => (
-                  <Select.Item key={client.id} value={client.id}>
-                    {client.name}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-            <Text size="1" color="gray">
-              {clients.length === 0
-                ? "No active clients yet. You can add one later."
-                : "Who you're billing for this trip"}
-            </Text>
-          </Flex>
-
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" id={`${tripKindId}-label`}>
-              Trip kind
-            </Text>
-            <Select.Root key={`trip-kind-${genTick}`} value={tripKind} onValueChange={setTripKind}>
-              <Select.Trigger id={tripKindId} aria-labelledby={`${tripKindId}-label`} />
-              <Select.Content>
-                {tripKinds.map((option) => (
-                  <Select.Item key={option.value} value={option.value}>
-                    {option.label}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-            <input type="hidden" name="trip_kind" value={tripKind} />
-          </Flex>
-
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" id={`${statusId}-label`}>
-              Status
-            </Text>
-            <Select.Root key={`status-${genTick}`} value={status} onValueChange={setStatus}>
-              <Select.Trigger id={statusId} aria-labelledby={`${statusId}-label`} />
-              <Select.Content>
-                {STATUSES.map((option) => (
-                  <Select.Item key={option.value} value={option.value}>
-                    {option.label}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-            <input type="hidden" name="status" value={status} />
-            {values.canceled_at ? (
-              <Text size="1" color="gray">
-                Canceled{canceledLabel ? ` ${canceledLabel}` : ""}
-              </Text>
-            ) : null}
-          </Flex>
-
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" id={`${noticeFromId}-label`}>
-              Cancellation notice from
-            </Text>
-            <Select.Root
-              key={`notice-from-${genTick}`}
-              value={cancellationNoticeFrom === "" ? NO_NOTICE_FROM : cancellationNoticeFrom}
-              onValueChange={(next) =>
-                setCancellationNoticeFrom(next === NO_NOTICE_FROM ? "" : next)
+        <h2 className="mb-3 text-h3 font-semibold">The job</h2>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="flex flex-col gap-1 md:col-span-2">
+            <LField
+              label="Client"
+              htmlFor={clientLabelId}
+              hint={
+                clients.length === 0
+                  ? "No active clients yet. You can add one later."
+                  : "Who you're billing for this trip"
               }
             >
-              <Select.Trigger
-                id={noticeFromId}
-                aria-labelledby={`${noticeFromId}-label`}
-                placeholder="Not recorded"
-              />
-              <Select.Content>
-                <Select.Item value={NO_NOTICE_FROM}>Not recorded</Select.Item>
-                {CANCELLATION_NOTICE_FROM_OPTIONS.map((option) => (
-                  <Select.Item key={option.value} value={option.value}>
-                    {option.label}
-                  </Select.Item>
+              <LSelect
+                key={`client-${genTick}`}
+                id={clientLabelId}
+                value={clientId === "" ? NO_CLIENT : clientId}
+                onChange={(e) =>
+                  pickClient(e.target.value === NO_CLIENT ? "" : e.target.value)
+                }
+                disabled={locked}
+              >
+                <option value={NO_CLIENT}>No client yet</option>
+                {clients.map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.name}
+                  </option>
                 ))}
-              </Select.Content>
-            </Select.Root>
+              </LSelect>
+            </LField>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <LField label="Trip kind" htmlFor={tripKindId}>
+              <LSelect
+                key={`trip-kind-${genTick}`}
+                id={tripKindId}
+                value={tripKind}
+                onChange={(e) => setTripKind(e.target.value)}
+              >
+                {tripKinds.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </LSelect>
+            </LField>
+            <input type="hidden" name="trip_kind" value={tripKind} />
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <LField label="Status" htmlFor={statusId}>
+              <LSelect
+                key={`status-${genTick}`}
+                id={statusId}
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+              >
+                {STATUSES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </LSelect>
+            </LField>
+            <input type="hidden" name="status" value={status} />
+            {values.canceled_at ? (
+              <p className="text-caption text-ink-3">
+                Canceled{canceledLabel ? ` ${canceledLabel}` : ""}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <LField
+              label="Cancellation notice from"
+              htmlFor={noticeFromId}
+              hint="Who called off the trip. Supports a cancellation fee line if this contract has one. The cancellation timestamp itself is recorded automatically when status is set to Canceled."
+            >
+              <LSelect
+                key={`notice-from-${genTick}`}
+                id={noticeFromId}
+                value={cancellationNoticeFrom === "" ? NO_NOTICE_FROM : cancellationNoticeFrom}
+                onChange={(e) =>
+                  setCancellationNoticeFrom(
+                    e.target.value === NO_NOTICE_FROM ? "" : e.target.value
+                  )
+                }
+              >
+                <option value={NO_NOTICE_FROM}>Not recorded</option>
+                {CANCELLATION_NOTICE_FROM_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </LSelect>
+            </LField>
             <input
               type="hidden"
               name="cancellation_notice_from"
               value={cancellationNoticeFrom}
             />
-            <Text size="1" color="gray">
-              Who called off the trip. Supports a cancellation fee line if
-              this contract has one. The cancellation timestamp itself is
-              recorded automatically when status is set to Canceled.
-            </Text>
-          </Flex>
+          </div>
 
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="starts_on">
-              Starts
-            </Text>
-            <TextField.Root
-              id="starts_on"
-              type="date"
-              name="starts_on"
-              required
-              disabled={locked}
-              defaultValue={initial("starts_on")}
-            />
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="ends_on">
-              Ends
-            </Text>
-            <TextField.Root
-              id="ends_on"
-              type="date"
-              name="ends_on"
-              required
-              disabled={locked}
-              defaultValue={initial("ends_on")}
-            />
-          </Flex>
-
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" id={`${operatingRuleId}-label`}>
-              Operating rule
-            </Text>
-            <Select.Root
-              key={`operating-rule-${genTick}`}
-              value={operatingRule}
-              onValueChange={(next) => {
-                setOperatingRuleTouched(true);
-                setOperatingRule(next);
-              }}
-              disabled={locked}
-            >
-              <Select.Trigger
-                id={operatingRuleId}
-                aria-labelledby={`${operatingRuleId}-label`}
+          <div className="flex flex-col gap-1">
+            <LField label="Starts" htmlFor="starts_on">
+              <LInput
+                id="starts_on"
+                type="date"
+                name="starts_on"
+                required
+                disabled={locked}
+                defaultValue={initial("starts_on")}
               />
-              <Select.Content>
+            </LField>
+          </div>
+          <div className="flex flex-col gap-1">
+            <LField label="Ends" htmlFor="ends_on">
+              <LInput
+                id="ends_on"
+                type="date"
+                name="ends_on"
+                required
+                disabled={locked}
+                defaultValue={initial("ends_on")}
+              />
+            </LField>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <LField
+              label="Operating rule"
+              htmlFor={operatingRuleId}
+              hint="Which part this specific trip is flown under. Fills in from the client, always overridable per trip."
+            >
+              <LSelect
+                key={`operating-rule-${genTick}`}
+                id={operatingRuleId}
+                value={operatingRule}
+                onChange={(e) => {
+                  setOperatingRuleTouched(true);
+                  setOperatingRule(e.target.value);
+                }}
+                disabled={locked}
+              >
                 {TRIP_OPERATING_RULES.map((option) => (
-                  <Select.Item key={option.value} value={option.value}>
+                  <option key={option.value} value={option.value}>
                     {option.label}
-                  </Select.Item>
+                  </option>
                 ))}
-              </Select.Content>
-            </Select.Root>
+              </LSelect>
+            </LField>
             <input type="hidden" name="operating_rule" value={operatingRule} />
-            <Text size="1" color="gray">
-              Which part this specific trip is flown under. Fills in from the client, always
-              overridable per trip.
-            </Text>
-          </Flex>
+          </div>
 
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="aircraft_ident">
-              Tail number
-            </Text>
-            <TailNumberField
-              id="aircraft_ident"
-              name="aircraft_ident"
-              fleet={fleet}
-              defaultValue={initial("aircraft_ident")}
-              typeFieldId="aircraft_type"
-            />
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="aircraft_type">
-              Aircraft type
-            </Text>
-            <TextField.Root
-              id="aircraft_type"
-              name="aircraft_type"
-              defaultValue={initial("aircraft_type")}
-            />
-            <Text size="1" color="gray">
-              e.g. CE-560XL
-            </Text>
-          </Flex>
-        </Grid>
+          <div className="flex flex-col gap-1">
+            <LField label="Tail number" htmlFor="aircraft_ident">
+              <TailNumberField
+                id="aircraft_ident"
+                name="aircraft_ident"
+                fleet={fleet}
+                defaultValue={initial("aircraft_ident")}
+                typeFieldId="aircraft_type"
+              />
+            </LField>
+          </div>
+          <div className="flex flex-col gap-1">
+            <LField label="Aircraft type" htmlFor="aircraft_type" hint="e.g. CE-560XL">
+              <LInput
+                id="aircraft_type"
+                name="aircraft_type"
+                defaultValue={initial("aircraft_type")}
+              />
+            </LField>
+          </div>
+        </div>
 
-        <Flex direction="column" gap="1" mt="5" mb="3">
-          <Heading as="h2" size="4" color={hasDayRows ? "gray" : undefined}>
+        <div className="mt-5 mb-3 flex flex-col gap-1">
+          <h2 className={hasDayRows ? "text-h3 font-semibold text-ink-3" : "text-h3 font-semibold"}>
             {hasDayRows ? "What it bills (legacy)" : "What it bills"}
-          </Heading>
-          <Text size="1" color="gray">
+          </h2>
+          <p className="text-caption text-ink-3">
             {hasDayRows
               ? "The day grid below now sets what's actually billed. These fields are the old scalar input, kept only as the day grid's original seed. Editing them does not change the invoice."
               : "Seeds the day grid below the first time it's opened. Once that grid has rows, they, not these fields, are what's actually billed."}
-          </Text>
-        </Flex>
-        <Grid columns={{ initial: "1", md: "2" }} gap="3">
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="day_rate">
-              Day rate (USD)
-            </Text>
-            <TextField.Root
-              id="day_rate"
-              name="day_rate"
-              required
-              inputMode="decimal"
-              value={dayRate}
-              onChange={(event) => {
-                // The pilot has typed: the value is theirs now, never the
-                // account seed again — see dayRateIsAccountSeed above.
-                setDayRateIsAccountSeed(false);
-                setDayRate(event.target.value);
-              }}
-              disabled={locked}
-            />
-            <Text size="1" color="gray">
-              Fills in from the client's rate agreement
-            </Text>
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="day_count">
-              Days
-            </Text>
-            <TextField.Root
-              id="day_count"
-              type="number"
-              name="day_count"
-              step="0.5"
-              min="0"
-              defaultValue={initial("day_count")}
-              disabled={locked}
-            />
-            <Text size="1" color="gray">
-              Half days are allowed
-            </Text>
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="travel_day_rate">
-              Travel day rate (USD)
-            </Text>
-            <TextField.Root
-              id="travel_day_rate"
-              name="travel_day_rate"
-              inputMode="decimal"
-              value={travelRate}
-              onChange={(event) => {
-                setTravelRateIsAccountSeed(false);
-                setTravelRate(event.target.value);
-              }}
-              disabled={locked}
-            />
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="travel_day_count">
-              Travel days
-            </Text>
-            <TextField.Root
-              id="travel_day_count"
-              type="number"
-              name="travel_day_count"
-              step="1"
-              min="0"
-              defaultValue={initial("travel_day_count", "0")}
-              disabled={locked}
-            />
-            <Text size="1" color="gray">
-              Days to and from the aircraft
-            </Text>
-          </Flex>
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
-            <Text as="label" size="2" weight="medium" htmlFor="notes">
-              Notes
-            </Text>
-            <TextArea id="notes" name="notes" rows={3} defaultValue={initial("notes")} />
-          </Flex>
-        </Grid>
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="flex flex-col gap-1">
+            <LField label="Day rate (USD)" htmlFor="day_rate" hint="Fills in from the client's rate agreement">
+              <LInput
+                id="day_rate"
+                name="day_rate"
+                required
+                inputMode="decimal"
+                value={dayRate}
+                onChange={(event) => {
+                  // The pilot has typed: the value is theirs now, never the
+                  // account seed again — see dayRateIsAccountSeed above.
+                  setDayRateIsAccountSeed(false);
+                  setDayRate(event.target.value);
+                }}
+                disabled={locked}
+              />
+            </LField>
+          </div>
+          <div className="flex flex-col gap-1">
+            <LField label="Days" htmlFor="day_count" hint="Half days are allowed">
+              <LInput
+                id="day_count"
+                type="number"
+                name="day_count"
+                step="0.5"
+                min="0"
+                defaultValue={initial("day_count")}
+                disabled={locked}
+              />
+            </LField>
+          </div>
+          <div className="flex flex-col gap-1">
+            <LField label="Travel day rate (USD)" htmlFor="travel_day_rate">
+              <LInput
+                id="travel_day_rate"
+                name="travel_day_rate"
+                inputMode="decimal"
+                value={travelRate}
+                onChange={(event) => {
+                  setTravelRateIsAccountSeed(false);
+                  setTravelRate(event.target.value);
+                }}
+                disabled={locked}
+              />
+            </LField>
+          </div>
+          <div className="flex flex-col gap-1">
+            <LField label="Travel days" htmlFor="travel_day_count" hint="Days to and from the aircraft">
+              <LInput
+                id="travel_day_count"
+                type="number"
+                name="travel_day_count"
+                step="1"
+                min="0"
+                defaultValue={initial("travel_day_count", "0")}
+                disabled={locked}
+              />
+            </LField>
+          </div>
+          <div className="flex flex-col gap-1 md:col-span-2">
+            <LField label="Notes" htmlFor="notes">
+              <LTextarea id="notes" name="notes" rows={3} defaultValue={initial("notes")} />
+            </LField>
+          </div>
+        </div>
 
         {/* role="alert" so a screen reader hears the rejection; without it
             the form silently resets and nothing is announced. */}
-        <Flex mt="4" role="alert" aria-live="polite">
+        <div className="mt-4" role="alert" aria-live="polite">
           {state.error ? (
-            <Callout.Root color="red" size="1">
-              <Callout.Text>{state.error}</Callout.Text>
-            </Callout.Root>
+            <LAlert tone="crit">{state.error}</LAlert>
           ) : state.saved ? (
-            <Callout.Root color="green" size="1">
-              <Callout.Text>
-                {state.daysRemoved
-                  ? `Trip saved. Removed ${state.daysRemoved} day row${
-                      state.daysRemoved === 1 ? "" : "s"
-                    } that fell outside the new dates.`
-                  : "Trip saved."}
-              </Callout.Text>
-            </Callout.Root>
+            <LAlert tone="good">
+              {state.daysRemoved
+                ? `Trip saved. Removed ${state.daysRemoved} day row${
+                    state.daysRemoved === 1 ? "" : "s"
+                  } that fell outside the new dates.`
+                : "Trip saved."}
+            </LAlert>
           ) : null}
-        </Flex>
+        </div>
         {/* gap S: overlapping-trip warning — NEVER a hard block, since
             split-duty and same-day positioning work are real. Only shown
             alongside a successful save: this is a heads-up about the
             calendar, not a reason to withhold the write. */}
         {state.saved && state.overlapWarning ? (
-          <Flex mt="2">
-            <Callout.Root color="amber" size="1">
-              <Callout.Text>{state.overlapWarning}</Callout.Text>
-            </Callout.Root>
-          </Flex>
+          <div className="mt-2">
+            <LAlert tone="warn">{state.overlapWarning}</LAlert>
+          </div>
         ) : null}
 
-        <Flex mt="4" gap="3">
-          <Button
+        <div className="mt-4 flex gap-3">
+          {/* THE ONE FILLED ACCENT ACTION in this form — the persistence
+              move a pilot came here to make. See mark-flown-button.tsx and
+              [id]/page.tsx for why the header's "Mark flown" action (when
+              shown) takes outline instead, so the two never compete. */}
+          <LButton
             type="submit"
             disabled={pending || locked}
             title={
@@ -686,13 +636,13 @@ export default function TripForm({
             }
           >
             {pending ? "Saving…" : submitLabel}
-          </Button>
-          <Button asChild variant="outline">
-            <NextLink href={cancelHref}>Cancel</NextLink>
-          </Button>
-        </Flex>
+          </LButton>
+          <NextLink href={cancelHref} className={lButtonClass({ variant: "outline" })}>
+            Cancel
+          </NextLink>
+        </div>
       </form>
-    </Card>
+    </LCard>
   );
 }
 

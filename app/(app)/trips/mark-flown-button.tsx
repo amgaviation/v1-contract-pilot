@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Button, Flex, Text } from "@/components/ui";
+import { LButton } from "@/components/ledger";
 import { markTripCompleted } from "./actions";
 
 /**
@@ -21,19 +21,19 @@ import { markTripCompleted } from "./actions";
  */
 export default function MarkFlownButton({
   id,
-  size = "2",
-  variant = "solid",
+  size = "md",
+  variant = "primary",
 }: {
   id: string;
-  size?: "1" | "2";
-  variant?: "solid" | "soft";
+  size?: "sm" | "md";
+  variant?: "primary" | "outline";
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <Flex direction="column" gap="1">
-      <Button
+    <div className="flex flex-col gap-1">
+      <LButton
         type="button"
         size={size}
         variant={variant}
@@ -50,12 +50,12 @@ export default function MarkFlownButton({
         }
       >
         {pending ? "Marking…" : "Mark flown"}
-      </Button>
+      </LButton>
       {error ? (
-        <Text size="1" color="red" role="alert">
+        <p className="text-caption font-medium text-crit" role="alert">
           {error}
-        </Text>
+        </p>
       ) : null}
-    </Flex>
+    </div>
   );
 }
