@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { AlertDialog, Button, Flex, Text } from "@/components/ui";
+import { LButton } from "@/components/ledger";
+import { LConfirmDialog } from "@/components/ledger/dialog";
 import { deleteDocument } from "../actions";
 
 export default function DeleteDocumentButton({ id }: { id: string }) {
@@ -12,11 +13,14 @@ export default function DeleteDocumentButton({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null);
 
   function doDelete() {
+    // Closes the instant it's pressed — the same always-closes-on-click
+    // shape invoices/[id]/status-actions.tsx's void-invoice dialog keeps;
+    // the error line renders below the button, after the dialog is gone,
+    // rather than holding the dialog open.
+    setOpen(false);
     startTransition(async () => {
       const result = await deleteDocument(id);
       if (result.error) {
-        // Keep the dialog open on failure so focus stays on the still-
-        // enabled confirm button instead of falling back to <body>.
         setError(result.error);
         return;
       }
@@ -28,35 +32,31 @@ export default function DeleteDocumentButton({ id }: { id: string }) {
   }
 
   return (
-    <Flex direction="column" align="end" gap="1">
-      <AlertDialog.Root open={open} onOpenChange={setOpen}>
-        <AlertDialog.Trigger>
-          <Button variant="outline" color="red">
-            Delete document
-          </Button>
-        </AlertDialog.Trigger>
-        <AlertDialog.Content maxWidth="450px">
-          <AlertDialog.Title>Delete this document?</AlertDialog.Title>
-          <AlertDialog.Description size="2">
-            This deletes the document and its attached file. This can&rsquo;t be undone.
-          </AlertDialog.Description>
-          {error ? (
-            <Text size="1" color="red" role="alert" mt="2">
-              {error}
-            </Text>
-          ) : null}
-          <Flex gap="3" mt="4" justify="end">
-            <AlertDialog.Cancel>
-              <Button variant="soft" color="gray" disabled={pending}>
-                Cancel
-              </Button>
-            </AlertDialog.Cancel>
-            <Button variant="solid" color="red" disabled={pending} onClick={doDelete}>
-              {pending ? "Deleting…" : "Delete document"}
-            </Button>
-          </Flex>
-        </AlertDialog.Content>
-      </AlertDialog.Root>
-    </Flex>
+    <div className="flex flex-col items-end gap-1">
+      <LButton
+        type="button"
+        variant="outline"
+        className="text-crit hover:text-crit"
+        disabled={pending}
+        onClick={() => setOpen(true)}
+      >
+        {pending ? "Deleting…" : "Delete document"}
+      </LButton>
+      <LConfirmDialog
+        open={open}
+        onOpenChange={setOpen}
+        title="Delete this document?"
+        description="This deletes the document and its attached file. This can’t be undone."
+        confirmLabel="Delete document"
+        confirmVariant="danger"
+        pending={pending}
+        onConfirm={doDelete}
+      />
+      {error ? (
+        <p className="text-caption font-medium text-crit" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
   );
 }

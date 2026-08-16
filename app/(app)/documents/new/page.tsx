@@ -1,5 +1,5 @@
 import { requireAccount } from "@/lib/supabase/account";
-import PageShell from "../../page-shell";
+import { LPageShell } from "@/components/ledger/page-shell";
 import DocumentForm from "../document-form";
 import { createDocument } from "../actions";
 import { loadClientOptions } from "../client-options";
@@ -21,7 +21,7 @@ export default async function NewDocumentPage() {
   if (error) throw new Error(`Couldn't load your clients: ${error}`);
 
   return (
-    <PageShell
+    <LPageShell
       title="Add document"
       subtitle="Enter the dates as printed: medical, flight review, passport, certificate, insurance policy, or W-9."
     >
@@ -31,6 +31,6 @@ export default async function NewDocumentPage() {
         kinds={kinds}
         submitLabel="Save document"
       />
-    </PageShell>
+    </LPageShell>
   );
 }

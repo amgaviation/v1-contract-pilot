@@ -1,10 +1,10 @@
 import { notFound } from "next/navigation";
-import { Card, Flex, Text } from "@/components/ui";
+import { LCard } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatDate } from "@/lib/format";
-import PageShell from "../../page-shell";
 import DocumentForm, { type DocumentFormValues } from "../document-form";
 import { updateDocument } from "../actions";
 import { loadClientOptions } from "../client-options";
@@ -51,7 +51,7 @@ export default async function DocumentPage({
   if (!doc) notFound();
 
   return (
-    <PageShell
+    <LPageShell
       title={doc.label ?? ""}
       subtitle={`${kindLabels[doc.kind] ?? "Other"}${
         doc.expires_on ? ` · Expires ${formatDate(doc.expires_on)}` : " · No expiry"
@@ -59,15 +59,13 @@ export default async function DocumentPage({
       action={<DeleteDocumentButton id={doc.id} />}
     >
       {doc.file_path ? (
-        <Card>
-          <Flex justify="between" align="center" gap="3" p="1">
-            <Text size="2" color="gray">
-              A file is attached. It&rsquo;s stored privately. The link below works for one
-              minute.
-            </Text>
-            <DocumentLink path={doc.file_path} />
-          </Flex>
-        </Card>
+        <LCard className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-body-s text-ink-2">
+            A file is attached. It&rsquo;s stored privately. The link below works for one
+            minute.
+          </p>
+          <DocumentLink path={doc.file_path} />
+        </LCard>
       ) : null}
 
       <DocumentForm
@@ -77,6 +75,6 @@ export default async function DocumentPage({
         values={doc}
         submitLabel="Save document"
       />
-    </PageShell>
+    </LPageShell>
   );
 }

@@ -1,12 +1,11 @@
-import { Callout, Flex, Grid, Text } from "@/components/ui";
-import { ExclamationTriangleIcon, InfoCircledIcon } from "@radix-ui/react-icons";
+import { LAlert } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 import { requireAccount } from "@/lib/supabase/account";
 import { CURRENCY_DISCLAIMER } from "@/lib/brand";
 import { isCurrencyEngineEnabled } from "@/lib/currency/gate";
 import { evaluateCurrency } from "@/lib/currency";
 import { loadCurrencyInput } from "@/lib/currency/read";
 import type { CurrencyResult } from "@/lib/currency/types";
-import PageShell from "../page-shell";
 import CurrencyCard from "./currency-card";
 import RecomputeButton from "./recompute-button";
 import { formatCurrencyDate, isNextControlFlowError, utcDateOf } from "./presentation";
@@ -43,27 +42,25 @@ export default async function CurrencyPage() {
 
   if (!isCurrencyEngineEnabled()) {
     return (
-      <PageShell
+      <LPageShell
         title="Currency"
         subtitle="Estimated FAA currency, computed from your own logbook entries"
       >
-        <Callout.Root color="gray">
-          <Callout.Icon>
-            <InfoCircledIcon />
-          </Callout.Icon>
-          <Callout.Text>
-            <Text as="div" weight="medium">
+        <LAlert tone="neutral" className="flex items-start gap-2">
+          <InfoIcon className="mt-0.5 shrink-0 text-ink-3" />
+          <span className="flex flex-col gap-1">
+            <span className="font-medium text-ink">
               Currency isn&rsquo;t enabled on this deployment.
-            </Text>
-            <Text as="div" size="2">
+            </span>
+            <span className="text-body-s">
               The currency board ships dark behind a deployment flag until its regulatory
               spec review and the counsel review of its disclaimer are signed off. Until
               the flag is set on this deployment, nothing here computes, reads, or shows
               currency. This notice is the whole feature. There is no in-app switch.
-            </Text>
-          </Callout.Text>
-        </Callout.Root>
-      </PageShell>
+            </span>
+          </span>
+        </LAlert>
+      </LPageShell>
     );
   }
 
@@ -96,31 +93,29 @@ export default async function CurrencyPage() {
 
   if (results === null) {
     return (
-      <PageShell
+      <LPageShell
         title="Currency"
         subtitle="Estimated FAA currency, computed from your own logbook entries"
       >
-        <Callout.Root color="red">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>
-            <Text as="div" weight="medium">
+        <LAlert tone="crit" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+          <span className="flex flex-col gap-1">
+            <span className="font-medium text-ink">
               Couldn&rsquo;t read your logbook, so no currency estimates are shown.
-            </Text>
-            <Text as="div" size="2">
+            </span>
+            <span className="text-body-s">
               This is not a statement that you are current, and not a statement that you
               are not. It means this screen could not find out. Reload to try again; if
               it keeps failing, contact support. Your logbook itself is unaffected.
-            </Text>
-          </Callout.Text>
-        </Callout.Root>
-      </PageShell>
+            </span>
+          </span>
+        </LAlert>
+      </LPageShell>
     );
   }
 
   return (
-    <PageShell
+    <LPageShell
       title="Currency"
       subtitle={`Estimated from your logbook as of ${
         formatCurrencyDate(asOf) ?? asOf
@@ -132,33 +127,78 @@ export default async function CurrencyPage() {
           above the cards per docs/CURRENCY-SPEC.md §7. The same string
           travels inside every snapshot the recompute action writes
           (currency_snapshots.limitations, NOT NULL). */}
-      <Callout.Root color="blue">
-        <Callout.Icon>
-          <InfoCircledIcon />
-        </Callout.Icon>
-        <Callout.Text>{CURRENCY_DISCLAIMER}</Callout.Text>
-      </Callout.Root>
+      <LAlert tone="accent" className="flex items-start gap-2">
+        <InfoIcon className="mt-0.5 shrink-0 text-accent" />
+        <span>{CURRENCY_DISCLAIMER}</span>
+      </LAlert>
 
-      <Flex direction="column" gap="1">
-        <Text size="2" weight="medium" as="div">
+      <div className="flex flex-col gap-1">
+        <p className="text-body-s font-medium text-ink">
           {`As of ${formatCurrencyDate(asOf) ?? asOf}`}
-        </Text>
-        <Text size="1" color="gray" as="div">
+        </p>
+        <p className="text-caption text-ink-3">
           Every window below is evaluated against the UTC calendar date above. Each card
           states its own arithmetic and the entries it counted. The estimate is only as
           good as the logbook it reads.
-        </Text>
-      </Flex>
+        </p>
+      </div>
 
       {/* evaluateCurrency always returns exactly five results, one per
           currency type, in vocabulary order — an absent card would read
           as "fine", so the engine never omits one and this page renders
           whatever it returns, unfiltered. */}
-      <Grid columns={{ initial: "1", md: "2" }} gap="4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {results.map((result) => (
           <CurrencyCard key={result.currencyType} result={result} />
         ))}
-      </Grid>
-    </PageShell>
+      </div>
+    </LPageShell>
+  );
+}
+
+/* ── Inline icons ──────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. aria-hidden, stroke="currentColor" so each inherits its
+ * caller's tone utility. WarningIcon matches invoices/page.tsx's own
+ * shape; InfoIcon is this screen's own, same construction. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function InfoIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <circle cx="8" cy="8" r="6.25" />
+      <path d="M8 7.25v4" />
+      <circle cx="8" cy="5" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }
