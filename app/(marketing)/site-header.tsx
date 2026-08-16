@@ -5,7 +5,7 @@ import { BRAND } from "@/lib/brand";
 /**
  * The public site's header. Deliberately not the (app) rail's Logo
  * component — that inlines the older in-app kit
- * (components/ui/logo.tsx), and the owner's brand-mark decision for the
+ * (components/logo.tsx), and the owner's brand-mark decision for the
  * signed-out surface is the newer public/brand/*.svg kit (navy.svg here,
  * on this light ground). The two marks are different geometry; using the
  * in-app one on the marketing site would put two different "V1" marks in

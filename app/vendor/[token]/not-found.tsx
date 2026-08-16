@@ -1,5 +1,5 @@
 import { LCard } from "@/components/ledger";
-import { Logo } from "@/components/ui/logo";
+import { Logo } from "@/components/logo";
 
 /**
  * Rendered for an unknown token, a revoked one, an expired one, a

@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { LAlert, LCard, LPill, LSeparator, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
-import { Logo } from "@/components/ui/logo";
+import { Logo } from "@/components/logo";
 import { createClient } from "@/lib/supabase/server";
 import { isLiveMode } from "@/lib/stripe/server";
 import { formatCents, formatDate } from "@/lib/format";

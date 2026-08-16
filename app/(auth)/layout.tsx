@@ -25,7 +25,7 @@ import { BRAND } from "@/lib/brand";
  * police, and every field under this layout benefits from it.
  *
  * The mark is public/brand/navy.svg, the same file/brand kit site-header.tsx
- * uses on this light ground — not components/ui/logo.tsx, which inlines the
+ * uses on this light ground — not components/logo.tsx, which inlines the
  * older in-app kit. A plain <img>, not next/image: a small, already-optimized
  * SVG has no responsive srcset to gain from it.
  */

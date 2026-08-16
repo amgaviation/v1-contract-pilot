@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { LCard, LPill, LTable, LTd, LTh } from "@/components/ledger";
-import { Logo } from "@/components/ui/logo";
+import { Logo } from "@/components/logo";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/format";
 
