@@ -2,19 +2,8 @@
 
 import { useMemo, useState } from "react";
 import NextLink from "next/link";
-import {
-  Box,
-  Button,
-  Callout,
-  Card,
-  Checkbox,
-  Flex,
-  Link as RadixLink,
-  Select,
-  Table,
-  Text,
-  TextField,
-} from "@/components/ui";
+import { LAlert, LButton, LCard, LTable, LTd, LTh } from "@/components/ledger";
+import { LCheckbox, LInput, LSelect } from "@/components/ledger/forms";
 import { formatCents, formatDate } from "@/lib/format";
 import { parseCsv, type CsvRecord } from "@/lib/bank-import/csv";
 import { applyCsvMapping, suggestColumnMapping } from "@/lib/bank-import/apply-mapping";
@@ -53,11 +42,7 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
   const selectedAccount = accounts.find((a) => a.id === bankAccountId) ?? null;
 
   // New-account mini form. Deliberately NOT a <form action={...}> dispatch
-  // — a Radix Select's posted value only bubbles via its internal
-  // defaultValue-based hidden input (see the house rule on React 19 +
-  // Select), and this form is simple enough that building FormData by
-  // hand from plain useState avoids that whole class of bug rather than
-  // working around it.
+  // — built by hand from plain useState.
   const [newAccountOpen, setNewAccountOpen] = useState(accounts.length === 0);
   const [newLabel, setNewLabel] = useState("");
   const [newKind, setNewKind] = useState<"checking" | "savings" | "credit_card">("checking");
@@ -329,79 +314,81 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
   };
 
   return (
-    <Flex direction="column" gap="5">
-      <Card size="3">
-        <Flex direction="column" gap="3">
-          <Text weight="medium">1. Which account is this from?</Text>
-          <Flex gap="3" align="center" wrap="wrap">
-            <Select.Root value={bankAccountId} onValueChange={selectAccount}>
-              <Select.Trigger placeholder="Pick an account" />
-              <Select.Content>
+    <div className="flex flex-col gap-5">
+      <LCard>
+        <div className="flex flex-col gap-3">
+          <p className="font-medium text-ink">1. Which account is this from?</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="min-w-56">
+              <LSelect value={bankAccountId} onChange={(e) => selectAccount(e.target.value)}>
+                {bankAccountId === "" ? (
+                  <option value="" disabled>
+                    Pick an account
+                  </option>
+                ) : null}
                 {accounts.map((a) => (
-                  <Select.Item key={a.id} value={a.id}>
+                  <option key={a.id} value={a.id}>
                     {a.label}
                     {a.last4 ? ` ···${a.last4}` : ""}, {KIND_LABEL[a.kind]}
-                  </Select.Item>
+                  </option>
                 ))}
-              </Select.Content>
-            </Select.Root>
-            <Button type="button" variant="soft" onClick={() => setNewAccountOpen((v) => !v)}>
+              </LSelect>
+            </div>
+            <LButton type="button" variant="outline" onClick={() => setNewAccountOpen((v) => !v)}>
               {newAccountOpen ? "Cancel" : "Add an account"}
-            </Button>
-          </Flex>
+            </LButton>
+          </div>
 
           {newAccountOpen ? (
-            <Card variant="surface">
-              <Flex direction="column" gap="3">
-                <Text size="2" color="gray">
+            <div className="rounded-card border border-hair bg-sunk p-4">
+              <div className="flex flex-col gap-3">
+                <p className="text-body-s text-ink-2">
                   A label only, never a full account number or any credential. Last 4 is optional, exactly as
                   printed on the statement.
-                </Text>
-                <Flex gap="3" wrap="wrap">
-                  <TextField.Root
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <LInput
                     placeholder="e.g. Chase checking"
                     value={newLabel}
                     onChange={(e) => setNewLabel(e.target.value)}
-                    style={{ minWidth: 220 }}
+                    className="min-w-56"
                   />
-                  <Select.Root value={newKind} onValueChange={(v) => setNewKind(v as typeof newKind)}>
-                    <Select.Trigger />
-                    <Select.Content>
-                      <Select.Item value="checking">Checking</Select.Item>
-                      <Select.Item value="savings">Savings</Select.Item>
-                      <Select.Item value="credit_card">Credit card</Select.Item>
-                    </Select.Content>
-                  </Select.Root>
-                  <TextField.Root
+                  <div className="w-44">
+                    <LSelect
+                      value={newKind}
+                      onChange={(e) => setNewKind(e.target.value as typeof newKind)}
+                    >
+                      <option value="checking">Checking</option>
+                      <option value="savings">Savings</option>
+                      <option value="credit_card">Credit card</option>
+                    </LSelect>
+                  </div>
+                  <LInput
                     placeholder="Last 4 (optional)"
                     value={newLast4}
                     onChange={(e) => setNewLast4(e.target.value)}
-                    style={{ width: 140 }}
+                    className="w-36"
                   />
-                </Flex>
-                {newAccountError ? (
-                  <Callout.Root>
-                    <Callout.Text>{newAccountError}</Callout.Text>
-                  </Callout.Root>
-                ) : null}
-                <Box>
-                  <Button type="button" onClick={handleCreateAccount} disabled={newAccountPending}>
+                </div>
+                {newAccountError ? <LAlert tone="crit">{newAccountError}</LAlert> : null}
+                <div>
+                  <LButton type="button" onClick={handleCreateAccount} disabled={newAccountPending}>
                     {newAccountPending ? "Saving…" : "Save account"}
-                  </Button>
-                </Box>
-              </Flex>
-            </Card>
+                  </LButton>
+                </div>
+              </div>
+            </div>
           ) : null}
-        </Flex>
-      </Card>
+        </div>
+      </LCard>
 
-      <Card size="3">
-        <Flex direction="column" gap="3">
-          <Text weight="medium">2. Upload a statement</Text>
-          <Text size="2" color="gray">
+      <LCard>
+        <div className="flex flex-col gap-3">
+          <p className="font-medium text-ink">2. Upload a statement</p>
+          <p className="text-body-s text-ink-2">
             CSV, OFX, or QFX: whatever your bank's online portal lets you download. Nothing is written until you
             review and confirm below.
-          </Text>
+          </p>
           <input
             type="file"
             accept=".csv,.ofx,.qfx,text/csv"
@@ -410,101 +397,93 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
               const file = e.target.files?.[0];
               if (file) void handleFile(file);
             }}
+            className="text-body-s text-ink"
           />
           {!selectedAccount ? (
-            <Text size="2" color="gray">
-              Pick or add an account above first.
-            </Text>
+            <p className="text-body-s text-ink-2">Pick or add an account above first.</p>
           ) : null}
-          {fileError ? (
-            <Callout.Root>
-              <Callout.Text>{fileError}</Callout.Text>
-            </Callout.Root>
-          ) : null}
-        </Flex>
-      </Card>
+          {fileError ? <LAlert tone="crit">{fileError}</LAlert> : null}
+        </div>
+      </LCard>
 
       {detectedFormat === "csv" && headerRow.length > 0 ? (
-        <Card size="3">
-          <Flex direction="column" gap="3">
-            <Text weight="medium">3. Match your file's columns</Text>
-            <Text size="2" color="gray">
+        <LCard>
+          <div className="flex flex-col gap-3">
+            <p className="font-medium text-ink">3. Match your file's columns</p>
+            <p className="text-body-s text-ink-2">
               We guessed based on the header names. Check them, especially Amount vs. Debit/Credit.
-            </Text>
-            <Text as="label" size="2">
-              <Flex gap="2" align="center">
-                <Checkbox
-                  checked={firstRowIsData}
-                  onCheckedChange={(checked) => toggleFirstRowIsData(checked === true)}
-                />
-                The first row above is a transaction, not column headers. Some
-                banks (Wells Fargo among them) export CSVs with no header row at all.
-              </Flex>
-            </Text>
+            </p>
+            <label className="flex items-center gap-2 text-body-s text-ink">
+              <LCheckbox
+                checked={firstRowIsData}
+                onChange={(e) => toggleFirstRowIsData(e.target.checked)}
+              />
+              The first row above is a transaction, not column headers. Some
+              banks (Wells Fargo among them) export CSVs with no header row at all.
+            </label>
             {firstRowIsData ? (
-              <Callout.Root color="amber" size="1">
-                <Callout.Text>
-                  Every row below, including the first, is treated as a
-                  transaction. There&rsquo;s no header text to guess column names
-                  from, so map each one by hand.
-                </Callout.Text>
-              </Callout.Root>
+              <LAlert tone="warn">
+                Every row below, including the first, is treated as a
+                transaction. There&rsquo;s no header text to guess column names
+                from, so map each one by hand.
+              </LAlert>
             ) : null}
-            <Table.Root variant="surface">
-              <Table.Header>
-                <Table.Row>
-                  <Table.ColumnHeaderCell>Column in your file</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Maps to</Table.ColumnHeaderCell>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
+            <LTable>
+              <thead>
+                <tr>
+                  <LTh>Column in your file</LTh>
+                  <LTh>Maps to</LTh>
+                </tr>
+              </thead>
+              <tbody>
                 {headerRow.map((h, idx) => (
-                  <Table.Row key={idx}>
-                    <Table.Cell>{h || `Column ${idx + 1}`}</Table.Cell>
-                    <Table.Cell>
-                      <Select.Root value={mapping[idx] ?? "ignore"} onValueChange={(v) => setColumn(idx, v as CsvColumnKey)}>
-                        <Select.Trigger />
-                        <Select.Content>
+                  <tr key={idx}>
+                    <th
+                      scope="row"
+                      className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                    >
+                      {h || `Column ${idx + 1}`}
+                    </th>
+                    <LTd>
+                      <div className="w-56">
+                        <LSelect
+                          value={mapping[idx] ?? "ignore"}
+                          onChange={(e) => setColumn(idx, e.target.value as CsvColumnKey)}
+                        >
                           {(Object.keys(CSV_COLUMN_LABELS) as CsvColumnKey[]).map((k) => (
-                            <Select.Item key={k} value={k}>
+                            <option key={k} value={k}>
                               {CSV_COLUMN_LABELS[k]}
-                            </Select.Item>
+                            </option>
                           ))}
-                        </Select.Content>
-                      </Select.Root>
-                    </Table.Cell>
-                  </Table.Row>
+                        </LSelect>
+                      </div>
+                    </LTd>
+                  </tr>
                 ))}
-              </Table.Body>
-            </Table.Root>
-            <Box>
+              </tbody>
+            </LTable>
+            <div>
               {/* Wrapped, not passed by reference: runCsv's first argument
                   is now the sign override, and React would hand it the
                   MouseEvent — which is truthy, so every parse would come
                   out inverted. tsc caught it; the wrapper is the fix. */}
-              <Button type="button" onClick={() => runCsv()}>
+              <LButton type="button" onClick={() => runCsv()}>
                 Parse {dataRecords.length} row{dataRecords.length === 1 ? "" : "s"}
-              </Button>
-            </Box>
-          </Flex>
-        </Card>
+              </LButton>
+            </div>
+          </div>
+        </LCard>
       ) : null}
 
       {parseResult ? (
-        <Card size="3">
-          <Flex direction="column" gap="3">
-            <Text weight="medium">4. Review before anything is saved</Text>
-            <Flex gap="4" wrap="wrap">
-              <Text size="2" className="tnum">
-                {parseResult.valid.length} parsed
-              </Text>
-              <Text size="2" color="red" className="tnum">
-                {parseResult.rejected.length} rejected
-              </Text>
-              <Text size="2" className="tnum">
-                {includedRows.length} will be imported
-              </Text>
-            </Flex>
+        <LCard>
+          <div className="flex flex-col gap-3">
+            <p className="font-medium text-ink">4. Review before anything is saved</p>
+            <div className="flex flex-wrap gap-4">
+              <span className="tnum-l text-body-s text-ink-2">{parseResult.valid.length} parsed</span>
+              <span className="tnum-l text-body-s text-crit">{parseResult.rejected.length} rejected</span>
+              <span className="tnum-l text-body-s text-ink-2">{includedRows.length} will be imported</span>
+            </div>
 
             {/* WHICH WAY THE MONEY RUNS. Card issuers disagree about
                 whether a purchase is written positive or negative, and
@@ -530,167 +509,166 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
                 An absent last4 is NOT a match — it's an unknown — and the
                 guard has to say so rather than fall through silently: this
                 preview now survives an account switch (see the Select's
-                onValueChange above), so a bare account with no last4 would
+                onChange above), so a bare account with no last4 would
                 otherwise be a clean, warning-free path to filing statement
                 A into account B. */}
             {parseResult.statementAccountId && selectedAccount?.last4 ? (
               parseResult.statementAccountId.slice(-4) !== selectedAccount.last4 ? (
-                <Callout.Root color="amber" size="1">
-                  <Callout.Text>
-                    This statement is for an account ending{" "}
-                    ···{parseResult.statementAccountId.slice(-4)}, but you picked{" "}
-                    {selectedAccount.label} ···{selectedAccount.last4}. Importing it
-                    would file these transactions against the wrong account, and a
-                    later import of the right statement wouldn&rsquo;t catch it as a
-                    duplicate. Check the account above before continuing.
-                  </Callout.Text>
-                </Callout.Root>
+                <LAlert tone="warn">
+                  This statement is for an account ending{" "}
+                  ···{parseResult.statementAccountId.slice(-4)}, but you picked{" "}
+                  {selectedAccount.label} ···{selectedAccount.last4}. Importing it
+                  would file these transactions against the wrong account, and a
+                  later import of the right statement wouldn&rsquo;t catch it as a
+                  duplicate. Check the account above before continuing.
+                </LAlert>
               ) : null
             ) : parseResult.statementAccountId && selectedAccount && !selectedAccount.last4 ? (
-              <Callout.Root color="amber" size="1">
-                <Callout.Text>
-                  This statement is for an account ending{" "}
-                  ···{parseResult.statementAccountId.slice(-4)}, but{" "}
-                  {selectedAccount.label} has no last 4 on file, so we can&rsquo;t
-                  confirm it&rsquo;s the same account. Double-check the statement
-                  yourself before importing. A later import of the right
-                  statement wouldn&rsquo;t catch a mismatch as a duplicate.
-                </Callout.Text>
-              </Callout.Root>
+              <LAlert tone="warn">
+                This statement is for an account ending{" "}
+                ···{parseResult.statementAccountId.slice(-4)}, but{" "}
+                {selectedAccount.label} has no last 4 on file, so we can&rsquo;t
+                confirm it&rsquo;s the same account. Double-check the statement
+                yourself before importing. A later import of the right
+                statement wouldn&rsquo;t catch a mismatch as a duplicate.
+              </LAlert>
             ) : null}
 
             {parseResult.signInterpretation ? (
-              <Callout.Root
-                color={parseResult.signInterpretation.decisive ? "gray" : "amber"}
-                size="1"
-              >
-                <Callout.Text>
-                  We read {parseResult.signInterpretation.moneyOutRows} row
-                  {parseResult.signInterpretation.moneyOutRows === 1 ? "" : "s"} as money
-                  out and {parseResult.signInterpretation.moneyInRows} as money in
-                  {parseResult.signInterpretation.selfDeclaredRows > 0
-                    ? `, plus ${parseResult.signInterpretation.selfDeclaredRows} that said which way in the file itself`
-                    : ""}
-                  .{" "}
-                  {parseResult.signInterpretation.decisive
-                    ? "That matches this statement's own pattern."
-                    : "This statement is too evenly split to be sure. Check it against your card before importing."}{" "}
-                  <RadixLink href="#" onClick={(e) => { e.preventDefault(); invertSignReading(); }}>
-                    That&rsquo;s backwards; swap them
-                  </RadixLink>
-                  {parseResult.signInterpretation.overridden ? " (swapped)" : ""}
-                </Callout.Text>
-              </Callout.Root>
+              <LAlert tone={parseResult.signInterpretation.decisive ? "neutral" : "warn"}>
+                We read {parseResult.signInterpretation.moneyOutRows} row
+                {parseResult.signInterpretation.moneyOutRows === 1 ? "" : "s"} as money
+                out and {parseResult.signInterpretation.moneyInRows} as money in
+                {parseResult.signInterpretation.selfDeclaredRows > 0
+                  ? `, plus ${parseResult.signInterpretation.selfDeclaredRows} that said which way in the file itself`
+                  : ""}
+                .{" "}
+                {parseResult.signInterpretation.decisive
+                  ? "That matches this statement's own pattern."
+                  : "This statement is too evenly split to be sure. Check it against your card before importing."}{" "}
+                <button
+                  type="button"
+                  className="font-medium text-accent underline-offset-2 hover:underline"
+                  onClick={() => invertSignReading()}
+                >
+                  That&rsquo;s backwards; swap them
+                </button>
+                {parseResult.signInterpretation.overridden ? " (swapped)" : ""}
+              </LAlert>
             ) : null}
 
             {parseResult.valid.length > 0 ? (
-              <Box style={{ overflowX: "auto" }}>
-                <Table.Root variant="surface">
-                  <Table.Header>
-                    <Table.Row>
-                      <Table.ColumnHeaderCell>Include</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell>Description</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell>Amount</Table.ColumnHeaderCell>
-                    </Table.Row>
-                  </Table.Header>
-                  <Table.Body>
+              <div>
+                <LTable>
+                  <thead>
+                    <tr>
+                      <LTh>Include</LTh>
+                      <LTh>Date</LTh>
+                      <LTh>Description</LTh>
+                      <LTh numeric>Amount</LTh>
+                    </tr>
+                  </thead>
+                  <tbody>
                     {parseResult.valid.slice(0, 500).map((row) => (
-                      <Table.Row key={row.rowNumber}>
-                        <Table.Cell>
-                          <Checkbox
+                      <tr key={row.rowNumber}>
+                        <th
+                          scope="row"
+                          className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                        >
+                          <LCheckbox
                             checked={!excluded.has(row.rowNumber)}
-                            onCheckedChange={(checked) =>
+                            onChange={(e) =>
                               setExcluded((prev) => {
                                 const next = new Set(prev);
-                                if (checked) next.delete(row.rowNumber);
+                                if (e.target.checked) next.delete(row.rowNumber);
                                 else next.add(row.rowNumber);
                                 return next;
                               })
                             }
                           />
-                        </Table.Cell>
-                        <Table.Cell className="tnum">{formatDate(row.postedOn)}</Table.Cell>
-                        <Table.Cell>{row.description}</Table.Cell>
-                        <Table.Cell className="tnum">
-                          <Text color={row.amountCents < 0 ? "red" : "green"}>
+                        </th>
+                        <LTd>
+                          <span className="tnum-l">{formatDate(row.postedOn)}</span>
+                        </LTd>
+                        <LTd>{row.description}</LTd>
+                        <LTd numeric>
+                          <span className={row.amountCents < 0 ? "text-crit" : "text-good"}>
                             {row.amountCents < 0 ? "−" : "+"}
                             {formatCents(Math.abs(row.amountCents))}
-                          </Text>
-                        </Table.Cell>
-                      </Table.Row>
+                          </span>
+                        </LTd>
+                      </tr>
                     ))}
-                  </Table.Body>
-                </Table.Root>
+                  </tbody>
+                </LTable>
                 {parseResult.valid.length > 500 ? (
-                  <Text size="1" color="gray">
+                  <p className="text-caption text-ink-3">
                     Showing the first 500 of {parseResult.valid.length} rows. Every row is still included in the
                     import.
-                  </Text>
+                  </p>
                 ) : null}
-              </Box>
+              </div>
             ) : null}
 
             {parseResult.rejected.length > 0 ? (
-              <Box>
-                <Text size="2" weight="medium" color="red">
-                  Rejected rows (not imported):
-                </Text>
-                <Table.Root variant="surface" mt="2">
-                  <Table.Header>
-                    <Table.Row>
-                      <Table.ColumnHeaderCell>Row</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell>Reason</Table.ColumnHeaderCell>
-                    </Table.Row>
-                  </Table.Header>
-                  <Table.Body>
-                    {parseResult.rejected.slice(0, 200).map((r) => (
-                      <Table.Row key={r.rowNumber}>
-                        <Table.Cell className="tnum">{r.rowNumber}</Table.Cell>
-                        <Table.Cell>{r.reason}</Table.Cell>
-                      </Table.Row>
-                    ))}
-                  </Table.Body>
-                </Table.Root>
-              </Box>
+              <div>
+                <p className="font-medium text-crit">Rejected rows (not imported):</p>
+                <div className="mt-2">
+                  <LTable>
+                    <thead>
+                      <tr>
+                        <LTh>Row</LTh>
+                        <LTh>Reason</LTh>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {parseResult.rejected.slice(0, 200).map((r) => (
+                        <tr key={r.rowNumber}>
+                          <th
+                            scope="row"
+                            className="tnum-l border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                          >
+                            {r.rowNumber}
+                          </th>
+                          <LTd>{r.reason}</LTd>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </LTable>
+                </div>
+              </div>
             ) : null}
 
-            {confirmError ? (
-              <Callout.Root>
-                <Callout.Text>{confirmError}</Callout.Text>
-              </Callout.Root>
-            ) : null}
+            {confirmError ? <LAlert tone="crit">{confirmError}</LAlert> : null}
 
             {confirmResult && confirmResultAccountId === bankAccountId ? (
-              <Callout.Root color={confirmResult.partial ? "amber" : "green"}>
-                <Callout.Text>
-                  {/* THE TWO KINDS OF DUPLICATE ARE NOT THE SAME EVENT and
-                      were being summed into one number.
+              <LAlert tone={confirmResult.partial ? "warn" : "good"}>
+                {/* THE TWO KINDS OF DUPLICATE ARE NOT THE SAME EVENT and
+                    were being summed into one number.
 
-                      An IN-LEDGER duplicate is the feature working: an
-                      overlapping re-import found a transaction already
-                      imported, and skipping it is exactly right.
+                    An IN-LEDGER duplicate is the feature working: an
+                    overlapping re-import found a transaction already
+                    imported, and skipping it is exactly right.
 
-                      An IN-FILE duplicate is a transaction the statement
-                      itself listed twice as far as the fingerprint can
-                      tell — two $4.75 coffees, a toll charged both ways —
-                      and one of them was DROPPED. That is a probable real
-                      transaction the pilot now has to notice is missing.
-                      fingerprint.ts documents the collision and justifies
-                      it by saying the loss is "recoverable: the pilot adds
-                      the missed transaction as a manual expense" — which
-                      requires telling them, and one combined count in a
-                      routine-looking total does not. */}
-                  {confirmResult.partial
-                    ? confirmResult.partialMessage
-                    : `Imported ${confirmResult.imported ?? 0}. ${
-                        confirmResult.duplicatesInLedger ?? 0
-                      } already imported before, ${confirmResult.rejectedCount ?? 0} rejected.`}{" "}
-                  <RadixLink asChild>
-                    <NextLink href="/expenses/transactions">Go review them →</NextLink>
-                  </RadixLink>
-                </Callout.Text>
-              </Callout.Root>
+                    An IN-FILE duplicate is a transaction the statement
+                    itself listed twice as far as the fingerprint can
+                    tell — two $4.75 coffees, a toll charged both ways —
+                    and one of them was DROPPED. That is a probable real
+                    transaction the pilot now has to notice is missing.
+                    fingerprint.ts documents the collision and justifies
+                    it by saying the loss is "recoverable: the pilot adds
+                    the missed transaction as a manual expense" — which
+                    requires telling them, and one combined count in a
+                    routine-looking total does not. */}
+                {confirmResult.partial
+                  ? confirmResult.partialMessage
+                  : `Imported ${confirmResult.imported ?? 0}. ${
+                      confirmResult.duplicatesInLedger ?? 0
+                    } already imported before, ${confirmResult.rejectedCount ?? 0} rejected.`}{" "}
+                <NextLink href="/expenses/transactions" className="font-medium text-accent underline-offset-2 hover:underline">
+                  Go review them →
+                </NextLink>
+              </LAlert>
             ) : null}
 
             {/* The in-file collisions, called out separately and by row,
@@ -703,30 +681,28 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
             confirmResultAccountId === bankAccountId &&
             !confirmResult.partial &&
             (confirmResult.duplicatesInFile ?? 0) > 0 ? (
-              <Callout.Root color="amber">
-                <Callout.Text>
-                  <Text as="div" weight="medium" mb="1">
-                    {confirmResult.duplicatesInFile} transaction
-                    {confirmResult.duplicatesInFile === 1 ? " was" : "s were"} skipped as a
-                    repeat of another row in the same file.
-                  </Text>
-                  <Text as="div" size="1" mb="1">
-                    Two charges on the same day, at the same place, for the same
-                    amount look identical to us, so if these are genuinely
-                    separate (two crew meals, a toll paid both ways), add the
-                    missing one as an expense by hand.
-                  </Text>
-                  {(confirmResult.duplicateDetail ?? [])
-                    .filter((d) => d.kind === "in_file")
-                    .slice(0, 10)
-                    .map((d) => (
-                      <Text as="div" size="1" key={`dup-${d.rowNumber}`}>
-                        Row {d.rowNumber}
-                        {d.sourceRow ? `, ${Object.values(d.sourceRow).slice(0, 3).join(" · ")}` : ""}
-                      </Text>
-                    ))}
-                </Callout.Text>
-              </Callout.Root>
+              <LAlert tone="warn">
+                <p className="mb-1 font-medium">
+                  {confirmResult.duplicatesInFile} transaction
+                  {confirmResult.duplicatesInFile === 1 ? " was" : "s were"} skipped as a
+                  repeat of another row in the same file.
+                </p>
+                <p className="mb-1 text-caption">
+                  Two charges on the same day, at the same place, for the same
+                  amount look identical to us, so if these are genuinely
+                  separate (two crew meals, a toll paid both ways), add the
+                  missing one as an expense by hand.
+                </p>
+                {(confirmResult.duplicateDetail ?? [])
+                  .filter((d) => d.kind === "in_file")
+                  .slice(0, 10)
+                  .map((d) => (
+                    <p className="text-caption" key={`dup-${d.rowNumber}`}>
+                      Row {d.rowNumber}
+                      {d.sourceRow ? `, ${Object.values(d.sourceRow).slice(0, 3).join(" · ")}` : ""}
+                    </p>
+                  ))}
+              </LAlert>
             ) : null}
 
             {/* CROSS-FORMAT REMATCH. Same statement range imported once as
@@ -743,47 +719,45 @@ export default function ImportWorkspace({ initialAccounts }: { initialAccounts: 
             confirmResultAccountId === bankAccountId &&
             !confirmResult.partial &&
             (confirmResult.possibleRematches?.length ?? 0) > 0 ? (
-              <Callout.Root color="amber">
-                <Callout.Text>
-                  <Text as="div" weight="medium" mb="1">
-                    {confirmResult.possibleRematches!.length} imported transaction
-                    {confirmResult.possibleRematches!.length === 1 ? "" : "s"} match
-                    {confirmResult.possibleRematches!.length === 1 ? "es" : ""} an amount already on
-                    file for this account within a few days, under different text.
-                  </Text>
-                  <Text as="div" size="1" mb="1">
-                    A likely cause is re-importing the same statement range in a
-                    different format (CSV, then later OFX/QFX). The file&rsquo;s
-                    wording differs enough that we can&rsquo;t tell it&rsquo;s the same
-                    charge automatically. Check the review queue for a real
-                    duplicate before confirming either one as an expense.
-                  </Text>
-                  {confirmResult.possibleRematches!.slice(0, 10).map((r) => (
-                    <Text as="div" size="1" key={`rematch-${r.rowNumber}`}>
-                      Row {r.rowNumber}
-                      {r.sourceRow ? `, ${Object.values(r.sourceRow).slice(0, 3).join(" · ")}` : ""}
-                    </Text>
-                  ))}
-                  {confirmResult.possibleRematches!.length > 10 ? (
-                    <Text as="div" size="1" mt="1">
-                      Showing the first 10 of {confirmResult.possibleRematches!.length}.
-                    </Text>
-                  ) : null}
-                </Callout.Text>
-              </Callout.Root>
+              <LAlert tone="warn">
+                <p className="mb-1 font-medium">
+                  {confirmResult.possibleRematches!.length} imported transaction
+                  {confirmResult.possibleRematches!.length === 1 ? "" : "s"} match
+                  {confirmResult.possibleRematches!.length === 1 ? "es" : ""} an amount already on
+                  file for this account within a few days, under different text.
+                </p>
+                <p className="mb-1 text-caption">
+                  A likely cause is re-importing the same statement range in a
+                  different format (CSV, then later OFX/QFX). The file&rsquo;s
+                  wording differs enough that we can&rsquo;t tell it&rsquo;s the same
+                  charge automatically. Check the review queue for a real
+                  duplicate before confirming either one as an expense.
+                </p>
+                {confirmResult.possibleRematches!.slice(0, 10).map((r) => (
+                  <p className="text-caption" key={`rematch-${r.rowNumber}`}>
+                    Row {r.rowNumber}
+                    {r.sourceRow ? `, ${Object.values(r.sourceRow).slice(0, 3).join(" · ")}` : ""}
+                  </p>
+                ))}
+                {confirmResult.possibleRematches!.length > 10 ? (
+                  <p className="mt-1 text-caption">
+                    Showing the first 10 of {confirmResult.possibleRematches!.length}.
+                  </p>
+                ) : null}
+              </LAlert>
             ) : null}
 
             {!confirmResult || confirmResultAccountId !== bankAccountId ? (
-              <Box>
-                <Button type="button" onClick={handleConfirm} disabled={confirming || includedRows.length === 0}>
+              <div>
+                <LButton type="button" onClick={handleConfirm} disabled={confirming || includedRows.length === 0}>
                   {confirming ? "Importing…" : `Import ${includedRows.length} transaction${includedRows.length === 1 ? "" : "s"}`}
-                </Button>
-              </Box>
+                </LButton>
+              </div>
             ) : null}
-          </Flex>
-        </Card>
+          </div>
+        </LCard>
       ) : null}
-    </Flex>
+    </div>
   );
 }
 

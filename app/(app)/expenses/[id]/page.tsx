@@ -1,10 +1,10 @@
 import { notFound } from "next/navigation";
-import { Box, Card, Flex, Text } from "@/components/ui";
+import { LCard } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDate } from "@/lib/format";
-import PageShell from "../../page-shell";
 import ExpenseForm, { type ExpenseFormValues } from "../expense-form";
 import { updateExpense } from "../actions";
 import { loadClientOptions, loadTripOptions } from "../trip-options";
@@ -52,7 +52,7 @@ export default async function ExpensePage({
   if (!expense) notFound();
 
   return (
-    <PageShell
+    <LPageShell
       title={formatCents(expense.amount_cents)}
       subtitle={`${formatDate(expense.incurred_on)}${
         expense.vendor ? ` · ${expense.vendor}` : ""
@@ -60,17 +60,15 @@ export default async function ExpensePage({
       action={<DeleteExpenseButton id={expense.id} />}
     >
       {expense.receipt_path ? (
-        <Box mb="4">
-          <Card size="3">
-            <Flex justify="between" align="center" gap="4">
-              <Text color="gray">
-                A receipt is attached. It&rsquo;s stored privately. The link
-                below works for one minute.
-              </Text>
-              <ReceiptLink path={expense.receipt_path} />
-            </Flex>
-          </Card>
-        </Box>
+        <LCard>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <span className="text-ink-2">
+              A receipt is attached. It&rsquo;s stored privately. The link
+              below works for one minute.
+            </span>
+            <ReceiptLink path={expense.receipt_path} />
+          </div>
+        </LCard>
       ) : null}
 
       <ExpenseForm
@@ -81,6 +79,6 @@ export default async function ExpensePage({
         values={expense}
         submitLabel="Save expense"
       />
-    </PageShell>
+    </LPageShell>
   );
 }

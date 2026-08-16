@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { AlertDialog, Box, Button, Flex, Text } from "@/components/ui";
+import { LButton } from "@/components/ledger";
+import { LConfirmDialog } from "@/components/ledger/dialog";
 import { deleteExpense } from "../actions";
 
 export default function DeleteExpenseButton({ id }: { id: string }) {
@@ -28,37 +29,29 @@ export default function DeleteExpenseButton({ id }: { id: string }) {
   }
 
   return (
-    <Flex direction="column" align="end" gap="2">
-      <AlertDialog.Root open={open} onOpenChange={setOpen}>
-        <AlertDialog.Trigger>
-          <Button variant="outline" color="red">
-            Delete expense
-          </Button>
-        </AlertDialog.Trigger>
-        <AlertDialog.Content maxWidth="420px">
-          <AlertDialog.Title>Delete this expense?</AlertDialog.Title>
-          <AlertDialog.Description size="2">
-            This removes the expense and its receipt. This can&rsquo;t be undone.
-          </AlertDialog.Description>
-          {error ? (
-            <Box mt="2" role="alert">
-              <Text size="1" color="red">
+    <div className="flex flex-col items-end gap-2">
+      <LButton variant="outline" onClick={() => setOpen(true)}>
+        Delete expense
+      </LButton>
+      <LConfirmDialog
+        open={open}
+        onOpenChange={setOpen}
+        title="Delete this expense?"
+        description={
+          <>
+            <p>This removes the expense and its receipt. This can&rsquo;t be undone.</p>
+            {error ? (
+              <p className="mt-2 text-caption font-medium text-crit" role="alert">
                 {error}
-              </Text>
-            </Box>
-          ) : null}
-          <Flex gap="3" mt="4" justify="end">
-            <AlertDialog.Cancel>
-              <Button variant="soft" color="gray" disabled={pending}>
-                Cancel
-              </Button>
-            </AlertDialog.Cancel>
-            <Button variant="solid" color="red" disabled={pending} onClick={confirmDelete}>
-              {pending ? "Deleting…" : "Delete expense"}
-            </Button>
-          </Flex>
-        </AlertDialog.Content>
-      </AlertDialog.Root>
-    </Flex>
+              </p>
+            ) : null}
+          </>
+        }
+        confirmLabel="Delete expense"
+        confirmVariant="danger"
+        onConfirm={confirmDelete}
+        pending={pending}
+      />
+    </div>
   );
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Box, Button, Flex, Select, Text } from "@/components/ui";
+import { LButton } from "@/components/ledger";
+import { LSelect } from "@/components/ledger/forms";
 import { fileExpense } from "./actions";
 
 export type QueueRow = {
@@ -13,10 +14,10 @@ export type QueueRow = {
 
 export type QueueTrip = { id: string; label: string };
 
-// Radix Select forbids an item with value="" — the sentinel stands in for
-// "no trip chosen" in this component's own local state only (fileExpense
-// takes tripId as a plain argument, not a FormData field, so there is no
-// name to preserve here — just the "" it expects for "no trip").
+// The sentinel stands in for "no trip chosen" in this component's own
+// local state only (fileExpense takes tripId as a plain argument, not a
+// FormData field, so there is no name to preserve here — just the "" it
+// expects for "no trip").
 const NO_TRIP = "none";
 
 /**
@@ -40,71 +41,60 @@ function QueueItem({ row, trips }: { row: QueueRow; trips: QueueTrip[] }) {
   }
 
   return (
-    <Box asChild py="3">
-      <li>
-        <Flex
-          direction={{ initial: "column", md: "row" }}
-          justify="between"
-          align={{ initial: "stretch", md: "center" }}
-          gap="4"
-        >
-          <Box>
-            <Text as="div" weight="medium">
-              {row.label}
-            </Text>
-            <Text as="div" size="1" color="gray">
-              {row.detail}
-            </Text>
-          </Box>
+    <li className="py-3">
+      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+        <div>
+          <p className="font-medium text-ink">{row.label}</p>
+          <p className="text-caption text-ink-3">{row.detail}</p>
+        </div>
 
-          <Flex gap="3" align="center" wrap="wrap">
-            <Box style={{ minWidth: "14rem" }}>
-              <Select.Root value={tripId} onValueChange={setTripId}>
-                <Select.Trigger aria-label={`Trip for ${row.label}`} />
-                <Select.Content>
-                  <Select.Item value={NO_TRIP}>No trip</Select.Item>
-                  {trips.map((trip) => (
-                    <Select.Item key={trip.id} value={trip.id}>
-                      {trip.label}
-                    </Select.Item>
-                  ))}
-                </Select.Content>
-              </Select.Root>
-            </Box>
-
-            <Button
-              variant="outline"
-              size="2"
-              // Rebill needs a trip — the database refuses the pair
-              // outright, so the control refuses it first.
-              disabled={pending || tripId === NO_TRIP}
-              onClick={() => file("rebill")}
-              aria-label={`Rebill ${row.label} to the client`}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="min-w-56">
+            <LSelect
+              aria-label={`Trip for ${row.label}`}
+              value={tripId}
+              onChange={(e) => setTripId(e.target.value)}
             >
-              Rebill
-            </Button>
-            <Button
-              variant="outline"
-              color="green"
-              size="2"
-              disabled={pending}
-              onClick={() => file("deduct")}
-              aria-label={`Keep ${row.label} as a deduction`}
-            >
-              Deduct
-            </Button>
-          </Flex>
-        </Flex>
+              <option value={NO_TRIP}>No trip</option>
+              {trips.map((trip) => (
+                <option key={trip.id} value={trip.id}>
+                  {trip.label}
+                </option>
+              ))}
+            </LSelect>
+          </div>
 
-        {error ? (
-          <Box mt="2" role="alert">
-            <Text size="1" color="red">
-              {error}
-            </Text>
-          </Box>
-        ) : null}
-      </li>
-    </Box>
+          <LButton
+            type="button"
+            variant="outline"
+            size="sm"
+            // Rebill needs a trip — the database refuses the pair
+            // outright, so the control refuses it first.
+            disabled={pending || tripId === NO_TRIP}
+            onClick={() => file("rebill")}
+            aria-label={`Rebill ${row.label} to the client`}
+          >
+            Rebill
+          </LButton>
+          <LButton
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={pending}
+            onClick={() => file("deduct")}
+            aria-label={`Keep ${row.label} as a deduction`}
+          >
+            Deduct
+          </LButton>
+        </div>
+      </div>
+
+      {error ? (
+        <p className="mt-2 text-caption font-medium text-crit" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </li>
   );
 }
 
@@ -116,12 +106,10 @@ export default function UnassignedQueue({
   trips: QueueTrip[];
 }) {
   return (
-    <Box asChild style={{ listStyle: "none", margin: 0, padding: 0 }}>
-      <ul>
-        {rows.map((row) => (
-          <QueueItem key={row.id} row={row} trips={trips} />
-        ))}
-      </ul>
-    </Box>
+    <ul className="m-0 list-none divide-y divide-hair p-0">
+      {rows.map((row) => (
+        <QueueItem key={row.id} row={row} trips={trips} />
+      ))}
+    </ul>
   );
 }
