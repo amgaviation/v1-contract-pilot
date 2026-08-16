@@ -19,6 +19,12 @@ import { countOf } from "@/lib/supabase/rows";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import { formatCents, formatDate, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+// Both of these were dropped by the conflict resolution that merged the
+// clientless-invoice branch, while the calls that need them stayed. main
+// did not typecheck between that merge and this line. See the usages at
+// the unbilled queue and the needs-attention list below.
+import { billToListLabel } from "@/lib/invoice-bill-to";
+import { isInvoicedCounterparty } from "@/lib/counterparty";
 import { EXPIRY_LADDER_BADGE, type ExpiryBadge, type ExpiryTone } from "../documents/expiry-badge";
 import {
   clientLabel,
