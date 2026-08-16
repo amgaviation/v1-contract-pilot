@@ -1,5 +1,4 @@
-import { Callout, Container, Flex, Heading, Section, Text } from "@/components/ui";
-import { InfoCircledIcon } from "@radix-ui/react-icons";
+import { LAlert } from "@/components/ledger";
 import { BRAND } from "@/lib/brand";
 
 /**
@@ -15,6 +14,27 @@ export const metadata = {
   title: "Terms of Service",
   robots: { index: false, follow: true },
 };
+
+function InfoIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <circle cx="8" cy="8" r="6.25" />
+      <path d="M8 7.25v3.5" />
+      <circle cx="8" cy="5.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
 
 /**
  * COUNSEL-GATED PLACEHOLDER — docs/LAUNCH-GATES.md G3.
@@ -36,36 +56,32 @@ export const metadata = {
  */
 export default function TermsPage() {
   return (
-    <Section size="3">
-      <Container size="2" px="4">
-        <Flex direction="column" gap="5">
-          <Heading size="7" trim="start">
-            Terms of Service
-          </Heading>
+    <div className="mx-auto w-full max-w-2xl px-4 py-12 sm:py-16">
+      <div className="flex flex-col gap-5">
+        <h1 className="text-h1 font-bold text-ink">Terms of Service</h1>
 
-          <Callout.Root color="amber">
-            <Callout.Icon>
-              <InfoCircledIcon />
-            </Callout.Icon>
-            <Callout.Text>
-              <Text weight="medium">Placeholder, pending review by aviation counsel.</Text>{" "}
-              Nothing on this page is a binding agreement. {BRAND.name} has
-              not yet published Terms of Service, and no version of this
-              text has been reviewed or approved by counsel or by the
-              product owner.
-            </Callout.Text>
-          </Callout.Root>
+        <LAlert tone="warn" className="flex items-start gap-2">
+          <InfoIcon className="mt-0.5 shrink-0 text-warn" />
+          <span>
+            <span className="font-medium text-ink">
+              Placeholder, pending review by aviation counsel.
+            </span>{" "}
+            Nothing on this page is a binding agreement. {BRAND.name} has
+            not yet published Terms of Service, and no version of this
+            text has been reviewed or approved by counsel or by the
+            product owner.
+          </span>
+        </LAlert>
 
-          <Text size="2" color="gray">
-            When this page is published for real, it will cover the terms
-            of using {BRAND.name} (including billing, the trial, and
-            cancellation), and creating an account will ask you to accept
-            it explicitly. Until then, this URL exists so it has a stable
-            address; it does not yet describe any agreement you are bound
-            by.
-          </Text>
-        </Flex>
-      </Container>
-    </Section>
+        <p className="text-body-s text-ink-2">
+          When this page is published for real, it will cover the terms
+          of using {BRAND.name} (including billing, the trial, and
+          cancellation), and creating an account will ask you to accept
+          it explicitly. Until then, this URL exists so it has a stable
+          address; it does not yet describe any agreement you are bound
+          by.
+        </p>
+      </div>
+    </div>
   );
 }

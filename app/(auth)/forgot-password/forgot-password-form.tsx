@@ -2,18 +2,32 @@
 
 import { useActionState, useState } from "react";
 import NextLink from "next/link";
-import { EnvelopeClosedIcon } from "@radix-ui/react-icons";
-import { Callout, Flex, Heading, Link, Text, TextField } from "@/components/ui";
-import {
-  AuthFooter,
-  AuthHeading,
-  Field,
-  FormError,
-  SubmitButton,
-} from "../auth-parts";
+import { LAlert, LCard } from "@/components/ledger";
+import { LInput } from "@/components/ledger/forms";
+import { AuthFooter, AuthHeading, Field, FormError, SubmitButton } from "../auth-parts";
 import { requestPasswordReset, type ForgotPasswordState } from "./actions";
 
 const initialState: ForgotPasswordState = { error: null, sent: false };
+
+function MailIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="28"
+      height="28"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3 7 9 6 9-6" />
+    </svg>
+  );
+}
 
 export default function ForgotPasswordForm({
   expired = false,
@@ -35,76 +49,63 @@ export default function ForgotPasswordForm({
   // screen invites a second submit that would send a second link.
   if (state.sent) {
     return (
-      <Flex direction="column" gap="6">
-        <Flex direction="column" gap="3" align="start">
-          <Text color="indigo" aria-hidden>
-            <EnvelopeClosedIcon width="32" height="32" />
-          </Text>
-          <Heading as="h1" size="7" trim="start">
-            Check your email
-          </Heading>
-          <Text as="p" size="2" color="gray">
+      <LCard className="flex flex-col gap-6 p-6 sm:p-8">
+        <div className="flex flex-col items-start gap-3">
+          <MailIcon className="text-accent" />
+          <h1 className="text-h1 font-bold text-ink">Check your email</h1>
+          <p className="text-body-s text-ink-2">
             If that email has an account, a reset link is on its way. The link
             is single-use and expires shortly, so use it soon.
-          </Text>
-        </Flex>
+          </p>
+        </div>
 
         <AuthFooter>
-          <Link asChild size="2">
-            <NextLink href="/login">Back to sign in</NextLink>
-          </Link>
+          <NextLink href="/login" className="text-body-s font-medium text-accent hover:underline">
+            Back to sign in
+          </NextLink>
         </AuthFooter>
-      </Flex>
+      </LCard>
     );
   }
 
   return (
-    <Flex direction="column" gap="6">
+    <LCard className="flex flex-col gap-6 p-6 sm:p-8">
       <AuthHeading title="Reset your password">
         Enter your email and we&rsquo;ll send you a link to set a new one.
       </AuthHeading>
 
       {expired ? (
-        <Callout.Root color="amber" size="1">
-          <Callout.Text>
-            That reset link has expired or was already used. Request a new one
-            below.
-          </Callout.Text>
-        </Callout.Root>
+        <LAlert tone="warn">
+          That reset link has expired or was already used. Request a new one
+          below.
+        </LAlert>
       ) : null}
 
-      <form action={formAction}>
-        <Flex direction="column" gap="4">
-          <Field id="email" label="Email">
-            <TextField.Root
-              id="email"
-              type="email"
-              name="email"
-              size="3"
-              autoComplete="email"
-              autoFocus
-              required
-              disabled={pending}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </Field>
-
-          <FormError message={state.error} />
-
-          <SubmitButton
-            pending={pending}
-            idle="Send reset link"
-            busy="Sending…"
+      <form action={formAction} className="flex flex-col gap-4">
+        <Field id="email" label="Email">
+          <LInput
+            id="email"
+            type="email"
+            name="email"
+            autoComplete="email"
+            autoFocus
+            required
+            disabled={pending}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
           />
-        </Flex>
+        </Field>
+
+        <FormError message={state.error} />
+
+        <SubmitButton pending={pending} idle="Send reset link" busy="Sending…" />
       </form>
 
       <AuthFooter>
-        <Link asChild size="2">
-          <NextLink href="/login">Back to sign in</NextLink>
-        </Link>
+        <NextLink href="/login" className="text-body-s font-medium text-accent hover:underline">
+          Back to sign in
+        </NextLink>
       </AuthFooter>
-    </Flex>
+    </LCard>
   );
 }

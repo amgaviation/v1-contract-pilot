@@ -2,21 +2,34 @@
 
 import { useActionState, useState } from "react";
 import NextLink from "next/link";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
-import {
-  Button,
-  Callout,
-  Flex,
-  Heading,
-  Link,
-  Text,
-  TextField,
-} from "@/components/ui";
+import { LAlert, LCard, lButtonClass } from "@/components/ledger";
+import { LInput } from "@/components/ledger/forms";
 import { RESEND_SENT_MESSAGE } from "@/lib/auth/confirmation";
 import { AuthFooter, Field, FormError, SubmitButton } from "../auth-parts";
 import { resendConfirmation, type ResendState } from "../resend-actions";
 
 const initialState: ResendState = { error: null, sent: false };
+
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="28"
+      height="28"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
 
 export default function LinkExpiredView({
   flow,
@@ -45,105 +58,82 @@ export default function LinkExpiredView({
    */
   if (flow === "email-change") {
     return (
-      <Flex direction="column" gap="6">
-        <Flex direction="column" gap="3" align="start">
-          <Text color="amber" aria-hidden>
-            <ExclamationTriangleIcon width="32" height="32" />
-          </Text>
-          <Heading as="h1" size="7" trim="start">
-            That link has expired
-          </Heading>
-          <Text as="p" size="2" color="gray">
+      <LCard className="flex flex-col gap-6 p-6 sm:p-8">
+        <div className="flex flex-col items-start gap-3">
+          <WarningIcon className="text-warn" />
+          <h1 className="text-h1 font-bold text-ink">That link has expired</h1>
+          <p className="text-body-s text-ink-2">
             Your sign-in address has not changed. Sign in with the address you
             used before and start the change again from Settings.
-          </Text>
-        </Flex>
+          </p>
+        </div>
 
-        <Button asChild size="3" style={{ width: "100%" }}>
-          <NextLink href="/settings?tab=profile">Go to Profile &amp; security</NextLink>
-        </Button>
+        <NextLink href="/settings?tab=profile" className={lButtonClass({ size: "lg", className: "w-full" })}>
+          Go to Profile &amp; security
+        </NextLink>
 
         <AuthFooter>
-          <Link asChild size="2">
-            <NextLink href="/login">Back to sign in</NextLink>
-          </Link>
+          <NextLink href="/login" className="text-body-s font-medium text-accent hover:underline">
+            Back to sign in
+          </NextLink>
         </AuthFooter>
-      </Flex>
+      </LCard>
     );
   }
 
   return (
-    <Flex direction="column" gap="6">
-      <Flex direction="column" gap="3" align="start">
-        <Text color="amber" aria-hidden>
-          <ExclamationTriangleIcon width="32" height="32" />
-        </Text>
-        <Heading as="h1" size="7" trim="start">
-          That link has expired
-        </Heading>
-        <Text as="p" size="2" color="gray">
+    <LCard className="flex flex-col gap-6 p-6 sm:p-8">
+      <div className="flex flex-col items-start gap-3">
+        <WarningIcon className="text-warn" />
+        <h1 className="text-h1 font-bold text-ink">That link has expired</h1>
+        <p className="text-body-s text-ink-2">
           Confirmation links are single-use and expire. Send yourself a fresh
           one, then open the newest email.
-        </Text>
-      </Flex>
+        </p>
+      </div>
 
-      <form action={formAction}>
-        <Flex direction="column" gap="4">
-          {/* No field when the pending-signup cookie already names the
-              address: the action reads it from there, and a field would be
-              an address the caller chooses. */}
-          {knownEmail ? (
-            <Text as="p" size="2" color="gray">
-              Sending to{" "}
-              <Text size="2" weight="medium">
-                {knownEmail}
-              </Text>
-              .
-            </Text>
-          ) : (
-            <Field id="email" label="Email">
-              <TextField.Root
-                id="email"
-                type="email"
-                name="email"
-                size="3"
-                autoComplete="email"
-                autoFocus
-                required
-                disabled={pending}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </Field>
-          )}
+      <form action={formAction} className="flex flex-col gap-4">
+        {/* No field when the pending-signup cookie already names the
+            address: the action reads it from there, and a field would be
+            an address the caller chooses. */}
+        {knownEmail ? (
+          <p className="text-body-s text-ink-2">
+            Sending to <span className="font-medium text-ink">{knownEmail}</span>.
+          </p>
+        ) : (
+          <Field id="email" label="Email">
+            <LInput
+              id="email"
+              type="email"
+              name="email"
+              autoComplete="email"
+              autoFocus
+              required
+              disabled={pending}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </Field>
+        )}
 
-          {state.sent ? (
-            <Callout.Root color="green" size="1">
-              <Callout.Text>{RESEND_SENT_MESSAGE}</Callout.Text>
-            </Callout.Root>
-          ) : null}
+        {state.sent ? <LAlert tone="good">{RESEND_SENT_MESSAGE}</LAlert> : null}
 
-          <FormError message={state.error} />
+        <FormError message={state.error} />
 
-          <SubmitButton
-            pending={pending}
-            idle="Send a new link"
-            busy="Sending…"
-          />
-        </Flex>
+        <SubmitButton pending={pending} idle="Send a new link" busy="Sending…" />
       </form>
 
       <AuthFooter>
-        <Text size="2" color="gray">
+        <p className="text-body-s text-ink-2">
           No account yet?{" "}
-          <Link asChild size="2">
-            <NextLink href="/signup">Create one</NextLink>
-          </Link>
-        </Text>
-        <Link asChild size="2">
-          <NextLink href="/login">Back to sign in</NextLink>
-        </Link>
+          <NextLink href="/signup" className="font-medium text-accent hover:underline">
+            Create one
+          </NextLink>
+        </p>
+        <NextLink href="/login" className="text-body-s font-medium text-accent hover:underline">
+          Back to sign in
+        </NextLink>
       </AuthFooter>
-    </Flex>
+    </LCard>
   );
 }

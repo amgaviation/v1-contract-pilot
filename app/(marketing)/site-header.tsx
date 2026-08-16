@@ -1,28 +1,22 @@
 import NextLink from "next/link";
-import { Box, Button, Container, Flex, Text } from "@/components/ui";
+import { lButtonClass } from "@/components/ledger";
 import { BRAND } from "@/lib/brand";
-import { NAVY_SURFACE } from "@/lib/surface-style";
 
 /**
  * The public site's header. Deliberately not the (app) rail's Logo
- * component — that inlines the older black+#036BFC kit
+ * component — that inlines the older in-app kit
  * (components/ui/logo.tsx), and the owner's brand-mark decision for the
  * signed-out surface is the newer public/brand/*.svg kit (navy.svg here,
- * on this white ground). The two marks are different geometry; using the
+ * on this light ground). The two marks are different geometry; using the
  * in-app one on the marketing site would put two different "V1" marks in
  * front of the same visitor within one signup flow.
  *
- * Sticky, like the app's own header. It now carries the same floating-chrome
- * treatment the app shell uses (.i-chrome + .i-chrome-edge): a translucent,
- * blurred ground with a short fade below it instead of a solid bar with a 1px
- * rule. REBUILD-BRIEF §4.4 originally specified solid-with-hairline because
- * backdrop-filter was banned system-wide; that ban has been lifted and the
- * material now lives in tokens (--chrome-veil / --chrome-blur / --chrome-edge)
- * rather than being spelled out here. Falls back to a solid bar under
- * prefers-reduced-transparency and prefers-contrast. The CTA keeps the
- * brand navy rather than the theme accent: on the marketing surface navy
- * is the brand's primary-action color (see lib/surface-style.ts), and it
- * now sits in the same blue family as the app's indigo accent.
+ * LEDGER PASS: the old floating "chrome" treatment (a hand-rolled
+ * translucent, blurred bar reached through `.i-chrome`/`.i-chrome-edge`)
+ * is retired with the rest of INSTRUMENT's marketing furniture. This is a
+ * plain sticky bar on Ledger's own card ground with a hairline beneath it
+ * — the same restrained register the rest of this migration uses, and one
+ * fewer bespoke visual effect to carry forward.
  *
  * A plain <img>, not next/image: this is a small, already-optimized SVG
  * with no responsive srcset to gain from the Image component, and asset
@@ -31,47 +25,40 @@ import { NAVY_SURFACE } from "@/lib/surface-style";
  */
 export default function SiteHeader() {
   return (
-    <Box
-      className="i-chrome i-chrome-edge"
-      style={{
-        position: "sticky",
-        top: 0,
-        zIndex: 1,
-      }}
-    >
-      <Container size="4" px="4">
-        <Flex align="center" justify="between" py="3" gap="4" wrap="wrap">
+    <header className="sticky top-0 z-10 border-b border-hair bg-card/90 backdrop-blur-sm">
+      <div className="mx-auto max-w-5xl px-4">
+        <div className="flex flex-wrap items-center justify-between gap-4 py-3">
           <NextLink
             href="/"
             aria-label={`${BRAND.name}, ${BRAND.descriptor}`}
-            style={{ display: "flex", alignItems: "center" }}
+            className="flex items-center"
           >
             <img src="/brand/navy.svg" alt="" height={22} width={38} />
           </NextLink>
 
-          <Flex align="center" gap="4" wrap="wrap">
+          <div className="flex flex-wrap items-center gap-5">
             {/* Anchor into the landing page's outputs section — an
                 absolute path so it works from /pricing too. Hidden on the
                 narrowest screens so the four header items never push the
                 CTA to a second row on a phone. */}
-            <Box display={{ initial: "none", xs: "block" }}>
-              <Text asChild size="2" color="gray">
-                <NextLink href="/#how-it-works">How it works</NextLink>
-              </Text>
-            </Box>
-            <Text asChild size="2" color="gray">
-              <NextLink href="/pricing">Pricing</NextLink>
-            </Text>
-            <Text asChild size="2" color="gray">
-              <NextLink href="/login">Log in</NextLink>
-            </Text>
-            {/* Navy, not the Theme's accent — see the header comment. */}
-            <Button asChild size="2" style={NAVY_SURFACE}>
-              <NextLink href="/signup">Start free trial</NextLink>
-            </Button>
-          </Flex>
-        </Flex>
-      </Container>
-    </Box>
+            <NextLink
+              href="/#how-it-works"
+              className="hidden text-body-s text-ink-2 hover:text-ink sm:inline"
+            >
+              How it works
+            </NextLink>
+            <NextLink href="/pricing" className="text-body-s text-ink-2 hover:text-ink">
+              Pricing
+            </NextLink>
+            <NextLink href="/login" className="text-body-s text-ink-2 hover:text-ink">
+              Log in
+            </NextLink>
+            <NextLink href="/signup" className={lButtonClass({ size: "sm" })}>
+              Start free trial
+            </NextLink>
+          </div>
+        </div>
+      </div>
+    </header>
   );
 }

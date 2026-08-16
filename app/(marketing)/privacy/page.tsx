@@ -1,5 +1,4 @@
-import { Callout, Container, Flex, Heading, Section, Text } from "@/components/ui";
-import { InfoCircledIcon } from "@radix-ui/react-icons";
+import { LAlert } from "@/components/ledger";
 import { BRAND } from "@/lib/brand";
 
 /**
@@ -13,6 +12,27 @@ export const metadata = {
   title: "Privacy Policy",
   robots: { index: false, follow: true },
 };
+
+function InfoIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <circle cx="8" cy="8" r="6.25" />
+      <path d="M8 7.25v3.5" />
+      <circle cx="8" cy="5.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
 
 /**
  * COUNSEL-GATED PLACEHOLDER — docs/LAUNCH-GATES.md G3. Same reasoning as
@@ -32,52 +52,48 @@ export const metadata = {
  */
 export default function PrivacyPage() {
   return (
-    <Section size="3">
-      <Container size="2" px="4">
-        <Flex direction="column" gap="5">
-          <Heading size="7" trim="start">
-            Privacy Policy
-          </Heading>
+    <div className="mx-auto w-full max-w-2xl px-4 py-12 sm:py-16">
+      <div className="flex flex-col gap-5">
+        <h1 className="text-h1 font-bold text-ink">Privacy Policy</h1>
 
-          <Callout.Root color="amber">
-            <Callout.Icon>
-              <InfoCircledIcon />
-            </Callout.Icon>
-            <Callout.Text>
-              <Text weight="medium">Placeholder, pending review by aviation counsel.</Text>{" "}
-              Nothing on this page is a binding privacy commitment.{" "}
-              {BRAND.name} has not yet published a Privacy Policy, and no
-              version of this text has been reviewed or approved.
-            </Callout.Text>
-          </Callout.Root>
+        <LAlert tone="warn" className="flex items-start gap-2">
+          <InfoIcon className="mt-0.5 shrink-0 text-warn" />
+          <span>
+            <span className="font-medium text-ink">
+              Placeholder, pending review by aviation counsel.
+            </span>{" "}
+            Nothing on this page is a binding privacy commitment. {BRAND.name}{" "}
+            has not yet published a Privacy Policy, and no version of this
+            text has been reviewed or approved.
+          </span>
+        </LAlert>
 
-          <Flex direction="column" gap="2">
-            <Text size="2" color="gray">
-              A few facts about how the product handles data today, ahead
-              of the policy that will formally cover them:
-            </Text>
-            <Text size="2" color="gray">
-              · Data processors: Supabase (database, file storage, and
-              sign-in), Vercel (hosting), Stripe (billing and client
-              payment links), and Resend (account email).
-            </Text>
-            <Text size="2" color="gray">
-              · Receipts you upload are stored in a private file bucket,
-              scoped to your account.
-            </Text>
-            <Text size="2" color="gray">
-              · Receipt scanning runs in your own browser, not on a server:
-              a receipt image is never uploaded just to be read.
-            </Text>
-          </Flex>
+        <div className="flex flex-col gap-2">
+          <p className="text-body-s text-ink-2">
+            A few facts about how the product handles data today, ahead
+            of the policy that will formally cover them:
+          </p>
+          <p className="text-body-s text-ink-2">
+            · Data processors: Supabase (database, file storage, and
+            sign-in), Vercel (hosting), Stripe (billing and client
+            payment links), and Resend (account email).
+          </p>
+          <p className="text-body-s text-ink-2">
+            · Receipts you upload are stored in a private file bucket,
+            scoped to your account.
+          </p>
+          <p className="text-body-s text-ink-2">
+            · Receipt scanning runs in your own browser, not on a server:
+            a receipt image is never uploaded just to be read.
+          </p>
+        </div>
 
-          <Text size="2" color="gray">
-            This is not the complete policy. It does not yet address data
-            retention, deletion, or every detail a full policy has to
-            cover. That text is pending counsel review.
-          </Text>
-        </Flex>
-      </Container>
-    </Section>
+        <p className="text-body-s text-ink-2">
+          This is not the complete policy. It does not yet address data
+          retention, deletion, or every detail a full policy has to
+          cover. That text is pending counsel review.
+        </p>
+      </div>
+    </div>
   );
 }
