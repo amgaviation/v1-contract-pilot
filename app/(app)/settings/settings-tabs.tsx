@@ -1,8 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Box, Tabs, Text } from "@/components/ui";
 import type { ReactNode } from "react";
+import {
+  LTabsContent,
+  LTabsList,
+  LTabsRoot,
+  LTabsTrigger,
+} from "@/components/ledger/tabs";
 
 /**
  * The tab vocabulary, written once. It grew from three to six with Phase
@@ -18,7 +23,7 @@ import type { ReactNode } from "react";
  * TAB_GROUPS below. TAB_KEYS itself stays exactly this one flat list of
  * nine values: the grouping is a rendering concern in the JSX, not a
  * change to the type, the `?tab=` vocabulary, or the state machine —
- * still ONE Tabs.Root and ONE Tabs.List, so Left/Right/Home/End and the
+ * still ONE LTabsRoot and ONE LTabsList, so Left/Right/Home/End and the
  * roving tabindex still walk all nine triggers in a single sequence.
  * "profile" stays outside all three groups; see the comment below for why.
  *
@@ -63,11 +68,10 @@ const TAB_LABEL: Record<TabKey, string> = {
 
 /**
  * The visual grouping for the tab STRIP only — see the header comment
- * above. Each group renders as a small `aria-hidden` label (the same
- * size="1"/color="gray"/weight="medium" idiom overview/page.tsx uses for
- * its KPI group labels) followed by that group's triggers, all still
- * inside the one Tabs.List. "profile" is deliberately absent from every
- * group here: it renders last, on its own, with no label before it.
+ * above. Each group renders as a small `aria-hidden` label followed by
+ * that group's triggers, all still inside the one LTabsList. "profile" is
+ * deliberately absent from every group here: it renders last, on its own,
+ * with no label before it.
  */
 const TAB_GROUPS: { label: string; keys: TabKey[] }[] = [
   { label: "Business", keys: ["business", "day-types", "mileage", "categories"] },
@@ -76,9 +80,9 @@ const TAB_GROUPS: { label: string; keys: TabKey[] }[] = [
 ];
 
 /**
- * Radix `Tabs` over server-rendered panel content. Every panel is passed
- * in already rendered (data fetched server-side, same as PageShell
- * composing client children).
+ * LEDGER port of this file — components/ledger/tabs.tsx over
+ * server-rendered panel content. Every panel is passed in already rendered
+ * (data fetched server-side, same as LPageShell composing client children).
  *
  * Deep link: `initialTab` comes from page.tsx reading `?tab=` server-side,
  * seeding this component's initial state. Switching tabs updates the URL
@@ -87,21 +91,21 @@ const TAB_GROUPS: { label: string; keys: TabKey[] }[] = [
  * reloadable, and linkable, and browser Back can step back through tab
  * switches instead of leaving the page entirely.
  *
- * Mounted panels: `Tabs.Content` unmounts its inactive panel by default,
- * which would drop a mid-edit day-type row — or a half-arranged nav
- * layout — when a pilot glances at another tab. Every `Tabs.Content`
- * below uses `forceMount` to stay mounted always; `Tabs.Root` is kept
- * controlled (rather than Radix's own uncontrolled `defaultValue`) purely
- * so this component knows which one to hide, since `forceMount` also
- * disables Radix's own hidden-when-inactive behaviour.
+ * Mounted panels: LTabsContent renders its children unconditionally
+ * (`hidden` when inactive, never unmounted) so a mid-edit day-type row —
+ * or a half-arranged nav layout — survives a glance at another tab. No
+ * `forceMount`/`display:none` trick is needed here the way the old
+ * Radix-based version needed one: LTabsContent already carries that
+ * behavior itself.
  *
- * `Tabs.List`/`Tabs.Trigger` still give the roving tabindex and the
- * Left/Right/Home/End activation + `aria-controls` wiring that the
- * hand-rolled version had to build by hand. The small group labels
- * rendered between clusters of triggers (see TAB_GROUPS) are plain
- * `aria-hidden` text, not `Tabs.Trigger`s: they sit in the list's flex
- * flow purely for visual spacing and never join that roving-tabindex
- * sequence, so keyboard users still land on all nine real tabs in order.
+ * LTabsList/LTabsTrigger still give the roving tabindex and the
+ * Left/Right/Home/End activation + `aria-controls` wiring the hand-rolled
+ * version had to build by hand. The small group labels rendered between
+ * clusters of triggers (see TAB_GROUPS) are plain `aria-hidden` text, not
+ * `LTabsTrigger`s: they sit in the list's flex flow purely for visual
+ * spacing and never join the roving-tabindex sequence LTabsTrigger reads
+ * straight off the DOM, so keyboard users still land on all nine real tabs
+ * in order.
  */
 export default function SettingsTabs({
   business,
@@ -152,76 +156,64 @@ export default function SettingsTabs({
   ];
 
   return (
-    <Tabs.Root value={tab} onValueChange={handleValueChange}>
+    <LTabsRoot value={tab} onValueChange={handleValueChange}>
       {/*
         THE ROW WRAPS RATHER THAN SCROLLING, and that is a reachability
         fix, not a style preference.
 
-        Radix's `.rt-BaseTabList` is `overflow-x: auto; white-space:
-        nowrap` with `scrollbar-width: none` AND
-        `::-webkit-scrollbar { display: none }` — a scroller whose only
-        affordance is deliberately removed. That was invisible at three
-        tabs because the row fit. At seven it does not: the labels come to
-        roughly 660px at the product's pinned scaling="90%", against about
-        360px of usable width on a 390px phone. "Layout", "Categories" and
-        "Profile & security" sat entirely past the right edge with no
-        scrollbar, no fade and no chevron — so a pilot on a ramp looking
-        for the password control saw four tabs, none of them about
-        security, and would reasonably conclude the feature was not there.
+        LTabsList's own default is `overflow-x-auto` on a single row — fine
+        at three tabs, not at nine: "Layout", "Categories" and "Profile &
+        security" would sit past the right edge on a narrow phone with no
+        scrollbar, no fade and no chevron, so a pilot looking for the
+        password control would see four tabs, none of them about security,
+        and would reasonably conclude the feature was not there (see the
+        INSTRUMENT-era version of this component, which hit exactly that
+        with Radix's own scroller).
 
         Wrapping keeps every tab visible and keyboard-reachable at every
-        width, for one property. `overflowX: visible` goes with it so the
-        now-unnecessary scroller cannot clip a wrapped row. The list's
-        hairline ends up under the last row, where it still does its one
-        job: separating the tabs from the panel below. Neither value is a
-        visual one — layout keywords, not colours, radii or type.
+        width. `overflowX: visible` goes with it so the now-unnecessary
+        scroller cannot clip a wrapped row. The list's hairline ends up
+        under the last row, where it still does its one job: separating
+        the tabs from the panel below.
       */}
-      <Tabs.List
+      <LTabsList
         aria-label="Settings sections"
         style={{ flexWrap: "wrap", overflowX: "visible" }}
       >
         {TAB_GROUPS.flatMap((group, index) => [
-          <Text
+          <span
             key={`group-${group.label}`}
-            size="1"
-            color="gray"
-            weight="medium"
             aria-hidden
             // Not a tab, not focusable, not in the roving-tabindex sequence
-            // Tabs.Trigger builds (see the header comment) — a caption that
+            // LTabsTrigger builds (see the header comment) — a caption that
             // happens to sit inside the same flex row as the triggers.
-            // `nowrap` so a group name can never wrap into its own row and
-            // overlap the wrapped trigger row below it; the doubled-up `ml`
-            // before every group after the first (same --space-4 token the
-            // triggers already use for their own gap) is the only thing
-            // marking a new cluster having started, since flex-wrap alone
-            // would otherwise run every trigger into one visually even row.
-            ml={index === 0 ? undefined : "4"}
-            style={{ whiteSpace: "nowrap" }}
+            // `whitespace-nowrap` so a group name can never wrap into its
+            // own row and overlap the wrapped trigger row below it; `ml-4`
+            // before every group after the first is the only thing marking
+            // a new cluster having started, since flex-wrap alone would
+            // otherwise run every trigger into one visually even row.
+            className={`whitespace-nowrap text-caption font-medium text-ink-3 ${
+              index === 0 ? "" : "ml-4"
+            }`}
           >
             {group.label}
-          </Text>,
+          </span>,
           ...group.keys.map((key) => (
-            <Tabs.Trigger key={key} value={key}>
+            <LTabsTrigger key={key} value={key}>
               {TAB_LABEL[key]}
-            </Tabs.Trigger>
+            </LTabsTrigger>
           )),
         ])}
-        <Tabs.Trigger value="profile">{TAB_LABEL.profile}</Tabs.Trigger>
-      </Tabs.List>
+        <LTabsTrigger value="profile">{TAB_LABEL.profile}</LTabsTrigger>
+      </LTabsList>
 
-      <Box pt="4">
+      <div className="pt-4">
         {panels.map((panel) => (
-          <Tabs.Content
-            key={panel.key}
-            value={panel.key}
-            forceMount
-            style={{ display: tab === panel.key ? "block" : "none" }}
-          >
+          <LTabsContent key={panel.key} value={panel.key}>
             {panel.content}
-          </Tabs.Content>
+          </LTabsContent>
         ))}
-      </Box>
-    </Tabs.Root>
+      </div>
+    </LTabsRoot>
   );
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { Button, Card, Flex, Grid, Heading, Text, TextField } from "@/components/ui";
+import { LButton, LCard } from "@/components/ledger";
+import { LField, LInput } from "@/components/ledger/forms";
 import { updateSettings, type SettingsFormState } from "./actions";
 
 export type SettingsValues = {
@@ -37,127 +38,125 @@ export default function SettingsForm({
   };
 
   return (
-    <Card>
+    <LCard>
       <form action={formAction}>
-        <Flex direction="column" gap="4" p="2">
-          <Flex direction="column" gap="1">
-            <Heading as="h2" size="4">Your business</Heading>
-          </Flex>
+        <div className="flex flex-col gap-4">
+          <h2 className="text-h3 font-semibold">Your business</h2>
 
-          <Grid columns={{ initial: "1", md: "12" }} gap="3">
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 8" }}>
-              <Text as="label" size="1" weight="medium" htmlFor="legal_name">
-                Business name
-              </Text>
-              <TextField.Root
-                id="legal_name"
-                name="legal_name"
-                required
-                disabled={!canEdit}
-                defaultValue={initial("legal_name")}
-              />
-              <Text size="1" color="gray" style={{ fontStyle: "italic" }}>
-                Appears as the payee on every invoice
-              </Text>
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 4" }}>
-              <Text as="label" size="1" weight="medium" htmlFor="invoice_prefix">
-                Invoice prefix
-              </Text>
-              <TextField.Root
-                id="invoice_prefix"
-                name="invoice_prefix"
-                disabled={!canEdit}
-                defaultValue={initial("invoice_prefix", "INV")}
-              />
-              <Text size="1" color="gray" style={{ fontStyle: "italic" }}>
-                Numbers already issued keep their old prefix
-              </Text>
-            </Flex>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+            <div className="md:col-span-8">
+              <LField
+                label="Business name"
+                htmlFor="legal_name"
+                hint="Appears as the payee on every invoice"
+              >
+                <LInput
+                  id="legal_name"
+                  name="legal_name"
+                  required
+                  disabled={!canEdit}
+                  defaultValue={initial("legal_name")}
+                />
+              </LField>
+            </div>
+            <div className="md:col-span-4">
+              <LField
+                label="Invoice prefix"
+                htmlFor="invoice_prefix"
+                hint="Numbers already issued keep their old prefix"
+              >
+                <LInput
+                  id="invoice_prefix"
+                  name="invoice_prefix"
+                  disabled={!canEdit}
+                  defaultValue={initial("invoice_prefix", "INV")}
+                />
+              </LField>
+            </div>
 
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 6" }}>
-              <Text as="label" size="1" weight="medium" htmlFor="address_line1">
-                Address
-              </Text>
-              <TextField.Root
-                id="address_line1"
-                name="address_line1"
-                disabled={!canEdit}
-                defaultValue={initial("address_line1")}
-              />
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 6" }}>
-              <Text as="label" size="1" weight="medium" htmlFor="address_line2">
-                Address line 2
-              </Text>
-              <TextField.Root
-                id="address_line2"
-                name="address_line2"
-                disabled={!canEdit}
-                defaultValue={initial("address_line2")}
-              />
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 4" }}>
-              <Text as="label" size="1" weight="medium" htmlFor="city">
-                City
-              </Text>
-              <TextField.Root id="city" name="city" disabled={!canEdit} defaultValue={initial("city")} />
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
-              <Text as="label" size="1" weight="medium" htmlFor="state">
-                State
-              </Text>
-              <TextField.Root id="state" name="state" disabled={!canEdit} defaultValue={initial("state")} />
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
-              <Text as="label" size="1" weight="medium" htmlFor="postal_code">
-                Postal code
-              </Text>
-              <TextField.Root
-                id="postal_code"
-                name="postal_code"
-                disabled={!canEdit}
-                defaultValue={initial("postal_code")}
-              />
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
-              <Text as="label" size="1" weight="medium" htmlFor="country">
-                Country
-              </Text>
-              <TextField.Root
-                id="country"
-                name="country"
-                disabled={!canEdit}
-                defaultValue={initial("country")}
-              />
-            </Flex>
-          </Grid>
+            <div className="md:col-span-6">
+              <LField label="Address" htmlFor="address_line1">
+                <LInput
+                  id="address_line1"
+                  name="address_line1"
+                  disabled={!canEdit}
+                  defaultValue={initial("address_line1")}
+                />
+              </LField>
+            </div>
+            <div className="md:col-span-6">
+              <LField label="Address line 2" htmlFor="address_line2">
+                <LInput
+                  id="address_line2"
+                  name="address_line2"
+                  disabled={!canEdit}
+                  defaultValue={initial("address_line2")}
+                />
+              </LField>
+            </div>
+            <div className="md:col-span-4">
+              <LField label="City" htmlFor="city">
+                <LInput
+                  id="city"
+                  name="city"
+                  disabled={!canEdit}
+                  defaultValue={initial("city")}
+                />
+              </LField>
+            </div>
+            <div className="md:col-span-2">
+              <LField label="State" htmlFor="state">
+                <LInput
+                  id="state"
+                  name="state"
+                  disabled={!canEdit}
+                  defaultValue={initial("state")}
+                />
+              </LField>
+            </div>
+            <div className="md:col-span-3">
+              <LField label="Postal code" htmlFor="postal_code">
+                <LInput
+                  id="postal_code"
+                  name="postal_code"
+                  disabled={!canEdit}
+                  defaultValue={initial("postal_code")}
+                />
+              </LField>
+            </div>
+            <div className="md:col-span-3">
+              <LField label="Country" htmlFor="country">
+                <LInput
+                  id="country"
+                  name="country"
+                  disabled={!canEdit}
+                  defaultValue={initial("country")}
+                />
+              </LField>
+            </div>
+          </div>
 
           <div role="alert" aria-live="polite">
             {state.error ? (
-              <Text size="1" color="red">
-                {state.error}
-              </Text>
+              <p className="text-caption font-medium text-crit">{state.error}</p>
             ) : state.saved ? (
-              <Text size="1" color="green">
-                Saved.
-              </Text>
+              <p className="text-caption font-medium text-good">Saved.</p>
             ) : null}
           </div>
 
           {canEdit ? (
-            <Flex>
-              <Button type="submit" disabled={pending}>
+            <div>
+              <LButton type="submit" disabled={pending}>
                 {pending ? "Saving…" : "Save changes"}
-              </Button>
-            </Flex>
+              </LButton>
+            </div>
           ) : (
-            <Text size="1" color="gray">
+            <p className="text-caption text-ink-3">
               Only the account owner can change these.
-            </Text>
+            </p>
           )}
-        </Flex>
+        </div>
       </form>
-    </Card>
+    </LCard>
   );
 }

@@ -1,11 +1,11 @@
 import NextLink from "next/link";
-import { Card, Flex, Grid, Link as RadixLink, Text } from "@/components/ui";
+import { LAlert, LCard } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 
 import { requireAccount } from "@/lib/supabase/account";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/database.types";
 import { centsToInput, formatDate } from "@/lib/format";
-import PageShell from "../page-shell";
 import SettingsForm, { type SettingsValues } from "./settings-form";
 import ProfileDefaultsForm, {
   type ProfileDefaultsValues,
@@ -260,58 +260,52 @@ export default async function SettingsPage({
   });
 
   return (
-    <PageShell
+    <LPageShell
       title="Settings"
       subtitle={`Signed in as ${user.email ?? "your account"}`}
     >
       <SettingsTabs
         initialTab={tab}
         business={
-          <Grid columns={{ initial: "1", lg: "3" }} gap="4">
-            <Flex direction="column" gap="4" gridColumn={{ md: "span 2" }}>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <div className="flex flex-col gap-4 lg:col-span-2">
               {settingsValuesError ? (
-                <Card>
-                  <Flex direction="column" gap="1" p="1">
-                    <Text weight="bold" color="red">
-                      Couldn&rsquo;t load your business details
-                    </Text>
-                    <Text size="2" color="gray">
-                      They&rsquo;re not shown because we couldn&rsquo;t read them,
-                      not because they&rsquo;re empty. Don&rsquo;t save from this
-                      screen until it loads, or you&rsquo;ll overwrite the name and
-                      address that print on your invoices. Reload in a moment.
-                    </Text>
-                  </Flex>
-                </Card>
+                <LAlert tone="crit" className="flex flex-col gap-1">
+                  <p className="font-semibold">Couldn&rsquo;t load your business details</p>
+                  <p className="text-body-s text-ink-2">
+                    They&rsquo;re not shown because we couldn&rsquo;t read them,
+                    not because they&rsquo;re empty. Don&rsquo;t save from this
+                    screen until it loads, or you&rsquo;ll overwrite the name and
+                    address that print on your invoices. Reload in a moment.
+                  </p>
+                </LAlert>
               ) : (
                 <>
                   <SettingsForm values={settingsValues} canEdit={canEdit} />
                   <ProfileDefaultsForm values={profileValues} canEdit={canEdit} />
                 </>
               )}
-            </Flex>
-            <Flex direction="column" gap="4">
+            </div>
+            <div className="flex flex-col gap-4">
               <LogoPanel hasLogo={Boolean(account.logo_url)} canEdit={canEdit} />
-              <Card>
-                <Flex direction="column" gap="2" p="1">
-                  <Text weight="bold" size="4">
-                    Plan
-                  </Text>
-                  <Text size="2" color="gray">
+              <LCard>
+                <div className="flex flex-col gap-2">
+                  <h3 className="text-h3 font-semibold">Plan</h3>
+                  <p className="text-body-s text-ink-2">
                     {account.plan ?? "—"} · {account.status}
-                  </Text>
+                  </p>
                   {/* Read-only on purpose. Plan, seat count and every Stripe
                       column are withheld from the tenant UPDATE grant AND
                       blocked by the accounts_protect_billing_columns trigger,
                       so billing state changes only ever arrive through the
                       Stripe webhook. Showing an editable control here would
                       promise something the database refuses. */}
-                  <Text size="1" color="gray">
+                  <p className="text-caption text-ink-3">
                     Billing is managed through Stripe. Changes to your plan arrive here
                     automatically.
-                  </Text>
-                </Flex>
-              </Card>
+                  </p>
+                </div>
+              </LCard>
               <ConnectPanel
                 configured={Boolean(process.env.STRIPE_CONNECT_CLIENT_ID)}
                 canEdit={canEdit}
@@ -329,44 +323,39 @@ export default async function SettingsPage({
                   canEdit={canEdit}
                 />
               ) : null}
-              <Card>
-                <Flex direction="column" gap="2" p="1">
-                  <Text weight="bold" size="4">
-                    Your data
-                  </Text>
-                  <Text size="2" color="gray">
+              <LCard>
+                <div className="flex flex-col gap-2">
+                  <h3 className="text-h3 font-semibold">Your data</h3>
+                  <p className="text-body-s text-ink-2">
                     Download everything this product holds for you: clients,
                     trips, invoices, expenses, mileage and document details,
                     as CSV files.
-                  </Text>
-                  <Text size="2">
-                    <RadixLink asChild>
-                      <NextLink href="/settings/export">Export your data</NextLink>
-                    </RadixLink>
-                  </Text>
-                </Flex>
-              </Card>
-            </Flex>
-          </Grid>
+                  </p>
+                  <NextLink
+                    href="/settings/export"
+                    className="text-body-s font-medium text-accent hover:underline"
+                  >
+                    Export your data
+                  </NextLink>
+                </div>
+              </LCard>
+            </div>
+          </div>
         }
         dayTypes={
           dayTypesError ? (
-            <Card>
-              <Text size="2" color="red">
-                Couldn&rsquo;t load your day types. Try reloading the page.
-              </Text>
-            </Card>
+            <LAlert tone="crit">
+              Couldn&rsquo;t load your day types. Try reloading the page.
+            </LAlert>
           ) : (
             <DayTypesPanel dayTypes={dayTypes} canEdit={canEdit} />
           )
         }
         mileage={
           mileageRatesError ? (
-            <Card>
-              <Text size="2" color="red">
-                Couldn&rsquo;t load your mileage rates. Try reloading the page.
-              </Text>
-            </Card>
+            <LAlert tone="crit">
+              Couldn&rsquo;t load your mileage rates. Try reloading the page.
+            </LAlert>
           ) : (
             <MileageRatesPanel rates={mileageRates} canEdit={canEdit} />
           )
@@ -444,6 +433,6 @@ export default async function SettingsPage({
           />
         }
       />
-    </PageShell>
+    </LPageShell>
   );
 }
