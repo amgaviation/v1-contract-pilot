@@ -1,5 +1,4 @@
-import { Flex, Heading, Text } from "@/components/ui";
-import EmptyState from "@/components/ui/empty-state";
+import { LCard, LEmpty } from "@/components/ledger";
 import type { Database } from "@/lib/supabase/database.types";
 import DayTypeRow from "./day-type-row";
 import AddDayTypeForm from "./add-day-type-form";
@@ -14,37 +13,37 @@ export default function DayTypesPanel({
   canEdit: boolean;
 }) {
   return (
-    <Flex direction="column" gap="4">
-      <Flex direction="column" gap="1">
-        <Heading as="h3" size="4">Day types</Heading>
-      </Flex>
+    <div className="flex flex-col gap-4">
+      <h3 className="text-h3 font-semibold text-ink">Day types</h3>
 
-      <Flex direction="column" gap="3">
-        {/* Through EmptyState like every list screen in the product —
-            heading in the outline, one sentence, and the form that fixes
-            it sits directly below. The read's failure is handled by
-            settings/page.tsx's own card, so nothing here is a failed
-            read wearing an empty state's clothes. */}
+      <div className="flex flex-col gap-3">
+        {/* Through LEmpty like every list screen on Ledger — heading in the
+            outline, one sentence, and the form that fixes it sits directly
+            below. The read's failure is handled by settings/page.tsx's own
+            card, so nothing here is a failed read wearing an empty state's
+            clothes. */}
         {dayTypes.length === 0 ? (
-          <EmptyState title="No day types yet">
-            A day type is what one day of work is called on a trip (flight day,
-            travel day, standby) and how it bills. Add the ones you use below and
-            they become the picker on every trip&rsquo;s day grid.
-          </EmptyState>
+          <LCard>
+            <LEmpty title="No day types yet">
+              A day type is what one day of work is called on a trip (flight day,
+              travel day, standby) and how it bills. Add the ones you use below and
+              they become the picker on every trip&rsquo;s day grid.
+            </LEmpty>
+          </LCard>
         ) : (
           dayTypes.map((dayType) => (
             <DayTypeRow key={dayType.id} dayType={dayType} canEdit={canEdit} />
           ))
         )}
-      </Flex>
+      </div>
 
       {canEdit ? (
         <AddDayTypeForm />
       ) : (
-        <Text size="1" color="gray">
+        <p className="text-body-s text-ink-3">
           Only the account owner can add or change day types.
-        </Text>
+        </p>
       )}
-    </Flex>
+    </div>
   );
 }

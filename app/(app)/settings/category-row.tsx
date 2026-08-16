@@ -1,7 +1,9 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { Button, Card, Flex, Text, TextField } from "@/components/ui";
+import { LButton, LCard } from "@/components/ledger";
+import { LInput } from "@/components/ledger/forms";
+import { cn } from "@/lib/ledger/cn";
 import type { CustomOptionRow } from "@/lib/custom-options";
 import {
   moveCustomOption,
@@ -90,19 +92,19 @@ export default function CategoryRow({
   }
 
   return (
-    <Card>
+    <LCard>
       <form action={formAction}>
-        <Flex direction="column" gap="2" p="1">
+        <div className="flex flex-col gap-2">
           <input type="hidden" name="id" value={option.id} />
           <input type="hidden" name="domain" value={option.domain} />
 
-          <Flex align="end" gap="3" wrap="wrap">
-            <Flex direction="column" gap="1" flexGrow="1" minWidth="180px">
-              <Text size="1" color="gray">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex min-w-[180px] flex-1 flex-col gap-1">
+              <p className="text-caption text-ink-3">
                 {option.is_builtin ? "Built in" : "Yours"}
                 {archived ? " · retired" : ""}
-              </Text>
-              <TextField.Root
+              </p>
+              <LInput
                 name="label"
                 required
                 disabled={!canEdit}
@@ -115,24 +117,17 @@ export default function CategoryRow({
                 // control, which matches on visible text.
                 aria-label={`Name for ${option.label}`}
               />
-            </Flex>
+            </div>
 
-            {/* size="2", not size="1". Radix's size-1 button is
-                --space-5 tall, and the root Theme pins scaling="90%", so
-                it renders 21.6px — under the WCAG 2.2 AA 24×24 target
-                minimum, for a pair of opposite-direction controls sitting
-                a few px apart on a screen this product expects to be used
-                on a phone on a ramp. size="2" clears the floor. */}
             {canEdit ? (
-              <Flex gap="2" wrap="wrap">
-                <Button type="submit" size="2" disabled={pending}>
+              <div className="flex flex-wrap gap-2">
+                <LButton type="submit" size="sm" disabled={pending}>
                   {pending ? "Saving…" : "Save"}
-                </Button>
-                <Button
+                </LButton>
+                <LButton
                   type="button"
-                  size="2"
-                  variant="soft"
-                  color="gray"
+                  size="sm"
+                  variant="outline"
                   // aria-disabled, not disabled — see this file's header:
                   // disabling the pressed button blurs it to <body>.
                   aria-disabled={moving || isFirst}
@@ -140,26 +135,25 @@ export default function CategoryRow({
                   aria-label={`Move ${option.label} up`}
                 >
                   Up
-                </Button>
-                <Button
+                </LButton>
+                <LButton
                   type="button"
-                  size="2"
-                  variant="soft"
-                  color="gray"
+                  size="sm"
+                  variant="outline"
                   aria-disabled={moving || isLast}
                   onClick={() => runMove("down")}
                   aria-label={`Move ${option.label} down`}
                 >
                   Down
-                </Button>
+                </LButton>
                 {/* No Retire on a built-in — see this file's header. */}
                 {option.is_builtin ? null : (
-                  <Button
+                  <LButton
                     type="button"
-                    size="2"
+                    size="sm"
                     variant="outline"
-                    color={archived ? undefined : "amber"}
                     disabled={archiving}
+                    className={cn(!archived && "border-warn text-warn hover:bg-warn-soft")}
                     onClick={() =>
                       startArchive(async () => {
                         setRowError(null);
@@ -173,32 +167,24 @@ export default function CategoryRow({
                     }
                   >
                     {archiving ? "Working…" : archived ? "Bring back" : "Retire"}
-                  </Button>
+                  </LButton>
                 )}
-              </Flex>
+              </div>
             ) : null}
-          </Flex>
+          </div>
 
           <div role="alert" aria-live="polite">
             {state.error ? (
-              <Text size="1" color="red">
-                {state.error}
-              </Text>
+              <p className="text-caption font-medium text-crit">{state.error}</p>
             ) : state.saved ? (
-              <Text size="1" color="green">
-                Saved.
-              </Text>
+              <p className="text-caption font-medium text-good">Saved.</p>
             ) : null}
-            {rowError ? (
-              <Text as="div" size="1" color="red">
-                {rowError}
-              </Text>
-            ) : null}
+            {rowError ? <p className="text-caption font-medium text-crit">{rowError}</p> : null}
             {archived ? (
-              <Text as="div" size="1" color="gray">
+              <p className="text-caption text-ink-3">
                 Retired. Not offered on new records, but still shown on the ones
                 already filed under it.
-              </Text>
+              </p>
             ) : null}
           </div>
 
@@ -209,14 +195,10 @@ export default function CategoryRow({
               otherwise say nothing at all to a screen reader, the row
               having simply changed place in the DOM. */}
           <div aria-live="polite" role="status">
-            {moveNotice ? (
-              <Text as="div" size="1" color="gray">
-                {moveNotice}
-              </Text>
-            ) : null}
+            {moveNotice ? <p className="text-caption text-ink-3">{moveNotice}</p> : null}
           </div>
-        </Flex>
+        </div>
       </form>
-    </Card>
+    </LCard>
   );
 }

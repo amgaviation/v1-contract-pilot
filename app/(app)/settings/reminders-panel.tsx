@@ -2,16 +2,8 @@
 
 import { useState, useTransition } from "react";
 import NextLink from "next/link";
-import {
-  Box,
-  Button,
-  Card,
-  Flex,
-  Heading,
-  Link as RadixLink,
-  Separator,
-  Text,
-} from "@/components/ui";
+import { LButton, LCard, LSeparator } from "@/components/ledger";
+import { cn } from "@/lib/ledger/cn";
 import { runDueRemindersNow } from "../invoices/reminder-actions";
 
 /**
@@ -64,74 +56,67 @@ export default function RemindersPanel({
   const [lines, setLines] = useState<string[] | null>(null);
 
   return (
-    <Flex direction="column" gap="4">
-      <Flex direction="column" gap="1">
-        <Heading as="h3" size="4">
-          Reminders
-        </Heading>
-      </Flex>
+    <div className="flex flex-col gap-4">
+      <h3 className="text-h3 font-semibold text-ink">Reminders</h3>
 
-      <Card>
-        <Flex direction="column" gap="3" p="1">
-          <Flex direction="column" gap="1">
-            <Text size="2" weight="medium">
-              On this deployment
-            </Text>
-            <Text as="div" size="2" color={schedulerConfigured ? "gray" : "amber"}>
+      <LCard>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <p className="text-body-s font-medium text-ink">On this deployment</p>
+            <p className={cn("text-body-s", schedulerConfigured ? "text-ink-2" : "text-warn")}>
               {schedulerConfigured
                 ? "The daily run is switched on."
                 : "The daily run is switched off. Nothing goes out on its own until CRON_SECRET is set on the deployment. You can still run it by hand below."}
-            </Text>
-            <Text as="div" size="2" color={mailConfigured ? "gray" : "amber"}>
+            </p>
+            <p className={cn("text-body-s", mailConfigured ? "text-ink-2" : "text-warn")}>
               {mailConfigured
                 ? "Emailing is set up."
                 : "Emailing isn't set up, so nothing can be sent. A run will still tell you exactly what was due, and nothing gets marked as sent."}
-            </Text>
-            <Text as="div" size="2" color="gray">
+            </p>
+            <p className="text-body-s text-ink-2">
               {lastRunAt ? `Last run ${lastRunAt}.` : "It has never run for this account."}
-            </Text>
-          </Flex>
+            </p>
+          </div>
 
-          <Separator size="4" />
+          <LSeparator />
 
-          <Flex direction="column" gap="1">
-            <Text size="2" weight="medium">
-              Who gets reminders
-            </Text>
+          <div className="flex flex-col gap-1">
+            <p className="text-body-s font-medium text-ink">Who gets reminders</p>
             {clientsLoadFailed ? (
-              <Text as="div" size="2" color="amber">
+              <p className="text-body-s text-warn">
                 Your client schedules couldn&rsquo;t be loaded just now, so this
                 list may be incomplete. It is not a sign that nothing is
                 scheduled. Reload the page to try again; the daily run is
                 unaffected either way.
-              </Text>
+              </p>
             ) : clientsWithSchedules.length === 0 ? (
-              <Text as="div" size="2" color="gray">
+              <p className="text-body-s text-ink-2">
                 None of your {clientsTotal} client
                 {clientsTotal === 1 ? "" : "s"} has a schedule, so nothing is
                 sent automatically. You set one on a client&rsquo;s own page.
-              </Text>
+              </p>
             ) : (
-              <Flex direction="column" gap="1">
+              <div className="flex flex-col gap-1">
                 {clientsWithSchedules.map((client) => (
-                  <Text as="div" size="2" key={client.id}>
-                    <RadixLink asChild>
-                      <NextLink href={`/clients/${client.id}`}>{client.name}</NextLink>
-                    </RadixLink>{" "}
-                    <Text as="span" size="1" color="gray">
-                      · {client.summary}
-                    </Text>
-                  </Text>
+                  <p className="text-body-s text-ink" key={client.id}>
+                    <NextLink
+                      href={`/clients/${client.id}`}
+                      className="font-medium text-accent underline-offset-2 hover:underline"
+                    >
+                      {client.name}
+                    </NextLink>{" "}
+                    <span className="text-caption text-ink-3">· {client.summary}</span>
+                  </p>
                 ))}
-              </Flex>
+              </div>
             )}
-          </Flex>
+          </div>
 
-          <Separator size="4" />
+          <LSeparator />
 
-          <Flex direction="column" gap="2">
-            <Flex>
-              <Button
+          <div className="flex flex-col gap-2">
+            <div>
+              <LButton
                 type="button"
                 variant="outline"
                 disabled={pending}
@@ -144,30 +129,30 @@ export default function RemindersPanel({
                 }}
               >
                 {pending ? "Running…" : "Run due reminders now"}
-              </Button>
-            </Flex>
+              </LButton>
+            </div>
             {/* NAMES THE CONSEQUENCE BEFORE THE PRESS. This button can put mail
                 in somebody's client's inbox, so it must not read like a
                 refresh. */}
-            <Text size="1" color="gray">
+            <p className="text-caption text-ink-3">
               Sends anything that is due right now, exactly as the daily run
               would. Safe to press twice: a reminder that has already gone out
               is never sent again. One that definitely didn&rsquo;t send is
               tried again on the next few runs; one the mail service left
               unconfirmed is never retried, so you decide that one yourself.
-            </Text>
+            </p>
             {lines ? (
-              <Box role="status">
+              <div role="status">
                 {lines.map((line, index) => (
-                  <Text as="div" size="1" color="gray" key={`${index}-${line.slice(0, 24)}`}>
+                  <p className="text-caption text-ink-3" key={`${index}-${line.slice(0, 24)}`}>
                     {line}
-                  </Text>
+                  </p>
                 ))}
-              </Box>
+              </div>
             ) : null}
-          </Flex>
-        </Flex>
-      </Card>
-    </Flex>
+          </div>
+        </div>
+      </LCard>
+    </div>
   );
 }

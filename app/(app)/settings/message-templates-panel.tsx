@@ -1,17 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import {
-  Box,
-  Button,
-  Card,
-  Code,
-  Flex,
-  Heading,
-  Separator,
-  Text,
-  TextArea,
-} from "@/components/ui";
+import { LButton, LCard, LSeparator } from "@/components/ledger";
+import { LTextarea } from "@/components/ledger/forms";
 import {
   DEFAULT_INVOICE_TEMPLATE,
   DEFAULT_REMINDER_TEMPLATE,
@@ -78,22 +69,18 @@ export default function MessageTemplatesPanel({
   };
 
   return (
-    <Flex direction="column" gap="4">
-      <Flex direction="column" gap="1">
-        <Heading as="h3" size="4">
-          Message wording
-        </Heading>
-      </Flex>
+    <div className="flex flex-col gap-4">
+      <h3 className="text-h3 font-semibold text-ink">Message wording</h3>
 
-      <Card>
+      <LCard>
         <form action={formAction}>
-          <Flex direction="column" gap="4" p="1">
-            <Flex direction="column" gap="1">
-              <Text as="label" size="1" weight="medium" htmlFor="invoice_template">
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="invoice_template" className="text-body-s font-medium text-ink">
                 When you send an invoice
-              </Text>
+              </label>
               {/* NO maxLength — see the note above LengthNote below. */}
-              <TextArea
+              <LTextarea
                 id="invoice_template"
                 name="invoice_template"
                 rows={3}
@@ -102,7 +89,7 @@ export default function MessageTemplatesPanel({
                 defaultValue={initial("invoice_template")}
               />
               <PlaceholderKey placeholders={INVOICE_PLACEHOLDERS} />
-              <Text size="1" color="gray">
+              <p className="text-caption text-ink-3">
                 {/* The invoice-side twin of the {{days_overdue}} note under
                     the reminder box. {{due_date}} is the one placeholder an
                     otherwise-valid template can name that a real invoice may
@@ -113,17 +100,17 @@ export default function MessageTemplatesPanel({
                     the one send where it matters, if at all. */}
                 An invoice with no due date uses the built-in wording,
                 because {"{{due_date}}"} has nothing to fill in.
-              </Text>
-            </Flex>
+              </p>
+            </div>
 
-            <Separator size="4" />
+            <LSeparator />
 
-            <Flex direction="column" gap="1">
-              <Text as="label" size="1" weight="medium" htmlFor="reminder_template">
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="reminder_template" className="text-body-s font-medium text-ink">
                 When you send a reminder
-              </Text>
+              </label>
               {/* NO maxLength — see the note above LengthNote below. */}
-              <TextArea
+              <LTextarea
                 id="reminder_template"
                 name="reminder_template"
                 rows={3}
@@ -132,55 +119,49 @@ export default function MessageTemplatesPanel({
                 defaultValue={initial("reminder_template")}
               />
               <PlaceholderKey placeholders={REMINDER_PLACEHOLDERS} />
-              <Text size="1" color="gray">
+              <p className="text-caption text-ink-3">
                 {/* Stated here rather than left to be discovered on the one
                     send where it matters: a template that names how late an
                     invoice is cannot be used on one that isn't late yet, so
                     the built-in wording runs instead. */}
                 A reminder sent before the due date uses the built-in wording,
                 because {"{{days_overdue}}"} has nothing to say yet.
-              </Text>
-            </Flex>
+              </p>
+            </div>
 
-            <Separator size="4" />
+            <LSeparator />
 
             <LengthNote />
 
-            <Text size="1" color="gray">
+            <p className="text-body-s text-ink-3">
               The amount due, the payment link, any receipts attached, your
               invoice notes and your business name are added automatically
               underneath, and can&rsquo;t be edited here: they have to match
               the invoice. The subject line is set for you too, so your client
               can find the message by invoice number.
-            </Text>
+            </p>
 
             <div role="alert" aria-live="polite">
               {state.error ? (
-                <Text size="1" color="red">
-                  {state.error}
-                </Text>
+                <p className="text-caption font-medium text-crit">{state.error}</p>
               ) : state.saved ? (
-                <Text size="1" color="green">
-                  Saved.
-                </Text>
+                <p className="text-caption font-medium text-good">Saved.</p>
               ) : null}
             </div>
 
             {canEdit ? (
-              <Flex>
-                <Button type="submit" disabled={pending}>
+              <div className="flex">
+                <LButton type="submit" disabled={pending}>
                   {pending ? "Saving…" : "Save wording"}
-                </Button>
-              </Flex>
+                </LButton>
+              </div>
             ) : (
-              <Text size="1" color="gray">
-                Only the account owner can change these.
-              </Text>
+              <p className="text-body-s text-ink-3">Only the account owner can change these.</p>
             )}
-          </Flex>
+          </div>
         </form>
-      </Card>
-    </Flex>
+      </LCard>
+    </div>
   );
 }
 
@@ -205,11 +186,11 @@ export default function MessageTemplatesPanel({
  */
 function LengthNote() {
   return (
-    <Text size="1" color="gray">
+    <p className="text-body-s text-ink-3">
       Up to {MAX_MESSAGE_TEMPLATE_CHARS.toLocaleString()} characters each.
       Longer than that is refused with a message rather than trimmed for
       you: a bill should never open with a sentence that stops mid-word.
-    </Text>
+    </p>
   );
 }
 
@@ -228,15 +209,15 @@ function PlaceholderKey({
   placeholders: readonly MessagePlaceholder[];
 }) {
   return (
-    <Box mt="1">
-      <Flex direction="column" gap="1">
-        {placeholders.map((placeholder) => (
-          <Text as="div" size="1" color="gray" key={placeholder.key}>
-            <Code variant="ghost">{placeholder.token}</Code>:{" "}
-            {placeholder.description}
-          </Text>
-        ))}
-      </Flex>
-    </Box>
+    <div className="mt-1 flex flex-col gap-1">
+      {placeholders.map((placeholder) => (
+        <p className="text-caption text-ink-3" key={placeholder.key}>
+          <code className="rounded-control bg-sunk px-1 py-0.5 font-mono text-caption text-ink-2">
+            {placeholder.token}
+          </code>
+          : {placeholder.description}
+        </p>
+      ))}
+    </div>
   );
 }

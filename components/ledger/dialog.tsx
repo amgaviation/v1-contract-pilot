@@ -121,3 +121,101 @@ export function LDialogShell({
     </dialog>
   );
 }
+
+/* ── Titled dialog and the destructive confirm ─────────────────────── */
+
+/**
+ * LDialog and LConfirmDialog port components/ds/dialog.tsx's Dialog and
+ * ConfirmDialog onto LDialogShell, keeping the two decisions that file
+ * documents at length: a per-instance useId for aria-labelledby (a fixed
+ * title id across N row-dialogs made screen readers announce the wrong
+ * row's title), and initial focus on the CANCEL button in the confirm
+ * (native <dialog> autofocuses the first focusable — the destructive
+ * button — so an Enter already in flight would confirm the deletion).
+ */
+import { LButton, type LButtonProps } from "./index";
+
+export function LDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  children,
+  footer,
+  className,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  children?: React.ReactNode;
+  footer?: React.ReactNode;
+  className?: string;
+}) {
+  const titleId = React.useId();
+  return (
+    <LDialogShell open={open} onOpenChange={onOpenChange} className={className} labelledBy={titleId}>
+      <div className="border-b border-hair px-5 py-4">
+        <h2 id={titleId} className="text-h3 font-semibold">
+          {title}
+        </h2>
+      </div>
+      {description !== undefined || children !== undefined ? (
+        <div className="flex flex-col gap-3 px-5 py-4 text-body-s text-ink-2">
+          {description}
+          {children}
+        </div>
+      ) : null}
+      {footer ? (
+        <div className="flex justify-end gap-2 border-t border-hair px-5 py-3">
+          {footer}
+        </div>
+      ) : null}
+    </LDialogShell>
+  );
+}
+
+export function LConfirmDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  confirmLabel,
+  cancelLabel = "Cancel",
+  confirmVariant = "danger",
+  onConfirm,
+  pending,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  confirmLabel: string;
+  cancelLabel?: string;
+  confirmVariant?: LButtonProps["variant"];
+  onConfirm: () => void;
+  pending?: boolean;
+}) {
+  const cancelRef = React.useRef<HTMLButtonElement>(null);
+  React.useEffect(() => {
+    if (open) cancelRef.current?.focus();
+  }, [open]);
+  return (
+    <LDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={title}
+      description={description}
+      footer={
+        <>
+          <LButton ref={cancelRef} type="button" variant="quiet" onClick={() => onOpenChange(false)}>
+            {cancelLabel}
+          </LButton>
+          <LButton type="button" variant={confirmVariant} onClick={onConfirm} disabled={pending}>
+            {pending ? "Working…" : confirmLabel}
+          </LButton>
+        </>
+      }
+    />
+  );
+}

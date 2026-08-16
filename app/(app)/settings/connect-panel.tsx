@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { Button, Callout, Card, Flex, Heading, Text } from "@/components/ui";
+import { LAlert, LButton, LCard } from "@/components/ledger";
 import { startConnectOnboarding, disconnectStripeConnect, type DisconnectState } from "./connect-actions";
 
 const initialState: DisconnectState = { error: null };
@@ -44,28 +44,20 @@ export default function ConnectPanel({
   const [state, formAction, pending] = useActionState(disconnectStripeConnect, initialState);
 
   return (
-    <Card>
-      <Flex direction="column" gap="3" p="1">
-        <Flex direction="column" gap="1">
-          <Heading size="4">Get paid online</Heading>
-        </Flex>
+    <LCard>
+      <div className="flex flex-col gap-3">
+        <h3 className="text-h3 font-semibold text-ink">Get paid online</h3>
 
-        {warning ? (
-          <Callout.Root color="amber" size="1">
-            <Callout.Text>{warning}</Callout.Text>
-          </Callout.Root>
-        ) : null}
+        {warning ? <LAlert tone="warn">{warning}</LAlert> : null}
         {justConnected ? (
-          <Callout.Root color="green" size="1">
-            <Callout.Text>Stripe connected. You can generate a payment link from any sent invoice.</Callout.Text>
-          </Callout.Root>
+          <LAlert tone="good">
+            Stripe connected. You can generate a payment link from any sent invoice.
+          </LAlert>
         ) : null}
 
         {connected ? (
-          <Flex direction="column" gap="2" align="start">
-            <Text size="2" weight="medium" color="green">
-              Stripe connected
-            </Text>
+          <div className="flex flex-col items-start gap-2">
+            <p className="text-body-s font-medium text-good">Stripe connected</p>
             {canEdit ? (
               <form
                 action={formAction}
@@ -76,28 +68,25 @@ export default function ConnectPanel({
                   if (!ok) e.preventDefault();
                 }}
               >
-                <Button type="submit" variant="outline" color="red" disabled={pending}>
+                <LButton
+                  type="submit"
+                  variant="outline"
+                  className="border-crit text-crit hover:bg-crit-soft"
+                  disabled={pending}
+                >
                   {pending ? "Disconnecting…" : "Disconnect Stripe"}
-                </Button>
+                </LButton>
               </form>
             ) : null}
-            <Flex direction="column" gap="2" role="alert" aria-live="polite">
-              {state.error ? (
-                <Text size="1" color="red">
-                  {state.error}
-                </Text>
-              ) : null}
+            <div className="flex flex-col gap-2" role="alert" aria-live="polite">
+              {state.error ? <p className="text-caption font-medium text-crit">{state.error}</p> : null}
               {/* The disconnect landed here, but Stripe wouldn't confirm the
-                  grant was removed on their side. Amber, not red: what the
+                  grant was removed on their side. Warn, not crit: what the
                   pilot asked for did happen locally; what's left is a task
                   only they can finish, in their own dashboard. */}
-              {state.warning ? (
-                <Callout.Root color="amber" size="1">
-                  <Callout.Text>{state.warning}</Callout.Text>
-                </Callout.Root>
-              ) : null}
-            </Flex>
-          </Flex>
+              {state.warning ? <LAlert tone="warn">{state.warning}</LAlert> : null}
+            </div>
+          </div>
         ) : !configured ? (
           /* STRIPE_CONNECT_CLIENT_ID is unset on this deployment, so the
              OAuth hop cannot be built. Said plainly here rather than left
@@ -107,23 +96,21 @@ export default function ConnectPanel({
              product offered them. Same posture the reminders panel takes
              when CRON_SECRET is missing — a control that cannot work is
              not shown as though it can. */
-          <Text size="2" color="gray">
+          <p className="text-body-s text-ink-2">
             Online payments aren&rsquo;t switched on for this deployment yet, so
             there&rsquo;s nothing to connect to. Invoices still send and can be
             paid the way they are today.
-          </Text>
+          </p>
         ) : canEdit ? (
           <form action={startConnectOnboarding}>
-            <Button type="submit" style={{ width: "100%" }}>
+            <LButton type="submit" className="w-full">
               Connect with Stripe
-            </Button>
+            </LButton>
           </form>
         ) : (
-          <Text size="2" color="gray">
-            Ask an account owner to connect Stripe.
-          </Text>
+          <p className="text-body-s text-ink-2">Ask an account owner to connect Stripe.</p>
         )}
-      </Flex>
-    </Card>
+      </div>
+    </LCard>
   );
 }
