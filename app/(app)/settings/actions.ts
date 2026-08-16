@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { friendlyDbError } from "@/lib/db-errors";
 import { parseDollarsToCents } from "@/lib/format";
+import { accountLogoUrl } from "@/lib/account-logo";
 // The one 14 CFR 61.5(a)(1) certificate list, shared with the onboarding
 // wizard — see lib/airman.ts and tests/airman-certificates.test.mjs.
 import { CERTIFICATE_TYPES } from "@/lib/airman";
@@ -408,28 +409,11 @@ export async function removeLogo(): Promise<{ error: string | null }> {
 /**
  * A short-lived signed URL for the logo, minted on demand — same reasoning
  * as receipts: a signed URL is a bearer token in a query string and must
- * not be baked into a rendered page.
+ * not be baked into a rendered page. Shared with the app shell's header
+ * logo via lib/account-logo.ts.
  */
 export async function logoPreviewUrl(): Promise<string | null> {
   const { account } = await requireAccount("/settings");
   const supabase = await createClient();
-
-  const { data } = await supabase
-    .from("accounts")
-    .select("logo_url")
-    .eq("id", account.id)
-    .maybeSingle();
-
-  const path = (data as { logo_url: string | null } | null)?.logo_url;
-  if (!path) return null;
-  if (!path.startsWith(`${account.id}/`)) return null;
-
-  const { data: signed, error } = await supabase.storage
-    .from(BUCKET)
-    .createSignedUrl(path, 60);
-  if (error) {
-    console.error("[storage] logo signed url", error.message);
-    return null;
-  }
-  return signed?.signedUrl ?? null;
+  return accountLogoUrl(supabase, account.id);
 }

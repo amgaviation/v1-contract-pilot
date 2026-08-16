@@ -10,6 +10,19 @@ import { NavRail, NavStrip } from "./nav-rail";
 import SkipLink from "./skip-link";
 
 /**
+ * The header mark: the tenant's own uploaded logo (Settings → Logo) when
+ * one exists, the default V1 mark otherwise. `logoUrl` is a short-lived
+ * signed URL minted per request by lib/account-logo.ts — a plain `<img>`,
+ * not next/image, because that URL's host and query string are not
+ * something a static remotePatterns entry can pin down.
+ */
+function AccountLogo({ logoUrl }: { logoUrl?: string | null }) {
+  if (!logoUrl) return <Logo />;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={logoUrl} alt={BRAND.wordmark} className="h-6 w-auto" />;
+}
+
+/**
  * THE AUTHENTICATED SHELL — chrome only, no data access. Restyled to
  * Ledger (docs/design/LEDGER.md, Phase 2 — "the moment the app *reads* as
  * Ledger"). See that file's migration table: un-migrated INSTRUMENT pages
@@ -73,6 +86,7 @@ export function AppShell({
   theme,
   readOnly,
   signOutAction,
+  logoUrl,
   children,
 }: {
   userEmail: string;
@@ -81,6 +95,8 @@ export function AppShell({
   theme: ResolvedTheme;
   readOnly: boolean;
   signOutAction: () => void | Promise<void>;
+  /** The tenant's uploaded logo (Settings), or null to show the default V1 mark. */
+  logoUrl?: string | null;
   children: React.ReactNode;
 }) {
   // THE TENANT THEME, as three data attributes rather than a component —
@@ -163,7 +179,7 @@ export function AppShell({
                   href={DASHBOARD_PATH}
                   aria-label={`${BRAND.name}: ${BRAND.descriptor}`}
                 >
-                  <Logo />
+                  <AccountLogo logoUrl={logoUrl} />
                 </Link>
                 {/* The phone entry point to the command palette. The
                     desktop header carrying the other one (below, in this
@@ -226,8 +242,9 @@ export function AppShell({
                   off the SAME attribute the shell root stamps. Still
                   correct with no nested dark wrapper here, because that
                   rule already matches any dark-appearance subtree, not
-                  specifically a nested one. */}
-              <Logo />
+                  specifically a nested one. Only applies to the default
+                  mark — an uploaded logo renders as-is, see AccountLogo. */}
+              <AccountLogo logoUrl={logoUrl} />
             </Link>
             <div className="mt-1 text-caption text-ink-3">
               {BRAND.descriptor}
