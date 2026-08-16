@@ -10,7 +10,7 @@ import {
   LTh,
   lButtonClass,
 } from "@/components/ledger";
-import { Logo } from "@/components/ui/logo";
+import { Logo } from "@/components/logo";
 import { requireAccount } from "@/lib/supabase/account";
 import { sampleConnectConfigError, APPLICATION_FEE_BASIS_POINTS } from "@/lib/sample-connect/client";
 import { getSampleAccountId } from "@/lib/sample-connect/store";

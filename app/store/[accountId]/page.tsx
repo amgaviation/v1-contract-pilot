@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { LAlert, LButton, LCard } from "@/components/ledger";
-import { Logo } from "@/components/ui/logo";
+import { Logo } from "@/components/logo";
 import { sampleConnectConfigError } from "@/lib/sample-connect/client";
 import { getSampleAccountStatus } from "@/lib/sample-connect/accounts";
 import { listSampleProducts, formatAmount } from "@/lib/sample-connect/products";
