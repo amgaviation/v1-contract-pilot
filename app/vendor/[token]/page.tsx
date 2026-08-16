@@ -199,7 +199,15 @@ export default async function VendorPage({
                   const status = OPEN_STATUS_LABEL[invoice.status] ?? OPEN_STATUS_LABEL.sent!;
                   return (
                     <tr key={`${invoice.invoice_number}-${i}`}>
-                      <LTd>{invoice.invoice_number ?? "—"}</LTd>
+                      {/* scope="row": the row-header semantics the old
+                          Table.RowHeaderCell carried, per the invoices
+                          list idiom. */}
+                      <th
+                        scope="row"
+                        className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                      >
+                        {invoice.invoice_number ?? "—"}
+                      </th>
                       <LTd>
                         <span className="text-ink-2">
                           {invoice.due_on ? formatDate(invoice.due_on) : "—"}
@@ -241,7 +249,13 @@ export default async function VendorPage({
               <tbody>
                 {page.paid_invoices.map((invoice, i) => (
                   <tr key={`${invoice.invoice_number}-${i}`}>
-                    <LTd>{invoice.invoice_number ?? "—"}</LTd>
+                    {/* scope="row", same as the outstanding table above. */}
+                    <th
+                      scope="row"
+                      className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                    >
+                      {invoice.invoice_number ?? "—"}
+                    </th>
                     <LTd>
                       <span className="text-ink-2">
                         {invoice.paid_on ? formatDate(invoice.paid_on) : "—"}

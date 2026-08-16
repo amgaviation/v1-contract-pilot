@@ -111,7 +111,15 @@ export default async function PacketPage({
                 const expired = row.expires_on !== null && row.expires_on < today;
                 return (
                   <tr key={`${row.document_label}-${index}`}>
-                    <LTd>{row.document_label}</LTd>
+                    {/* scope="row": the row-header semantics the old
+                        Table.RowHeaderCell carried — a screen reader
+                        announces the other cells against this label. */}
+                    <th
+                      scope="row"
+                      className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                    >
+                      {row.document_label}
+                    </th>
                     <LTd>
                       <span className="text-ink-2">
                         {KIND_LABEL[row.document_kind] ?? row.document_kind}

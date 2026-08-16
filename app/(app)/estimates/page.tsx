@@ -317,14 +317,23 @@ export default async function EstimatesPage({
                 const expired = expiredIds.has(estimate.id);
                 return (
                   <tr key={estimate.id}>
-                    <LTd>
+                    {/* scope="row": the accessible-name row header Radix's
+                        Table.RowHeaderCell gave this cell, restated as a
+                        plain <th> since LTd has no row-header variant —
+                        same idiom as invoices/page.tsx. Without it a
+                        screen reader announces Client/Status/Total with
+                        no estimate identifier attached. */}
+                    <th
+                      scope="row"
+                      className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                    >
                       <NextLink
                         href={`/estimates/${estimate.id}`}
                         className="font-medium text-accent hover:underline"
                       >
                         {estimate.estimate_number ?? "Draft"}
                       </NextLink>
-                    </LTd>
+                    </th>
                     <LTd>
                       <span className="text-ink-2">
                         {clientNames.get(estimate.client_id) ?? "—"}
