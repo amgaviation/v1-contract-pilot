@@ -1,6 +1,5 @@
 import NextLink from "next/link";
-import { Button, Callout, Card, Flex, Grid, Text } from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { LAlert, LCard, lButtonClass } from "@/components/ledger";
 
 import { createClient } from "@/lib/supabase/server";
 import { rowsOf } from "@/lib/supabase/rows";
@@ -118,48 +117,44 @@ export default async function CostPanel({
     tripsResult.rows.length === COST_LIMIT;
 
   return (
-    <Card>
-      <Flex justify="between" align="center" wrap="wrap" gap="3" mb="1">
-        <Text as="div" size="4" weight="bold">
-          Costs
-        </Text>
-        <Flex gap="2" wrap="wrap">
-          <Button asChild size="1" variant="soft">
-            <NextLink href={`/expenses?client=${clientId}`}>See every cost</NextLink>
-          </Button>
+    <LCard>
+      <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
+        <div className="text-h3 font-semibold">Costs</div>
+        <div className="flex flex-wrap gap-2">
+          <NextLink href={`/expenses?client=${clientId}`} className={lButtonClass({ variant: "outline", size: "sm" })}>
+            See every cost
+          </NextLink>
           {archived ? null : (
-            <Button asChild size="1" variant="soft">
-              <NextLink href={`/expenses/new?client=${clientId}`}>Record a cost</NextLink>
-            </Button>
+            <NextLink href={`/expenses/new?client=${clientId}`} className={lButtonClass({ variant: "outline", size: "sm" })}>
+              Record a cost
+            </NextLink>
           )}
-        </Flex>
-      </Flex>
-      <Text as="div" size="2" color="gray" mb="3">
+        </div>
+      </div>
+      <p className="mb-3 text-body-s text-ink-3">
         {totals.count === 0
           ? `Nothing recorded against ${clientName} yet, on a trip or off one.`
           : `${totals.count} expense${totals.count === 1 ? "" : "s"}, on their trips and attributed to them directly.`}
-      </Text>
+      </p>
 
       {totals.count > 0 ? (
-        <Grid columns={{ initial: "1", sm: "4" }} gap="3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
           <Figure label="Total" cents={totals.totalCents} emphasis />
           <Figure label="To rebill" cents={totals.rebillCents} />
           <Figure label="Deducted" cents={totals.deductCents} />
           <Figure label="Unfiled" cents={totals.unassignedCents} />
-        </Grid>
+        </div>
       ) : null}
 
       {truncated ? (
-        <Callout.Root color="amber" mt="3">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>
+        <LAlert tone="warn" className="mt-3 flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+          <span>
             {`These figures may be partial. More than ${COST_LIMIT} records were involved and only the first ${COST_LIMIT} were totaled.`}
-          </Callout.Text>
-        </Callout.Root>
+          </span>
+        </LAlert>
       ) : null}
-    </Card>
+    </LCard>
   );
 }
 
@@ -173,29 +168,55 @@ function Figure({
   emphasis?: boolean;
 }) {
   return (
-    <Flex direction="column" gap="1">
-      <Text size="1" color="gray">
-        {label}
-      </Text>
-      <Text size={emphasis ? "5" : "3"} weight={emphasis ? "bold" : "medium"} className="tnum">
+    <div className="flex flex-col gap-1">
+      <span className="text-caption text-ink-3">{label}</span>
+      <span
+        className={
+          emphasis
+            ? "tnum-l text-figure font-bold tracking-tight"
+            : "tnum-l text-body font-medium"
+        }
+      >
         {formatCents(cents)}
-      </Text>
-    </Flex>
+      </span>
+    </div>
   );
 }
 
 function FailedState() {
   return (
-    <Card>
-      <Callout.Root color="red">
-        <Callout.Icon>
-          <ExclamationTriangleIcon />
-        </Callout.Icon>
-        <Callout.Text>
+    <LCard>
+      <LAlert tone="crit" className="flex items-start gap-2">
+        <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+        <span>
           Couldn&rsquo;t load this client&rsquo;s costs. The figures are
           unavailable rather than zero. Try reloading the page.
-        </Callout.Text>
-      </Callout.Root>
-    </Card>
+        </span>
+      </LAlert>
+    </LCard>
+  );
+}
+
+/* ── Inline icon ───────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. Same shape as invoices/page.tsx's own WarningIcon. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

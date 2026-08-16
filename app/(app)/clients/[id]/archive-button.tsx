@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { AlertDialog, Box, Button, Flex, Text } from "@/components/ui";
+import { LButton } from "@/components/ledger";
+import { LConfirmDialog } from "@/components/ledger/dialog";
 import { setClientArchived } from "../actions";
 
 /**
@@ -49,56 +50,42 @@ export default function ArchiveButton({
     });
   }
 
+  if (archived) {
+    return (
+      <LButton
+        ref={buttonRef}
+        variant="outline"
+        disabled={pending}
+        onClick={() => setArchived(false)}
+      >
+        {pending ? "Working…" : "Restore client"}
+      </LButton>
+    );
+  }
+
   return (
-    <Box>
-      {archived ? (
-        <Button
-          ref={buttonRef}
-          variant="outline"
-          disabled={pending}
-          onClick={() => setArchived(false)}
-        >
-          {pending ? "Working…" : "Restore client"}
-        </Button>
-      ) : (
-        <AlertDialog.Root open={open} onOpenChange={setOpen}>
-          <AlertDialog.Trigger>
-            <Button ref={buttonRef} variant="outline" color="red">
-              Archive client
-            </Button>
-          </AlertDialog.Trigger>
-          <AlertDialog.Content maxWidth="420px">
-            <AlertDialog.Title>Archive this client?</AlertDialog.Title>
-            <AlertDialog.Description size="2">
+    <>
+      <LButton ref={buttonRef} variant="outline" onClick={() => setOpen(true)}>
+        Archive client
+      </LButton>
+      <LConfirmDialog
+        open={open}
+        onOpenChange={setOpen}
+        title="Archive this client?"
+        description={
+          <>
+            <p>
               Their trips and invoices are untouched. They just won&rsquo;t
               appear when you pick a client for new work. You can restore
               them any time.
-            </AlertDialog.Description>
-            {error ? (
-              <Box mt="2">
-                <Text size="1" color="red" role="alert">
-                  {error}
-                </Text>
-              </Box>
-            ) : null}
-            <Flex gap="3" mt="4" justify="end">
-              <AlertDialog.Cancel>
-                <Button variant="soft" color="gray" disabled={pending}>
-                  Cancel
-                </Button>
-              </AlertDialog.Cancel>
-              <Button
-                variant="solid"
-                color="red"
-                disabled={pending}
-                onClick={() => setArchived(true)}
-              >
-                {pending ? "Working…" : "Archive client"}
-              </Button>
-            </Flex>
-          </AlertDialog.Content>
-        </AlertDialog.Root>
-      )}
-    </Box>
+            </p>
+            {error ? <p className="mt-2 font-medium text-crit" role="alert">{error}</p> : null}
+          </>
+        }
+        confirmLabel="Archive client"
+        onConfirm={() => setArchived(true)}
+        pending={pending}
+      />
+    </>
   );
 }

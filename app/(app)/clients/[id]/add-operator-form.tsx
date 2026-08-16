@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Button, Callout, Flex, Select, Text, TextField } from "@/components/ui";
+import { LAlert, lButtonClass } from "@/components/ledger";
+import { LInput, LSelect } from "@/components/ledger/forms";
 import { COUNTERPARTY_COPY } from "@/lib/counterparty";
 import {
   CLIENT_OPERATING_RULES,
@@ -43,53 +44,51 @@ export default function AddOperatorForm() {
 
   return (
     <form action={formAction}>
-      <Text as="div" size="2" weight="medium" mb="1">
+      <div className="mb-1 text-body-s font-medium text-ink">
         {COUNTERPARTY_COPY.addOperatorHeading}
-      </Text>
-      <Text as="div" size="1" color="gray" mb="2">
+      </div>
+      <div className="mb-2 text-caption text-ink-3">
         {COUNTERPARTY_COPY.addOperatorHelp}
-      </Text>
+      </div>
       {state.error ? (
-        <Callout.Root color="red" size="1" mb="2">
-          <Callout.Text>{state.error}</Callout.Text>
-        </Callout.Root>
+        <LAlert tone="crit" className="mb-2">
+          {state.error}
+        </LAlert>
       ) : null}
-      <Flex gap="2" align="end" wrap="wrap">
-        <Flex direction="column" gap="1">
-          <Text as="label" size="1" color="gray" htmlFor="new-operator-name">
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex flex-col gap-1">
+          <label className="text-caption text-ink-3" htmlFor="new-operator-name">
             Operator name
-          </Text>
-          <TextField.Root
+          </label>
+          <LInput
             id="new-operator-name"
             name="name"
             required
             defaultValue={state.name ?? ""}
             placeholder="Sierra Air Charter"
           />
-        </Flex>
-        <Flex direction="column" gap="1">
-          <Text as="label" size="1" color="gray" id="new-operator-rule-label">
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-caption text-ink-3" id="new-operator-rule-label">
             Flown under
-          </Text>
-          <Select.Root
+          </span>
+          <LSelect
+            aria-labelledby="new-operator-rule-label"
             value={operatingRule}
-            onValueChange={(v) => setOperatingRule(v as ClientOperatingRule)}
+            onChange={(e) => setOperatingRule(e.target.value as ClientOperatingRule)}
           >
-            <Select.Trigger aria-labelledby="new-operator-rule-label" />
-            <Select.Content>
-              {CLIENT_OPERATING_RULES.map((option) => (
-                <Select.Item key={option.value} value={option.value}>
-                  {option.label}
-                </Select.Item>
-              ))}
-            </Select.Content>
-          </Select.Root>
+            {CLIENT_OPERATING_RULES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </LSelect>
           <input type="hidden" name="operating_rule" value={operatingRule} />
-        </Flex>
-        <Button type="submit" variant="soft" disabled={pending}>
+        </div>
+        <button type="submit" disabled={pending} className={lButtonClass({ variant: "outline" })}>
           {pending ? "Adding..." : COUNTERPARTY_COPY.addOperatorSubmit}
-        </Button>
-      </Flex>
+        </button>
+      </div>
     </form>
   );
 }

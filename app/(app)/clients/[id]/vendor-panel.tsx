@@ -1,17 +1,9 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import {
-  AlertDialog,
-  Button,
-  Callout,
-  Card,
-  Flex,
-  Heading,
-  Select,
-  Text,
-  TextField,
-} from "@/components/ui";
+import { LAlert, LCard, lButtonClass } from "@/components/ledger";
+import { LInput, LSelect } from "@/components/ledger/forms";
+import { LConfirmDialog } from "@/components/ledger/dialog";
 import { formatDate } from "@/lib/format";
 import { createVendorLink, revokeVendorLink, type VendorLinkState } from "../vendor-actions";
 
@@ -60,6 +52,7 @@ export default function VendorPanel({
   const [revokeState, revokeAction, revoking] = useActionState(revokeVendorLink, initial);
   const [days, setDays] = useState("90");
   const [copied, setCopied] = useState(false);
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
 
   const pending = creating || revoking;
 
@@ -96,36 +89,32 @@ export default function VendorPanel({
   }, [token]);
 
   return (
-    <Card size="3">
-      <Heading size="4" mb="1">
-        Vendor page for {clientName}
-      </Heading>
-      <Text as="p" size="2" color="gray" mb="3">
+    <LCard>
+      <h2 className="mb-1 text-h3 font-semibold">Vendor page for {clientName}</h2>
+      <p className="mb-3 text-body-s text-ink-2">
         One link for their accounts-payable desk: open invoices, total
         outstanding, payment history, and their paperwork if you&rsquo;ve
         shared any. It expires on its own, and you can revoke it any time.
-      </Text>
+      </p>
 
       {existingLoadError && !token ? (
-        <Callout.Root color="red" size="1" mb="3">
-          <Callout.Text>
-            Couldn&rsquo;t check whether a live vendor page already exists for{" "}
-            {clientName}. This is not a statement that none is out. Reload
-            before creating a new one.
-          </Callout.Text>
-        </Callout.Root>
+        <LAlert tone="crit" className="mb-3">
+          Couldn&rsquo;t check whether a live vendor page already exists for{" "}
+          {clientName}. This is not a statement that none is out. Reload
+          before creating a new one.
+        </LAlert>
       ) : null}
 
       {url ? (
-        <Flex direction="column" gap="2">
-          <Text size="2" weight="medium">
+        <div className="flex flex-col gap-2">
+          <span className="text-body-s font-medium text-ink">
             {state.token ? "Here's the link. Send it to their AP desk." : "The live link"}
-          </Text>
-          <Flex gap="2" wrap="wrap" align="center">
-            <TextField.Root value={url} readOnly aria-label="Vendor page link" style={undefined} />
-            <Button
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <LInput value={url} readOnly aria-label="Vendor page link" />
+            <button
               type="button"
-              variant="soft"
+              className={lButtonClass({ variant: "outline" })}
               onClick={() => {
                 void navigator.clipboard?.writeText(url).then(
                   () => setCopied(true),
@@ -134,16 +123,16 @@ export default function VendorPanel({
               }}
             >
               {copied ? "Copied" : "Copy"}
-            </Button>
-          </Flex>
+            </button>
+          </div>
           {existing?.expiresAt ? (
-            <Text size="1" color="gray">
+            <p className="text-caption text-ink-3">
               {`Stops working ${existing.expiresAt}. Replacing the link makes the old one dead immediately.`}
-            </Text>
+            </p>
           ) : null}
           {/* Same honest ceiling as share-panel.tsx: fetched while valid,
               not "your client read it". */}
-          <Text as="div" size="1" color="gray">
+          <p className="text-caption text-ink-3">
             {lastViewed
               ? `Viewed ${formatDate(lastViewed)}${
                   firstViewed && formatDate(firstViewed) !== formatDate(lastViewed)
@@ -151,115 +140,111 @@ export default function VendorPanel({
                     : ""
                 }. Opening counts even if it was an email scanner, not their AP desk.`
               : "Not viewed yet."}
-          </Text>
+          </p>
 
-          <Flex gap="3" align="end" wrap="wrap" mt="2">
+          <div className="mt-2 flex flex-wrap items-end gap-3">
             <form action={formAction}>
               <input type="hidden" name="client_id" value={clientId} />
               <input type="hidden" name="days_valid" value={days} />
-              <Flex gap="3" align="end" wrap="wrap">
-                <Flex direction="column" gap="1">
-                  <Text as="label" size="2" weight="medium" id="vendor-days-label">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="flex flex-col gap-1">
+                  <span id="vendor-days-label" className="text-body-s font-medium text-ink">
                     New link works for
-                  </Text>
-                  <Select.Root value={days} onValueChange={setDays}>
-                    <Select.Trigger aria-labelledby="vendor-days-label" />
-                    <Select.Content>
-                      {DAY_CHOICES.map((d) => (
-                        <Select.Item key={d} value={d}>
-                          {`${d} days`}
-                        </Select.Item>
-                      ))}
-                    </Select.Content>
-                  </Select.Root>
-                </Flex>
-                <Button type="submit" variant="outline" disabled={pending}>
+                  </span>
+                  <LSelect
+                    aria-labelledby="vendor-days-label"
+                    value={days}
+                    onChange={(e) => setDays(e.target.value)}
+                  >
+                    {DAY_CHOICES.map((d) => (
+                      <option key={d} value={d}>
+                        {`${d} days`}
+                      </option>
+                    ))}
+                  </LSelect>
+                </div>
+                <button type="submit" disabled={pending} className={lButtonClass({ variant: "outline" })}>
                   {creating ? "Replacing…" : "Replace the link"}
-                </Button>
-              </Flex>
+                </button>
+              </div>
             </form>
 
             {/* CONFIRMED, same reasoning as PacketPanel's Revoke: this
                 breaks a link a pilot may have already emailed to a client's
                 AP desk, with no warning on their end that it's about to
                 404. */}
-            <AlertDialog.Root>
-              <AlertDialog.Trigger>
-                <Button type="button" variant="ghost" size="2" color="red" disabled={pending}>
-                  {revoking ? "Revoking…" : "Revoke this link"}
-                </Button>
-              </AlertDialog.Trigger>
-              <AlertDialog.Content maxWidth="420px">
-                <AlertDialog.Title>Revoke this vendor page?</AlertDialog.Title>
-                <AlertDialog.Description size="2">
-                  The link stops working immediately. If their AP desk has it
-                  bookmarked or in their email, it will 404 for them. Create
-                  a new one if they still need it.
-                </AlertDialog.Description>
-                <Flex gap="3" mt="4" justify="end">
-                  <AlertDialog.Cancel>
-                    <Button variant="soft" color="gray">
-                      Cancel
-                    </Button>
-                  </AlertDialog.Cancel>
-                  <AlertDialog.Action>
-                    <form action={revokeAction}>
-                      <input type="hidden" name="client_id" value={clientId} />
-                      <input type="hidden" name="revoking_token" value={token ?? ""} />
-                      <Button type="submit" variant="solid" color="red" disabled={pending}>
-                        Revoke
-                      </Button>
-                    </form>
-                  </AlertDialog.Action>
-                </Flex>
-              </AlertDialog.Content>
-            </AlertDialog.Root>
-          </Flex>
-        </Flex>
+            <button
+              type="button"
+              disabled={pending}
+              className={lButtonClass({ variant: "quiet", className: "text-crit" })}
+              onClick={() => setConfirmRevoke(true)}
+            >
+              {revoking ? "Revoking…" : "Revoke this link"}
+            </button>
+            <LConfirmDialog
+              open={confirmRevoke}
+              onOpenChange={setConfirmRevoke}
+              title="Revoke this vendor page?"
+              description="The link stops working immediately. If their AP desk has it bookmarked or in their email, it will 404 for them. Create a new one if they still need it."
+              confirmLabel="Revoke"
+              pending={revoking}
+              onConfirm={() => {
+                // Same field values a submitted <form action={revokeAction}>
+                // would have posted — dispatched directly since the
+                // confirm now lives in a dialog rather than wrapping its
+                // own <form>. See packet-panel.tsx's identical shape.
+                const formData = new FormData();
+                formData.set("client_id", clientId);
+                formData.set("revoking_token", token ?? "");
+                revokeAction(formData);
+                setConfirmRevoke(false);
+              }}
+            />
+          </div>
+        </div>
       ) : (
-        <Flex direction="column" gap="2" align="start">
+        <div className="flex flex-col items-start gap-2">
           {revokeState.revoked ? (
-            <Text size="1" color="gray">
-              The previous link was revoked.
-            </Text>
+            <p className="text-caption text-ink-3">The previous link was revoked.</p>
           ) : null}
           <form action={formAction}>
             <input type="hidden" name="client_id" value={clientId} />
             <input type="hidden" name="days_valid" value={days} />
-            <Flex gap="3" align="end" wrap="wrap">
-              <Flex direction="column" gap="1">
-                <Text as="label" size="2" weight="medium" id="vendor-days-label-new">
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex flex-col gap-1">
+                <span id="vendor-days-label-new" className="text-body-s font-medium text-ink">
                   Link works for
-                </Text>
-                <Select.Root value={days} onValueChange={setDays}>
-                  <Select.Trigger aria-labelledby="vendor-days-label-new" />
-                  <Select.Content>
-                    {DAY_CHOICES.map((d) => (
-                      <Select.Item key={d} value={d}>
-                        {`${d} days`}
-                      </Select.Item>
-                    ))}
-                  </Select.Content>
-                </Select.Root>
-              </Flex>
-              <Button type="submit" disabled={pending}>
+                </span>
+                <LSelect
+                  aria-labelledby="vendor-days-label-new"
+                  value={days}
+                  onChange={(e) => setDays(e.target.value)}
+                >
+                  {DAY_CHOICES.map((d) => (
+                    <option key={d} value={d}>
+                      {`${d} days`}
+                    </option>
+                  ))}
+                </LSelect>
+              </div>
+              <button type="submit" disabled={pending} className={lButtonClass({ variant: "primary" })}>
                 {creating ? "Creating…" : "Create the link"}
-              </Button>
-            </Flex>
+              </button>
+            </div>
           </form>
-        </Flex>
+        </div>
       )}
 
       {state.error ? (
-        <Callout.Root color="red" mt="3" size="1">
-          <Callout.Text>{state.error}</Callout.Text>
-        </Callout.Root>
+        <LAlert tone="crit" className="mt-3">
+          {state.error}
+        </LAlert>
       ) : null}
       {revokeState.error && (revokeState.revokedToken ?? token) === token ? (
-        <Callout.Root color="red" mt="3" size="1">
-          <Callout.Text>{revokeState.error}</Callout.Text>
-        </Callout.Root>
+        <LAlert tone="crit" className="mt-3">
+          {revokeState.error}
+        </LAlert>
       ) : null}
-    </Card>
+    </LCard>
   );
 }

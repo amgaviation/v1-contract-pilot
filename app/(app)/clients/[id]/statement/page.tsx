@@ -1,25 +1,14 @@
 import NextLink from "next/link";
 import { notFound } from "next/navigation";
-import {
-  Badge,
-  Box,
-  Button,
-  Callout,
-  Card,
-  Flex,
-  Grid,
-  Link as RadixLink,
-  Table,
-  Text,
-  TextField,
-} from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { LAlert, LCard, LPill, lButtonClass, LTable, LTd, LTh } from "@/components/ledger";
+import { LInput } from "@/components/ledger/forms";
+import { LPageShell } from "@/components/ledger/page-shell";
+import { cn } from "@/lib/ledger/cn";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
-import PageShell from "../../../page-shell";
 import { buildClientStatement, STATEMENT_LIST_LIMIT } from "./queries";
 import {
   addressLines,
@@ -43,15 +32,17 @@ export const metadata = { title: "Statement" };
  * invoice_totals and invoices_overdue — the same sources the invoice
  * screens use — and refuses on any failed read. The three states this
  * screen can render are deliberately distinct:
- *   - a red callout      → a read FAILED; nothing here can be trusted
+ *   - a red alert       → a read FAILED; nothing here can be trusted
  *   - "No invoices…"     → the reads succeeded and the period is empty
  *   - the statement      → the reads succeeded and there are rows
  */
 
-const STATUS_COLOR: Record<StatementRow["status"], "blue" | "amber" | "green"> = {
-  sent: "blue",
-  partial: "amber",
-  paid: "green",
+// Same crit/warn/good/neutral vocabulary as every other migrated screen's
+// own dictionary (invoices/page.tsx's statusToPillTone).
+const STATUS_TONE: Record<StatementRow["status"], "accent" | "warn" | "good"> = {
+  sent: "accent",
+  partial: "warn",
+  paid: "good",
 };
 
 export default async function ClientStatementPage({
@@ -84,7 +75,7 @@ export default async function ClientStatementPage({
   const printHref = `/clients/${id}/statement/print?from=${period.from}&to=${period.to}`;
 
   return (
-    <PageShell
+    <LPageShell
       title="Statement"
       subtitle={
         statement
@@ -92,291 +83,279 @@ export default async function ClientStatementPage({
           : "Couldn't load this statement. See below."
       }
       action={
-        <Flex gap="2" wrap="wrap">
-          <Button asChild variant="soft">
-            <NextLink href={`/clients/${id}`}>Back to client</NextLink>
-          </Button>
+        <>
+          <NextLink href={`/clients/${id}`} className={lButtonClass({ variant: "outline" })}>
+            Back to client
+          </NextLink>
           {statement && !statement.truncated ? (
-            <Button asChild>
-              {/* A standalone print-quality document (see print/route.ts) —
-                  opened in its own tab so the pilot can print or save it as
-                  a PDF from the browser without losing this screen. */}
-              <a href={printHref} target="_blank" rel="noopener">
-                Print / save as PDF
-              </a>
-            </Button>
+            // A standalone print-quality document (see print/route.ts) —
+            // opened in its own tab so the pilot can print or save it as
+            // a PDF from the browser without losing this screen.
+            <a href={printHref} target="_blank" rel="noopener" className={lButtonClass({ variant: "primary" })}>
+              Print / save as PDF
+            </a>
           ) : null}
-        </Flex>
+        </>
       }
     >
       {/* Period controls: two presets plus an explicit range. Links and a
           GET form, no client component — the server re-resolves ?from=/?to=
           on every request, so the URL is shareable and the back button
           works. */}
-      <Flex gap="2" wrap="wrap" align="center">
-        <Button asChild size="2" variant={isThisYear ? "solid" : "soft"}>
-          <NextLink href={`/clients/${id}/statement`}>This year</NextLink>
-        </Button>
-        <Button asChild size="2" variant={isLastYear ? "solid" : "soft"}>
-          <NextLink
-            href={`/clients/${id}/statement?from=${lastYear.from}&to=${lastYear.to}`}
-          >
-            Last year
-          </NextLink>
-        </Button>
-        <form method="get">
-          <Flex gap="2" align="center" wrap="wrap">
-            <TextField.Root
-              type="date"
-              name="from"
-              defaultValue={period.from}
-              aria-label="Statement period start"
-            />
-            <Text size="1" color="gray">
-              to
-            </Text>
-            <TextField.Root
-              type="date"
-              name="to"
-              defaultValue={period.to}
-              aria-label="Statement period end"
-            />
-            <Button type="submit" size="1" variant="soft">
-              Apply
-            </Button>
-          </Flex>
+      <div className="flex flex-wrap items-center gap-2">
+        <NextLink
+          href={`/clients/${id}/statement`}
+          className={lButtonClass({ variant: isThisYear ? "primary" : "outline", size: "sm" })}
+        >
+          This year
+        </NextLink>
+        <NextLink
+          href={`/clients/${id}/statement?from=${lastYear.from}&to=${lastYear.to}`}
+          className={lButtonClass({ variant: isLastYear ? "primary" : "outline", size: "sm" })}
+        >
+          Last year
+        </NextLink>
+        <form method="get" className="flex flex-wrap items-center gap-2">
+          <LInput
+            type="date"
+            name="from"
+            defaultValue={period.from}
+            aria-label="Statement period start"
+            className="w-auto"
+          />
+          <span className="text-caption text-ink-3">to</span>
+          <LInput
+            type="date"
+            name="to"
+            defaultValue={period.to}
+            aria-label="Statement period end"
+            className="w-auto"
+          />
+          <button type="submit" className={lButtonClass({ variant: "outline", size: "sm" })}>
+            Apply
+          </button>
         </form>
-      </Flex>
+      </div>
 
       {!result.ok ? (
         // A failed read renders a FAILURE, never an empty statement — a
         // client statement showing nothing is a claim that nothing is owed,
         // and this screen has no basis for that claim right now. See
         // lib/supabase/rows.ts for the house reasoning.
-        <Card size="3">
-          <Callout.Root color="red">
-            <Callout.Icon>
-              <ExclamationTriangleIcon />
-            </Callout.Icon>
-            <Callout.Text>
+        <LCard>
+          <LAlert tone="crit" className="flex items-start gap-2">
+            <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+            <span>
               {friendlyDbError(result.error, "client-statement.load")} This
               statement couldn&rsquo;t be assembled, so nothing is shown.
               A partial statement would misstate what&rsquo;s outstanding.
-            </Callout.Text>
-          </Callout.Root>
-        </Card>
+            </span>
+          </LAlert>
+        </LCard>
       ) : statement ? (
         <>
           {statement.truncated ? (
-            <Callout.Root color="amber">
-              <Callout.Icon>
-                <ExclamationTriangleIcon />
-              </Callout.Icon>
-              <Callout.Text>
+            <LAlert tone="warn" className="flex items-start gap-2">
+              <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+              <span>
                 This period has more than {STATEMENT_LIST_LIMIT} invoices, so
                 the figures below cover only the first{" "}
                 {STATEMENT_LIST_LIMIT} and the totals are partial. Narrow the
                 date range. The print view refuses a partial statement
                 outright.
-              </Callout.Text>
-            </Callout.Root>
+              </span>
+            </LAlert>
           ) : null}
 
-          <Card size="3">
+          <LCard>
             {/* The two parties — the same fields the invoice PDF renders
                 (accounts.legal_name + address; clients.name/contact/address),
                 so the statement and the invoices it summarizes name the
                 same people the same way. */}
-            <Grid columns={{ initial: "1", sm: "2" }} gap="4" mb="4">
-              <Box>
-                <Text as="div" size="1" color="gray" weight="medium">
-                  From
-                </Text>
-                <Text as="div" size="2" weight="bold">
-                  {account.legal_name}
-                </Text>
+            <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <div className="text-caption font-medium text-ink-3">From</div>
+                <div className="font-bold text-ink">{account.legal_name}</div>
                 {addressLines(account).map((line, i) => (
-                  <Text as="div" size="2" color="gray" key={i}>
+                  <div key={i} className="text-body-s text-ink-2">
                     {line}
-                  </Text>
+                  </div>
                 ))}
-              </Box>
-              <Box>
-                <Text as="div" size="1" color="gray" weight="medium">
-                  Prepared for
-                </Text>
-                <Text as="div" size="2" weight="bold">
+              </div>
+              <div>
+                <div className="text-caption font-medium text-ink-3">Prepared for</div>
+                <div className="font-bold text-ink">
                   {statement.client.name}
                   {statement.clientArchived ? " (archived)" : ""}
-                </Text>
+                </div>
                 {statement.client.contact_name ? (
-                  <Text as="div" size="2" color="gray">
-                    {statement.client.contact_name}
-                  </Text>
+                  <div className="text-body-s text-ink-2">{statement.client.contact_name}</div>
                 ) : null}
                 {addressLines(statement.client).map((line, i) => (
-                  <Text as="div" size="2" color="gray" key={i}>
+                  <div key={i} className="text-body-s text-ink-2">
                     {line}
-                  </Text>
+                  </div>
                 ))}
-              </Box>
-            </Grid>
+              </div>
+            </div>
 
             {statement.rows.length === 0 ? (
               // The VALID empty statement — reached only after every read
               // succeeded, so this sentence is a verified fact, not a
               // failed query wearing good news.
-              <Flex direction="column" align="center" gap="2" py="6">
-                <Text size="4" weight="bold">
-                  No invoices issued this period
-                </Text>
-                <Text size="2" color="gray" align="center">
+              <div className="flex flex-col items-center gap-2 py-6 text-center">
+                <div className="text-h2 font-bold">No invoices issued this period</div>
+                <p className="text-body-s text-ink-3">
                   Nothing was issued to {statement.client.name} between{" "}
                   {formatDate(period.from)} and {formatDate(period.to)}.
                   Drafts and voided invoices are never part of a statement.
                   If you expected activity here, widen the date range.
-                </Text>
-              </Flex>
+                </p>
+              </div>
             ) : (
               <>
-                <Grid columns={{ initial: "1", sm: "3" }} gap="3" mb="4">
-                  <Flex direction="column" gap="1">
-                    <Text size="1" color="gray">
-                      Total invoiced
-                    </Text>
-                    <Text size="5" weight="bold" className="tnum">
+                <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-caption text-ink-3">Total invoiced</span>
+                    <span className="tnum-l text-figure font-bold tracking-tight">
                       {formatCents(statement.totals.invoicedCents)}
-                    </Text>
-                  </Flex>
-                  <Flex direction="column" gap="1">
-                    <Text size="1" color="gray">
-                      Paid to date
-                    </Text>
-                    <Text size="5" weight="bold" className="tnum">
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-caption text-ink-3">Paid to date</span>
+                    <span className="tnum-l text-figure font-bold tracking-tight">
                       {formatCents(statement.totals.paidCents)}
-                    </Text>
-                  </Flex>
-                  <Flex direction="column" gap="1">
-                    <Text size="1" color="gray">
-                      Balance outstanding
-                    </Text>
-                    <Text
-                      size="5"
-                      weight="bold"
-                      className="tnum"
-                      color={statement.totals.outstandingCents > 0 ? "amber" : "gray"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-caption text-ink-3">Balance outstanding</span>
+                    <span
+                      className={cn(
+                        "tnum-l text-figure font-bold tracking-tight",
+                        statement.totals.outstandingCents > 0 ? "text-warn" : "text-ink-3"
+                      )}
                     >
                       {formatCents(statement.totals.outstandingCents)}
-                    </Text>
-                  </Flex>
-                </Grid>
+                    </span>
+                  </div>
+                </div>
 
-                <Table.Root variant="ghost">
-                  <Table.Header>
-                    <Table.Row>
-                      <Table.ColumnHeaderCell>Number</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell>Issued</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell>Due</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">
-                        Late
-                      </Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">
-                        Total
-                      </Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">
-                        Paid to date
-                      </Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">
-                        Balance due
-                      </Table.ColumnHeaderCell>
-                    </Table.Row>
-                  </Table.Header>
-                  <Table.Body>
+                <LTable>
+                  <caption>
+                    <span className="sr-only">Statement lines</span>
+                  </caption>
+                  <thead>
+                    <tr>
+                      <LTh>Number</LTh>
+                      <LTh>Issued</LTh>
+                      <LTh>Due</LTh>
+                      <LTh numeric>Late</LTh>
+                      <LTh>Status</LTh>
+                      <LTh numeric>Total</LTh>
+                      <LTh numeric>Paid to date</LTh>
+                      <LTh numeric>Balance due</LTh>
+                    </tr>
+                  </thead>
+                  <tbody>
                     {statement.rows.map((row) => {
                       const overdue = row.daysOverdue !== null;
                       return (
-                        <Table.Row key={row.id}>
-                          <Table.RowHeaderCell>
-                            <RadixLink asChild weight="medium">
-                              <NextLink href={`/invoices/${row.id}`}>
-                                {row.invoiceNumber ?? "Invoice"}
-                              </NextLink>
-                            </RadixLink>
-                          </Table.RowHeaderCell>
-                          <Table.Cell>
-                            <Text color="gray">{formatDate(row.issuedOn)}</Text>
-                          </Table.Cell>
-                          <Table.Cell>
-                            <Text
-                              color={overdue ? "red" : "gray"}
-                              weight={overdue ? "medium" : "regular"}
-                            >
+                        <tr key={row.id}>
+                          <th
+                            scope="row"
+                            className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                          >
+                            <NextLink href={`/invoices/${row.id}`} className="text-accent hover:underline">
+                              {row.invoiceNumber ?? "Invoice"}
+                            </NextLink>
+                          </th>
+                          <LTd>
+                            <span className="text-ink-2">{formatDate(row.issuedOn)}</span>
+                          </LTd>
+                          <LTd>
+                            <span className={overdue ? "font-medium text-crit" : "text-ink-2"}>
                               {formatDate(row.dueOn)}
-                            </Text>
-                          </Table.Cell>
-                          <Table.Cell justify="end">
+                            </span>
+                          </LTd>
+                          <LTd numeric>
                             {/* Days past due from invoices_overdue — the
                                 same figure the invoices screen quotes, so
                                 a pilot chasing "that one's 74 days out"
                                 reads the identical number here. */}
                             {overdue ? (
-                              <Text color="red" weight="medium" className="tnum">
-                                {`${row.daysOverdue}d`}
-                              </Text>
+                              <span className="font-medium text-crit">{`${row.daysOverdue}d`}</span>
                             ) : (
-                              <Text color="gray">—</Text>
+                              <span className="text-ink-3">—</span>
                             )}
-                          </Table.Cell>
-                          <Table.Cell>
+                          </LTd>
+                          <LTd>
                             {overdue ? (
-                              <Badge color="red">Overdue</Badge>
+                              <LPill tone="crit">Overdue</LPill>
                             ) : (
-                              <Badge color={STATUS_COLOR[row.status]}>
+                              <LPill tone={STATUS_TONE[row.status]}>
                                 {STATEMENT_STATUS_LABEL[row.status]}
-                              </Badge>
+                              </LPill>
                             )}
-                          </Table.Cell>
-                          <Table.Cell justify="end">
-                            <Text weight="medium" className="tnum">
-                              {formatCents(row.totalCents)}
-                            </Text>
-                          </Table.Cell>
-                          <Table.Cell justify="end">
-                            <Text color="gray" className="tnum">
-                              {formatCents(row.paidCents)}
-                            </Text>
-                          </Table.Cell>
-                          <Table.Cell justify="end">
-                            <Text
-                              weight="medium"
-                              color={row.balanceCents > 0 ? "amber" : "gray"}
-                              className="tnum"
+                          </LTd>
+                          <LTd numeric>
+                            <span className="font-medium">{formatCents(row.totalCents)}</span>
+                          </LTd>
+                          <LTd numeric>
+                            <span className="text-ink-2">{formatCents(row.paidCents)}</span>
+                          </LTd>
+                          <LTd numeric>
+                            <span
+                              className={cn(
+                                "font-medium",
+                                row.balanceCents > 0 ? "text-warn" : "text-ink-2"
+                              )}
                             >
                               {formatCents(row.balanceCents)}
-                            </Text>
-                          </Table.Cell>
-                        </Table.Row>
+                            </span>
+                          </LTd>
+                        </tr>
                       );
                     })}
-                  </Table.Body>
-                </Table.Root>
+                  </tbody>
+                </LTable>
               </>
             )}
 
-            <Box mt="4">
-              <Text as="p" size="1" color="gray">
-                Covers invoices issued {formatDate(period.from)} to{" "}
-                {formatDate(period.to)} (sent, partially paid, or paid).
-                Drafts and voided invoices are excluded. &ldquo;Paid to
-                date&rdquo; reflects every payment recorded through{" "}
-                {formatDate(today)}, including any received after the period
-                ended.
-              </Text>
-            </Box>
-          </Card>
+            <p className="mt-4 text-caption text-ink-3">
+              Covers invoices issued {formatDate(period.from)} to{" "}
+              {formatDate(period.to)} (sent, partially paid, or paid).
+              Drafts and voided invoices are excluded. &ldquo;Paid to
+              date&rdquo; reflects every payment recorded through{" "}
+              {formatDate(today)}, including any received after the period
+              ended.
+            </p>
+          </LCard>
         </>
       ) : null}
-    </PageShell>
+    </LPageShell>
+  );
+}
+
+/* ── Inline icon ───────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }
