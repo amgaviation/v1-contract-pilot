@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { LAlert, LCard, lButtonClass } from "@/components/ledger";
-import { Logo } from "@/components/ui/logo";
+import { Logo } from "@/components/logo";
 import { getStorefrontSession } from "@/lib/sample-connect/checkout";
 import { formatAmount } from "@/lib/sample-connect/products";
 

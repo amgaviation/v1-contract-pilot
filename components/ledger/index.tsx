@@ -272,6 +272,22 @@ export function LSeparator({ className }: { className?: string }) {
 /**
  * Same scroll-container discipline components/ds/surface.tsx proved: the
  * wrapper owns overflow-x so a wide table scrolls itself, never the page.
+ *
+ * `relative` on the wrapper is load-bearing, not decorative: a `<caption>`'s
+ * visually-hidden accessible name (`<span className="sr-only">`, the
+ * pattern every LTable call site uses) is `position: absolute` with no
+ * offsets, so its layout position falls back to its "static position" —
+ * roughly the horizontal center of the (potentially very wide) `<table>`
+ * it sits in. With no positioned ancestor, that containing block resolves
+ * all the way up to the initial containing block, which escapes this
+ * wrapper's own `overflow-x-auto` clip entirely: the span paints at the
+ * table's true, unclipped center, not the visually scrolled position,
+ * pushing `document.documentElement.scrollWidth` out with it even though
+ * nothing visible moved. `relative` makes this wrapper the span's
+ * containing block, so its own `overflow-x-auto` clips it like everything
+ * else inside — a one-line fix with no visual effect (no offsets are ever
+ * set), caught by scripts/layout-verify.mjs the first time an LTable
+ * narrower than its content rendered somewhere the script could see it.
  */
 export function LTable({
   className,
@@ -281,7 +297,7 @@ export function LTable({
   children: React.ReactNode;
 }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto">
       <table className={cn("w-full border-collapse text-body-s", className)}>
         {children}
       </table>
