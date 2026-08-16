@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Badge, Button, Card, Flex, Heading, Table, Text } from "@/components/ui";
+import { LButton, LCard, LPill, LTable, LTd, LTh } from "@/components/ledger";
 import { formatDate } from "@/lib/format";
 import AircraftForm from "./aircraft-form";
 import { createAircraft, updateAircraft, setAircraftArchived } from "./actions";
@@ -80,53 +80,48 @@ export default function FleetPanel({
   }
 
   return (
-    <Flex direction="column" gap="4">
+    <div className="flex flex-col gap-4">
       {suggestions.length > 0 ? (
-        <Card>
-          <Flex direction="column" gap="3" p="1">
-            <Flex direction="column" gap="1">
-              <Heading as="h2" size="4">
-                {moreSuggestions
-                  ? `${suggestions.length} of the tails you've flown but haven't added`
-                  : `${suggestions.length} tail${suggestions.length === 1 ? "" : "s"} you've flown but haven't added`}
-              </Heading>
-            </Flex>
-            <Flex gap="2" wrap="wrap">
+        <LCard>
+          <div className="flex flex-col gap-3">
+            <h2 className="text-h3 font-semibold">
+              {moreSuggestions
+                ? `${suggestions.length} of the tails you've flown but haven't added`
+                : `${suggestions.length} tail${suggestions.length === 1 ? "" : "s"} you've flown but haven't added`}
+            </h2>
+            <div className="flex flex-wrap gap-2">
               {suggestions.map((suggestion) => (
-                <Button
+                <LButton
                   key={suggestion.tailKey}
                   type="button"
                   variant="outline"
+                  className="h-auto flex-col items-start gap-0 py-2"
                   onClick={() => openFromSuggestion(suggestion)}
                 >
-                  <Flex direction="column" align="start" gap="0">
-                    <Text size="2" weight="medium">
-                      {suggestion.aircraftIdent}
-                    </Text>
-                    <Text size="1" color="gray">
-                      {`${hours(suggestion.totalTime)} hrs · ${suggestion.entryCount} entr${
-                        suggestion.entryCount === 1 ? "y" : "ies"
-                      }`}
-                    </Text>
-                  </Flex>
-                </Button>
+                  <span className="text-body-s font-medium">{suggestion.aircraftIdent}</span>
+                  <span className="text-caption text-ink-3">
+                    {`${hours(suggestion.totalTime)} hrs · ${suggestion.entryCount} entr${
+                      suggestion.entryCount === 1 ? "y" : "ies"
+                    }`}
+                  </span>
+                </LButton>
               ))}
-            </Flex>
-          </Flex>
-        </Card>
+            </div>
+          </div>
+        </LCard>
       ) : null}
 
       {open === "new" ? (
-        <Card>
-          <Flex direction="column" gap="3" p="1">
-            <Flex justify="between" align="center" gap="3">
-              <Heading as="h2" size="4">
+        <LCard>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-h3 font-semibold">
                 {prefill ? `Add ${prefill.aircraftIdent}` : "Add an aircraft"}
-              </Heading>
-              <Button type="button" variant="ghost" size="1" onClick={() => setOpen(null)}>
+              </h2>
+              <LButton type="button" variant="quiet" size="sm" onClick={() => setOpen(null)}>
                 Cancel
-              </Button>
-            </Flex>
+              </LButton>
+            </div>
             <AircraftForm
               // Remounts when the prefill changes so the uncontrolled
               // fields pick up the new defaults — without the key, clicking
@@ -157,108 +152,100 @@ export default function FleetPanel({
               }
               onDone={() => setOpen(null)}
             />
-          </Flex>
-        </Card>
+          </div>
+        </LCard>
       ) : (
-        <Flex>
-          <Button type="button" onClick={openBlank}>
+        <div>
+          <LButton type="button" onClick={openBlank}>
             Add an aircraft
-          </Button>
-        </Flex>
+          </LButton>
+        </div>
       )}
 
-      <Card>
+      <LCard>
         {active.length === 0 && archived.length === 0 ? (
-          <Flex direction="column" gap="2" p="3" align="center">
-            <Text size="2" weight="medium">
-              No aircraft yet.
-            </Text>
-            <Text size="2" color="gray" align="center">
+          <div className="flex flex-col items-center gap-2 py-3 text-center">
+            <p className="text-body-s font-medium text-ink">No aircraft yet.</p>
+            <p className="text-body-s text-ink-2">
               Add the airframes you fly and your logbook starts answering &ldquo;how much
               time do you have in type?&rdquo; That&rsquo;s the question every insurance
               pilot-history form and every chief pilot asks.
-            </Text>
-          </Flex>
+            </p>
+          </div>
         ) : (
-          <Table.Root variant="ghost">
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Registration</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Type</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell justify="end">Hours</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell justify="end">PIC</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Last flown</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell />
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
+          <LTable>
+            <caption>
+              <span className="sr-only">Your aircraft</span>
+            </caption>
+            <thead>
+              <tr>
+                <LTh>Registration</LTh>
+                <LTh>Type</LTh>
+                <LTh numeric>Hours</LTh>
+                <LTh numeric>PIC</LTh>
+                <LTh>Last flown</LTh>
+                <LTh />
+              </tr>
+            </thead>
+            <tbody>
               {[...active, ...archived].map((item) => (
-                <Table.Row key={item.id}>
-                  <Table.RowHeaderCell>
-                    <Flex align="center" gap="2">
-                      <Text weight="medium">{item.tail_number}</Text>
-                      {item.archived_at ? (
-                        <Badge color="gray" variant="outline">
-                          Retired
-                        </Badge>
-                      ) : null}
+                <tr key={item.id}>
+                  <th
+                    scope="row"
+                    className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>{item.tail_number}</span>
+                      {item.archived_at ? <LPill tone="neutral">Retired</LPill> : null}
                       {item.gear === "tailwheel" ? (
-                        <Badge color="amber" variant="outline">
-                          {GEAR_LABEL.tailwheel}
-                        </Badge>
+                        <LPill tone="warn">{GEAR_LABEL.tailwheel}</LPill>
                       ) : null}
-                    </Flex>
-                  </Table.RowHeaderCell>
-                  <Table.Cell>
-                    <Flex direction="column">
-                      <Text>{item.type_rating ?? item.type_designator ?? "—"}</Text>
+                    </div>
+                  </th>
+                  <LTd>
+                    <div className="flex flex-col">
+                      <span>{item.type_rating ?? item.type_designator ?? "—"}</span>
                       {item.make_model ? (
-                        <Text size="1" color="gray">
-                          {item.make_model}
-                        </Text>
+                        <span className="text-caption text-ink-3">{item.make_model}</span>
                       ) : null}
-                    </Flex>
-                  </Table.Cell>
-                  <Table.Cell justify="end">
-                    <Flex direction="column" align="end">
-                      <Text className="tnum">
-                        {hoursUnavailable ? "—" : hours(item.totalTime)}
-                      </Text>
+                    </div>
+                  </LTd>
+                  <LTd numeric>
+                    <div className="flex flex-col items-end">
+                      <span>{hoursUnavailable ? "—" : hours(item.totalTime)}</span>
                       {/* Simulator hours are not aircraft hours and are
                           never added into the figure above — an
                           underwriter's form asks for them separately. Shown
                           here so they are not simply missing. */}
                       {!hoursUnavailable && item.simulatorTime > 0 ? (
-                        <Text size="1" color="gray" className="tnum">
+                        <span className="tnum-l text-caption text-ink-3">
                           {`+${hours(item.simulatorTime)} sim`}
-                        </Text>
+                        </span>
                       ) : null}
-                    </Flex>
-                  </Table.Cell>
-                  <Table.Cell justify="end">
-                    <Text color="gray" className="tnum">
-                      {hoursUnavailable ? "—" : hours(item.picTime)}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <Text color="gray">
+                    </div>
+                  </LTd>
+                  <LTd numeric>
+                    <span className="text-ink-2">{hoursUnavailable ? "—" : hours(item.picTime)}</span>
+                  </LTd>
+                  <LTd>
+                    <span className="text-ink-2">
                       {hoursUnavailable
                         ? "—"
                         : item.lastFlownOn
                           ? formatDate(item.lastFlownOn)
                           : "Not yet"}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell justify="end">
-                    <Flex gap="2" justify="end">
-                      <Button
+                    </span>
+                  </LTd>
+                  <LTd numeric>
+                    <div className="flex justify-end gap-2">
+                      <LButton
                         type="button"
-                        variant="ghost"
-                        size="1"
+                        variant="quiet"
+                        size="sm"
                         onClick={() => setOpen(open === item.id ? null : item.id)}
                       >
                         {open === item.id ? "Close" : "Edit"}
-                      </Button>
+                      </LButton>
                       <form action={setAircraftArchived}>
                         <input type="hidden" name="id" value={item.id} />
                         <input
@@ -266,32 +253,32 @@ export default function FleetPanel({
                           name="archived"
                           value={item.archived_at ? "false" : "true"}
                         />
-                        <Button type="submit" variant="ghost" size="1" color="gray">
+                        <LButton type="submit" variant="quiet" size="sm">
                           {item.archived_at ? "Bring back" : "Retire"}
-                        </Button>
+                        </LButton>
                       </form>
-                    </Flex>
-                  </Table.Cell>
-                </Table.Row>
+                    </div>
+                  </LTd>
+                </tr>
               ))}
-            </Table.Body>
-          </Table.Root>
+            </tbody>
+          </LTable>
         )}
-      </Card>
+      </LCard>
 
       {open && open !== "new"
         ? (() => {
             const editing = aircraft.find((a) => a.id === open);
             if (!editing) return null;
             return (
-              <Card>
-                <Flex direction="column" gap="3" p="1">
-                  <Flex justify="between" align="center" gap="3">
-                    <Heading as="h2" size="4">{`Edit ${editing.tail_number}`}</Heading>
-                    <Button type="button" variant="ghost" size="1" onClick={() => setOpen(null)}>
+              <LCard>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-h3 font-semibold">{`Edit ${editing.tail_number}`}</h2>
+                    <LButton type="button" variant="quiet" size="sm" onClick={() => setOpen(null)}>
                       Cancel
-                    </Button>
-                  </Flex>
+                    </LButton>
+                  </div>
                   <AircraftForm
                     key={editing.id}
                     action={updateAircraft}
@@ -299,16 +286,16 @@ export default function FleetPanel({
                     values={editing}
                     onDone={() => setOpen(null)}
                   />
-                  <Text size="1" color="gray">
+                  <p className="text-caption text-ink-3">
                     {`${editing.entryCount} logbook entr${
                       editing.entryCount === 1 ? "y" : "ies"
                     } are matched to this airframe. Correcting the registration re-matches them; there's no separate cleanup to do.`}
-                  </Text>
-                </Flex>
-              </Card>
+                  </p>
+                </div>
+              </LCard>
             );
           })()
         : null}
-    </Flex>
+    </div>
   );
 }

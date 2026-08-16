@@ -2,7 +2,8 @@
 
 import { useActionState, useEffect, useId, useState } from "react";
 import NextLink from "next/link";
-import { Button, Card, Checkbox, Flex, Grid, Heading, Select, Text, TextArea, TextField } from "@/components/ui";
+import { LCard, LButton, lButtonClass } from "@/components/ledger";
+import { LField, LInput, LSelect, LTextarea, LCheckbox } from "@/components/ledger/forms";
 import TailNumberField from "@/components/tail-number-field";
 import type { FleetOption } from "@/lib/fleet";
 import type { LogbookFormState } from "./actions";
@@ -61,9 +62,13 @@ const ROLES = [
 // was refused, which is the same answer with less machinery.
 const ROLE_NONE_LABEL = "No role (simulator session)";
 
-// Radix Select.Item forbids an empty-string value, so the "no selection"
-// options below use this sentinel and are translated back to "" before
-// the value reaches the form's actual field name.
+// Radix Select.Item forbade an empty-string value, so the "no selection"
+// options below used this sentinel and were translated back to "" before
+// the value reached the form's actual field name. LSelect is a real native
+// <select> (no such restriction), but the sentinel and its translation are
+// kept as-is here: the useState/useEffect wiring around it is this form's
+// submission logic (see the file's own note on the LDialog-era Select
+// workaround), not its skin, and HARD RULE 5 keeps that untouched.
 const NONE = "__none__";
 
 const SIMULATOR_DEVICES = [
@@ -124,13 +129,11 @@ export default function LogbookEntryForm({
    */
   fleet?: FleetOption[];
 }) {
-  // Select.Root never controls the native <select> Radix mounts for form
-  // submission (it always renders `defaultValue`, never `value` — see
-  // @radix-ui/react-select's SelectBubbleInput), so a React-19 post-action
-  // form reset silently reverts it to its mount-time option no matter what
-  // the pilot picked. We drop `name` off every Select.Root so it stops
-  // emitting that bubble input, and post the value from our own controlled
-  // hidden input instead, which React re-asserts after a reset.
+  // Kept controlled + a separate hidden input for the same reason the
+  // pre-Ledger form used one for Select.Root: a React-19 post-action form
+  // reset reverts every UNCONTROLLED field to its mount-time value, and the
+  // one thing that survives that reset is a value React itself re-asserts
+  // from state on every render — a controlled hidden input.
   async function wrappedAction(prevState: LogbookFormState, formData: FormData) {
     for (const key of ["simulator_device_type", "approach_type", "approach_condition"]) {
       if (formData.get(key) === NONE) formData.set(key, "");
@@ -161,12 +164,12 @@ export default function LogbookEntryForm({
   //
   // On a fresh /logbook/new (no values.id — there is no stored row yet),
   // NONE is the wrong seed too: initialSelect("role") turns the absent
-  // value into NONE, which matches Select.Item's NONE option and made
-  // Radix render its label ("No role — simulator session") as if it were
-  // already chosen — the product's most-used capture screen opening with
-  // the role field apparently answered. Seed "" instead so nothing is
-  // preselected; NONE stays the seed only when editing an existing row
-  // that is genuinely roleless (a wholly-simulator entry).
+  // value into NONE, which matches the NONE option and would render its
+  // label ("No role — simulator session") as if it were already chosen —
+  // the product's most-used capture screen opening with the role field
+  // apparently answered. Seed "" instead so nothing is preselected; NONE
+  // stays the seed only when editing an existing row that is genuinely
+  // roleless (a wholly-simulator entry).
   const [role, setRole] = useState(() => (values.id ? initialSelect("role") : initial("role", "")));
   const [simulatorDeviceType, setSimulatorDeviceType] = useState(() => initialSelect("simulator_device_type"));
   const [approachType, setApproachType] = useState(() => initialSelect("approach_type"));
@@ -215,31 +218,25 @@ export default function LogbookEntryForm({
   const interceptTrackId = useId();
 
   return (
-    <Card>
+    <LCard>
       <form action={formAction}>
-        <Flex direction="column" gap="4" p="2">
+        <div className="flex flex-col gap-4">
           {values.id ? <input type="hidden" name="id" value={values.id} /> : null}
 
-          {provenanceNote ? (
-            <Text size="1" color="gray">
-              {provenanceNote}
-            </Text>
-          ) : null}
+          {provenanceNote ? <p className="text-caption text-ink-3">{provenanceNote}</p> : null}
 
-          <Heading as="h2" size="4">
-            The flight
-          </Heading>
-          <Grid columns={{ initial: "2", md: "12" }} gap="3">
-            <LabeledField label="Date" htmlFor="entry_date" gridColumn={{ md: "span 3" }}>
-              <TextField.Root
+          <h2 className="text-h3 font-semibold">The flight</h2>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-12">
+            <LField label="Date" htmlFor="entry_date" className="md:col-span-3">
+              <LInput
                 id="entry_date"
                 type="date"
                 name="entry_date"
                 required
                 defaultValue={initial("entry_date")}
               />
-            </LabeledField>
-            <LabeledField label="Tail number" htmlFor="aircraft_ident" gridColumn={{ md: "span 3" }}>
+            </LField>
+            <LField label="Tail number" htmlFor="aircraft_ident" className="md:col-span-3">
               <TailNumberField
                 id="aircraft_ident"
                 name="aircraft_ident"
@@ -248,53 +245,48 @@ export default function LogbookEntryForm({
                 defaultValue={initial("aircraft_ident")}
                 typeFieldId="aircraft_type"
               />
-            </LabeledField>
-            <LabeledField label="Aircraft type" htmlFor="aircraft_type" gridColumn={{ md: "span 3" }}>
-              <TextField.Root
+            </LField>
+            <LField label="Aircraft type" htmlFor="aircraft_type" className="md:col-span-3">
+              <LInput
                 id="aircraft_type"
                 name="aircraft_type"
                 placeholder="Aircraft type (e.g. CE-560XL)"
                 defaultValue={initial("aircraft_type")}
               />
-            </LabeledField>
-            <LabeledField label="From" htmlFor="from_icao" gridColumn={{ md: "span 2" }}>
-              <TextField.Root
+            </LField>
+            <LField label="From" htmlFor="from_icao" className="md:col-span-2">
+              <LInput
                 id="from_icao"
                 name="from_icao"
                 placeholder="From (KBED)"
                 defaultValue={initial("from_icao")}
               />
-            </LabeledField>
-            <LabeledField label="To" htmlFor="to_icao" gridColumn={{ md: "span 1" }}>
-              <TextField.Root id="to_icao" name="to_icao" placeholder="To (KTEB)" defaultValue={initial("to_icao")} />
-            </LabeledField>
-          </Grid>
-          <Flex direction="column" gap="1" style={{ maxWidth: 240 }}>
-            <Text as="label" htmlFor={roleId} size="1" color="gray">
+            </LField>
+            <LField label="To" htmlFor="to_icao" className="md:col-span-1">
+              <LInput id="to_icao" name="to_icao" placeholder="To (KTEB)" defaultValue={initial("to_icao")} />
+            </LField>
+          </div>
+          <div className="flex max-w-60 flex-col gap-1">
+            <label htmlFor={roleId} className="text-body-s font-medium text-ink">
               Role
-            </Text>
-            <Select.Root value={role} onValueChange={setRole}>
-              <Select.Trigger id={roleId} aria-label="Role" placeholder="Choose a role" />
-              <Select.Content>
-                {ROLES.map((option) => (
-                  <Select.Item key={option.value} value={option.value}>
-                    {option.label}
-                  </Select.Item>
-                ))}
-                <Select.Item value={NONE}>{ROLE_NONE_LABEL}</Select.Item>
-              </Select.Content>
-            </Select.Root>
-            {/* NONE is a Radix-only sentinel (Select.Item forbids ""), so
-                it is translated back to the empty string the server reads
-                as "no role" — same pattern every other optional Select in
-                this form uses. */}
+            </label>
+            <LSelect id={roleId} aria-label="Role" value={role} onChange={(e) => setRole(e.target.value)}>
+              {ROLES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+              <option value={NONE}>{ROLE_NONE_LABEL}</option>
+            </LSelect>
+            {/* NONE is a sentinel kept from the Select.Item-era vocabulary
+                (see the constant's own comment) and is translated back to
+                the empty string the server reads as "no role" — same
+                pattern every other optional select in this form uses. */}
             <input type="hidden" name="role" value={role === NONE ? "" : role} />
-          </Flex>
+          </div>
 
-          <Heading as="h2" size="4" mt="2">
-            Time (hours, tenths)
-          </Heading>
-          <Grid columns={{ initial: "2", md: "6" }} gap="3">
+          <h2 className="mt-2 text-h3 font-semibold">Time (hours, tenths)</h2>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
             <LabeledNumber name="total_time" label="Total time" required defaultValue={initial("total_time")} />
             <LabeledNumber name="pic_time" label="PIC" defaultValue={initial("pic_time")} />
             <LabeledNumber name="sic_time" label="SIC" defaultValue={initial("sic_time")} />
@@ -332,49 +324,49 @@ export default function LogbookEntryForm({
               label="Full flight simulator / FTD / ATD"
               defaultValue={initial("simulator_time")}
             />
-            <Flex direction="column" gap="1">
-              <Text as="label" htmlFor={deviceId} size="1" color="gray">
+            <div className="flex flex-col gap-1">
+              <label htmlFor={deviceId} className="text-body-s font-medium text-ink">
                 Device type
-              </Text>
-              <Select.Root value={simulatorDeviceType} onValueChange={setSimulatorDeviceType}>
-                <Select.Trigger id={deviceId} aria-label="Device type" />
-                <Select.Content>
-                  {SIMULATOR_DEVICES.map((option) => (
-                    <Select.Item key={option.value} value={option.value}>
-                      {option.label}
-                    </Select.Item>
-                  ))}
-                </Select.Content>
-              </Select.Root>
+              </label>
+              <LSelect
+                id={deviceId}
+                aria-label="Device type"
+                value={simulatorDeviceType}
+                onChange={(e) => setSimulatorDeviceType(e.target.value)}
+              >
+                {SIMULATOR_DEVICES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </LSelect>
               <input
                 type="hidden"
                 name="simulator_device_type"
                 value={simulatorDeviceType === NONE ? "" : simulatorDeviceType}
               />
-              <Text size="1" color="gray">
-                Required if sim time &gt; 0
-              </Text>
-            </Flex>
-          </Grid>
+              <p className="text-caption text-ink-3">Required if sim time &gt; 0</p>
+            </div>
+          </div>
 
           {instrumentSimulatedTime > 0 ? (
-            <LabeledField label="Safety pilot name" htmlFor="view_limiting_pilot_name" maxWidth="360px">
-              <TextField.Root
+            <LField
+              label="Safety pilot name"
+              htmlFor="view_limiting_pilot_name"
+              className="max-w-[360px]"
+              hint="Name the safety pilot if 91.109 required one for this flight. (14 CFR 61.51(b)(1)(v))"
+            >
+              <LInput
                 id="view_limiting_pilot_name"
                 name="view_limiting_pilot_name"
                 placeholder="Required by 91.109 for some simulated-instrument flights"
                 defaultValue={initial("view_limiting_pilot_name")}
               />
-              <Text size="1" color="gray">
-                Name the safety pilot if 91.109 required one for this flight. (14 CFR 61.51(b)(1)(v))
-              </Text>
-            </LabeledField>
+            </LField>
           ) : null}
 
-          <Heading as="h2" size="4" mt="2">
-            Landings, approaches, holds
-          </Heading>
-          <Grid columns={{ initial: "2", md: "6" }} gap="3">
+          <h2 className="mt-2 text-h3 font-semibold">Landings, approaches, holds</h2>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
             <LabeledNumber
               name="day_takeoffs"
               label="Day takeoffs"
@@ -422,135 +414,94 @@ export default function LogbookEntryForm({
               defaultValue={initial("approaches_count", "0")}
               hint="Instrument approaches in actual or simulated instrument conditions count for 61.57(c). A Visual-tagged approach below does not."
             />
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
-              <Text as="label" htmlFor={approachId} size="1" color="gray">
+            <div className="flex flex-col gap-1 md:col-span-2">
+              <label htmlFor={approachId} className="text-body-s font-medium text-ink">
                 Approach type
-              </Text>
-              <Select.Root value={approachType} onValueChange={setApproachType}>
-                <Select.Trigger id={approachId} aria-label="Approach type" />
-                <Select.Content>
-                  {APPROACH_TYPES.map((option) => (
-                    <Select.Item key={option.value} value={option.value}>
-                      {option.label}
-                    </Select.Item>
-                  ))}
-                </Select.Content>
-              </Select.Root>
+              </label>
+              <LSelect
+                id={approachId}
+                aria-label="Approach type"
+                value={approachType}
+                onChange={(e) => setApproachType(e.target.value)}
+              >
+                {APPROACH_TYPES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </LSelect>
               <input type="hidden" name="approach_type" value={approachType === NONE ? "" : approachType} />
-              <Text size="1" color="gray">
+              <p className="text-caption text-ink-3">
                 If the source gives you one. Visual does not count for 61.57(c).
-              </Text>
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
-              <Text as="label" htmlFor={approachConditionId} size="1" color="gray">
+              </p>
+            </div>
+            <div className="flex flex-col gap-1 md:col-span-2">
+              <label htmlFor={approachConditionId} className="text-body-s font-medium text-ink">
                 Approach condition
-              </Text>
-              <Select.Root value={approachCondition} onValueChange={setApproachCondition}>
-                <Select.Trigger id={approachConditionId} aria-label="Approach condition" />
-                <Select.Content>
-                  {APPROACH_CONDITIONS.map((option) => (
-                    <Select.Item key={option.value} value={option.value}>
-                      {option.label}
-                    </Select.Item>
-                  ))}
-                </Select.Content>
-              </Select.Root>
+              </label>
+              <LSelect
+                id={approachConditionId}
+                aria-label="Approach condition"
+                value={approachCondition}
+                onChange={(e) => setApproachCondition(e.target.value)}
+              >
+                {APPROACH_CONDITIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </LSelect>
               <input
                 type="hidden"
                 name="approach_condition"
                 value={approachCondition === NONE ? "" : approachCondition}
               />
-              <Text size="1" color="gray">
+              <p className="text-caption text-ink-3">
                 Actual instrument conditions or a view-limiting device (61.57(c)(1)). A different question from
                 approach TYPE above. Leave unknown rather than guessing.
-              </Text>
-            </Flex>
-            <Flex direction="column" gap="1" justify="end" gridColumn={{ md: "span 2" }}>
-              <Text as="label" size="2" htmlFor={interceptTrackId}>
-                <Flex gap="2" align="center">
-                  <Checkbox
-                    id={interceptTrackId}
-                    checked={coursesInterceptedTracked}
-                    onCheckedChange={(checked) => setCoursesInterceptedTracked(checked === true)}
-                  />
-                  Intercepted &amp; tracked a course (61.57(c)(1)(iii))
-                </Flex>
-              </Text>
+              </p>
+            </div>
+            <div className="flex flex-col justify-end gap-1 md:col-span-2">
+              <label className="flex items-center gap-2 text-body-s text-ink" htmlFor={interceptTrackId}>
+                <LCheckbox
+                  id={interceptTrackId}
+                  checked={coursesInterceptedTracked}
+                  onChange={(e) => setCoursesInterceptedTracked(e.target.checked)}
+                />
+                Intercepted &amp; tracked a course (61.57(c)(1)(iii))
+              </label>
               <input
                 type="hidden"
                 name="courses_intercepted_tracked"
                 value={coursesInterceptedTracked ? "on" : ""}
               />
-            </Flex>
-          </Grid>
+            </div>
+          </div>
 
-          <Flex direction="column" gap="1">
-            <Text as="label" htmlFor="remarks" size="1" color="gray">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="remarks" className="text-body-s font-medium text-ink">
               Remarks
-            </Text>
-            <TextArea id="remarks" name="remarks" rows={2} defaultValue={initial("remarks")} />
-          </Flex>
+            </label>
+            <LTextarea id="remarks" name="remarks" rows={2} defaultValue={initial("remarks")} />
+          </div>
 
           {/* role="alert" so a screen reader hears the rejection; the form
               resets on every dispatch and nothing else announces it. */}
           <div role="alert" aria-live="polite">
-            {state.error ? (
-              <Text size="1" color="red">
-                {state.error}
-              </Text>
-            ) : null}
+            {state.error ? <p className="text-caption text-crit">{state.error}</p> : null}
           </div>
 
-          <Flex gap="3">
-            <Button type="submit" disabled={pending}>
+          <div className="flex gap-3">
+            <LButton type="submit" disabled={pending}>
               {pending ? "Saving…" : submitLabel}
-            </Button>
-            <Button asChild variant="outline">
-              <NextLink href="/logbook">Cancel</NextLink>
-            </Button>
-          </Flex>
-        </Flex>
+            </LButton>
+            <NextLink href="/logbook" className={lButtonClass({ variant: "outline" })}>
+              Cancel
+            </NextLink>
+          </div>
+        </div>
       </form>
-    </Card>
-  );
-}
-
-/**
- * `gridColumn` rather than a raw `style` prop.
- *
- * A raw inline style applies at EVERY width. The parent Grid here is
- * columns={{ initial: "2", md: "12" }}, so on a phone it is two columns
- * wide while its children were still asking for span 3 — CSS Grid then
- * places them into implicit auto-width tracks and the row comes out
- * uneven and unpredictable. Measured in Chromium at 390px: three fields
- * at full width and the last two at 179 and 199 px, against a uniform
- * 189 px once the span is scoped to md and up.
- *
- * This is the product's most-used mobile capture screen — a pilot filling
- * in a logbook entry between legs — so it is the worst place in the app
- * for it.
- */
-function LabeledField({
-  label,
-  htmlFor,
-  gridColumn,
-  maxWidth,
-  children,
-}: {
-  label: string;
-  htmlFor: string;
-  gridColumn?: React.ComponentProps<typeof Flex>["gridColumn"];
-  /** Radix's own max-width scale, not a raw pixel style. */
-  maxWidth?: React.ComponentProps<typeof Flex>["maxWidth"];
-  children: React.ReactNode;
-}) {
-  return (
-    <Flex direction="column" gap="1" gridColumn={gridColumn} maxWidth={maxWidth}>
-      <Text as="label" htmlFor={htmlFor} size="1" color="gray">
-        {label}
-      </Text>
-      {children}
-    </Flex>
+    </LCard>
   );
 }
 
@@ -573,11 +524,8 @@ function LabeledNumber({
   onChangeValue?: (value: number) => void;
 }) {
   return (
-    <Flex direction="column" gap="1">
-      <Text as="label" htmlFor={name} size="1" color="gray">
-        {label}
-      </Text>
-      <TextField.Root
+    <LField label={label} htmlFor={name} hint={hint}>
+      <LInput
         id={name}
         type="number"
         name={name}
@@ -585,14 +533,9 @@ function LabeledNumber({
         min="0"
         step={step}
         defaultValue={defaultValue}
-        className="tnum"
+        className="tnum-l"
         onChange={onChangeValue ? (e) => onChangeValue(Number(e.target.value) || 0) : undefined}
       />
-      {hint ? (
-        <Text size="1" color="gray">
-          {hint}
-        </Text>
-      ) : null}
-    </Flex>
+    </LField>
   );
 }

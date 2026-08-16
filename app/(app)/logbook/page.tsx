@@ -1,23 +1,12 @@
 import NextLink from "next/link";
-import {
-  Badge,
-  Button,
-  Callout,
-  Card,
-  Flex,
-  Grid,
-  Heading,
-  Link,
-  Table,
-  Text,
-} from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { LAlert, LCard, LEmpty, LPill, LStat, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
+import { cn } from "@/lib/ledger/cn";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
-import EmptyState from "@/components/ui/empty-state";
 import { loadPreferences } from "@/lib/preferences";
 import {
   describeLogbookFilter,
@@ -26,7 +15,6 @@ import {
   logbookFilterIsEmpty,
   MAX_TYPE_LABEL,
 } from "@/lib/logbook-views";
-import PageShell from "../page-shell";
 import {
   logbookFrom,
   logbookRpc,
@@ -41,14 +29,17 @@ import { deleteLogbookViewAction, saveLogbookViewAction } from "./views-actions"
 
 export const metadata = { title: "Logbook" };
 
-type SourceBadge = { tone: React.ComponentProps<typeof Badge>["color"]; label: string };
+// Ledger's LPill vocabulary (neutral/accent/good/warn/crit) replaces
+// Radix Badge's gray/blue/amber/green/red one-for-one — see
+// invoices/page.tsx's own statusToPillTone for the same dictionary.
+type SourceBadge = { tone: "neutral" | "accent" | "good" | "warn" | "crit"; label: string };
 
-const SOURCE_FALLBACK: SourceBadge = { tone: "gray", label: "Manual" };
+const SOURCE_FALLBACK: SourceBadge = { tone: "neutral", label: "Manual" };
 const SOURCE_BADGE: Record<LogbookSource, SourceBadge> = {
   manual: SOURCE_FALLBACK,
-  trip: { tone: "blue", label: "From trip" },
-  import: { tone: "gray", label: "Imported" },
-  foreflight_sync: { tone: "gray", label: "ForeFlight sync" },
+  trip: { tone: "accent", label: "From trip" },
+  import: { tone: "neutral", label: "Imported" },
+  foreflight_sync: { tone: "neutral", label: "ForeFlight sync" },
 };
 
 // logbookFrom() returns `any` (see its own comment), so nothing type-checks
@@ -57,7 +48,6 @@ const SOURCE_BADGE: Record<LogbookSource, SourceBadge> = {
 // 500. Number() coerces the same way trips/invoices/page.tsx already does
 // for their own numerics, so a string doesn't silently become NaN-shaped
 // arithmetic three renders downstream.
-
 
 function landings(entry: LogbookEntryRow): number {
   return (
@@ -267,7 +257,7 @@ export default async function LogbookPage({
     );
 
   return (
-    <PageShell
+    <LPageShell
       title="Logbook"
       subtitle={
         error
@@ -283,36 +273,32 @@ export default async function LogbookPage({
               regardless of what happens to this account. Plain <a>, not
               a client-side link: it's a file download from
               /logbook/export, same pattern as the invoice PDF link. */}
-          <Button asChild variant="outline">
-            <a href="/logbook/export" download>
-              Download your logbook (CSV)
-            </a>
-          </Button>
-          <Button asChild variant="outline">
-            <NextLink href="/logbook/drafts">Trip drafts</NextLink>
-          </Button>
+          <a href="/logbook/export" download className={lButtonClass({ variant: "outline" })}>
+            Download your logbook (CSV)
+          </a>
+          <NextLink href="/logbook/drafts" className={lButtonClass({ variant: "outline" })}>
+            Trip drafts
+          </NextLink>
           {/* ForeFlight / LogTen Pro / generic CSV import — see
               app/(app)/logbook/import. Same draft-confirm boundary as
               Trip drafts: nothing lands here without the pilot reviewing
               a preview and confirming. */}
-          <Button asChild variant="outline">
-            <NextLink href="/logbook/import">Import CSV</NextLink>
-          </Button>
-          <Button asChild>
-            <NextLink href="/logbook/new">Log an entry</NextLink>
-          </Button>
+          <NextLink href="/logbook/import" className={lButtonClass({ variant: "outline" })}>
+            Import CSV
+          </NextLink>
+          <NextLink href="/logbook/new" className={lButtonClass({ variant: "primary" })}>
+            Log an entry
+          </NextLink>
         </>
       }
     >
       {error ? (
-        <Callout.Root color="red">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>{friendlyDbError(error, "logbook_entries.select")}</Callout.Text>
-        </Callout.Root>
+        <LAlert tone="crit" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+          <span>{friendlyDbError(error, "logbook_entries.select")}</span>
+        </LAlert>
       ) : (
-        <Flex direction="column" gap="4">
+        <div className="flex flex-col gap-4">
           <SavedViews
             views={preferences.logbookViews}
             activeFilter={filter}
@@ -329,30 +315,26 @@ export default async function LogbookPage({
               registration, which reads exactly like an aeroplane that was
               deleted. */}
           {fleetError ? (
-            <Callout.Root color="amber">
-              <Callout.Icon>
-                <ExclamationTriangleIcon />
-              </Callout.Icon>
-              <Callout.Text>
+            <LAlert tone="warn" className="flex items-start gap-2">
+              <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+              <span>
                 Your aircraft couldn&rsquo;t be loaded, so the Aircraft
                 picker above is empty and a tail filter shows as its plain
                 key. Nothing has been removed from your fleet. Reload to
                 try again.
-              </Callout.Text>
-            </Callout.Root>
+              </span>
+            </LAlert>
           ) : null}
 
           {totalsError ? (
-            <Callout.Root color="amber">
-              <Callout.Icon>
-                <ExclamationTriangleIcon />
-              </Callout.Icon>
-              <Callout.Text>
+            <LAlert tone="warn" className="flex items-start gap-2">
+              <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+              <span>
                 {filtered
                   ? "The totals for this view couldn't be loaded, so they aren't shown. The entries below are still complete and correct."
                   : "Your career totals couldn't be loaded, so they aren't shown. The entries below are still complete and correct."}
-              </Callout.Text>
-            </Callout.Root>
+              </span>
+            </LAlert>
           ) : null}
 
           {/* SAYS WHAT THE FIGURES BELOW ARE A TOTAL OF. A filtered set of
@@ -362,14 +344,14 @@ export default async function LogbookPage({
               impossible to confuse. Totals only; nothing on this screen
               draws a conclusion from them. */}
           {filtered ? (
-            <Text size="2" color="gray">
+            <p className="text-body-s text-ink-3">
               {`Totals below cover ${filterLabel}: ${totalCount} entr${
                 totalCount === 1 ? "y" : "ies"
               }, not your whole logbook.`}
-            </Text>
+            </p>
           ) : null}
 
-          <Grid columns={{ initial: "2", md: "6" }} gap="3">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
             {(totals
               ? [
                   { label: "Total time", value: totals.total, decimals: 1 },
@@ -381,18 +363,14 @@ export default async function LogbookPage({
                 ]
               : []
             ).map((stat) => (
-              <Card key={stat.label}>
-                <Flex direction="column" align="center" gap="1" p="1">
-                  <Text size="1" color="gray" weight="bold" style={{ textTransform: "uppercase" }}>
-                    {stat.label}
-                  </Text>
-                  <Text size="6" weight="bold" className="tnum">
-                    {stat.decimals === 0 ? stat.value : stat.value.toFixed(1)}
-                  </Text>
-                </Flex>
-              </Card>
+              <LCard key={stat.label} className="items-center text-center">
+                <LStat
+                  label={stat.label}
+                  figure={stat.decimals === 0 ? stat.value : stat.value.toFixed(1)}
+                />
+              </LCard>
             ))}
-          </Grid>
+          </div>
 
           {/* HIDDEN WHILE A FILTER IS ON. This panel is account-global —
               pilot.logbook_time_by_type takes no arguments — so leaving it
@@ -401,99 +379,87 @@ export default async function LogbookPage({
               between them. The pilot-history report is where the full
               breakdown belongs anyway. */}
           {entries.length > 0 && !filtered ? (
-            <Card>
-              <Flex direction="column" gap="3" p="1">
-                <Flex justify="between" align="center" gap="3" wrap="wrap">
-                  <Flex direction="column" gap="1">
-                    <Heading as="h2" size="4">
-                      Hours by type
-                    </Heading>
-                  </Flex>
-                  <Button asChild variant="outline">
-                    <NextLink href="/logbook/aircraft">Your aircraft</NextLink>
-                  </Button>
-                </Flex>
+            <LCard>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-h3 font-semibold">Hours by type</h2>
+                  <NextLink href="/logbook/aircraft" className={lButtonClass({ variant: "outline" })}>
+                    Your aircraft
+                  </NextLink>
+                </div>
 
                 {byTypeError ? (
-                  <Callout.Root color="amber" size="1">
-                    <Callout.Icon>
-                      <ExclamationTriangleIcon />
-                    </Callout.Icon>
-                    <Callout.Text>
+                  <LAlert tone="warn" className="flex items-start gap-2">
+                    <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+                    <span>
                       Your time in type couldn&rsquo;t be loaded just now, so
                       it isn&rsquo;t shown. Nothing is wrong with your entries.
-                    </Callout.Text>
-                  </Callout.Root>
+                    </span>
+                  </LAlert>
                 ) : hasTypeBreakdown ? (
-                  <Table.Root variant="ghost">
-                    <Table.Header>
-                      <Table.Row>
-                        <Table.ColumnHeaderCell>Type</Table.ColumnHeaderCell>
-                        <Table.ColumnHeaderCell justify="end">Total</Table.ColumnHeaderCell>
-                        <Table.ColumnHeaderCell justify="end">PIC</Table.ColumnHeaderCell>
-                        <Table.ColumnHeaderCell justify="end">SIC</Table.ColumnHeaderCell>
-                        <Table.ColumnHeaderCell justify="end">Night</Table.ColumnHeaderCell>
-                        <Table.ColumnHeaderCell justify="end">Sim</Table.ColumnHeaderCell>
-                      </Table.Row>
-                    </Table.Header>
-                    <Table.Body>
+                  <LTable>
+                    <caption>
+                      <span className="sr-only">Hours by type</span>
+                    </caption>
+                    <thead>
+                      <tr>
+                        <LTh>Type</LTh>
+                        <LTh numeric>Total</LTh>
+                        <LTh numeric>PIC</LTh>
+                        <LTh numeric>SIC</LTh>
+                        <LTh numeric>Night</LTh>
+                        <LTh numeric>Sim</LTh>
+                      </tr>
+                    </thead>
+                    <tbody>
                       {byType.map((row) => (
-                        <Table.Row key={row.label}>
-                          <Table.RowHeaderCell>
-                            <Flex align="center" gap="2">
-                              <Text weight="medium">{row.label}</Text>
+                        <tr key={row.label}>
+                          <th
+                            scope="row"
+                            className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span>{row.label}</span>
                               {/* Says WHY a row reads the way it does: these
                                   hours are grouped by what the pilot typed on
                                   each entry, not by a registered airframe, so
                                   the same aeroplane spelled two ways is still
                                   two rows here. */}
                               {row.registered ? null : (
-                                <Badge color="gray" variant="outline">
-                                  No aircraft on file
-                                </Badge>
+                                <LPill tone="neutral">No aircraft on file</LPill>
                               )}
-                            </Flex>
-                          </Table.RowHeaderCell>
-                          <Table.Cell justify="end">
-                            <Text weight="medium" className="tnum">
-                              {row.total.toFixed(1)}
-                            </Text>
-                          </Table.Cell>
-                          <Table.Cell justify="end">
-                            <Text color="gray" className="tnum">
-                              {row.pic.toFixed(1)}
-                            </Text>
-                          </Table.Cell>
-                          <Table.Cell justify="end">
-                            <Text color="gray" className="tnum">
-                              {row.sic.toFixed(1)}
-                            </Text>
-                          </Table.Cell>
-                          <Table.Cell justify="end">
-                            <Text color="gray" className="tnum">
-                              {row.night.toFixed(1)}
-                            </Text>
-                          </Table.Cell>
+                            </div>
+                          </th>
+                          <LTd numeric>
+                            <span className="font-medium">{row.total.toFixed(1)}</span>
+                          </LTd>
+                          <LTd numeric>
+                            <span className="text-ink-2">{row.pic.toFixed(1)}</span>
+                          </LTd>
+                          <LTd numeric>
+                            <span className="text-ink-2">{row.sic.toFixed(1)}</span>
+                          </LTd>
+                          <LTd numeric>
+                            <span className="text-ink-2">{row.night.toFixed(1)}</span>
+                          </LTd>
                           {/* Its own column, never folded into Total. An
                               underwriter's pilot-history form asks for
                               simulator time separately, because it is not
                               time in the aircraft. */}
-                          <Table.Cell justify="end">
-                            <Text color="gray" className="tnum">
-                              {row.simulator.toFixed(1)}
-                            </Text>
-                          </Table.Cell>
-                        </Table.Row>
+                          <LTd numeric>
+                            <span className="text-ink-2">{row.simulator.toFixed(1)}</span>
+                          </LTd>
+                        </tr>
                       ))}
-                    </Table.Body>
-                  </Table.Root>
+                    </tbody>
+                  </LTable>
                 ) : (
-                  <Text size="2" color="gray">
+                  <p className="text-body-s text-ink-2">
                     Your entries aren&rsquo;t grouped by type yet. Add the airframes you
                     fly and every hour you&rsquo;ve already logged in them gets counted
                     under a make and model — including entries where you wrote the
                     registration differently.
-                  </Text>
+                  </p>
                 )}
 
                 {/* Said out loud rather than left to be noticed. Twelve rows
@@ -501,18 +467,21 @@ export default async function LogbookPage({
                     is how a pilot copies an incomplete pilot-history form
                     without ever seeing anything was missing. */}
                 {moreTypes && !byTypeError ? (
-                  <Text size="1" color="gray">
+                  <p className="text-caption text-ink-3">
                     {`Showing the ${TYPE_ROW_LIMIT} types you have the most time in. `}
-                    <Link asChild>
-                      <NextLink href="/logbook/aircraft">See every type</NextLink>
-                    </Link>
-                  </Text>
+                    <NextLink
+                      href="/logbook/aircraft"
+                      className="font-medium text-accent underline-offset-2 hover:underline"
+                    >
+                      See every type
+                    </NextLink>
+                  </p>
                 ) : null}
-              </Flex>
-            </Card>
+              </div>
+            </LCard>
           ) : null}
 
-          <Card>
+          <LCard>
             {entries.length === 0 && totalCount === 0 && filtered ? (
               // Empty because of WHAT YOU ASKED FOR, which is a third
               // distinct state alongside "past the last page" and "no
@@ -520,17 +489,17 @@ export default async function LogbookPage({
               // logbook entries yet" because they filtered to a tail they
               // have not flown would be the same class of false claim as
               // saying it after a failed read.
-              <EmptyState
+              <LEmpty
                 as="h2"
                 title="No entries match this view"
                 action={
-                  <Button asChild>
-                    <NextLink href="/logbook">Show every entry</NextLink>
-                  </Button>
+                  <NextLink href="/logbook" className={lButtonClass({ variant: "primary" })}>
+                    Show every entry
+                  </NextLink>
                 }
               >
                 {`Nothing in your logbook matches ${filterLabel}. Your other entries are still there. This view just doesn't include any of them.`}
-              </EmptyState>
+              </LEmpty>
             ) : entries.length === 0 && totalCount > 0 ? (
               // Empty because of WHERE YOU ARE, not because there is
               // nothing on file: ?page= is past the last page. Telling a
@@ -538,43 +507,44 @@ export default async function LogbookPage({
               // the same class of claim as saying it after a failed read.
               // `as="h2"`: on this screen the empty state IS the panel
               // heading, so it must not drop to h3 and skip a level.
-              <EmptyState
+              <LEmpty
                 as="h2"
                 title="Nothing on this page"
                 action={
-                  <Button asChild>
-                    <NextLink href={logbookFilterHref(filter)}>
-                      Back to the first page
-                    </NextLink>
-                  </Button>
+                  <NextLink
+                    href={logbookFilterHref(filter)}
+                    className={lButtonClass({ variant: "primary" })}
+                  >
+                    Back to the first page
+                  </NextLink>
                 }
               >
                 {`${
                   filtered ? `${totalCount} entr${totalCount === 1 ? "y" : "ies"} match this view` : `You have ${totalCount} entr${totalCount === 1 ? "y" : "ies"} on file`
                 }. Page ${page} is past the last one, which is page ${pageCount}.`}
-              </EmptyState>
+              </LEmpty>
             ) : entries.length === 0 ? (
-              <EmptyState
+              <LEmpty
                 as="h2"
                 title="No logbook entries yet"
                 action={
-                  <Button asChild>
-                    <NextLink href="/logbook/new">Log your first entry</NextLink>
-                  </Button>
+                  <NextLink href="/logbook/new" className={lButtonClass({ variant: "primary" })}>
+                    Log your first entry
+                  </NextLink>
                 }
                 secondaryAction={
                   <>
-                    <Button asChild variant="outline">
-                      <NextLink href="/logbook/drafts">Review trip drafts</NextLink>
-                    </Button>
+                    <NextLink href="/logbook/drafts" className={lButtonClass({ variant: "outline" })}>
+                      Review trip drafts
+                    </NextLink>
                     {/* Reachable before the first entry exists. The Hours by
                         type panel is the only other link to the fleet screen
                         and it renders only when there ARE entries, so a pilot
                         who wanted to set their aircraft up first had no path
                         to it at all. */}
-                    <Button asChild variant="outline">
-                      <NextLink href="/logbook/aircraft">Your aircraft</NextLink>
-                    </Button>
+                    <NextLink href="/logbook/aircraft" className={lButtonClass({ variant: "outline" })}>
+                      Your aircraft
+                    </NextLink>
                   </>
                 }
               >
@@ -582,44 +552,51 @@ export default async function LogbookPage({
                 SIC, night, instrument and landings, per entry and totalled for a
                 career. Log a flight by hand, or confirm the entries a completed
                 trip proposes.
-              </EmptyState>
+              </LEmpty>
             ) : (
-              <Table.Root variant="ghost">
-                <Table.Header>
-                  <Table.Row>
-                    <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell>Route</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell>Aircraft</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell>Role</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell justify="end">Total</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell justify="end">Night</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell justify="end">Instrument</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell justify="end">Landings</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell justify="end">Source</Table.ColumnHeaderCell>
-                  </Table.Row>
-                </Table.Header>
-                <Table.Body>
+              <LTable>
+                <caption>
+                  <span className="sr-only">Logbook entries</span>
+                </caption>
+                <thead>
+                  <tr>
+                    <LTh>Date</LTh>
+                    <LTh>Route</LTh>
+                    <LTh>Aircraft</LTh>
+                    <LTh>Role</LTh>
+                    <LTh numeric>Total</LTh>
+                    <LTh numeric>Night</LTh>
+                    <LTh numeric>Instrument</LTh>
+                    <LTh numeric>Landings</LTh>
+                    <LTh numeric>Source</LTh>
+                  </tr>
+                </thead>
+                <tbody>
                   {entries.map((entry) => {
                     const source = SOURCE_BADGE[entry.source] ?? SOURCE_FALLBACK;
                     return (
-                      <Table.Row key={entry.id}>
-                        <Table.RowHeaderCell>
-                          <Link asChild weight="medium">
-                            <NextLink href={`/logbook/${entry.id}`}>{formatDate(entry.entry_date)}</NextLink>
-                          </Link>
-                        </Table.RowHeaderCell>
-                        <Table.Cell>
-                          <Text size="2" color="gray">
+                      <tr key={entry.id}>
+                        <th
+                          scope="row"
+                          className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                        >
+                          <NextLink
+                            href={`/logbook/${entry.id}`}
+                            className="text-accent hover:underline"
+                          >
+                            {formatDate(entry.entry_date)}
+                          </NextLink>
+                        </th>
+                        <LTd>
+                          <span className="text-ink-2">
                             {entry.from_icao ?? "—"} → {entry.to_icao ?? "—"}
-                          </Text>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Text size="2" color="gray">
-                            {entry.aircraft_ident ?? "—"}
-                          </Text>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Text size="2" color="gray">
+                          </span>
+                        </LTd>
+                        <LTd>
+                          <span className="text-ink-2">{entry.aircraft_ident ?? "—"}</span>
+                        </LTd>
+                        <LTd>
+                          <span className="text-ink-2">
                             {/* A wholly-simulator entry carries no crew role
                                 (20260810020000). Showing the device says WHY
                                 the role is absent, which is more use to a
@@ -628,38 +605,32 @@ export default async function LogbookPage({
                               (entry.simulator_device_type
                                 ? entry.simulator_device_type.toUpperCase()
                                 : "—")}
-                          </Text>
-                        </Table.Cell>
-                        <Table.Cell justify="end">
-                          <Text size="2" weight="medium" className="tnum">
-                            {Number(entry.total_time).toFixed(1)}
-                          </Text>
-                        </Table.Cell>
-                        <Table.Cell justify="end">
-                          <Text size="2" color="gray" className="tnum">
-                            {Number(entry.night_time ?? 0).toFixed(1)}
-                          </Text>
-                        </Table.Cell>
-                        <Table.Cell justify="end">
-                          <Text size="2" color="gray" className="tnum">
+                          </span>
+                        </LTd>
+                        <LTd numeric>
+                          <span className="font-medium">{Number(entry.total_time).toFixed(1)}</span>
+                        </LTd>
+                        <LTd numeric>
+                          <span className="text-ink-2">{Number(entry.night_time ?? 0).toFixed(1)}</span>
+                        </LTd>
+                        <LTd numeric>
+                          <span className="text-ink-2">
                             {(Number(entry.instrument_actual_time ?? 0) + Number(entry.instrument_simulated_time ?? 0)).toFixed(1)}
-                          </Text>
-                        </Table.Cell>
-                        <Table.Cell justify="end">
-                          <Text size="2" color="gray" className="tnum">
-                            {landings(entry)}
-                          </Text>
-                        </Table.Cell>
-                        <Table.Cell justify="end">
-                          <Badge color={source.tone}>{source.label}</Badge>
-                        </Table.Cell>
-                      </Table.Row>
+                          </span>
+                        </LTd>
+                        <LTd numeric>
+                          <span className="text-ink-2">{landings(entry)}</span>
+                        </LTd>
+                        <LTd numeric>
+                          <LPill tone={source.tone}>{source.label}</LPill>
+                        </LTd>
+                      </tr>
                     );
                   })}
-                </Table.Body>
-              </Table.Root>
+                </tbody>
+              </LTable>
             )}
-          </Card>
+          </LCard>
 
           {/* Entries past the first page used to be unreachable — not
               merely un-totalled, but unviewable, in the product's copy of
@@ -667,33 +638,89 @@ export default async function LogbookPage({
               Plain links so a page is bookmarkable and the browser's back
               button behaves. */}
           {pageCount > 1 ? (
-            <Flex justify="between" align="center" gap="3" wrap="wrap">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               {/* THE FILTER TRAVELS WITH THE PAGE. Built through the same
                   pure helper the saved views and the picker use, so
                   paginating a view cannot silently drop back to the whole
                   logbook — which would show a pilot rows they did not ask
                   for under a caption saying otherwise. */}
-              <Button asChild variant="soft" disabled={page <= 1}>
-                <NextLink
-                  href={logbookFilterHref(filter, page <= 2 ? undefined : page - 1)}
-                >
-                  Newer
-                </NextLink>
-              </Button>
-              <Text size="2" color="gray">
+              <PageLink
+                href={logbookFilterHref(filter, page <= 2 ? undefined : page - 1)}
+                disabled={page <= 1}
+              >
+                Newer
+              </PageLink>
+              <p className="text-body-s text-ink-3">
                 {`Showing ${from + 1} to ${Math.min(from + PAGE_SIZE, totalCount)} of ${totalCount}`}
-              </Text>
-              <Button asChild variant="soft" disabled={page >= pageCount}>
-                <NextLink
-                  href={logbookFilterHref(filter, Math.min(page + 1, pageCount))}
-                >
-                  Older
-                </NextLink>
-              </Button>
-            </Flex>
+              </p>
+              <PageLink
+                href={logbookFilterHref(filter, Math.min(page + 1, pageCount))}
+                disabled={page >= pageCount}
+              >
+                Older
+              </PageLink>
+            </div>
           ) : null}
-        </Flex>
+        </div>
       )}
-    </PageShell>
+    </LPageShell>
+  );
+}
+
+/**
+ * A pagination link that can be disabled. An <a href> has no native
+ * disabled state — a real `disabled` attribute doesn't apply to anchors and
+ * wouldn't stop a middle-click either — so the boundary case renders a
+ * plain span with the same button skin, `aria-disabled`, and the same
+ * pointer-events-none + opacity-50 LButton itself uses for a real disabled
+ * control, rather than a link the pilot could still activate.
+ */
+function PageLink({
+  href,
+  disabled,
+  children,
+}: {
+  href: string;
+  disabled: boolean;
+  children: React.ReactNode;
+}) {
+  if (disabled) {
+    return (
+      <span
+        aria-disabled="true"
+        className={cn(lButtonClass({ variant: "outline" }), "pointer-events-none opacity-50")}
+      >
+        {children}
+      </span>
+    );
+  }
+  return (
+    <NextLink href={href} className={lButtonClass({ variant: "outline" })}>
+      {children}
+    </NextLink>
+  );
+}
+
+/* ── Inline icon ───────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. Same shape as invoices/page.tsx's own WarningIcon. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

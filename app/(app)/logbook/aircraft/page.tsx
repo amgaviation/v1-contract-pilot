@@ -1,11 +1,10 @@
 import NextLink from "next/link";
-import { Badge, Button, Callout, Card, Flex, Heading, Table, Text } from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { LAlert, LCard, LPill, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { friendlyDbError } from "@/lib/db-errors";
-import PageShell from "../../page-shell";
 import { logbookFrom } from "../db";
 import type {
   AircraftRow,
@@ -143,47 +142,41 @@ export default async function AircraftPage() {
   }));
 
   return (
-    <PageShell
+    <LPageShell
       title="Your aircraft"
       subtitle="These are the airframes behind your hours, so your logbook can answer “how much time in type?”"
       action={
-        <Button asChild variant="outline">
-          <NextLink href="/logbook">Back to logbook</NextLink>
-        </Button>
+        <NextLink href="/logbook" className={lButtonClass({ variant: "outline" })}>
+          Back to logbook
+        </NextLink>
       }
     >
       {error ? (
-        <Callout.Root color="red">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>{friendlyDbError(error, "aircraft.select")}</Callout.Text>
-        </Callout.Root>
+        <LAlert tone="crit" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+          <span>{friendlyDbError(error, "aircraft.select")}</span>
+        </LAlert>
       ) : (
-        <Flex direction="column" gap="4">
+        <div className="flex flex-col gap-4">
           {hoursUnavailable ? (
-            <Callout.Root color="amber">
-              <Callout.Icon>
-                <ExclamationTriangleIcon />
-              </Callout.Icon>
-              <Callout.Text>
+            <LAlert tone="warn" className="flex items-start gap-2">
+              <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+              <span>
                 Your hours couldn&rsquo;t be loaded just now, so the Hours and Last
                 flown columns are blank rather than wrong. Your fleet and your
                 logbook are both fine.
-              </Callout.Text>
-            </Callout.Root>
+              </span>
+            </LAlert>
           ) : null}
           {suggestionError ? (
-            <Callout.Root color="amber">
-              <Callout.Icon>
-                <ExclamationTriangleIcon />
-              </Callout.Icon>
-              <Callout.Text>
+            <LAlert tone="warn" className="flex items-start gap-2">
+              <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+              <span>
                 We couldn&rsquo;t check which tails you&rsquo;ve flown but not added
                 yet, so this page isn&rsquo;t offering any. You can still add one by
                 hand.
-              </Callout.Text>
-            </Callout.Root>
+              </span>
+            </LAlert>
           ) : null}
           <FleetPanel
             aircraft={aircraft}
@@ -192,85 +185,103 @@ export default async function AircraftPage() {
             hoursUnavailable={hoursUnavailable}
           />
 
-          <Card>
-            <Flex direction="column" gap="3" p="1">
-              <Flex direction="column" gap="1">
-                <Heading as="h2" size="4">
-                  Every type you have time in
-                </Heading>
-              </Flex>
+          <LCard>
+            <div className="flex flex-col gap-3">
+              <h2 className="text-h3 font-semibold">Every type you have time in</h2>
 
               {byTypeError ? (
-                <Callout.Root color="amber" size="1">
-                  <Callout.Icon>
-                    <ExclamationTriangleIcon />
-                  </Callout.Icon>
-                  <Callout.Text>
+                <LAlert tone="warn" className="flex items-start gap-2">
+                  <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+                  <span>
                     This couldn&rsquo;t be loaded just now. Nothing is wrong with
                     your entries.
-                  </Callout.Text>
-                </Callout.Root>
+                  </span>
+                </LAlert>
               ) : byType.length === 0 ? (
-                <Text size="2" color="gray">
+                <p className="text-body-s text-ink-2">
                   Nothing to group yet. Log a flight, or import your logbook.
-                </Text>
+                </p>
               ) : (
-                <Table.Root variant="ghost">
-                  <Table.Header>
-                    <Table.Row>
-                      <Table.ColumnHeaderCell>Type</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">Total</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">PIC</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">SIC</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">Night</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">Sim</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">Entries</Table.ColumnHeaderCell>
-                    </Table.Row>
-                  </Table.Header>
-                  <Table.Body>
+                <LTable>
+                  <caption>
+                    <span className="sr-only">Every type you have time in</span>
+                  </caption>
+                  <thead>
+                    <tr>
+                      <LTh>Type</LTh>
+                      <LTh numeric>Total</LTh>
+                      <LTh numeric>PIC</LTh>
+                      <LTh numeric>SIC</LTh>
+                      <LTh numeric>Night</LTh>
+                      <LTh numeric>Sim</LTh>
+                      <LTh numeric>Entries</LTh>
+                    </tr>
+                  </thead>
+                  <tbody>
                     {byType.map((row) => (
-                      <Table.Row key={row.label}>
-                        <Table.RowHeaderCell>
-                          <Flex align="center" gap="2">
-                            <Text weight="medium">{row.label}</Text>
+                      <tr key={row.label}>
+                        <th
+                          scope="row"
+                          className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span>{row.label}</span>
                             {row.registered ? null : (
-                              <Badge color="gray" variant="outline">
-                                No aircraft on file
-                              </Badge>
+                              <LPill tone="neutral">No aircraft on file</LPill>
                             )}
-                          </Flex>
-                        </Table.RowHeaderCell>
-                        <Table.Cell justify="end">
-                          <Text weight="medium" className="tnum">
-                            {row.total.toFixed(1)}
-                          </Text>
-                        </Table.Cell>
-                        <Table.Cell justify="end">
-                          <Text color="gray" className="tnum">{row.pic.toFixed(1)}</Text>
-                        </Table.Cell>
-                        <Table.Cell justify="end">
-                          <Text color="gray" className="tnum">{row.sic.toFixed(1)}</Text>
-                        </Table.Cell>
-                        <Table.Cell justify="end">
-                          <Text color="gray" className="tnum">{row.night.toFixed(1)}</Text>
-                        </Table.Cell>
-                        <Table.Cell justify="end">
-                          <Text color="gray" className="tnum">
-                            {row.simulator.toFixed(1)}
-                          </Text>
-                        </Table.Cell>
-                        <Table.Cell justify="end">
-                          <Text color="gray" className="tnum">{row.entries}</Text>
-                        </Table.Cell>
-                      </Table.Row>
+                          </div>
+                        </th>
+                        <LTd numeric>
+                          <span className="font-medium">{row.total.toFixed(1)}</span>
+                        </LTd>
+                        <LTd numeric>
+                          <span className="text-ink-2">{row.pic.toFixed(1)}</span>
+                        </LTd>
+                        <LTd numeric>
+                          <span className="text-ink-2">{row.sic.toFixed(1)}</span>
+                        </LTd>
+                        <LTd numeric>
+                          <span className="text-ink-2">{row.night.toFixed(1)}</span>
+                        </LTd>
+                        <LTd numeric>
+                          <span className="text-ink-2">{row.simulator.toFixed(1)}</span>
+                        </LTd>
+                        <LTd numeric>
+                          <span className="text-ink-2">{row.entries}</span>
+                        </LTd>
+                      </tr>
                     ))}
-                  </Table.Body>
-                </Table.Root>
+                  </tbody>
+                </LTable>
               )}
-            </Flex>
-          </Card>
-        </Flex>
+            </div>
+          </LCard>
+        </div>
       )}
-    </PageShell>
+    </LPageShell>
+  );
+}
+
+/* ── Inline icon ───────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. Same shape as invoices/page.tsx's own WarningIcon. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

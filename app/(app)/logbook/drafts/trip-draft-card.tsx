@@ -2,7 +2,8 @@
 
 import { useId, useState } from "react";
 import NextLink from "next/link";
-import { Card, Flex, Heading, Link, Select, Table, Text } from "@/components/ui";
+import { LCard, LTable, LTd, LTh } from "@/components/ledger";
+import { LSelect } from "@/components/ledger/forms";
 import { formatDate, formatDateRange } from "@/lib/format";
 import type { LogbookRole } from "../db";
 import { ConfirmLegButton, ConfirmTripButton } from "./confirm-draft-button";
@@ -58,63 +59,63 @@ export default function TripDraftCard({
   const roleLabelId = useId();
 
   return (
-    <Card>
-      <Flex direction="column" gap="3" p="2">
-        <Flex justify="between" align="start" gap="3" wrap="wrap">
-          <Flex direction="column">
-            <Heading as="h3" size="4">
-              <Link asChild>
-                <NextLink href={`/trips/${trip.id}`}>
-                  {formatDateRange(trip.starts_on, trip.ends_on)}
-                </NextLink>
-              </Link>
-            </Heading>
-            <Text size="1" color="gray">
+    <LCard>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex flex-col">
+            <h3 className="text-h3 font-semibold">
+              <NextLink href={`/trips/${trip.id}`} className="text-accent hover:underline">
+                {formatDateRange(trip.starts_on, trip.ends_on)}
+              </NextLink>
+            </h3>
+            <p className="text-caption text-ink-3">
               {trip.aircraft_ident ?? "No tail number"}
               {trip.aircraft_type ? ` · ${trip.aircraft_type}` : ""}
-            </Text>
-          </Flex>
-          <Flex direction="column" align="end" gap="2">
-            <Flex direction="column" gap="1" style={{ minWidth: 140 }}>
-              <Text as="label" size="1" color="gray" id={roleLabelId}>
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex min-w-[140px] flex-col gap-1">
+              <label htmlFor={roleLabelId} className="text-caption text-ink-3">
                 Role for this trip
-              </Text>
-              <Select.Root
+              </label>
+              <LSelect
+                id={roleLabelId}
+                aria-label="Role for this trip"
                 value={role ?? ""}
-                onValueChange={(value) => setRole(value as LogbookRole)}
+                onChange={(e) => setRole((e.target.value || null) as LogbookRole | null)}
               >
-                <Select.Trigger
-                  aria-labelledby={roleLabelId}
-                  placeholder="Choose PIC or SIC"
-                />
-                <Select.Content>
-                  {ROLE_OPTIONS.map((option) => (
-                    <Select.Item key={option.value} value={option.value}>
-                      {option.label}
-                    </Select.Item>
-                  ))}
-                </Select.Content>
-              </Select.Root>
-            </Flex>
+                <option value="" disabled>
+                  Choose PIC or SIC
+                </option>
+                {ROLE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </LSelect>
+            </div>
             <ConfirmTripButton tripId={trip.id} legCount={legs.length} role={role} />
-          </Flex>
-        </Flex>
+          </div>
+        </div>
 
-        <Table.Root variant="ghost">
-          <Table.Header>
-            <Table.Row>
-              <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell>Route</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell justify="end">Total</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell justify="end">Night</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell justify="end">Instrument</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell justify="end">Landings</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell justify="end">Role</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell justify="end">PIC / SIC</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell justify="end"> </Table.ColumnHeaderCell>
-            </Table.Row>
-          </Table.Header>
-          <Table.Body>
+        <LTable>
+          <caption>
+            <span className="sr-only">{`Legs for the trip on ${formatDateRange(trip.starts_on, trip.ends_on)}`}</span>
+          </caption>
+          <thead>
+            <tr>
+              <LTh>Date</LTh>
+              <LTh>Route</LTh>
+              <LTh numeric>Total</LTh>
+              <LTh numeric>Night</LTh>
+              <LTh numeric>Instrument</LTh>
+              <LTh numeric>Landings</LTh>
+              <LTh numeric>Role</LTh>
+              <LTh numeric>PIC / SIC</LTh>
+              <LTh numeric> </LTh>
+            </tr>
+          </thead>
+          <tbody>
             {legs.map((leg) => {
               const totalTime = Number(leg.block_hours ?? 0);
               // HIGH 5: draftPayloadForLeg deliberately leaves
@@ -149,76 +150,67 @@ export default function TripDraftCard({
                 Number(leg.night_landings_touch_go);
               const picSicTime = role ? totalTime : null;
               return (
-                <Table.Row key={leg.id}>
-                  <Table.Cell>
-                    <Text size="2" weight="medium">
-                      {formatDate(leg.leg_date)}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <Text size="2" color="gray">
+                <tr key={leg.id}>
+                  <th
+                    scope="row"
+                    className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                  >
+                    {formatDate(leg.leg_date)}
+                  </th>
+                  <LTd>
+                    <span className="text-ink-2">
                       {leg.from_icao ?? "—"} → {leg.to_icao ?? "—"}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell justify="end">
-                    <Text size="2" className="tnum">
-                      {totalTime.toFixed(1)}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell justify="end">
-                    <Text size="2" color="gray" className="tnum">
-                      {Number(leg.night_hours ?? 0).toFixed(1)}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell justify="end">
-                    <Text size="2" color="gray" className="tnum">
+                    </span>
+                  </LTd>
+                  <LTd numeric>{totalTime.toFixed(1)}</LTd>
+                  <LTd numeric>
+                    <span className="text-ink-2">{Number(leg.night_hours ?? 0).toFixed(1)}</span>
+                  </LTd>
+                  <LTd numeric>
+                    <span className="text-ink-2">
                       {instrumentHours.toFixed(1)}
                       {instrumentUnsplit ? "*" : ""}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell justify="end">
-                    <Text size="2" color="gray" className="tnum">
+                    </span>
+                  </LTd>
+                  <LTd numeric>
+                    <span className="text-ink-2">
                       {landingsTotal}
                       {dayLandingsSplitMissing ? "*" : ""}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell justify="end">
-                    <Text size="2" color={role ? undefined : "amber"} className="tnum">
-                      {role ?? "not set"}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell justify="end">
-                    <Text size="2" color="gray" className="tnum">
-                      {picSicTime === null ? "—" : picSicTime.toFixed(1)}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell justify="end">
+                    </span>
+                  </LTd>
+                  <LTd numeric>
+                    <span className={role ? "text-ink-2" : "text-warn"}>{role ?? "not set"}</span>
+                  </LTd>
+                  <LTd numeric>
+                    <span className="text-ink-2">{picSicTime === null ? "—" : picSicTime.toFixed(1)}</span>
+                  </LTd>
+                  <LTd numeric>
                     <ConfirmLegButton
                       tripLegId={leg.id}
                       label={`${leg.from_icao ?? "?"} to ${leg.to_icao ?? "?"} on ${formatDate(leg.leg_date)}`}
                       role={role}
                     />
-                  </Table.Cell>
-                </Table.Row>
+                  </LTd>
+                </tr>
               );
             })}
-          </Table.Body>
-        </Table.Root>
+          </tbody>
+        </LTable>
 
-        <Text size="1" color="gray">
+        <p className="text-caption text-ink-3">
           * marks a leg that recorded only the older combined field:
           instrument time as one total (not actual vs. simulated) or day
           landings with no full-stop count. The confirmed entry carries that
           the same way; classify it on the logbook entry after confirming.
           Unmarked instrument and landing figures already carry the split
           the leg itself recorded.
-        </Text>
-        <Text size="1" color="gray">
+        </p>
+        <p className="text-caption text-ink-3">
           These numbers come straight from the trip&rsquo;s legs. Fix a leg on
           the trip first if anything&rsquo;s wrong, then come back here. You can
           also edit any field on the logbook entry after confirming.
-        </Text>
-      </Flex>
-    </Card>
+        </p>
+      </div>
+    </LCard>
   );
 }

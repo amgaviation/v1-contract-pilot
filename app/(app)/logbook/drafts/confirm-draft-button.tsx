@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Button, Flex, Text } from "@/components/ui";
+import { LButton } from "@/components/ledger";
 import { confirmLegDraft, confirmTripDrafts } from "../actions";
 import type { LogbookRole } from "../db";
 
@@ -38,17 +38,17 @@ export function ConfirmLegButton({
 
   if (done) {
     return (
-      <Text ref={doneRef} tabIndex={-1} size="1" color="green" weight="bold">
+      <span ref={doneRef} tabIndex={-1} className="text-caption font-bold text-good">
         Confirmed
-      </Text>
+      </span>
     );
   }
 
   return (
-    <Flex direction="column" align="end" gap="1">
-      <Button
+    <div className="flex flex-col items-end gap-1">
+      <LButton
         variant="outline"
-        size="1"
+        size="sm"
         disabled={pending || !role}
         title={role ? undefined : "Pick a role for this trip first"}
         aria-label={`Confirm leg ${label}`}
@@ -62,13 +62,13 @@ export function ConfirmLegButton({
         }}
       >
         {pending ? "Confirming…" : "Confirm"}
-      </Button>
+      </LButton>
       {error ? (
-        <Text size="1" color="red" role="alert">
+        <p className="text-caption text-crit" role="alert">
           {error}
-        </Text>
+        </p>
       ) : null}
-    </Flex>
+    </div>
   );
 }
 
@@ -94,16 +94,16 @@ export function ConfirmTripButton({
 
   if (done) {
     return (
-      <Text ref={doneRef} tabIndex={-1} size="1" color="green" weight="bold">
+      <span ref={doneRef} tabIndex={-1} className="text-caption font-bold text-good">
         All confirmed
-      </Text>
+      </span>
     );
   }
 
   return (
-    <Flex direction="column" gap="1">
-      <Button
-        size="1"
+    <div className="flex flex-col gap-1">
+      <LButton
+        size="sm"
         disabled={pending || !role}
         title={role ? undefined : "Pick a role for this trip first"}
         aria-label={`Confirm all ${legCount} leg${legCount === 1 ? "" : "s"}`}
@@ -117,12 +117,12 @@ export function ConfirmTripButton({
         }}
       >
         {pending ? "Confirming…" : `Confirm all ${legCount} leg${legCount === 1 ? "" : "s"}`}
-      </Button>
+      </LButton>
       {error ? (
-        <Text size="1" color="red" role="alert">
+        <p className="text-caption text-crit" role="alert">
           {error}
-        </Text>
+        </p>
       ) : null}
-    </Flex>
+    </div>
   );
 }

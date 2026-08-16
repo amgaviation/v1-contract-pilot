@@ -2,21 +2,9 @@
 
 import { useId, useMemo, useState, useTransition } from "react";
 import NextLink from "next/link";
-import {
-  Badge,
-  Button,
-  Callout,
-  Card,
-  Checkbox,
-  Code,
-  Flex,
-  Heading,
-  Select,
-  Table,
-  Tabs,
-  Text,
-} from "@/components/ui";
-import { ExclamationTriangleIcon, CheckCircledIcon } from "@radix-ui/react-icons";
+import { LAlert, LButton, LCard, LPill, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
+import { LCheckbox, LSelect } from "@/components/ledger/forms";
+import { LTabsRoot, LTabsList, LTabsTrigger } from "@/components/ledger/tabs";
 
 import { parseForeflight } from "@/lib/logbook-import/foreflight";
 import { parseLogTen } from "@/lib/logbook-import/logten";
@@ -331,61 +319,59 @@ export default function ImportWorkspace() {
     const { outcome } = stage;
     const duplicateDetail = outcome.duplicateDetail ?? [];
     return (
-      <Card>
-        <Flex direction="column" gap="3" p="3">
-          <Flex align="center" gap="2">
+      <LCard>
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
             {outcome.partial ? (
-              <ExclamationTriangleIcon color="amber" />
+              <WarningIcon className="text-warn" />
             ) : (
-              <CheckCircledIcon color="green" />
+              <CheckCircleIcon className="text-good" />
             )}
-            <Heading as="h3" size="4">
+            <h3 className="text-h3 font-semibold">
               {outcome.partial ? "Import didn't finish" : "Import complete"}
-            </Heading>
-          </Flex>
+            </h3>
+          </div>
           {outcome.partial ? (
-            <Callout.Root color="amber">
-              <Callout.Icon>
-                <ExclamationTriangleIcon />
-              </Callout.Icon>
-              <Callout.Text>{outcome.partialMessage}</Callout.Text>
-            </Callout.Root>
+            <LAlert tone="warn" className="flex items-start gap-2">
+              <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+              <span>{outcome.partialMessage}</span>
+            </LAlert>
           ) : (
-            <Text size="2">
-              <span className="tnum">{outcome.imported}</span> entr{outcome.imported === 1 ? "y" : "ies"}{" "}
+            <p className="text-body-s text-ink">
+              <span className="tnum-l">{outcome.imported}</span> entr{outcome.imported === 1 ? "y" : "ies"}{" "}
               added to your logbook.
-            </Text>
+            </p>
           )}
           {outcome.duplicatesInLogbook ? (
-            <Text size="2" color="gray">
-              <span className="tnum">{outcome.duplicatesInLogbook}</span> row
+            <p className="text-body-s text-ink-2">
+              <span className="tnum-l">{outcome.duplicatesInLogbook}</span> row
               {outcome.duplicatesInLogbook === 1 ? "" : "s"} skipped. Already in your logbook from a
               previous import.
-            </Text>
+            </p>
           ) : null}
           {outcome.duplicatesInFile ? (
-            <Text size="2" color="gray">
-              <span className="tnum">{outcome.duplicatesInFile}</span> row
+            <p className="text-body-s text-ink-2">
+              <span className="tnum-l">{outcome.duplicatesInFile}</span> row
               {outcome.duplicatesInFile === 1 ? "" : "s"} skipped. Duplicate of an earlier row in this
               same file, not a previous import. If these are genuinely two different flights (e.g. two
               identical pattern-work hops flown back to back), add the missed one by hand. See the rows
               below.
-            </Text>
+            </p>
           ) : null}
           {outcome.rejectedCount ? (
-            <Text size="2" color="amber">
+            <p className="text-body-s text-warn">
               {outcome.rejectedCount} row{outcome.rejectedCount === 1 ? "" : "s"} couldn&rsquo;t be
               parsed. See the rejected rows below for why.
-            </Text>
+            </p>
           ) : null}
-          <Flex gap="3" mt="2">
-            <Button asChild>
-              <NextLink href="/logbook">Go to your logbook</NextLink>
-            </Button>
-            <Button variant="outline" onClick={resetToPick}>
+          <div className="mt-2 flex gap-3">
+            <NextLink href="/logbook" className={lButtonClass({ variant: "primary" })}>
+              Go to your logbook
+            </NextLink>
+            <LButton variant="outline" onClick={resetToPick}>
               Import another file
-            </Button>
-          </Flex>
+            </LButton>
+          </div>
           {duplicateDetail.length > 0 ? (
             <DuplicateTable rows={duplicateDetail} truncated={outcome.duplicateDetailTruncated ?? false} />
           ) : null}
@@ -402,8 +388,8 @@ export default function ImportWorkspace() {
           ) : stage.result.rejected.length > 0 ? (
             <RejectedTable rejected={stage.result.rejected} />
           ) : null}
-        </Flex>
-      </Card>
+        </div>
+      </LCard>
     );
   }
 
@@ -425,359 +411,329 @@ export default function ImportWorkspace() {
     const canConfirm = (summary?.willImportCount ?? 0) > 0 && (summary?.needsDevice ?? 0) === 0 && !pending;
 
     return (
-      <Flex direction="column" gap="4">
-        <Card>
-          <Flex direction="column" gap="2" p="3">
-            <Heading as="h3" size="4">
-              Review before importing
-            </Heading>
+      <div className="flex flex-col gap-4">
+        <LCard>
+          <div className="flex flex-col gap-2">
+            <h3 className="text-h3 font-semibold">Review before importing</h3>
             {summary && summary.needsRole > 0 ? (
-              <Callout.Root color="amber">
-                <Callout.Icon>
-                  <ExclamationTriangleIcon />
-                </Callout.Icon>
-                <Callout.Text>
-                  <Flex align="center" gap="2" wrap="wrap">
-                    <span>
-                      {summary.needsRole} row{summary.needsRole === 1 ? "" : "s"} don&rsquo;t give
-                      an unambiguous PIC/SIC/Solo/Dual-received signal and can&rsquo;t be inferred.
-                      These will be held back when you import (the rest of the batch is not
-                      blocked). Pick a role for each, or set one default for all of them, to
-                      include them this time:
-                    </span>
-                    <Button size="1" variant="outline" onClick={() => applyDefaultRoleToUndecided("PIC")}>
-                      Set undecided to PIC
-                    </Button>
-                    <Button size="1" variant="outline" onClick={() => applyDefaultRoleToUndecided("SIC")}>
-                      Set undecided to SIC
-                    </Button>
-                    <Button size="1" variant="outline" onClick={() => applyDefaultRoleToUndecided("SOLO")}>
-                      Set undecided to Solo
-                    </Button>
-                    <Button
-                      size="1"
-                      variant="outline"
-                      onClick={() => applyDefaultRoleToUndecided("DUAL_RECEIVED")}
-                    >
-                      Set undecided to Dual received
-                    </Button>
-                  </Flex>
-                </Callout.Text>
-              </Callout.Root>
+              <LAlert tone="warn" className="flex items-start gap-2">
+                <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+                <div className="flex flex-wrap items-center gap-2">
+                  <span>
+                    {summary.needsRole} row{summary.needsRole === 1 ? "" : "s"} don&rsquo;t give
+                    an unambiguous PIC/SIC/Solo/Dual-received signal and can&rsquo;t be inferred.
+                    These will be held back when you import (the rest of the batch is not
+                    blocked). Pick a role for each, or set one default for all of them, to
+                    include them this time:
+                  </span>
+                  <LButton size="sm" variant="outline" onClick={() => applyDefaultRoleToUndecided("PIC")}>
+                    Set undecided to PIC
+                  </LButton>
+                  <LButton size="sm" variant="outline" onClick={() => applyDefaultRoleToUndecided("SIC")}>
+                    Set undecided to SIC
+                  </LButton>
+                  <LButton size="sm" variant="outline" onClick={() => applyDefaultRoleToUndecided("SOLO")}>
+                    Set undecided to Solo
+                  </LButton>
+                  <LButton
+                    size="sm"
+                    variant="outline"
+                    onClick={() => applyDefaultRoleToUndecided("DUAL_RECEIVED")}
+                  >
+                    Set undecided to Dual received
+                  </LButton>
+                </div>
+              </LAlert>
             ) : null}
             {summary && summary.needsDevice > 0 ? (
-              <Callout.Root color="amber">
-                <Callout.Icon>
-                  <ExclamationTriangleIcon />
-                </Callout.Icon>
-                <Callout.Text>
-                  <Flex align="center" gap="2" wrap="wrap">
-                    <span>
-                      {summary.needsDevice} row{summary.needsDevice === 1 ? "" : "s"} log simulator
-                      time without saying FFS, FTD, ATD, or other. Pick one for each, or set a default:
-                    </span>
-                    <Button size="1" variant="outline" onClick={() => applyDefaultDeviceToUndecided("ffs")}>
-                      Set undecided to FFS
-                    </Button>
-                    <Button size="1" variant="outline" onClick={() => applyDefaultDeviceToUndecided("ftd")}>
-                      Set undecided to FTD
-                    </Button>
-                    <Button size="1" variant="outline" onClick={() => applyDefaultDeviceToUndecided("atd")}>
-                      Set undecided to ATD
-                    </Button>
-                  </Flex>
-                </Callout.Text>
-              </Callout.Root>
+              <LAlert tone="warn" className="flex items-start gap-2">
+                <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+                <div className="flex flex-wrap items-center gap-2">
+                  <span>
+                    {summary.needsDevice} row{summary.needsDevice === 1 ? "" : "s"} log simulator
+                    time without saying FFS, FTD, ATD, or other. Pick one for each, or set a default:
+                  </span>
+                  <LButton size="sm" variant="outline" onClick={() => applyDefaultDeviceToUndecided("ffs")}>
+                    Set undecided to FFS
+                  </LButton>
+                  <LButton size="sm" variant="outline" onClick={() => applyDefaultDeviceToUndecided("ftd")}>
+                    Set undecided to FTD
+                  </LButton>
+                  <LButton size="sm" variant="outline" onClick={() => applyDefaultDeviceToUndecided("atd")}>
+                    Set undecided to ATD
+                  </LButton>
+                </div>
+              </LAlert>
             ) : null}
             {truncated ? (
-              <Callout.Root color="amber">
-                <Callout.Icon>
-                  <ExclamationTriangleIcon />
-                </Callout.Icon>
-                <Callout.Text>
+              <LAlert tone="warn" className="flex items-start gap-2">
+                <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+                <span>
                   {`Showing the first ${PREVIEW_ROW_LIMIT} of ${result.valid.length} rows below. All ${result.valid.length} will be imported when you confirm; this table just isn't rendering every one.`}
-                </Callout.Text>
-              </Callout.Root>
+                </span>
+              </LAlert>
             ) : null}
-          </Flex>
-        </Card>
-
-        <Card>
-          <div style={{ overflowX: "auto" }}>
-            <Table.Root variant="ghost" size="1">
-              <Table.Header>
-                <Table.Row>
-                  <Table.ColumnHeaderCell>Include</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Aircraft</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Route</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell justify="end">Total</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Role</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Sim device</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Notes</Table.ColumnHeaderCell>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
-                {shown.map((row) => {
-                  const s = stateFor(row);
-                  return (
-                    <Table.Row key={row.rowNumber}>
-                      <Table.Cell>
-                        <Checkbox
-                          checked={s.included}
-                          onCheckedChange={(checked) =>
-                            updateRow(row.rowNumber, { included: checked === true }, row)
-                          }
-                          aria-label={`Include row ${row.rowNumber}`}
-                        />
-                      </Table.Cell>
-                      <Table.Cell>
-                        <Text size="1" className="tnum">
-                          {row.values.entry_date}
-                        </Text>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <Text size="1" color="gray">
-                          {row.values.aircraft_ident ?? "—"}
-                        </Text>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <Text size="1" color="gray">
-                          {row.values.from_icao ?? "—"} → {row.values.to_icao ?? "—"}
-                        </Text>
-                      </Table.Cell>
-                      <Table.Cell justify="end">
-                        <Text size="1" className="tnum">
-                          {row.values.total_time.toFixed(1)}
-                        </Text>
-                      </Table.Cell>
-                      <Table.Cell>
-                        {/* Every row's role is editable, not just
-                            "needs_selection" ones — an "inferred" row is a
-                            SOFTWARE GUESS, pre-selected here for
-                            convenience but never locked in. This matters
-                            regulatorily: pic_time > 0 with sic_time = 0
-                            infers PIC, but that shape also covers a rated
-                            SIC who is sole manipulator and logs PIC time
-                            per 61.51(e)(1)(i) while ACTING as SIC — the
-                            inference cannot tell those apart, so the pilot
-                            must be able to correct it. See the "(inferred)"
-                            marker below for what the software guessed,
-                            distinct from whatever the pilot ends up
-                            choosing. */}
-                        <Flex direction="column" gap="1">
-                          <Select.Root
-                            value={s.role ?? NONE}
-                            onValueChange={(v) =>
-                              updateRow(row.rowNumber, { role: v === NONE ? null : (v as LogbookRole) }, row)
-                            }
-                          >
-                            <Select.Trigger placeholder="Choose" aria-label={`Role for row ${row.rowNumber}`} />
-                            <Select.Content>
-                              <Select.Item value={NONE}>Not set</Select.Item>
-                              {ROLE_OPTIONS.map((o) => (
-                                <Select.Item key={o.value} value={o.value}>
-                                  {o.label}
-                                </Select.Item>
-                              ))}
-                            </Select.Content>
-                          </Select.Root>
-                          {row.roleSource === "inferred" ? (
-                            <Text size="1" color="gray">
-                              Software guessed {row.values.role}
-                            </Text>
-                          ) : null}
-                        </Flex>
-                      </Table.Cell>
-                      <Table.Cell>
-                        {row.needsSimulatorDeviceType ? (
-                          <Select.Root
-                            value={s.simulatorDeviceType ?? NONE}
-                            onValueChange={(v) =>
-                              updateRow(
-                                row.rowNumber,
-                                { simulatorDeviceType: v === NONE ? null : (v as SimulatorDeviceType) },
-                                row
-                              )
-                            }
-                          >
-                            <Select.Trigger placeholder="Choose" aria-label={`Simulator device for row ${row.rowNumber}`} />
-                            <Select.Content>
-                              <Select.Item value={NONE}>Not set</Select.Item>
-                              {DEVICE_OPTIONS.map((o) => (
-                                <Select.Item key={o.value} value={o.value}>
-                                  {o.label}
-                                </Select.Item>
-                              ))}
-                            </Select.Content>
-                          </Select.Root>
-                        ) : (
-                          <Text size="1" color="gray">
-                            {row.values.simulator_device_type ?? "—"}
-                          </Text>
-                        )}
-                      </Table.Cell>
-                      <Table.Cell>
-                        <Text size="1" color="gray">
-                          {row.unclassifiedLandings
-                            ? `${row.unclassifiedLandings} unclassified landing${row.unclassifiedLandings === 1 ? "" : "s"}`
-                            : ""}
-                        </Text>
-                      </Table.Cell>
-                    </Table.Row>
-                  );
-                })}
-              </Table.Body>
-            </Table.Root>
           </div>
-        </Card>
+        </LCard>
+
+        <LCard>
+          <LTable>
+            <caption>
+              <span className="sr-only">Rows to import</span>
+            </caption>
+            <thead>
+              <tr>
+                <LTh>Include</LTh>
+                <LTh>Date</LTh>
+                <LTh>Aircraft</LTh>
+                <LTh>Route</LTh>
+                <LTh numeric>Total</LTh>
+                <LTh>Role</LTh>
+                <LTh>Sim device</LTh>
+                <LTh>Notes</LTh>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((row) => {
+                const s = stateFor(row);
+                return (
+                  <tr key={row.rowNumber}>
+                    <th
+                      scope="row"
+                      className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                    >
+                      <LCheckbox
+                        checked={s.included}
+                        onChange={(e) => updateRow(row.rowNumber, { included: e.target.checked }, row)}
+                        aria-label={`Include row ${row.rowNumber}`}
+                      />
+                    </th>
+                    <LTd className="tnum-l">{row.values.entry_date}</LTd>
+                    <LTd>
+                      <span className="text-ink-2">{row.values.aircraft_ident ?? "—"}</span>
+                    </LTd>
+                    <LTd>
+                      <span className="text-ink-2">
+                        {row.values.from_icao ?? "—"} → {row.values.to_icao ?? "—"}
+                      </span>
+                    </LTd>
+                    <LTd numeric>{row.values.total_time.toFixed(1)}</LTd>
+                    <LTd>
+                      {/* Every row's role is editable, not just
+                          "needs_selection" ones — an "inferred" row is a
+                          SOFTWARE GUESS, pre-selected here for
+                          convenience but never locked in. This matters
+                          regulatorily: pic_time > 0 with sic_time = 0
+                          infers PIC, but that shape also covers a rated
+                          SIC who is sole manipulator and logs PIC time
+                          per 61.51(e)(1)(i) while ACTING as SIC — the
+                          inference cannot tell those apart, so the pilot
+                          must be able to correct it. See the "(inferred)"
+                          marker below for what the software guessed,
+                          distinct from whatever the pilot ends up
+                          choosing. */}
+                      <div className="flex flex-col gap-1">
+                        <LSelect
+                          value={s.role ?? NONE}
+                          aria-label={`Role for row ${row.rowNumber}`}
+                          onChange={(e) =>
+                            updateRow(
+                              row.rowNumber,
+                              { role: e.target.value === NONE ? null : (e.target.value as LogbookRole) },
+                              row
+                            )
+                          }
+                        >
+                          <option value={NONE}>Not set</option>
+                          {ROLE_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </LSelect>
+                        {row.roleSource === "inferred" ? (
+                          <span className="text-caption text-ink-3">Software guessed {row.values.role}</span>
+                        ) : null}
+                      </div>
+                    </LTd>
+                    <LTd>
+                      {row.needsSimulatorDeviceType ? (
+                        <LSelect
+                          value={s.simulatorDeviceType ?? NONE}
+                          aria-label={`Simulator device for row ${row.rowNumber}`}
+                          onChange={(e) =>
+                            updateRow(
+                              row.rowNumber,
+                              {
+                                simulatorDeviceType:
+                                  e.target.value === NONE ? null : (e.target.value as SimulatorDeviceType),
+                              },
+                              row
+                            )
+                          }
+                        >
+                          <option value={NONE}>Not set</option>
+                          {DEVICE_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </LSelect>
+                      ) : (
+                        <span className="text-ink-2">{row.values.simulator_device_type ?? "—"}</span>
+                      )}
+                    </LTd>
+                    <LTd>
+                      <span className="text-ink-2">
+                        {row.unclassifiedLandings
+                          ? `${row.unclassifiedLandings} unclassified landing${row.unclassifiedLandings === 1 ? "" : "s"}`
+                          : ""}
+                      </span>
+                    </LTd>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </LTable>
+        </LCard>
 
         {result.rejected.length > 0 ? <RejectedTable rejected={result.rejected} /> : null}
 
         {confirmError ? (
-          <Callout.Root color="red">
-            <Callout.Icon>
-              <ExclamationTriangleIcon />
-            </Callout.Icon>
-            <Callout.Text>{confirmError}</Callout.Text>
-          </Callout.Root>
+          <LAlert tone="crit" className="flex items-start gap-2">
+            <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+            <span>{confirmError}</span>
+          </LAlert>
         ) : null}
 
-        <Flex gap="3">
-          <Button onClick={handleConfirm} disabled={!canConfirm}>
+        <div className="flex gap-3">
+          <LButton onClick={handleConfirm} disabled={!canConfirm}>
             {pending
               ? "Importing…"
               : `Import ${summary?.willImportCount ?? 0} entr${(summary?.willImportCount ?? 0) === 1 ? "y" : "ies"}`}
-          </Button>
-          <Button variant="outline" onClick={resetToPick} disabled={pending}>
+          </LButton>
+          <LButton variant="outline" onClick={resetToPick} disabled={pending}>
             Start over
-          </Button>
-        </Flex>
-      </Flex>
+          </LButton>
+        </div>
+      </div>
     );
   }
 
   if (stage.kind === "map-generic") {
     return (
-      <Card>
-        <Flex direction="column" gap="3" p="3">
-          <Heading as="h3" size="4">
-            Match your columns
-          </Heading>
-          <div style={{ overflowX: "auto" }}>
-            <Table.Root variant="ghost" size="1">
-              <Table.Header>
-                <Table.Row>
-                  <Table.ColumnHeaderCell>Your column</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Sample</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Maps to</Table.ColumnHeaderCell>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
-                {stage.header.map((h, idx) => (
-                  <Table.Row key={`${h}-${idx}`}>
-                    <Table.Cell>
-                      <Text size="1" weight="medium">
-                        {h || `Column ${idx + 1}`}
-                      </Text>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Text size="1" color="gray">
-                        {stage.dataRecords[0]?.fields[idx] ?? ""}
-                      </Text>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Select.Root
-                        value={stage.mapping[idx] ?? "ignore"}
-                        onValueChange={(v) => {
-                          const nextMapping = [...stage.mapping];
-                          nextMapping[idx] = v as ColumnMapping[number];
-                          setStage({ ...stage, mapping: nextMapping });
-                        }}
-                      >
-                        <Select.Trigger aria-label={`Field for column ${h || idx + 1}`} />
-                        <Select.Content>
-                          <Select.Item value="ignore">Ignore this column</Select.Item>
-                          {MAPPABLE_FIELDS.map((f) => (
-                            <Select.Item key={f.key} value={f.key}>
-                              {f.label}
-                              {f.required ? " (required)" : ""}
-                            </Select.Item>
-                          ))}
-                        </Select.Content>
-                      </Select.Root>
-                    </Table.Cell>
-                  </Table.Row>
-                ))}
-              </Table.Body>
-            </Table.Root>
-          </div>
+      <LCard>
+        <div className="flex flex-col gap-3">
+          <h3 className="text-h3 font-semibold">Match your columns</h3>
+          <LTable>
+            <caption>
+              <span className="sr-only">Column mapping</span>
+            </caption>
+            <thead>
+              <tr>
+                <LTh>Your column</LTh>
+                <LTh>Sample</LTh>
+                <LTh>Maps to</LTh>
+              </tr>
+            </thead>
+            <tbody>
+              {stage.header.map((h, idx) => (
+                <tr key={`${h}-${idx}`}>
+                  <th
+                    scope="row"
+                    className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                  >
+                    {h || `Column ${idx + 1}`}
+                  </th>
+                  <LTd>
+                    <span className="text-ink-2">{stage.dataRecords[0]?.fields[idx] ?? ""}</span>
+                  </LTd>
+                  <LTd>
+                    <LSelect
+                      value={stage.mapping[idx] ?? "ignore"}
+                      aria-label={`Field for column ${h || idx + 1}`}
+                      onChange={(e) => {
+                        const nextMapping = [...stage.mapping];
+                        nextMapping[idx] = e.target.value as ColumnMapping[number];
+                        setStage({ ...stage, mapping: nextMapping });
+                      }}
+                    >
+                      <option value="ignore">Ignore this column</option>
+                      {MAPPABLE_FIELDS.map((f) => (
+                        <option key={f.key} value={f.key}>
+                          {f.label}
+                          {f.required ? " (required)" : ""}
+                        </option>
+                      ))}
+                    </LSelect>
+                  </LTd>
+                </tr>
+              ))}
+            </tbody>
+          </LTable>
           {parseError ? (
-            <Callout.Root color="red">
-              <Callout.Icon>
-                <ExclamationTriangleIcon />
-              </Callout.Icon>
-              <Callout.Text>{parseError}</Callout.Text>
-            </Callout.Root>
+            <LAlert tone="crit" className="flex items-start gap-2">
+              <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+              <span>{parseError}</span>
+            </LAlert>
           ) : null}
-          <Flex gap="3">
-            <Button onClick={applyGenericStage}>Continue to preview</Button>
-            <Button variant="outline" onClick={resetToPick}>
+          <div className="flex gap-3">
+            <LButton onClick={applyGenericStage}>Continue to preview</LButton>
+            <LButton variant="outline" onClick={resetToPick}>
               Start over
-            </Button>
-          </Flex>
-        </Flex>
-      </Card>
+            </LButton>
+          </div>
+        </div>
+      </LCard>
     );
   }
 
   // stage.kind === "pick"
   return (
-    <Card>
-      <Flex direction="column" gap="4" p="3">
-        <Tabs.Root value={format} onValueChange={(v) => setFormat(v as ImportFormat)}>
-          <Tabs.List>
-            <Tabs.Trigger value="foreflight">ForeFlight</Tabs.Trigger>
-            <Tabs.Trigger value="logten">LogTen Pro</Tabs.Trigger>
-            <Tabs.Trigger value="generic_csv">Any other CSV</Tabs.Trigger>
-          </Tabs.List>
-        </Tabs.Root>
-        <Text size="2" color="gray">
+    <LCard>
+      <div className="flex flex-col gap-4">
+        <LTabsRoot value={format} onValueChange={(v) => setFormat(v as ImportFormat)}>
+          <LTabsList aria-label="Logbook file format">
+            <LTabsTrigger value="foreflight">ForeFlight</LTabsTrigger>
+            <LTabsTrigger value="logten">LogTen Pro</LTabsTrigger>
+            <LTabsTrigger value="generic_csv">Any other CSV</LTabsTrigger>
+          </LTabsList>
+        </LTabsRoot>
+        <p className="text-body-s text-ink-2">
           {format === "foreflight"
             ? "Upload the CSV from ForeFlight's Logbook export (Logbook → Export)."
             : format === "logten"
               ? "Upload a CSV export from LogTen Pro."
               : "Upload any CSV. You'll match its columns to logbook fields yourself on the next step. This is the path for any logbook that isn't ForeFlight or LogTen Pro."}
-        </Text>
-        <Flex direction="column" gap="1">
-          <Text as="label" size="1" color="gray" htmlFor={fileInputId}>
+        </p>
+        <div className="flex flex-col gap-1">
+          <label htmlFor={fileInputId} className="text-body-s font-medium text-ink">
             CSV file
-          </Text>
+          </label>
           {/* A plain file input, same pattern as app/(app)/expenses/expense-form.tsx's receipt field — this file is read client-side (FileReader) and never uploaded as bytes; only the parsed, pilot-confirmed rows reach the server. */}
           <input
             id={fileInputId}
             type="file"
             accept=".csv,text/csv"
             aria-label="CSV file"
+            className="text-body-s text-ink"
             onChange={(e) => {
               const file = e.currentTarget.files?.[0];
               if (file) void handleFile(file);
             }}
           />
-        </Flex>
+        </div>
         {parseError ? (
-          <Callout.Root color="red">
-            <Callout.Icon>
-              <ExclamationTriangleIcon />
-            </Callout.Icon>
-            <Callout.Text>{parseError}</Callout.Text>
-          </Callout.Root>
+          <LAlert tone="crit" className="flex items-start gap-2">
+            <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+            <span>{parseError}</span>
+          </LAlert>
         ) : null}
-        <Text size="1" color="gray">
+        <p className="text-caption text-ink-3">
           Nothing is written to your logbook until you review and confirm on the next screen.
-        </Text>
-      </Flex>
-    </Card>
+        </p>
+      </div>
+    </LCard>
   );
 }
 
@@ -795,58 +751,58 @@ function summarizeSourceRow(sourceRow: Record<string, string>): string {
 function DuplicateTable({ rows, truncated }: { rows: DuplicateRowDetail[]; truncated: boolean }) {
   const shown = rows.slice(0, DUPLICATE_ROW_LIMIT);
   return (
-    <Card>
-      <Flex direction="column" gap="2" p="3">
-        <Flex align="center" gap="2">
-          <Badge color="gray">{rows.length} duplicate{rows.length === 1 ? "" : "s"}</Badge>
-          <Heading as="h3" size="3">
-            Rows skipped as duplicates
-          </Heading>
-        </Flex>
-        <Text size="1" color="gray">
+    <LCard>
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <LPill tone="neutral">{rows.length} duplicate{rows.length === 1 ? "" : "s"}</LPill>
+          <h3 className="text-lead font-semibold">Rows skipped as duplicates</h3>
+        </div>
+        <p className="text-caption text-ink-3">
           &ldquo;Already in your logbook&rdquo; rows match a flight from a previous import.
           &ldquo;Duplicate in this file&rdquo; rows match an earlier row in THIS file. If that&rsquo;s a
           real second flight (not a data-entry repeat), add it by hand.
-        </Text>
+        </p>
         {truncated ? (
-          <Text size="1" color="amber">
+          <p className="text-caption text-warn">
             {`Showing the first ${DUPLICATE_ROW_LIMIT} of ${rows.length} duplicate rows.`}
-          </Text>
+          </p>
         ) : null}
-        <div style={{ overflowX: "auto" }}>
-          <Table.Root variant="ghost" size="1">
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Row</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Why skipped</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Original row</Table.ColumnHeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {shown.map((r) => (
-                <Table.Row key={r.rowNumber}>
-                  <Table.Cell>
-                    <Text size="1" className="tnum">
-                      {r.rowNumber}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <Text size="1" color={r.kind === "in_file" ? "amber" : "gray"}>
-                      {r.kind === "in_file" ? "Duplicate in this file" : "Already in your logbook"}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <Code size="1" color="gray" variant="ghost">
-                      {summarizeSourceRow(r.sourceRow).slice(0, 300)}
-                    </Code>
-                  </Table.Cell>
-                </Table.Row>
-              ))}
-            </Table.Body>
-          </Table.Root>
-        </div>
-      </Flex>
-    </Card>
+        <LTable>
+          <caption>
+            <span className="sr-only">Rows skipped as duplicates</span>
+          </caption>
+          <thead>
+            <tr>
+              <LTh>Row</LTh>
+              <LTh>Why skipped</LTh>
+              <LTh>Original row</LTh>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((r) => (
+              <tr key={r.rowNumber}>
+                <th
+                  scope="row"
+                  className="tnum-l border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                >
+                  {r.rowNumber}
+                </th>
+                <LTd>
+                  <span className={r.kind === "in_file" ? "text-warn" : "text-ink-2"}>
+                    {r.kind === "in_file" ? "Duplicate in this file" : "Already in your logbook"}
+                  </span>
+                </LTd>
+                <LTd>
+                  <code className="rounded-control bg-sunk px-1.5 py-0.5 font-mono text-caption text-ink-2">
+                    {summarizeSourceRow(r.sourceRow).slice(0, 300)}
+                  </code>
+                </LTd>
+              </tr>
+            ))}
+          </tbody>
+        </LTable>
+      </div>
+    </LCard>
   );
 }
 
@@ -854,56 +810,98 @@ function RejectedTable({ rejected }: { rejected: { rowNumber: number; raw: strin
   const shown = rejected.slice(0, REJECTED_ROW_LIMIT);
   const truncated = rejected.length > REJECTED_ROW_LIMIT;
   return (
-    <Card>
-      <Flex direction="column" gap="2" p="3">
-        <Flex align="center" gap="2">
-          <Badge color="amber">{rejected.length} rejected</Badge>
-          <Heading as="h3" size="3">
-            Rows that couldn&rsquo;t be imported
-          </Heading>
-        </Flex>
-        <Text size="1" color="gray">
+    <LCard>
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <LPill tone="warn">{rejected.length} rejected</LPill>
+          <h3 className="text-lead font-semibold">Rows that couldn&rsquo;t be imported</h3>
+        </div>
+        <p className="text-caption text-ink-3">
           These rows were not written to your logbook. Fix them in your source file and re-import,
           or add them by hand.
-        </Text>
+        </p>
         {truncated ? (
-          <Text size="1" color="amber">
+          <p className="text-caption text-warn">
             {`Showing the first ${REJECTED_ROW_LIMIT} of ${rejected.length} rejected rows.`}
-          </Text>
+          </p>
         ) : null}
-        <div style={{ overflowX: "auto" }}>
-          <Table.Root variant="ghost" size="1">
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Row</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Reason</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Original line</Table.ColumnHeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {shown.map((r) => (
-                <Table.Row key={r.rowNumber}>
-                  <Table.Cell>
-                    <Text size="1" className="tnum">
-                      {r.rowNumber}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <Text size="1" color="red">
-                      {r.reason}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <Code size="1" color="gray" variant="ghost">
-                      {r.raw.slice(0, 300)}
-                    </Code>
-                  </Table.Cell>
-                </Table.Row>
-              ))}
-            </Table.Body>
-          </Table.Root>
-        </div>
-      </Flex>
-    </Card>
+        <LTable>
+          <caption>
+            <span className="sr-only">Rows that couldn&rsquo;t be imported</span>
+          </caption>
+          <thead>
+            <tr>
+              <LTh>Row</LTh>
+              <LTh>Reason</LTh>
+              <LTh>Original line</LTh>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((r) => (
+              <tr key={r.rowNumber}>
+                <th
+                  scope="row"
+                  className="tnum-l border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                >
+                  {r.rowNumber}
+                </th>
+                <LTd>
+                  <span className="text-crit">{r.reason}</span>
+                </LTd>
+                <LTd>
+                  <code className="rounded-control bg-sunk px-1.5 py-0.5 font-mono text-caption text-ink-2">
+                    {r.raw.slice(0, 300)}
+                  </code>
+                </LTd>
+              </tr>
+            ))}
+          </tbody>
+        </LTable>
+      </div>
+    </LCard>
+  );
+}
+
+/* ── Inline icons ──────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. Same shape as invoices/page.tsx's own WarningIcon. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function CheckCircleIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <circle cx="8" cy="8" r="6.25" />
+      <path d="M5.25 8.25 7.25 10.25 10.75 6" />
+    </svg>
   );
 }
