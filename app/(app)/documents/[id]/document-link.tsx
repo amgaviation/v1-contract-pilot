@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Button, Flex, Text } from "@/components/ui";
+import { LButton } from "@/components/ledger";
 import { documentUrl } from "../actions";
 
 /**
@@ -18,10 +18,11 @@ export default function DocumentLink({ path }: { path: string }) {
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <Flex direction="column" gap="1">
-      <Button
+    <div className="flex flex-col gap-1">
+      <LButton
+        type="button"
         variant="outline"
-        size="1"
+        size="sm"
         disabled={pending}
         onClick={() =>
           startTransition(async () => {
@@ -39,12 +40,12 @@ export default function DocumentLink({ path }: { path: string }) {
         }
       >
         {pending ? "Opening…" : "View file"}
-      </Button>
+      </LButton>
       {error ? (
-        <Text size="1" color="red" role="alert">
+        <p className="text-caption font-medium text-crit" role="alert">
           {error}
-        </Text>
+        </p>
       ) : null}
-    </Flex>
+    </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { Button, Flex, Text } from "@/components/ui";
+import { LButton } from "@/components/ledger";
 import { recomputeCurrency, type RecomputeState } from "./actions";
 import { formatZulu } from "./presentation";
 
@@ -23,22 +23,22 @@ export default function RecomputeButton() {
 
   return (
     <form action={formAction}>
-      <Flex direction="column" align={{ initial: "start", sm: "end" }} gap="1">
-        <Button type="submit" disabled={pending}>
+      <div className="flex flex-col items-start gap-1 sm:items-end">
+        <LButton type="submit" disabled={pending}>
           {pending ? "Recomputing…" : "Recompute and record snapshot"}
-        </Button>
+        </LButton>
         {state?.ok ? (
-          <Text size="1" color="green" role="status">
+          <p className="tnum-l text-caption font-medium text-good" role="status">
             {`Recorded ${state.recordedCount} snapshot row${state.recordedCount === 1 ? "" : "s"} at ${
               formatZulu(state.recordedAtIso) ?? state.recordedAtIso
             }.`}
-          </Text>
+          </p>
         ) : state && !state.ok ? (
-          <Text size="1" color="red" role="alert">
+          <p className="text-caption font-medium text-crit" role="alert">
             {state.error}
-          </Text>
+          </p>
         ) : null}
-      </Flex>
+      </div>
     </form>
   );
 }
