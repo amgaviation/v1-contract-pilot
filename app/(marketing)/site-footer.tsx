@@ -1,18 +1,18 @@
 import NextLink from "next/link";
-import { Box, Container, Flex, Grid, Separator, Text } from "@/components/ui";
+import { LSeparator } from "@/components/ledger";
 import { BRAND } from "@/lib/brand";
-import { GRAY_BAND } from "@/lib/surface-style";
 
 /**
  * The public site's footer — the SECOND of the two places BRAND.attribution
  * is allowed to render (see lib/brand.ts's header comment; the first is
- * app/(app)/layout.tsx's footer). Nowhere else on this route group prints
+ * the app shell's own footer). Nowhere else on this route group prints
  * "AMG" — not the header above, not a page body — matching the rule the
  * app layout already follows.
  *
- * The ground is the same gray-2 band token the section rhythm uses
- * (lib/surface-style.ts GRAY_BAND), so the footer closes the page as one
- * more band of the canvas system rather than its own third gray.
+ * LEDGER PASS: the gray-2 band the old footer sat on (lib/surface-style.ts
+ * GRAY_BAND) is `bg-sunk` here — Ledger's own quiet-fill token, the same
+ * one the section rhythm below uses, so the footer closes the page as one
+ * more band of the canvas/sunk system rather than its own third gray.
  *
  * The attribution is real rendered text sourced from lib/brand.ts, not
  * baked into an image: public/brand/expanded.svg carries the same words
@@ -48,55 +48,41 @@ const COLUMNS: { heading: string; links: { href: string; label: string }[] }[] =
 
 export default function SiteFooter() {
   return (
-    // asChild -> <footer>: the public surface's landmarks stop at <main>
-    // without this (and site-header.tsx's matching <header>) — the
-    // authenticated shell already uses header/nav/main/aside landmarks
-    // throughout, and this is the screen a screen-reader user meets first.
-    <Box
-      asChild
-      style={{
-        borderTop: "1px solid var(--edge)",
-        ...GRAY_BAND,
-      }}
-    >
-      <footer>
-        <Container size="4" px="4">
-          <Flex direction="column" gap="5" py="6">
-            {/* asChild -> <nav aria-label>: these are the footer's actual
-                navigation links, distinct from the brand/tagline column
-                beside them, which is not. */}
-            <Grid asChild columns={{ initial: "1", sm: "4" }} gap="5">
-              <nav aria-label="Footer">
-                <Flex direction="column" gap="2" align="start">
-                  <img src="/brand/navy.svg" alt="" height={16} width={28} />
-                  <Text size="1" color="gray">
-                    {BRAND.tagline}
-                  </Text>
-                </Flex>
+    <footer className="border-t border-hair bg-sunk">
+      <div className="mx-auto max-w-5xl px-4">
+        <div className="flex flex-col gap-5 py-6">
+          <nav
+            aria-label="Footer"
+            className="grid grid-cols-1 gap-5 sm:grid-cols-4"
+          >
+            <div className="flex flex-col items-start gap-2">
+              <img src="/brand/navy.svg" alt="" height={16} width={28} />
+              <p className="text-caption text-ink-3">{BRAND.tagline}</p>
+            </div>
 
-                {COLUMNS.map((column) => (
-                  <Flex key={column.heading} direction="column" gap="2">
-                    <Text size="1" weight="medium" color="gray">
-                      {column.heading.toUpperCase()}
-                    </Text>
-                    {column.links.map((link) => (
-                      <Text asChild key={link.href} size="1" color="gray">
-                        <NextLink href={link.href}>{link.label}</NextLink>
-                      </Text>
-                    ))}
-                  </Flex>
+            {COLUMNS.map((column) => (
+              <div key={column.heading} className="flex flex-col gap-2">
+                <span className="text-caption font-medium text-ink-3">
+                  {column.heading.toUpperCase()}
+                </span>
+                {column.links.map((link) => (
+                  <NextLink
+                    key={link.href}
+                    href={link.href}
+                    className="text-caption text-ink-3 hover:text-ink"
+                  >
+                    {link.label}
+                  </NextLink>
                 ))}
-              </nav>
-            </Grid>
+              </div>
+            ))}
+          </nav>
 
-            <Separator size="4" />
+          <LSeparator className="my-0" />
 
-            <Text size="1" color="gray">
-              {BRAND.attribution}
-            </Text>
-          </Flex>
-        </Container>
-      </footer>
-    </Box>
+          <p className="text-caption text-ink-3">{BRAND.attribution}</p>
+        </div>
+      </div>
+    </footer>
   );
 }

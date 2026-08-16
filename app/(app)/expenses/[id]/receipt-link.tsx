@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Box, Button, Text } from "@/components/ui";
+import { LButton } from "@/components/ledger";
 import { receiptUrl } from "../actions";
 
 /**
@@ -19,10 +19,9 @@ export default function ReceiptLink({ path }: { path: string }) {
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <Box>
-      <Button
+    <div>
+      <LButton
         variant="outline"
-        size="2"
         disabled={pending}
         onClick={() =>
           startTransition(async () => {
@@ -40,14 +39,12 @@ export default function ReceiptLink({ path }: { path: string }) {
         }
       >
         {pending ? "Opening…" : "View receipt"}
-      </Button>
+      </LButton>
       {error ? (
-        <Box mt="2" role="alert">
-          <Text size="1" color="red">
-            {error}
-          </Text>
-        </Box>
+        <p className="mt-2 text-caption font-medium text-crit" role="alert">
+          {error}
+        </p>
       ) : null}
-    </Box>
+    </div>
   );
 }

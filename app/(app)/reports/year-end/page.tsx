@@ -1,26 +1,11 @@
 import NextLink from "next/link";
-import {
-  Badge,
-  Box,
-  Button,
-  Callout,
-  Card,
-  Flex,
-  Heading,
-  Link as RadixLink,
-  Table,
-  Text,
-} from "@/components/ui";
-import {
-  ExclamationTriangleIcon,
-  InfoCircledIcon,
-} from "@radix-ui/react-icons";
+import { LAlert, LCard, LPill, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
-import PageShell from "../../page-shell";
 import { currentTaxYear } from "./db";
 import { loadOptionLabels } from "@/lib/custom-options-read";
 import { loadYearEndReport } from "./queries";
@@ -69,22 +54,21 @@ export default async function YearEndReportPage({
   ]);
 
   return (
-    <PageShell
+    <LPageShell
       title="Year-end report"
       subtitle={`Tax year ${year} · a summary of what you recorded, not a tax return`}
       action={
-        <Flex gap="2" wrap="wrap">
+        <div className="flex flex-wrap gap-2">
           {yearOptions(year).map((y) => (
-            <Button
+            <NextLink
               key={y}
-              asChild
-              size="2"
-              variant={y === year ? "solid" : "soft"}
+              href={`/reports/year-end?year=${y}`}
+              className={lButtonClass({ variant: y === year ? "primary" : "outline", size: "sm" })}
             >
-              <NextLink href={`/reports/year-end?year=${y}`}>{y}</NextLink>
-            </Button>
+              {y}
+            </NextLink>
           ))}
-        </Flex>
+        </div>
       }
     >
       {/* LOAD-BEARING, deliberately first: this report summarizes the
@@ -92,398 +76,346 @@ export default async function YearEndReportPage({
           allowed to read as tax advice — see the migration and task brief
           this feature was built from. This sits above every figure on the
           page, not in a footnote underneath them. */}
-      <Callout.Root color="blue" mb="4">
-        <Callout.Icon>
-          <InfoCircledIcon />
-        </Callout.Icon>
-        <Callout.Text>
-          <Text as="div" weight="medium">
+      <LAlert tone="accent" className="flex items-start gap-2">
+        <InfoIcon className="mt-0.5 shrink-0 text-accent" />
+        <div>
+          <div className="font-medium text-ink">
             This is a summary of what you recorded. It is not tax advice,
             and it is not a tax return.
-          </Text>
-          <Text as="div" size="2">
+          </div>
+          <div className="mt-1">
             Every figure below comes directly from the trips, expenses, and
             payments you entered in this product. It doesn&rsquo;t know your
             deductions, your entity structure, or what the IRS will
             ultimately accept. Your CPA or tax preparer is the authority on
             what to file — use this to hand them clean numbers, not to
             decide what you owe.
-          </Text>
-        </Callout.Text>
-      </Callout.Root>
+          </div>
+        </div>
+      </LAlert>
 
       {report.error ? (
-        <Card size="3">
-          <Callout.Root color="red">
-            <Callout.Icon>
-              <ExclamationTriangleIcon />
-            </Callout.Icon>
-            <Callout.Text>
-              {friendlyDbError({ message: report.error }, "year-end.load")}
-            </Callout.Text>
-          </Callout.Root>
-        </Card>
+        <LCard>
+          <LAlert tone="crit" className="flex items-start gap-2">
+            <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+            <span>{friendlyDbError({ message: report.error }, "year-end.load")}</span>
+          </LAlert>
+        </LCard>
       ) : (
-        <Flex direction="column" gap="5">
+        <>
           {/* ---------------- A. Cash-basis income ---------------- */}
-          <Card size="3">
-            <Flex justify="between" align="start" mb="3" wrap="wrap" gap="2">
-              <Box>
-                <Heading as="h2" size="4">
-                  Income received, by client
-                </Heading>
-                <Text as="div" size="2" color="gray">
+          <LCard>
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h2 className="text-h3 font-semibold">Income received, by client</h2>
+                <p className="text-body-s text-ink-2">
                   Cash-basis: payments actually received between Jan 1 and
                   Dec 31, {year}. This does not include invoices issued or
                   sent in {year}, which can land you in the wrong tax
                   year.
-                </Text>
-              </Box>
-              <Button asChild variant="outline" size="2">
-                <a href={csvHref(year, "income")} download>
-                  Download CSV
-                </a>
-              </Button>
-            </Flex>
+                </p>
+              </div>
+              <a href={csvHref(year, "income")} download className={lButtonClass({ variant: "outline", size: "sm" })}>
+                Download CSV
+              </a>
+            </div>
 
             {report.paymentsTruncated ? (
-              <Callout.Root color="amber" mb="3">
-                <Callout.Icon>
-                  <ExclamationTriangleIcon />
-                </Callout.Icon>
-                <Callout.Text>
+              <LAlert tone="warn" className="mb-3 flex items-start gap-2">
+                <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+                <span>
                   There are more payments in {year} than this page totals.
                   The downloaded CSV may also be partial. Contact support if
                   your totals look short.
-                </Callout.Text>
-              </Callout.Root>
+                </span>
+              </LAlert>
             ) : null}
 
             {report.incomeByClient.length === 0 ? (
-              <Text size="2" color="gray">
-                No payments recorded as received in {year}.
-              </Text>
+              <p className="text-body-s text-ink-2">No payments recorded as received in {year}.</p>
             ) : (
               <>
-                <Table.Root variant="ghost">
-                  <Table.Header>
-                    <Table.Row>
-                      <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">
-                        Payments
-                      </Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">
-                        Received
-                      </Table.ColumnHeaderCell>
-                    </Table.Row>
-                  </Table.Header>
-                  <Table.Body>
+                <LTable>
+                  <thead>
+                    <tr>
+                      <LTh>Client</LTh>
+                      <LTh numeric>Payments</LTh>
+                      <LTh numeric>Received</LTh>
+                    </tr>
+                  </thead>
+                  <tbody>
                     {report.incomeByClient.map((c) => (
-                      <Table.Row key={c.clientId || c.clientName}>
-                        <Table.RowHeaderCell>{c.clientName}</Table.RowHeaderCell>
-                        <Table.Cell justify="end">
-                          <Text className="tnum">{c.paymentCount}</Text>
-                        </Table.Cell>
-                        <Table.Cell justify="end">
-                          <Text className="tnum" weight="medium">
-                            {formatCents(c.totalCents)}
-                          </Text>
-                        </Table.Cell>
-                      </Table.Row>
+                      <tr key={c.clientId || c.clientName}>
+                        <th
+                          scope="row"
+                          className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                        >
+                          {c.clientName}
+                        </th>
+                        <LTd numeric>{c.paymentCount}</LTd>
+                        <LTd numeric>
+                          <span className="font-medium">{formatCents(c.totalCents)}</span>
+                        </LTd>
+                      </tr>
                     ))}
-                  </Table.Body>
-                </Table.Root>
-                <Flex justify="end" mt="3">
-                  <Text weight="bold" className="tnum">
+                  </tbody>
+                </LTable>
+                <div className="mt-3 flex justify-end">
+                  <span className="tnum-l font-bold">
                     Total received: {formatCents(report.incomeTotalCents)}
-                  </Text>
-                </Flex>
+                  </span>
+                </div>
               </>
             )}
-          </Card>
+          </LCard>
 
           {/* ---------------- B. Deductible expenses ---------------- */}
-          <Card size="3">
-            <Flex justify="between" align="start" mb="3" wrap="wrap" gap="2">
-              <Box>
-                <Heading as="h2" size="4">
-                  Deductible expenses, by category
-                </Heading>
-                <Text as="div" size="2" color="gray">
+          <LCard>
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h2 className="text-h3 font-semibold">Deductible expenses, by category</h2>
+                <p className="text-body-s text-ink-2">
                   Receipts you tagged &ldquo;Keep as a deduction&rdquo;,
                   dated in {year}.
-                </Text>
-              </Box>
-              <Button asChild variant="outline" size="2">
-                <a href={csvHref(year, "deductible")} download>
-                  Download CSV
-                </a>
-              </Button>
-            </Flex>
+                </p>
+              </div>
+              <a
+                href={csvHref(year, "deductible")}
+                download
+                className={lButtonClass({ variant: "outline", size: "sm" })}
+              >
+                Download CSV
+              </a>
+            </div>
 
             {report.deductibleTruncated ? (
-              <Callout.Root color="amber" mb="3">
-                <Callout.Icon>
-                  <ExclamationTriangleIcon />
-                </Callout.Icon>
-                <Callout.Text>
+              <LAlert tone="warn" className="mb-3 flex items-start gap-2">
+                <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+                <span>
                   There are more deductible expenses in {year} than this
                   page totals. The downloaded CSV may also be partial.
-                </Callout.Text>
-              </Callout.Root>
+                </span>
+              </LAlert>
             ) : null}
 
             {report.deductibleByCategory.length === 0 ? (
-              <Text size="2" color="gray">
-                No expenses tagged as deductions in {year}.
-              </Text>
+              <p className="text-body-s text-ink-2">No expenses tagged as deductions in {year}.</p>
             ) : (
               <>
-                <Table.Root variant="ghost">
-                  <Table.Header>
-                    <Table.Row>
-                      <Table.ColumnHeaderCell>Category</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">
-                        Receipts
-                      </Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">
-                        Amount
-                      </Table.ColumnHeaderCell>
-                    </Table.Row>
-                  </Table.Header>
-                  <Table.Body>
+                <LTable>
+                  <thead>
+                    <tr>
+                      <LTh>Category</LTh>
+                      <LTh numeric>Receipts</LTh>
+                      <LTh numeric>Amount</LTh>
+                    </tr>
+                  </thead>
+                  <tbody>
                     {report.deductibleByCategory.map((c) => (
-                      <Table.Row key={c.category}>
-                        <Table.RowHeaderCell>
+                      <tr key={c.category}>
+                        <th
+                          scope="row"
+                          className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                        >
                           {categoryLabels[c.category] ?? c.category}
-                        </Table.RowHeaderCell>
-                        <Table.Cell justify="end">
-                          <Text className="tnum">{c.count}</Text>
-                        </Table.Cell>
-                        <Table.Cell justify="end">
-                          <Text className="tnum" weight="medium">
-                            {formatCents(c.totalCents)}
-                          </Text>
-                        </Table.Cell>
-                      </Table.Row>
+                        </th>
+                        <LTd numeric>{c.count}</LTd>
+                        <LTd numeric>
+                          <span className="font-medium">{formatCents(c.totalCents)}</span>
+                        </LTd>
+                      </tr>
                     ))}
-                  </Table.Body>
-                </Table.Root>
-                <Flex justify="end" mt="3">
-                  <Text weight="bold" className="tnum">
+                  </tbody>
+                </LTable>
+                <div className="mt-3 flex justify-end">
+                  <span className="tnum-l font-bold">
                     Total deductible: {formatCents(report.deductibleTotalCents)}
-                  </Text>
-                </Flex>
+                  </span>
+                </div>
               </>
             )}
-          </Card>
+          </LCard>
 
           {/* ---------------- C. Rebilled expenses ---------------- */}
-          <Card size="3">
-            <Flex justify="between" align="start" mb="3" wrap="wrap" gap="2">
-              <Box>
-                <Heading as="h2" size="4">
-                  Rebilled expenses, reconciled
-                </Heading>
-                <Text as="div" size="2" color="gray">
+          <LCard>
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h2 className="text-h3 font-semibold">Rebilled expenses, reconciled</h2>
+                <p className="text-body-s text-ink-2">
                   Receipts you tagged &ldquo;Rebill to the client&rdquo;,
                   dated in {year}, matched against the invoice line each one
                   became.
-                </Text>
-              </Box>
-              <Button asChild variant="outline" size="2">
-                <a href={csvHref(year, "rebilled")} download>
-                  Download CSV
-                </a>
-              </Button>
-            </Flex>
+                </p>
+              </div>
+              <a
+                href={csvHref(year, "rebilled")}
+                download
+                className={lButtonClass({ variant: "outline", size: "sm" })}
+              >
+                Download CSV
+              </a>
+            </div>
 
             {report.rebilledTruncated ? (
-              <Callout.Root color="amber" mb="3">
-                <Callout.Icon>
-                  <ExclamationTriangleIcon />
-                </Callout.Icon>
-                <Callout.Text>
+              <LAlert tone="warn" className="mb-3 flex items-start gap-2">
+                <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+                <span>
                   There are more rebilled expenses in {year} than this page
                   totals. The downloaded CSV may also be partial.
-                </Callout.Text>
-              </Callout.Root>
+                </span>
+              </LAlert>
             ) : null}
 
             {report.rebilled.length === 0 ? (
-              <Text size="2" color="gray">
-                No expenses tagged for rebilling in {year}.
-              </Text>
+              <p className="text-body-s text-ink-2">No expenses tagged for rebilling in {year}.</p>
             ) : (
               <>
-                <Table.Root variant="ghost">
-                  <Table.Header>
-                    <Table.Row>
-                      <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell>Category</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">
-                        Receipt
-                      </Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">
-                        Invoiced
-                      </Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
-                    </Table.Row>
-                  </Table.Header>
-                  <Table.Body>
+                <LTable>
+                  <thead>
+                    <tr>
+                      <LTh>Date</LTh>
+                      <LTh>Category</LTh>
+                      <LTh>Client</LTh>
+                      <LTh numeric>Receipt</LTh>
+                      <LTh numeric>Invoiced</LTh>
+                      <LTh>Status</LTh>
+                    </tr>
+                  </thead>
+                  <tbody>
                     {report.rebilled.map((r) => (
-                      <Table.Row key={r.expenseId}>
-                        <Table.RowHeaderCell>
+                      <tr key={r.expenseId}>
+                        <th
+                          scope="row"
+                          className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                        >
                           {formatDate(r.incurredOn)}
-                        </Table.RowHeaderCell>
-                        <Table.Cell>
-                          <Text color="gray">
-                            {categoryLabels[r.category] ?? r.category}
-                          </Text>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Text color="gray">{r.clientName ?? "—"}</Text>
-                        </Table.Cell>
-                        <Table.Cell justify="end">
-                          <Text className="tnum">
-                            {formatCents(r.expenseAmountCents)}
-                          </Text>
-                        </Table.Cell>
-                        <Table.Cell justify="end">
-                          <Text className="tnum">
-                            {r.lineAmountCents === null
-                              ? "—"
-                              : formatCents(r.lineAmountCents)}
-                          </Text>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Badge color={r.invoiceId ? "green" : "amber"}>
+                        </th>
+                        <LTd>
+                          <span className="text-ink-2">{categoryLabels[r.category] ?? r.category}</span>
+                        </LTd>
+                        <LTd>
+                          <span className="text-ink-2">{r.clientName ?? "—"}</span>
+                        </LTd>
+                        <LTd numeric>{formatCents(r.expenseAmountCents)}</LTd>
+                        <LTd numeric>
+                          {r.lineAmountCents === null ? "—" : formatCents(r.lineAmountCents)}
+                        </LTd>
+                        <LTd>
+                          <LPill tone={r.invoiceId ? "good" : "warn"}>
                             {r.invoiceId
                               ? r.invoiceStatus === "paid"
                                 ? "Invoiced & paid"
                                 : "Invoiced"
                               : "Not yet invoiced"}
-                          </Badge>
-                        </Table.Cell>
-                      </Table.Row>
+                          </LPill>
+                        </LTd>
+                      </tr>
                     ))}
-                  </Table.Body>
-                </Table.Root>
-                <Flex justify="end" mt="3" gap="4" wrap="wrap">
-                  <Text size="2" color="gray" className="tnum">
+                  </tbody>
+                </LTable>
+                <div className="mt-3 flex flex-wrap justify-end gap-4">
+                  <span className="tnum-l text-body-s text-ink-2">
                     Receipts: {formatCents(report.rebilledExpenseTotalCents)}
-                  </Text>
-                  <Text weight="bold" className="tnum">
+                  </span>
+                  <span className="tnum-l font-bold">
                     Invoiced: {formatCents(report.rebilledInvoicedTotalCents)}
-                  </Text>
-                </Flex>
+                  </span>
+                </div>
               </>
             )}
-          </Card>
+          </LCard>
 
           {/* ---------------- D. Unassigned receipts ---------------- */}
-          <Card size="3">
-            <Flex justify="between" align="start" mb="3" wrap="wrap" gap="2">
-              <Box>
-                <Heading as="h2" size="4">
-                  Unassigned receipts
-                </Heading>
-                <Text as="div" size="2" color="gray">
+          <LCard>
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h2 className="text-h3 font-semibold">Unassigned receipts</h2>
+                <p className="text-body-s text-ink-2">
                   Dated in {year}, neither billed to a client nor claimed as
                   a deduction. This is money you&rsquo;re currently losing
                   in both directions. Resolve them on{" "}
-                  <RadixLink asChild>
-                    <NextLink href="/expenses">Expenses</NextLink>
-                  </RadixLink>
+                  <NextLink href="/expenses" className="text-accent hover:underline">
+                    Expenses
+                  </NextLink>
                   , where each one is a two-click decision.
-                </Text>
-              </Box>
-              <Button asChild variant="outline" size="2">
-                <a href={csvHref(year, "unassigned")} download>
-                  Download CSV
-                </a>
-              </Button>
-            </Flex>
+                </p>
+              </div>
+              <a
+                href={csvHref(year, "unassigned")}
+                download
+                className={lButtonClass({ variant: "outline", size: "sm" })}
+              >
+                Download CSV
+              </a>
+            </div>
 
             {report.unassignedTruncated ? (
-              <Callout.Root color="amber" mb="3">
-                <Callout.Icon>
-                  <ExclamationTriangleIcon />
-                </Callout.Icon>
-                <Callout.Text>
+              <LAlert tone="warn" className="mb-3 flex items-start gap-2">
+                <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+                <span>
                   There are more unassigned receipts in {year} than this
                   page totals. The downloaded CSV may also be partial.
-                </Callout.Text>
-              </Callout.Root>
+                </span>
+              </LAlert>
             ) : null}
 
             {report.unassigned.length === 0 ? (
-              <Text size="2" color="gray">
+              <p className="text-body-s text-ink-2">
                 Nothing unassigned in {year}. Every receipt is either
                 rebilled or deducted.
-              </Text>
+              </p>
             ) : (
               <>
-                <Callout.Root color="amber" mb="3">
-                  <Callout.Icon>
-                    <ExclamationTriangleIcon />
-                  </Callout.Icon>
-                  <Callout.Text>
+                <LAlert tone="warn" className="mb-3 flex items-start gap-2">
+                  <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+                  <span>
                     {report.unassigned.length} receipt
                     {report.unassigned.length === 1 ? "" : "s"} totaling{" "}
                     {formatCents(report.unassignedTotalCents)} are currently
                     counted in neither your income nor your deductions.
-                  </Callout.Text>
-                </Callout.Root>
-                <Table.Root variant="ghost">
-                  <Table.Header>
-                    <Table.Row>
-                      <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell>Category</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell>Vendor</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">
-                        Amount
-                      </Table.ColumnHeaderCell>
-                    </Table.Row>
-                  </Table.Header>
-                  <Table.Body>
+                  </span>
+                </LAlert>
+                <LTable>
+                  <thead>
+                    <tr>
+                      <LTh>Date</LTh>
+                      <LTh>Category</LTh>
+                      <LTh>Vendor</LTh>
+                      <LTh numeric>Amount</LTh>
+                    </tr>
+                  </thead>
+                  <tbody>
                     {report.unassigned.map((e) => (
-                      <Table.Row key={e.id}>
-                        <Table.RowHeaderCell>
-                          <RadixLink asChild>
-                            <NextLink href={`/expenses/${e.id}`}>
-                              {formatDate(e.incurredOn)}
-                            </NextLink>
-                          </RadixLink>
-                        </Table.RowHeaderCell>
-                        <Table.Cell>
-                          <Text color="gray">
-                            {categoryLabels[e.category] ?? e.category}
-                          </Text>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Text color="gray">{e.vendor ?? "—"}</Text>
-                        </Table.Cell>
-                        <Table.Cell justify="end">
-                          <Text className="tnum">{formatCents(e.amountCents)}</Text>
-                        </Table.Cell>
-                      </Table.Row>
+                      <tr key={e.id}>
+                        <th
+                          scope="row"
+                          className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                        >
+                          <NextLink href={`/expenses/${e.id}`} className="text-accent hover:underline">
+                            {formatDate(e.incurredOn)}
+                          </NextLink>
+                        </th>
+                        <LTd>
+                          <span className="text-ink-2">{categoryLabels[e.category] ?? e.category}</span>
+                        </LTd>
+                        <LTd>
+                          <span className="text-ink-2">{e.vendor ?? "—"}</span>
+                        </LTd>
+                        <LTd numeric>{formatCents(e.amountCents)}</LTd>
+                      </tr>
                     ))}
-                  </Table.Body>
-                </Table.Root>
+                  </tbody>
+                </LTable>
               </>
             )}
-          </Card>
+          </LCard>
 
           {/* ---------------- E. Mileage, standard rate ---------------- */}
-          <Card size="3">
-            <Flex justify="between" align="start" mb="3" wrap="wrap" gap="2">
-              <Box>
-                <Heading as="h2" size="4">
-                  Mileage, standard rate
-                </Heading>
-                <Text as="div" size="2" color="gray">
+          <LCard>
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h2 className="text-h3 font-semibold">Mileage, standard rate</h2>
+                <p className="text-body-s text-ink-2">
                   Standard-mileage-rate drives logged in {year}. These are
                   excluded from Deductible expenses above. The standard
                   mileage rate and actual vehicle expenses (fuel, rental
@@ -492,96 +424,81 @@ export default async function YearEndReportPage({
                   which one applies to a given vehicle and year, so folding
                   this in automatically risks a double-claimed deduction.
                   Review it in{" "}
-                  <RadixLink asChild>
-                    <NextLink href="/expenses/mileage">Mileage</NextLink>
-                  </RadixLink>{" "}
+                  <NextLink href="/expenses/mileage" className="text-accent hover:underline">
+                    Mileage
+                  </NextLink>{" "}
                   before filing.
-                </Text>
-              </Box>
-              <Button asChild variant="outline" size="2">
-                <a href={csvHref(year, "mileage")} download>
-                  Download CSV
-                </a>
-              </Button>
-            </Flex>
+                </p>
+              </div>
+              <a href={csvHref(year, "mileage")} download className={lButtonClass({ variant: "outline", size: "sm" })}>
+                Download CSV
+              </a>
+            </div>
 
             {report.mileageTruncated ? (
-              <Callout.Root color="amber" mb="3">
-                <Callout.Icon>
-                  <ExclamationTriangleIcon />
-                </Callout.Icon>
-                <Callout.Text>
+              <LAlert tone="warn" className="mb-3 flex items-start gap-2">
+                <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+                <span>
                   There are more drives logged in {year} than this page
                   totals. The downloaded CSV may also be partial.
-                </Callout.Text>
-              </Callout.Root>
+                </span>
+              </LAlert>
             ) : null}
 
             {report.mileageCount === 0 ? (
-              <Text size="2" color="gray">
-                No mileage logged in {year}.
-              </Text>
+              <p className="text-body-s text-ink-2">No mileage logged in {year}.</p>
             ) : (
               <>
-                <Table.Root variant="ghost">
-                  <Table.Header>
-                    <Table.Row>
-                      <Table.ColumnHeaderCell>Drives</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">
-                        Miles
-                      </Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">
-                        Rate
-                      </Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">
-                        Amount
-                      </Table.ColumnHeaderCell>
-                    </Table.Row>
-                  </Table.Header>
-                  <Table.Body>
-                    <Table.Row>
-                      <Table.RowHeaderCell>
-                        <Text className="tnum">{report.mileageCount}</Text>
-                      </Table.RowHeaderCell>
-                      <Table.Cell justify="end">
-                        <Text className="tnum">
-                          {report.mileageMiles.toFixed(1)}
-                        </Text>
-                      </Table.Cell>
-                      <Table.Cell justify="end">
-                        <Text className="tnum" color="gray">
+                <LTable>
+                  <thead>
+                    <tr>
+                      <LTh>Drives</LTh>
+                      <LTh numeric>Miles</LTh>
+                      <LTh numeric>Rate</LTh>
+                      <LTh numeric>Amount</LTh>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <th
+                        scope="row"
+                        className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                      >
+                        {report.mileageCount}
+                      </th>
+                      <LTd numeric>{report.mileageMiles.toFixed(1)}</LTd>
+                      <LTd numeric>
+                        <span className="text-ink-2">
                           {report.mileageRateCentsPerMile === null
                             ? "—"
                             : `${report.mileageRateCentsPerMile}¢/mi`}
-                        </Text>
-                      </Table.Cell>
-                      <Table.Cell justify="end">
-                        <Text weight="medium" className="tnum">
+                        </span>
+                      </LTd>
+                      <LTd numeric>
+                        <span className="font-medium">
                           {report.mileageAmountCents === null
                             ? "No rate on file"
                             : formatCents(report.mileageAmountCents)}
-                        </Text>
-                      </Table.Cell>
-                    </Table.Row>
-                  </Table.Body>
-                </Table.Root>
+                        </span>
+                      </LTd>
+                    </tr>
+                  </tbody>
+                </LTable>
                 {report.mileageAmountCents === null ? (
-                  <Callout.Root color="amber" mt="3">
-                    <Callout.Icon>
-                      <ExclamationTriangleIcon />
-                    </Callout.Icon>
-                    <Callout.Text>
+                  <LAlert tone="warn" className="mt-3 flex items-start gap-2">
+                    <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+                    <span>
                       {`There's no IRS standard rate on file for ${year}, so the ${report.mileageMiles.toFixed(1)} miles above have no dollar figure yet. Add a rate in `}
-                      <RadixLink asChild>
-                        <NextLink href="/expenses/mileage">Mileage</NextLink>
-                      </RadixLink>
+                      <NextLink href="/expenses/mileage" className="text-accent hover:underline">
+                        Mileage
+                      </NextLink>
                       {" and this recomputes."}
-                    </Callout.Text>
-                  </Callout.Root>
+                    </span>
+                  </LAlert>
                 ) : null}
               </>
             )}
-          </Card>
+          </LCard>
 
           {/* ---------------- E2. Travel log & per-diem days ----------------
               Substantiation, not a dollar figure: the M&IE rate is the
@@ -589,137 +506,123 @@ export default async function YearEndReportPage({
               never a hardcoded IRS/GSA number — and here no rate field
               exists at all), so this section counts days and says so.
               See travel-log.ts's header for the full reasoning. */}
-          <Card size="3">
-            <Flex justify="between" align="start" mb="3" wrap="wrap" gap="2">
-              <Box>
-                <Heading as="h2" size="4">
-                  Travel log &amp; per-diem days
-                </Heading>
-                <Text as="div" size="2" color="gray">
+          <LCard>
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h2 className="text-h3 font-semibold">Travel log &amp; per-diem days</h2>
+                <p className="text-body-s text-ink-2">
                   One row per trip day you recorded in {year}: date,
                   client, day type, away-from-home, and the route flown
                   that day. For whoever prepares your return: this log
                   counts days and never applies an M&amp;IE rate or
                   computes a deduction. Your CPA or tax preparer applies
                   the current rate to the away-day counts below.
-                </Text>
-              </Box>
-              <Button asChild variant="outline" size="2">
-                <a href={csvHref(year, "travel-log")} download>
-                  Download CSV
-                </a>
-              </Button>
-            </Flex>
+                </p>
+              </div>
+              <a
+                href={csvHref(year, "travel-log")}
+                download
+                className={lButtonClass({ variant: "outline", size: "sm" })}
+              >
+                Download CSV
+              </a>
+            </div>
 
             {travelLog.error ? (
-              <Callout.Root color="red">
-                <Callout.Icon>
-                  <ExclamationTriangleIcon />
-                </Callout.Icon>
-                <Callout.Text>
-                  {friendlyDbError(
-                    { message: travelLog.error },
-                    "year-end.travel-log"
-                  )}
-                </Callout.Text>
-              </Callout.Root>
+              <LAlert tone="crit" className="flex items-start gap-2">
+                <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+                <span>{friendlyDbError({ message: travelLog.error }, "year-end.travel-log")}</span>
+              </LAlert>
             ) : (
               <>
                 {travelLog.truncated ? (
-                  <Callout.Root color="amber" mb="3">
-                    <Callout.Icon>
-                      <ExclamationTriangleIcon />
-                    </Callout.Icon>
-                    <Callout.Text>
+                  <LAlert tone="warn" className="mb-3 flex items-start gap-2">
+                    <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+                    <span>
                       There are more trip days in {year} than this page can
                       list. The counts below may be short, and the CSV will
                       refuse to download. Contact support if your log looks
                       incomplete.
-                    </Callout.Text>
-                  </Callout.Root>
+                    </span>
+                  </LAlert>
                 ) : null}
 
                 {travelLog.rows.length === 0 ? (
-                  <Text size="2" color="gray">
-                    No trip days recorded in {year}.
-                  </Text>
+                  <p className="text-body-s text-ink-2">No trip days recorded in {year}.</p>
                 ) : (
                   <>
-                    <Table.Root variant="ghost">
-                      <Table.Header>
-                        <Table.Row>
-                          <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
-                          <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
-                          <Table.ColumnHeaderCell>Day type</Table.ColumnHeaderCell>
-                          <Table.ColumnHeaderCell>
-                            Route flown
-                          </Table.ColumnHeaderCell>
-                          <Table.ColumnHeaderCell>Away</Table.ColumnHeaderCell>
-                          <Table.ColumnHeaderCell>Per diem</Table.ColumnHeaderCell>
-                        </Table.Row>
-                      </Table.Header>
-                      <Table.Body>
+                    <LTable>
+                      <thead>
+                        <tr>
+                          <LTh>Date</LTh>
+                          <LTh>Client</LTh>
+                          <LTh>Day type</LTh>
+                          <LTh>Route flown</LTh>
+                          <LTh>Away</LTh>
+                          <LTh>Per diem</LTh>
+                        </tr>
+                      </thead>
+                      <tbody>
                         {travelLog.rows.map((d) => (
-                          <Table.Row key={d.id}>
-                            <Table.RowHeaderCell>
-                              <RadixLink asChild>
-                                <NextLink href={`/trips/${d.tripId}`}>
-                                  {formatDate(d.dayOn)}
-                                </NextLink>
-                              </RadixLink>
-                            </Table.RowHeaderCell>
-                            <Table.Cell>
-                              <Text color="gray">{d.clientName}</Text>
-                            </Table.Cell>
-                            <Table.Cell>
-                              <Text color="gray">{d.dayTypeLabel}</Text>
-                            </Table.Cell>
-                            <Table.Cell>
-                              <Text color="gray">{d.route ?? "—"}</Text>
-                            </Table.Cell>
-                            <Table.Cell>
-                              <Text color="gray">{d.away ? "Away" : "Home"}</Text>
-                            </Table.Cell>
-                            <Table.Cell>
-                              <Text color="gray">{d.perDiemDay ? "Yes" : "—"}</Text>
-                            </Table.Cell>
-                          </Table.Row>
+                          <tr key={d.id}>
+                            <th
+                              scope="row"
+                              className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                            >
+                              <NextLink href={`/trips/${d.tripId}`} className="text-accent hover:underline">
+                                {formatDate(d.dayOn)}
+                              </NextLink>
+                            </th>
+                            <LTd>
+                              <span className="text-ink-2">{d.clientName}</span>
+                            </LTd>
+                            <LTd>
+                              <span className="text-ink-2">{d.dayTypeLabel}</span>
+                            </LTd>
+                            <LTd>
+                              <span className="text-ink-2">{d.route ?? "—"}</span>
+                            </LTd>
+                            <LTd>
+                              <span className="text-ink-2">{d.away ? "Away" : "Home"}</span>
+                            </LTd>
+                            <LTd>
+                              <span className="text-ink-2">{d.perDiemDay ? "Yes" : "—"}</span>
+                            </LTd>
+                          </tr>
                         ))}
-                      </Table.Body>
-                    </Table.Root>
-                    <Flex justify="end" mt="3" gap="4" wrap="wrap">
-                      <Text size="2" color="gray" className="tnum">
+                      </tbody>
+                    </LTable>
+                    <div className="mt-3 flex flex-wrap justify-end gap-4">
+                      <span className="tnum-l text-body-s text-ink-2">
                         Trip days: {travelLog.rows.length}
-                      </Text>
-                      <Text size="2" color="gray" className="tnum">
+                      </span>
+                      <span className="tnum-l text-body-s text-ink-2">
                         Away from home: {travelLog.awayDayCount}
-                      </Text>
-                      <Text weight="bold" className="tnum">
+                      </span>
+                      <span className="tnum-l font-bold">
                         Per-diem days: {travelLog.perDiemDayCount}
-                      </Text>
-                    </Flex>
+                      </span>
+                    </div>
                   </>
                 )}
                 {travelLog.canceledDayCount > 0 ? (
-                  <Text as="p" size="1" color="gray" mt="2">
+                  <p className="mt-2 text-caption text-ink-3">
                     {travelLog.canceledDayCount} day
                     {travelLog.canceledDayCount === 1 ? "" : "s"} on canceled
                     trips {travelLog.canceledDayCount === 1 ? "is" : "are"}{" "}
                     excluded from this log.
-                  </Text>
+                  </p>
                 ) : null}
               </>
             )}
-          </Card>
+          </LCard>
 
           {/* ---------------- F. 1099 reconciliation ---------------- */}
-          <Card size="3">
-            <Flex justify="between" align="start" mb="3" wrap="wrap" gap="2">
-              <Box>
-                <Heading as="h2" size="4">
-                  1099 reconciliation
-                </Heading>
-                <Text as="div" size="2" color="gray">
+          <LCard>
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <h2 className="text-h3 font-semibold">1099 reconciliation</h2>
+                <p className="text-body-s text-ink-2">
                   Your cash-basis ledger for {year}, compared against what
                   each client told the IRS they paid you. A difference here
                   usually means a payment crossed the Dec/Jan boundary. For
@@ -730,92 +633,130 @@ export default async function YearEndReportPage({
                   books. It&rsquo;s a reason the two numbers won&rsquo;t
                   match, and it&rsquo;s worth having ready when your CPA
                   asks about it.
-                </Text>
-              </Box>
-              <Button asChild variant="outline" size="2">
-                <a href={csvHref(year, "tax-forms")} download>
-                  Download CSV
-                </a>
-              </Button>
-            </Flex>
+                </p>
+              </div>
+              <a
+                href={csvHref(year, "tax-forms")}
+                download
+                className={lButtonClass({ variant: "outline", size: "sm" })}
+              >
+                Download CSV
+              </a>
+            </div>
 
             {report.taxForms.length === 0 ? (
-              <Text size="2" color="gray">
+              <p className="text-body-s text-ink-2">
                 No client income and no 1099s recorded for {year} yet.
-              </Text>
+              </p>
             ) : (
-              <Flex direction="column" gap="4">
-                <Table.Root variant="ghost">
-                  <Table.Header>
-                    <Table.Row>
-                      <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">
-                        Your ledger
-                      </Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell>Form</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">
-                        Form reports
-                      </Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell justify="end">
-                        Delta
-                      </Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell />
-                    </Table.Row>
-                  </Table.Header>
-                  <Table.Body>
-                    {report.taxForms.map((t) => (
-                      <Table.Row key={`${t.clientId}:${t.formType ?? "none"}`}>
-                        <Table.RowHeaderCell>{t.clientName}</Table.RowHeaderCell>
-                        <Table.Cell justify="end">
-                          <Text className="tnum">{formatCents(t.ledgerCents)}</Text>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Text color="gray">{t.formType ?? "—"}</Text>
-                        </Table.Cell>
-                        <Table.Cell justify="end">
-                          <Text className="tnum">
-                            {t.reportedAmountCents === null
-                              ? "—"
-                              : formatCents(t.reportedAmountCents)}
-                          </Text>
-                        </Table.Cell>
-                        <Table.Cell justify="end">
-                          {t.deltaCents === null ? (
-                            <Text color="gray">—</Text>
-                          ) : (
-                            <Badge color={t.deltaCents === 0 ? "green" : "amber"}>
-                              {t.deltaCents === 0
-                                ? "Matches"
-                                : `${t.deltaCents > 0 ? "+" : ""}${formatCents(t.deltaCents)}`}
-                            </Badge>
-                          )}
-                        </Table.Cell>
-                        <Table.Cell>
-                          <TaxFormEditor
-                            clientId={t.clientId}
-                            clientName={t.clientName}
-                            year={year}
-                            existing={
-                              t.formType && t.reportedAmountCents !== null
-                                ? {
-                                    formType: t.formType,
-                                    reportedAmountCents: t.reportedAmountCents,
-                                    receivedOn: t.receivedOn,
-                                    notes: t.notes,
-                                  }
-                                : null
-                            }
-                          />
-                        </Table.Cell>
-                      </Table.Row>
-                    ))}
-                  </Table.Body>
-                </Table.Root>
-              </Flex>
+              <LTable>
+                <thead>
+                  <tr>
+                    <LTh>Client</LTh>
+                    <LTh numeric>Your ledger</LTh>
+                    <LTh>Form</LTh>
+                    <LTh numeric>Form reports</LTh>
+                    <LTh numeric>Delta</LTh>
+                    <LTh />
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.taxForms.map((t) => (
+                    <tr key={`${t.clientId}:${t.formType ?? "none"}`}>
+                      <th
+                        scope="row"
+                        className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                      >
+                        {t.clientName}
+                      </th>
+                      <LTd numeric>{formatCents(t.ledgerCents)}</LTd>
+                      <LTd>
+                        <span className="text-ink-2">{t.formType ?? "—"}</span>
+                      </LTd>
+                      <LTd numeric>
+                        {t.reportedAmountCents === null ? "—" : formatCents(t.reportedAmountCents)}
+                      </LTd>
+                      <LTd numeric>
+                        {t.deltaCents === null ? (
+                          <span className="text-ink-3">—</span>
+                        ) : (
+                          <LPill tone={t.deltaCents === 0 ? "good" : "warn"} className="tnum-l">
+                            {t.deltaCents === 0
+                              ? "Matches"
+                              : `${t.deltaCents > 0 ? "+" : ""}${formatCents(t.deltaCents)}`}
+                          </LPill>
+                        )}
+                      </LTd>
+                      <LTd>
+                        <TaxFormEditor
+                          clientId={t.clientId}
+                          clientName={t.clientName}
+                          year={year}
+                          existing={
+                            t.formType && t.reportedAmountCents !== null
+                              ? {
+                                  formType: t.formType,
+                                  reportedAmountCents: t.reportedAmountCents,
+                                  receivedOn: t.receivedOn,
+                                  notes: t.notes,
+                                }
+                              : null
+                          }
+                        />
+                      </LTd>
+                    </tr>
+                  ))}
+                </tbody>
+              </LTable>
             )}
-          </Card>
-        </Flex>
+          </LCard>
+        </>
       )}
-    </PageShell>
+    </LPageShell>
+  );
+}
+
+/* ── Inline icons ─────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. */
+function InfoIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <circle cx="8" cy="8" r="6.25" />
+      <path d="M8 7.25v4" />
+      <circle cx="8" cy="4.9" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

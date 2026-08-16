@@ -80,16 +80,28 @@
  * paints the real colour with — written out per slot rather than
  * assembled from the value, so even here no CSS custom property is built
  * at runtime.
+ *
+ * ALL EIGHT SLOTS SHARE ONE SWATCH under Ledger (docs/design/LEDGER.md):
+ * "one confident indigo... restraint is the brand" is a stated
+ * non-negotiable, and app/design/ledger.css declares exactly one
+ * --ledger-accent, with no `[data-accent="..."]` rule varying it. Stamping
+ * `data-accent` still happens (themeForSlots below, the app shell) and a
+ * tenant's chosen slot still round-trips through the database, but no
+ * accent choice currently changes what renders. This list stays enumerated
+ * rather than collapsed to one value because THAT is the layer a future
+ * per-tenant accent (if Ledger ever grows one) would extend — see
+ * resolveThemeSlots' totality guarantee below, which still needs every
+ * previously-stored value to resolve to something valid.
  */
 export const ACCENT_SLOTS = [
-  { value: "indigo", label: "Indigo", swatch: "var(--signal)" },
-  { value: "blue", label: "Blue", swatch: "var(--signal)" },
-  { value: "cyan", label: "Cyan", swatch: "var(--signal)" },
-  { value: "teal", label: "Teal", swatch: "var(--signal)" },
-  { value: "jade", label: "Jade", swatch: "var(--signal)" },
-  { value: "violet", label: "Violet", swatch: "var(--signal)" },
-  { value: "plum", label: "Plum", swatch: "var(--signal)" },
-  { value: "bronze", label: "Bronze", swatch: "var(--signal)" },
+  { value: "indigo", label: "Indigo", swatch: "var(--ledger-accent)" },
+  { value: "blue", label: "Blue", swatch: "var(--ledger-accent)" },
+  { value: "cyan", label: "Cyan", swatch: "var(--ledger-accent)" },
+  { value: "teal", label: "Teal", swatch: "var(--ledger-accent)" },
+  { value: "jade", label: "Jade", swatch: "var(--ledger-accent)" },
+  { value: "violet", label: "Violet", swatch: "var(--ledger-accent)" },
+  { value: "plum", label: "Plum", swatch: "var(--ledger-accent)" },
+  { value: "bronze", label: "Bronze", swatch: "var(--ledger-accent)" },
 ] as const;
 
 export type ThemeAccent = (typeof ACCENT_SLOTS)[number]["value"];
@@ -188,47 +200,31 @@ export function resolveThemeSlots(raw: unknown): ThemeSlots {
 }
 
 /**
- * The app shell's grounds, and the one piece of real thinking in this
- * file.
+ * The app shell's grounds.
  *
- * THE PROBLEM DARK MODE CREATES HERE. The rail and the phone top strip are
- * a nested <Theme appearance="dark"> — the product's one dark surface —
- * and Radix paints their ground automatically (verified against the
- * installed 3.3.0 source: `hasBackground` defaults to true whenever
- * `appearance` is passed explicitly, on a nested Theme as much as on the
- * root, so the rail keeps painting itself no matter what the shell around
- * it is doing). On a LIGHT shell that produces the intended reading: a
- * dark rail against a --gray-2 canvas holding white panels.
- *
- * Turn the shell dark and the naive result is three near-identical
- * near-blacks. --color-background resolves to --gray-1 in dark, so the
- * rail, the sticky header and the canvas all land within one scale step of
- * one another, and --color-panel-solid resolves to --gray-2 — the same
- * value the canvas was using — so every Card stops reading as a panel too.
- * A dark rail on a dark canvas with nothing between them.
- *
- * THE FIX, and it is one line of thinking rather than a special case: the
- * two grounds SWAP. Chrome (rail, phone strip, sticky header) and canvas
- * trade places between modes, and the panel layer stays where Radix puts
- * it.
- *
- *   light   chrome = --color-background (white, and inside the rail's own
- *                    dark subtree that same token resolves to the dark
- *                    scale's --gray-1 — byte-for-byte today's rail)
- *           canvas = --gray-2            panels = white
- *
- *   dark    chrome = --gray-2            (the rail LIFTS off the canvas)
- *           canvas = --color-background  (--gray-1, the recessed ground)
- *                                        panels = --gray-2
- *
- * Both modes therefore keep the same three-layer hierarchy — chrome and
- * panels one step off a canvas that sits between/below them — and light
- * mode is unchanged to the byte, because `--color-background` and
- * `--gray-2` are exactly the tokens the shell already used. What flips is
- * only which of the two the chrome asks for.
+ * ORIGINALLY (INSTRUMENT): chrome and canvas swapped which token they
+ * asked for between light and dark, because that palette's dark mode was
+ * an inversion — the fix, and the reasoning for it, is preserved in git
+ * history if it's ever needed again. LEDGER'S DARK PALETTE IS A SEPARATE
+ * DESIGN, not an inversion (docs/design/LEDGER.md: night is "a designed
+ * palette... not an inversion"), and Ledger's own app-shell.tsx does not
+ * consume chromeBackground/canvasBackground at all — it resolves its
+ * chrome/canvas grounds directly from Tailwind utilities (bg-card,
+ * bg-canvas) against the SAME data-appearance attribute this file already
+ * resolves. These two fields are kept in the resolved shape only in case
+ * an as-yet-unmigrated consumer still reads them; both point at real
+ * Ledger tokens now rather than the deleted INSTRUMENT ones.
  */
 export type ResolvedTheme = {
-  /** Stamped as data-accent. Moves --signal ONLY; see app/design/tokens.css. */
+  /**
+   * Stamped as data-accent. Under INSTRUMENT this moved --signal per the
+   * compound selectors app/design/tokens.css declared. Ledger has no such
+   * selector (one --ledger-accent, no per-accent variant) — see the note
+   * above ACCENT_SLOTS. Kept in the resolved shape (rather than dropped)
+   * because the value still round-trips through the database and the
+   * settings screen still offers the choice; it currently has no visual
+   * effect once no INSTRUMENT screen remains to read it.
+   */
   accent: ThemeAccent;
   /** Stamped as data-density. Moves SPACE and control height, never type size. */
   density: ThemeDensityToken;
@@ -246,20 +242,10 @@ export function themeForSlots(slots: ThemeSlots): ResolvedTheme {
     accent: slots.accent,
     density: density ? density.density : "compact",
     appearance: slots.appearance,
-    // ONE PAIR IN BOTH MODES, and that is the point rather than an oversight.
-    //
-    // The old system had to swap these between light and dark, because its
-    // dark palette was an inversion: the token that was brighter in light
-    // became darker in dark, so the rail would have sunk into the canvas
-    // unless the chrome asked for a different token at night.
-    //
-    // INSTRUMENT's dark palette is a second design, not an inversion —
-    // --paper is lifted ABOVE --canvas in both (app/design/tokens.css §8) —
-    // so "chrome is paper, canvas is canvas" holds either way and there is no
-    // mode-dependent branch to get wrong. tests/theme-slots.test.mjs asserts
-    // that relationship against the real token values in both modes.
-    chromeBackground: "var(--paper)",
-    canvasBackground: "var(--canvas)",
+    // Ledger's card ground and canvas ground — see the note above
+    // ResolvedTheme for why these are no longer mode-dependent branches.
+    chromeBackground: "var(--ledger-card)",
+    canvasBackground: "var(--ledger-canvas)",
   };
 }
 

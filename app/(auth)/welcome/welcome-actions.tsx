@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useActionState } from "react";
-import { Flex, RadioCards, SegmentedControl, Text } from "@/components/ui";
+import { cn } from "@/lib/ledger/cn";
 import type { BillingInterval, PlanTier } from "@/lib/entitlements";
 import { FormError, SubmitButton } from "../auth-parts";
 import { startCheckout, type CheckoutState } from "./actions";
@@ -35,6 +35,46 @@ export type PlanOption = {
   seatNote: Record<BillingInterval, string | null>;
 };
 
+/** A two-option pill toggle, in place of Radix's SegmentedControl. */
+function IntervalToggle({
+  value,
+  onChange,
+}: {
+  value: BillingInterval;
+  onChange: (value: BillingInterval) => void;
+}) {
+  const options: { value: BillingInterval; label: string }[] = [
+    { value: "monthly", label: "Monthly" },
+    { value: "annual", label: "Annual" },
+  ];
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Billing interval"
+      className="inline-flex gap-1 rounded-control border border-hair-strong bg-sunk p-1"
+    >
+      {options.map((opt) => {
+        const active = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(opt.value)}
+            className={cn(
+              "rounded-control px-3 py-1.5 text-body-s font-medium transition-colors",
+              active ? "bg-card text-ink shadow-card" : "text-ink-2 hover:text-ink"
+            )}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * THE 2026-08 PASS OVER THIS FILE WAS VISUAL ONLY. Every branch below —
  * the first-available default, the interval switch that re-homes an
@@ -64,16 +104,13 @@ export function PlanPicker({
   const anyAnnual = options.some((o) => o.price.annual !== null);
 
   return (
-    <Flex direction="column" gap="4">
+    <div className="flex flex-col gap-4">
       {anyAnnual ? (
-        <Flex justify="between" align="center" gap="3" wrap="wrap">
-          <Text size="2" weight="medium">
-            Billing
-          </Text>
-          <SegmentedControl.Root
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="text-body-s font-medium text-ink">Billing</span>
+          <IntervalToggle
             value={interval}
-            onValueChange={(value) => {
-              if (value !== "monthly" && value !== "annual") return;
+            onChange={(value) => {
               setInterval(value);
               // Keep the selection legal: if the current tier has no
               // price at the new interval, move to the first that does.
@@ -83,96 +120,90 @@ export function PlanPicker({
                 if (fallback) setTier(fallback.tier);
               }
             }}
-            size="2"
-          >
-            <SegmentedControl.Item value="monthly">Monthly</SegmentedControl.Item>
-            <SegmentedControl.Item value="annual">Annual</SegmentedControl.Item>
-          </SegmentedControl.Root>
-        </Flex>
+          />
+        </div>
       ) : null}
 
-      <RadioCards.Root
-        value={tier}
-        onValueChange={(value) => {
-          const next = options.find((o) => o.tier === value);
-          if (next && next.price[interval] !== null) setTier(next.tier);
-        }}
-        columns="1"
-        gap="2"
-        size="2"
-      >
+      <div role="radiogroup" aria-label="Plan" className="flex flex-col gap-2">
         {options.map((option) => {
           const label = option.price[interval];
           const seatNote = option.seatNote[interval];
           const unavailable = label === null;
+          const active = tier === option.tier;
           return (
-            <RadioCards.Item
+            <label
               key={option.tier}
-              value={option.tier}
-              disabled={unavailable}
+              className={cn(
+                "flex flex-col gap-1 rounded-card border p-4 transition-colors",
+                unavailable
+                  ? "cursor-not-allowed border-hair bg-sunk opacity-60"
+                  : "cursor-pointer bg-card hover:border-hair-strong",
+                active && !unavailable ? "border-accent bg-accent-soft" : "border-hair-strong"
+              )}
             >
-              <Flex direction="column" width="100%" gap="1" style={{ textAlign: "left" }}>
-                <Flex justify="between" gap="3" align="baseline">
-                  <Text size="3" weight="bold">
-                    {option.name}
-                  </Text>
-                  <Flex direction="column" align="end" gap="0" flexShrink="0">
-                    <Text size="3" weight="medium" className="tnum">
-                      {unavailable ? "Unavailable" : label}
-                    </Text>
-                    {/* The per-seat breakdown for a per-seat tier, so the
-                        "$78/month" total above is shown WITH how it is
-                        composed — never a bare "$39/month" that checkout
-                        would then double (Finding 1). */}
-                    {!unavailable && seatNote ? (
-                      <Text size="1" color="gray">
-                        {seatNote}
-                      </Text>
-                    ) : null}
-                  </Flex>
-                </Flex>
-                <Text size="1" color="gray">
-                  {option.blurb}
-                </Text>
-              </Flex>
-            </RadioCards.Item>
+              <input
+                type="radio"
+                name="tier-choice"
+                value={option.tier}
+                checked={active}
+                disabled={unavailable}
+                onChange={() => {
+                  if (!unavailable) setTier(option.tier);
+                }}
+                className="sr-only"
+              />
+              <div className="flex flex-wrap items-baseline justify-between gap-3">
+                <span className="text-lead font-bold text-ink">{option.name}</span>
+                <div className="flex shrink-0 flex-col items-end gap-0">
+                  <span className="tnum-l text-body font-medium text-ink">
+                    {unavailable ? "Unavailable" : label}
+                  </span>
+                  {/* The per-seat breakdown for a per-seat tier, so the
+                      "$78/month" total above is shown WITH how it is
+                      composed — never a bare "$39/month" that checkout
+                      would then double (Finding 1). */}
+                  {!unavailable && seatNote ? (
+                    <span className="text-caption text-ink-3">{seatNote}</span>
+                  ) : null}
+                </div>
+              </div>
+              <span className="text-caption text-ink-3">{option.blurb}</span>
+            </label>
           );
         })}
-      </RadioCards.Root>
+      </div>
 
-      <form action={formAction}>
-        <Flex direction="column" gap="3">
-          {/* The chosen tier/interval ride as hidden fields; the server
-              action re-validates both and resolves the PRICE itself, so a
-              tampered value can only change what gets paid for — the
-              webhook maps the tier from the price, never from the form. */}
-          <input type="hidden" name="tier" value={tier} />
-          <input type="hidden" name="interval" value={interval} />
+      <form action={formAction} className="flex flex-col gap-3">
+        {/* The chosen tier/interval ride as hidden fields; the server
+            action re-validates both and resolves the PRICE itself, so a
+            tampered value can only change what gets paid for — the
+            webhook maps the tier from the price, never from the form. */}
+        <input type="hidden" name="tier" value={tier} />
+        <input type="hidden" name="interval" value={interval} />
 
-          <FormError message={state.error} />
+        <FormError message={state.error} />
 
-          <SubmitButton
-            pending={pending}
-            idle={`Start your ${trialDays}-day trial`}
-            busy="Opening checkout…"
-            disabled={pending || selectedLabel === null}
-          />
+        <SubmitButton
+          pending={pending}
+          idle={`Start your ${trialDays}-day trial`}
+          busy="Opening checkout…"
+          disabled={pending || selectedLabel === null}
+        />
 
-          {/*
-            "cancel anytime" stays out of this copy on purpose (see the git
-            history of this file): the cancel path lives in Stripe's billing
-            portal via Settings → Billing, which exists only once the account
-            does — this screen belongs to someone who doesn't have one yet.
-          */}
-          <Text as="div" size="1" color="gray" align="center">
-            {selectedLabel
-              ? `${selectedLabel}${
-                  selectedSeatNote ? ` (${selectedSeatNote})` : ""
-                } after the trial. Card required now.`
-              : "Card required now."}
-          </Text>
-        </Flex>
+        {/*
+          "cancel anytime" stays out of this copy on purpose (see the git
+          history of this file): the cancel path lives in Stripe's billing
+          portal via Settings → Billing, which exists only once the account
+          does — this screen belongs to someone who doesn't have one yet.
+        */}
+        <p className="text-center text-caption text-ink-3">
+          {selectedLabel
+            ? `${selectedLabel}${
+                selectedSeatNote ? ` (${selectedSeatNote})` : ""
+              } after the trial. Card required now.`
+            : "Card required now."}
+        </p>
       </form>
-    </Flex>
+    </div>
   );
 }

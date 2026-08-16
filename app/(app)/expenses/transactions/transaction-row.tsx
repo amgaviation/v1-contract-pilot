@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Badge, Box, Button, Callout, Flex, Select, Table, Text } from "@/components/ui";
+import { LAlert, LButton, LPill, LTd } from "@/components/ledger";
+import { LSelect } from "@/components/ledger/forms";
 import { formatCents, formatDate } from "@/lib/format";
 import type { OptionChoice } from "@/lib/custom-options";
 import { confirmTransaction, ignoreTransaction } from "./actions";
@@ -100,104 +101,94 @@ export default function TransactionRow({
 
   if (done) {
     return (
-      <Table.Row>
-        <Table.Cell colSpan={5}>
-          <Text size="2" color="gray">
+      <tr>
+        <td colSpan={5} className="border-b border-hair px-3 py-2.5 align-baseline">
+          <span className="text-body-s text-ink-2">
             {done === "confirmed" ? "Saved as an expense." : "Dismissed, not an expense."}
-          </Text>
-        </Table.Cell>
-      </Table.Row>
+          </span>
+        </td>
+      </tr>
     );
   }
 
   return (
     <>
-      <Table.Row>
-        <Table.Cell className="tnum">{formatDate(txn.posted_on)}</Table.Cell>
-        <Table.Cell>
-          <Flex direction="column">
-            <Text>{txn.description}</Text>
-            <Text size="1" color="gray">
-              {txn.bank_account_label}
-            </Text>
-          </Flex>
-        </Table.Cell>
-        <Table.Cell className="tnum">
-          <Text color={isExpenseCandidate ? "red" : "green"}>
+      <tr>
+        <th
+          scope="row"
+          className="tnum-l border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+        >
+          {formatDate(txn.posted_on)}
+        </th>
+        <LTd>
+          <div className="flex flex-col">
+            <span>{txn.description}</span>
+            <span className="text-caption text-ink-3">{txn.bank_account_label}</span>
+          </div>
+        </LTd>
+        <LTd numeric>
+          <span className={isExpenseCandidate ? "text-crit" : "text-good"}>
             {isExpenseCandidate ? "−" : "+"}
             {formatCents(Math.abs(txn.amount_cents))}
-          </Text>
-        </Table.Cell>
-        <Table.Cell>
-          {txn.suggested_category ? <Badge color="blue">Suggested: {txn.suggested_category}</Badge> : null}
-          {!isExpenseCandidate ? <Badge color="gray">Deposit / payment</Badge> : null}
-        </Table.Cell>
-        <Table.Cell>
+          </span>
+        </LTd>
+        <LTd>
+          {txn.suggested_category ? (
+            <LPill tone="accent">Suggested: {txn.suggested_category}</LPill>
+          ) : null}
+          {!isExpenseCandidate ? <LPill tone="neutral">Deposit / payment</LPill> : null}
+        </LTd>
+        <LTd>
           {isExpenseCandidate ? (
-            <Button type="button" size="1" variant="soft" onClick={() => setOpen((v) => !v)}>
+            <LButton type="button" size="sm" variant="outline" onClick={() => setOpen((v) => !v)}>
               {open ? "Cancel" : "Review"}
-            </Button>
+            </LButton>
           ) : (
-            <Button type="button" size="1" variant="soft" onClick={handleIgnore} disabled={pending}>
+            <LButton type="button" size="sm" variant="outline" onClick={handleIgnore} disabled={pending}>
               Dismiss
-            </Button>
+            </LButton>
           )}
-        </Table.Cell>
-      </Table.Row>
+        </LTd>
+      </tr>
       {open ? (
-        <Table.Row>
-          <Table.Cell colSpan={5}>
-            <Flex direction="column" gap="3">
-              <Flex gap="3" wrap="wrap" align="center">
-                <Box>
-                  <Text size="1" color="gray">
-                    Category
-                  </Text>
-                  <Select.Root value={category} onValueChange={setCategory}>
-                    <Select.Trigger />
-                    <Select.Content>
-                      {categories.map((c) => (
-                        <Select.Item key={c.value} value={c.value}>
-                          {c.label}
-                        </Select.Item>
-                      ))}
-                    </Select.Content>
-                  </Select.Root>
-                </Box>
-                <Box>
-                  <Text size="1" color="gray">
-                    Treatment
-                  </Text>
-                  <Select.Root value={treatment} onValueChange={setTreatment}>
-                    <Select.Trigger />
-                    <Select.Content>
-                      {TREATMENTS.map((t) => (
-                        <Select.Item key={t.value} value={t.value}>
-                          {t.label}
-                        </Select.Item>
-                      ))}
-                    </Select.Content>
-                  </Select.Root>
-                </Box>
+        <tr>
+          <td colSpan={5} className="border-b border-hair px-3 py-2.5 align-baseline">
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <div>
+                  <span className="text-caption text-ink-3">Category</span>
+                  <LSelect value={category} onChange={(e) => setCategory(e.target.value)}>
+                    {categories.map((c) => (
+                      <option key={c.value} value={c.value}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </LSelect>
+                </div>
+                <div>
+                  <span className="text-caption text-ink-3">Treatment</span>
+                  <LSelect value={treatment} onChange={(e) => setTreatment(e.target.value)}>
+                    {TREATMENTS.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </LSelect>
+                </div>
                 {treatment === "rebill" ? (
-                  <Box>
-                    <Text size="1" color="gray">
-                      Trip
-                    </Text>
-                    <Select.Root value={tripId} onValueChange={setTripId}>
-                      <Select.Trigger placeholder="Pick a trip" />
-                      <Select.Content>
-                        <Select.Item value={NO_TRIP}>No trip</Select.Item>
-                        {trips.map((t) => (
-                          <Select.Item key={t.id} value={t.id}>
-                            {t.label}
-                          </Select.Item>
-                        ))}
-                      </Select.Content>
-                    </Select.Root>
-                  </Box>
+                  <div>
+                    <span className="text-caption text-ink-3">Trip</span>
+                    <LSelect value={tripId} onChange={(e) => setTripId(e.target.value)}>
+                      <option value={NO_TRIP}>No trip</option>
+                      {trips.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </LSelect>
+                  </div>
                 ) : null}
-              </Flex>
+              </div>
               {/* ALREADY IN THE BOOKS. Warns, never blocks — two
                   identical same-day charges are real. But the confirm is
                   gated behind an explicit acknowledgement, because the
@@ -205,56 +196,47 @@ export default function TransactionRow({
                   else: a duplicated rebill reaches the client as two
                   invoice lines for one spend. */}
               {txn.duplicates.length > 0 ? (
-                <Callout.Root color="amber" size="1">
-                  <Callout.Text>
-                    <Text as="div" weight="medium" mb="1">
-                      You may have already recorded this.
-                    </Text>
-                    {txn.duplicates.map((d, i) => (
-                      <Text as="div" size="1" key={`${d.incurredOn}-${i}`}>
-                        {formatCents(d.amountCents)} on {formatDate(d.incurredOn)}
-                        {d.vendor ? `, ${d.vendor}` : ""}
-                        {d.treatment === "rebill" ? " (rebilled to a client)" : ""}
-                        {d.fromBank ? " (from another statement)" : " (entered by hand)"}
-                      </Text>
-                    ))}
-                    <Text as="div" size="1" mt="1">
-                      Confirming this makes a second expense. If it&rsquo;s the same
-                      spend, dismiss this row instead.
-                    </Text>
-                  </Callout.Text>
-                </Callout.Root>
+                <LAlert tone="warn">
+                  <p className="mb-1 font-medium">You may have already recorded this.</p>
+                  {txn.duplicates.map((d, i) => (
+                    <p className="text-caption" key={`${d.incurredOn}-${i}`}>
+                      {formatCents(d.amountCents)} on {formatDate(d.incurredOn)}
+                      {d.vendor ? `, ${d.vendor}` : ""}
+                      {d.treatment === "rebill" ? " (rebilled to a client)" : ""}
+                      {d.fromBank ? " (from another statement)" : " (entered by hand)"}
+                    </p>
+                  ))}
+                  <p className="mt-1 text-caption">
+                    Confirming this makes a second expense. If it&rsquo;s the same
+                    spend, dismiss this row instead.
+                  </p>
+                </LAlert>
               ) : null}
-              {error ? (
-                <Callout.Root>
-                  <Callout.Text>{error}</Callout.Text>
-                </Callout.Root>
-              ) : null}
-              <Box>
+              {error ? <LAlert tone="crit">{error}</LAlert> : null}
+              <div>
                 {txn.duplicates.length > 0 && !acknowledgedDuplicate ? (
-                  <Flex gap="2" align="center" wrap="wrap">
-                    <Button
+                  <div className="flex flex-wrap items-center gap-2">
+                    <LButton
                       type="button"
-                      variant="soft"
-                      color="amber"
+                      variant="outline"
                       onClick={() => setAcknowledgedDuplicate(true)}
                       disabled={pending}
                     >
                       It&rsquo;s a different charge: record it anyway
-                    </Button>
-                    <Button type="button" variant="soft" onClick={handleIgnore} disabled={pending}>
+                    </LButton>
+                    <LButton type="button" variant="outline" onClick={handleIgnore} disabled={pending}>
                       Dismiss as a duplicate
-                    </Button>
-                  </Flex>
+                    </LButton>
+                  </div>
                 ) : (
-                  <Button type="button" onClick={handleConfirm} disabled={pending}>
+                  <LButton type="button" onClick={handleConfirm} disabled={pending}>
                     {pending ? "Saving…" : "Confirm as expense"}
-                  </Button>
+                  </LButton>
                 )}
-              </Box>
-            </Flex>
-          </Table.Cell>
-        </Table.Row>
+              </div>
+            </div>
+          </td>
+        </tr>
       ) : null}
     </>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { Button, Card, Flex, Heading, Text } from "@/components/ui";
+import { LButton, LCard } from "@/components/ledger";
 import {
   uploadLogo,
   removeLogo,
@@ -24,23 +24,20 @@ export default function LogoPanel({
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <Card>
-      <Flex direction="column" gap="3" p="1">
-        <Flex direction="column" gap="1">
-          <Heading size="4">Logo</Heading>
-        </Flex>
+    <LCard>
+      <div className="flex flex-col gap-3">
+        <h3 className="text-h3 font-semibold">Logo</h3>
 
         {hasLogo ? (
-          <Flex gap="3" align="center" wrap="wrap">
-            <Text size="2" color="gray">
-              A logo is on file.
-            </Text>
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-body-s text-ink-2">A logo is on file.</p>
             {/* Opened through a signed URL minted at click time rather than
                 rendered inline — the same rule receipts follow, since a
                 signed URL is a bearer token in a query string. */}
-            <Button
+            <LButton
+              type="button"
               variant="outline"
-              size="1"
+              size="sm"
               disabled={previewing}
               onClick={() =>
                 startPreview(async () => {
@@ -55,12 +52,12 @@ export default function LogoPanel({
               }
             >
               {previewing ? "Opening…" : "View"}
-            </Button>
+            </LButton>
             {canEdit ? (
-              <Button
-                variant="outline"
-                color="red"
-                size="1"
+              <LButton
+                type="button"
+                variant="danger"
+                size="sm"
                 disabled={removing}
                 onClick={() =>
                   startRemove(async () => {
@@ -71,39 +68,36 @@ export default function LogoPanel({
                 }
               >
                 {removing ? "Removing…" : "Remove"}
-              </Button>
+              </LButton>
             ) : null}
-          </Flex>
+          </div>
         ) : null}
 
         {canEdit ? (
           <form action={formAction}>
-            <Flex direction="column" gap="2" align="start">
+            <div className="flex flex-col items-start gap-2">
               <input
                 type="file"
                 name="logo"
                 accept="image/png,image/jpeg"
                 aria-label="Logo image"
+                className="text-body-s text-ink-2"
               />
-              <Button type="submit" variant="outline" disabled={pending}>
+              <LButton type="submit" variant="outline" disabled={pending}>
                 {pending ? "Uploading…" : hasLogo ? "Replace logo" : "Upload logo"}
-              </Button>
-            </Flex>
+              </LButton>
+            </div>
           </form>
         ) : null}
 
         <div role="alert" aria-live="polite">
           {state.error ?? error ? (
-            <Text size="1" color="red">
-              {state.error ?? error}
-            </Text>
+            <p className="text-caption font-medium text-crit">{state.error ?? error}</p>
           ) : state.saved ? (
-            <Text size="1" color="green">
-              Logo saved.
-            </Text>
+            <p className="text-caption font-medium text-good">Logo saved.</p>
           ) : null}
         </div>
-      </Flex>
-    </Card>
+      </div>
+    </LCard>
   );
 }

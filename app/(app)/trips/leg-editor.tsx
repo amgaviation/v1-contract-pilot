@@ -1,17 +1,9 @@
 "use client";
 
 import { useActionState, useEffect, useState, useTransition } from "react";
-import {
-  AlertDialog,
-  Box,
-  Button,
-  Callout,
-  Flex,
-  Grid,
-  Heading,
-  Text,
-  TextField,
-} from "@/components/ui";
+import { LButton } from "@/components/ledger";
+import { LConfirmDialog } from "@/components/ledger/dialog";
+import { LField, LInput } from "@/components/ledger/forms";
 import { formatDate } from "@/lib/format";
 import { addLeg, deleteLeg, updateLeg, type LegFormState } from "./actions";
 
@@ -52,234 +44,201 @@ function LegFieldGrid({
 }) {
   const id = (key: string) => `${idPrefix}-${key}`;
   return (
-    <Grid columns={{ initial: "2", md: "6" }} gap="3">
-      <Flex direction="column" gap="1" gridColumn={{ initial: "span 2", md: "span 1" }}>
-        <Text as="label" size="2" weight="medium" htmlFor={id("leg_date")}>
-          Date
-        </Text>
-        <TextField.Root
-          id={id("leg_date")}
-          type="date"
-          name="leg_date"
-          required
-          defaultValue={initial("leg_date")}
-        />
-      </Flex>
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={id("from_icao")}>
-          From
-        </Text>
-        <TextField.Root
-          id={id("from_icao")}
-          name="from_icao"
-          placeholder="KBED"
-          defaultValue={initial("from_icao")}
-        />
-      </Flex>
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={id("to_icao")}>
-          To
-        </Text>
-        <TextField.Root
-          id={id("to_icao")}
-          name="to_icao"
-          placeholder="KTEB"
-          defaultValue={initial("to_icao")}
-        />
-      </Flex>
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={id("block_hours")}>
-          Block
-        </Text>
-        <TextField.Root
-          id={id("block_hours")}
-          type="number"
-          name="block_hours"
-          step="0.1"
-          min="0"
-          defaultValue={initial("block_hours")}
-        />
-      </Flex>
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={id("night_hours")}>
-          Night
-        </Text>
-        <TextField.Root
-          id={id("night_hours")}
-          type="number"
-          name="night_hours"
-          step="0.1"
-          min="0"
-          defaultValue={initial("night_hours")}
-        />
-        <Text size="1" color="gray">
-          Civil twilight to civil twilight. Not the same window as the takeoff/landing counts below. (14 CFR 1.1)
-        </Text>
-      </Flex>
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={id("instrument_actual_hours")}>
-          Instrument (actual)
-        </Text>
-        <TextField.Root
-          id={id("instrument_actual_hours")}
-          type="number"
-          name="instrument_actual_hours"
-          step="0.1"
-          min="0"
-          defaultValue={initial("instrument_actual_hours")}
-        />
-        <Text size="1" color="gray">
-          Log actual and simulated instrument time separately. (14 CFR 61.51(b)(3)(ii))
-        </Text>
-      </Flex>
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={id("instrument_simulated_hours")}>
-          Instrument (simulated)
-        </Text>
-        <TextField.Root
-          id={id("instrument_simulated_hours")}
-          type="number"
-          name="instrument_simulated_hours"
-          step="0.1"
-          min="0"
-          defaultValue={initial("instrument_simulated_hours")}
-        />
-      </Flex>
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={id("cross_country_hours")}>
-          Cross-country
-        </Text>
-        <TextField.Root
-          id={id("cross_country_hours")}
-          type="number"
-          name="cross_country_hours"
-          step="0.1"
-          min="0"
-          defaultValue={initial("cross_country_hours")}
-        />
-      </Flex>
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
+      <div className="col-span-2 flex flex-col gap-1 md:col-span-1">
+        <LField label="Date" htmlFor={id("leg_date")}>
+          <LInput id={id("leg_date")} type="date" name="leg_date" required defaultValue={initial("leg_date")} />
+        </LField>
+      </div>
+      <div className="flex flex-col gap-1">
+        <LField label="From" htmlFor={id("from_icao")}>
+          <LInput id={id("from_icao")} name="from_icao" placeholder="KBED" defaultValue={initial("from_icao")} />
+        </LField>
+      </div>
+      <div className="flex flex-col gap-1">
+        <LField label="To" htmlFor={id("to_icao")}>
+          <LInput id={id("to_icao")} name="to_icao" placeholder="KTEB" defaultValue={initial("to_icao")} />
+        </LField>
+      </div>
+      <div className="flex flex-col gap-1">
+        <LField label="Block" htmlFor={id("block_hours")}>
+          <LInput
+            id={id("block_hours")}
+            type="number"
+            name="block_hours"
+            step="0.1"
+            min="0"
+            defaultValue={initial("block_hours")}
+          />
+        </LField>
+      </div>
+      <div className="flex flex-col gap-1">
+        <LField
+          label="Night"
+          htmlFor={id("night_hours")}
+          hint="Civil twilight to civil twilight. Not the same window as the takeoff/landing counts below. (14 CFR 1.1)"
+        >
+          <LInput
+            id={id("night_hours")}
+            type="number"
+            name="night_hours"
+            step="0.1"
+            min="0"
+            defaultValue={initial("night_hours")}
+          />
+        </LField>
+      </div>
+      <div className="flex flex-col gap-1">
+        <LField
+          label="Instrument (actual)"
+          htmlFor={id("instrument_actual_hours")}
+          hint="Log actual and simulated instrument time separately. (14 CFR 61.51(b)(3)(ii))"
+        >
+          <LInput
+            id={id("instrument_actual_hours")}
+            type="number"
+            name="instrument_actual_hours"
+            step="0.1"
+            min="0"
+            defaultValue={initial("instrument_actual_hours")}
+          />
+        </LField>
+      </div>
+      <div className="flex flex-col gap-1">
+        <LField label="Instrument (simulated)" htmlFor={id("instrument_simulated_hours")}>
+          <LInput
+            id={id("instrument_simulated_hours")}
+            type="number"
+            name="instrument_simulated_hours"
+            step="0.1"
+            min="0"
+            defaultValue={initial("instrument_simulated_hours")}
+          />
+        </LField>
+      </div>
+      <div className="flex flex-col gap-1">
+        <LField label="Cross-country" htmlFor={id("cross_country_hours")}>
+          <LInput
+            id={id("cross_country_hours")}
+            type="number"
+            name="cross_country_hours"
+            step="0.1"
+            min="0"
+            defaultValue={initial("cross_country_hours")}
+          />
+        </LField>
+      </div>
       {/* The legacy combined field, kept so a leg written before the
           actual/simulated split can still be read and corrected. Not
           derived from the two above and never used to fill them. */}
       <input type="hidden" name="instrument_hours" value={initial("instrument_hours")} />
 
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={id("day_takeoffs")}>
-          Day takeoffs
-        </Text>
-        <TextField.Root
-          id={id("day_takeoffs")}
-          type="number"
-          name="day_takeoffs"
-          step="1"
-          min="0"
-          defaultValue={initial("day_takeoffs", "0")}
-        />
-        <Text size="1" color="gray">
-          14 CFR 61.57(a)(1) counts takeoffs separately from landings
-        </Text>
-      </Flex>
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={id("day_landings")}>
-          Day landings
-        </Text>
-        <TextField.Root
-          id={id("day_landings")}
-          type="number"
-          name="day_landings"
-          step="1"
-          min="0"
-          defaultValue={initial("day_landings", "0")}
-        />
-      </Flex>
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={id("day_landings_full_stop")}>
-          …of which full stop
-        </Text>
-        <TextField.Root
-          id={id("day_landings_full_stop")}
-          type="number"
-          name="day_landings_full_stop"
-          step="1"
-          min="0"
-          defaultValue={initial("day_landings_full_stop", "0")}
-        />
-        <Text size="1" color="gray">
-          Only 61.57(a)(1) tailwheel currency requires full stop by day
-        </Text>
-      </Flex>
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={id("night_takeoffs")}>
-          Night takeoffs
-        </Text>
-        <TextField.Root
-          id={id("night_takeoffs")}
-          type="number"
-          name="night_takeoffs"
-          step="1"
-          min="0"
-          defaultValue={initial("night_takeoffs", "0")}
-        />
-        <Text size="1" color="gray">
-          1 hour after sunset to 1 hour before sunrise. (61.57(b))
-        </Text>
-      </Flex>
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={id("night_landings_full_stop")}>
-          Night full-stop
-        </Text>
-        <TextField.Root
-          id={id("night_landings_full_stop")}
-          type="number"
-          name="night_landings_full_stop"
-          step="1"
-          min="0"
-          defaultValue={initial("night_landings_full_stop", "0")}
-        />
-        <Text size="1" color="gray">
-          Counts toward 61.57(b) currency: 1 hour after sunset to 1 hour before sunrise. Not the same window as Night above.
-        </Text>
-      </Flex>
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={id("night_landings_touch_go")}>
-          Night touch &amp; go
-        </Text>
-        <TextField.Root
-          id={id("night_landings_touch_go")}
-          type="number"
-          name="night_landings_touch_go"
-          step="1"
-          min="0"
-          defaultValue={initial("night_landings_touch_go", "0")}
-        />
-      </Flex>
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={id("approaches")}>
-          Approaches
-        </Text>
-        <TextField.Root
-          id={id("approaches")}
-          type="number"
-          name="approaches"
-          step="1"
-          min="0"
-          defaultValue={initial("approaches", "0")}
-        />
-      </Flex>
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={id("holds")}>
-          Holds
-        </Text>
-        <TextField.Root
-          id={id("holds")}
-          type="number"
-          name="holds"
-          step="1"
-          min="0"
-          defaultValue={initial("holds", "0")}
-        />
-      </Flex>
-    </Grid>
+      <div className="flex flex-col gap-1">
+        <LField
+          label="Day takeoffs"
+          htmlFor={id("day_takeoffs")}
+          hint="14 CFR 61.57(a)(1) counts takeoffs separately from landings"
+        >
+          <LInput
+            id={id("day_takeoffs")}
+            type="number"
+            name="day_takeoffs"
+            step="1"
+            min="0"
+            defaultValue={initial("day_takeoffs", "0")}
+          />
+        </LField>
+      </div>
+      <div className="flex flex-col gap-1">
+        <LField label="Day landings" htmlFor={id("day_landings")}>
+          <LInput
+            id={id("day_landings")}
+            type="number"
+            name="day_landings"
+            step="1"
+            min="0"
+            defaultValue={initial("day_landings", "0")}
+          />
+        </LField>
+      </div>
+      <div className="flex flex-col gap-1">
+        <LField
+          label="…of which full stop"
+          htmlFor={id("day_landings_full_stop")}
+          hint="Only 61.57(a)(1) tailwheel currency requires full stop by day"
+        >
+          <LInput
+            id={id("day_landings_full_stop")}
+            type="number"
+            name="day_landings_full_stop"
+            step="1"
+            min="0"
+            defaultValue={initial("day_landings_full_stop", "0")}
+          />
+        </LField>
+      </div>
+      <div className="flex flex-col gap-1">
+        <LField
+          label="Night takeoffs"
+          htmlFor={id("night_takeoffs")}
+          hint="1 hour after sunset to 1 hour before sunrise. (61.57(b))"
+        >
+          <LInput
+            id={id("night_takeoffs")}
+            type="number"
+            name="night_takeoffs"
+            step="1"
+            min="0"
+            defaultValue={initial("night_takeoffs", "0")}
+          />
+        </LField>
+      </div>
+      <div className="flex flex-col gap-1">
+        <LField
+          label="Night full-stop"
+          htmlFor={id("night_landings_full_stop")}
+          hint="Counts toward 61.57(b) currency: 1 hour after sunset to 1 hour before sunrise. Not the same window as Night above."
+        >
+          <LInput
+            id={id("night_landings_full_stop")}
+            type="number"
+            name="night_landings_full_stop"
+            step="1"
+            min="0"
+            defaultValue={initial("night_landings_full_stop", "0")}
+          />
+        </LField>
+      </div>
+      <div className="flex flex-col gap-1">
+        <LField label="Night touch & go" htmlFor={id("night_landings_touch_go")}>
+          <LInput
+            id={id("night_landings_touch_go")}
+            type="number"
+            name="night_landings_touch_go"
+            step="1"
+            min="0"
+            defaultValue={initial("night_landings_touch_go", "0")}
+          />
+        </LField>
+      </div>
+      <div className="flex flex-col gap-1">
+        <LField label="Approaches" htmlFor={id("approaches")}>
+          <LInput
+            id={id("approaches")}
+            type="number"
+            name="approaches"
+            step="1"
+            min="0"
+            defaultValue={initial("approaches", "0")}
+          />
+        </LField>
+      </div>
+      <div className="flex flex-col gap-1">
+        <LField label="Holds" htmlFor={id("holds")}>
+          <LInput id={id("holds")} type="number" name="holds" step="1" min="0" defaultValue={initial("holds", "0")} />
+        </LField>
+      </div>
+    </div>
   );
 }
 
@@ -322,30 +281,26 @@ function LegEditForm({
   };
 
   return (
-    <Box asChild py="3">
+    <div className="py-3">
       <form action={formAction}>
         <input type="hidden" name="id" value={leg.id} />
         <input type="hidden" name="trip_id" value={tripId} />
         <LegFieldGrid idPrefix={`edit-${leg.id}`} initial={initial} />
 
-        <Box mt="3" role="alert" aria-live="polite">
-          {state.error ? (
-            <Callout.Root color="red" size="1">
-              <Callout.Text>{state.error}</Callout.Text>
-            </Callout.Root>
-          ) : null}
-        </Box>
+        <div className="mt-3" role="alert" aria-live="polite">
+          {state.error ? <p className="text-caption font-medium text-crit">{state.error}</p> : null}
+        </div>
 
-        <Flex mt="3" gap="3">
-          <Button type="submit" variant="outline" disabled={pending}>
+        <div className="mt-3 flex gap-3">
+          <LButton type="submit" variant="outline" disabled={pending}>
             {pending ? "Saving…" : "Save leg"}
-          </Button>
-          <Button type="button" variant="ghost" color="gray" disabled={pending} onClick={onCancel}>
+          </LButton>
+          <LButton type="button" variant="quiet" disabled={pending} onClick={onCancel}>
             Cancel
-          </Button>
-        </Flex>
+          </LButton>
+        </div>
       </form>
-    </Box>
+    </div>
   );
 }
 
@@ -375,46 +330,40 @@ function DeleteLegButton({
   }
 
   return (
-    <Flex direction="column" align="end">
-      <AlertDialog.Root open={open} onOpenChange={setOpen}>
-        <AlertDialog.Trigger>
-          <Button variant="ghost" color="red" size="1" aria-label={`Remove leg ${label}`}>
-            Remove
-          </Button>
-        </AlertDialog.Trigger>
-        <AlertDialog.Content maxWidth="440px">
-          <AlertDialog.Title>Remove this leg?</AlertDialog.Title>
-          <AlertDialog.Description size="2">
+    <div className="flex flex-col items-end">
+      <LButton
+        type="button"
+        variant="quiet"
+        size="sm"
+        className="text-crit hover:text-crit"
+        aria-label={`Remove leg ${label}`}
+        onClick={() => setOpen(true)}
+      >
+        Remove
+      </LButton>
+      <LConfirmDialog
+        open={open}
+        onOpenChange={setOpen}
+        title="Remove this leg?"
+        description={
+          <>
             This removes the leg. Its block time and its FAR 61.57 currency counts (night
             takeoffs, full-stop and touch-and-go night landings, approaches, holds) go with
             it. This can&rsquo;t be undone. If you just need to fix a typo, cancel and use Edit
             instead.
-          </AlertDialog.Description>
-          {error ? (
-            <Box mt="2">
-              <Text size="1" color="red" role="alert">
+            {error ? (
+              <p className="mt-2 text-caption font-medium text-crit" role="alert">
                 {error}
-              </Text>
-            </Box>
-          ) : null}
-          <Flex gap="3" mt="4" justify="end">
-            <AlertDialog.Cancel>
-              <Button variant="soft" color="gray" disabled={pending}>
-                Cancel
-              </Button>
-            </AlertDialog.Cancel>
-            <Button variant="solid" color="red" disabled={pending} onClick={handleDelete}>
-              {pending ? "Removing…" : "Remove leg"}
-            </Button>
-          </Flex>
-        </AlertDialog.Content>
-      </AlertDialog.Root>
-      {error && !open ? (
-        <Text as="div" size="1" color="red">
-          {error}
-        </Text>
-      ) : null}
-    </Flex>
+              </p>
+            ) : null}
+          </>
+        }
+        confirmLabel="Remove leg"
+        onConfirm={handleDelete}
+        pending={pending}
+      />
+      {error && !open ? <p className="text-caption text-crit">{error}</p> : null}
+    </div>
   );
 }
 
@@ -438,37 +387,37 @@ function LegListItem({ tripId, leg }: { tripId: string; leg: LegRow }) {
 
   return (
     <li>
-      <Flex justify="between" align="start" py="3" gap="3">
-        <Box>
-          <Text as="div" size="2" weight="medium">
+      <div className="flex items-start justify-between gap-3 py-3">
+        <div>
+          <div className="text-body-s font-medium text-ink">
             {leg.from_icao ?? "—"} → {leg.to_icao ?? "—"}
-          </Text>
-          <Text as="div" size="1" color="gray" className="tnum">
+          </div>
+          <div className="tnum-l text-caption text-ink-3">
             {formatDate(leg.leg_date)}
             {leg.block_hours ? ` · ${leg.block_hours} block` : ""}
             {leg.night_hours ? ` · ${leg.night_hours} night` : ""}
             {leg.instrument_hours ? ` · ${leg.instrument_hours} inst` : ""}
-          </Text>
-          <Text as="div" size="1" color="gray" className="tnum">
+          </div>
+          <div className="tnum-l text-caption text-ink-3">
             {leg.day_landings} day ldg · {leg.night_takeoffs} night T/O ·{" "}
             {leg.night_landings_full_stop} night full-stop ·{" "}
             {leg.night_landings_touch_go} night T&amp;G ·{" "}
             {leg.approaches} appr · {leg.holds} hold
-          </Text>
-        </Box>
-        <Flex gap="3" align="start" flexShrink="0">
-          <Button
+          </div>
+        </div>
+        <div className="flex shrink-0 items-start gap-3">
+          <LButton
             type="button"
-            variant="ghost"
-            size="1"
+            variant="quiet"
+            size="sm"
             aria-label={`Edit leg ${label}`}
             onClick={() => setEditing(true)}
           >
             Edit
-          </Button>
+          </LButton>
           <DeleteLegButton id={leg.id} tripId={tripId} label={label} />
-        </Flex>
-      </Flex>
+        </div>
+      </div>
     </li>
   );
 }
@@ -508,50 +457,42 @@ export default function LegEditor({
   };
 
   return (
-    <Box>
+    <div>
       {legs.length === 0 ? (
-        <Box pb="4">
-          <Text size="2" color="gray">
+        <div className="pb-4">
+          <p className="text-body-s text-ink-2">
             No legs yet. Add them as you fly. They become the route on the
             invoice and the draft entries for your logbook.
-          </Text>
-        </Box>
+          </p>
+        </div>
       ) : (
-        <Flex direction="column" pb="3" asChild>
-          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-            {legs.map((leg) => (
-              <LegListItem key={leg.id} tripId={tripId} leg={leg} />
-            ))}
-          </ul>
-        </Flex>
+        <ul className="flex flex-col divide-y divide-hair pb-3 [list-style:none] m-0 p-0">
+          {legs.map((leg) => (
+            <LegListItem key={leg.id} tripId={tripId} leg={leg} />
+          ))}
+        </ul>
       )}
 
       {/* React 19 resets an uncontrolled form after a form action
           completes, so the fields clear on their own once a leg is added —
           no manual reset, and none of the races one would bring. */}
-      <Box asChild pt="3">
+      <div className="pt-3">
         <form action={formAction}>
           <input type="hidden" name="trip_id" value={tripId} />
-          <Heading as="h3" size="3" mb="3">
-            Add a leg
-          </Heading>
+          <h3 className="mb-3 text-h3 font-semibold">Add a leg</h3>
           <LegFieldGrid idPrefix="add" initial={addInitial} />
 
-          <Box mt="3" role="alert" aria-live="polite">
-            {state.error ? (
-              <Callout.Root color="red" size="1">
-                <Callout.Text>{state.error}</Callout.Text>
-              </Callout.Root>
-            ) : null}
-          </Box>
+          <div className="mt-3" role="alert" aria-live="polite">
+            {state.error ? <p className="text-caption font-medium text-crit">{state.error}</p> : null}
+          </div>
 
-          <Box mt="4">
-            <Button type="submit" variant="outline" disabled={pending}>
+          <div className="mt-4">
+            <LButton type="submit" variant="outline" disabled={pending}>
               {pending ? "Adding…" : "Add leg"}
-            </Button>
-          </Box>
+            </LButton>
+          </div>
         </form>
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 }

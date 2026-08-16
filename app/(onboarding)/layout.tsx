@@ -1,4 +1,3 @@
-import { Box, Flex, Text } from "@/components/ui";
 import { BRAND } from "@/lib/brand";
 
 /**
@@ -9,15 +8,17 @@ import { BRAND } from "@/lib/brand";
  * navigate to yet. The page does its own session check (requireAccount with
  * allowUnonboarded).
  *
- * Not centered like (auth): the wizard is taller than a login card, so it
- * scrolls from the top on a short viewport instead of clipping a vertically
- * centered panel.
+ * LEDGER'S SOFTER MARKETING VARIANT, same posture as ../(auth)/layout.tsx
+ * and the two client-facing portals — `bg-canvas font-ledger text-body
+ * text-ink` — but a wider measure (44rem, unchanged) than the auth screens'
+ * narrow column: the wizard's three-step form needs the room a login card
+ * does not.
  *
- * The slim header is the one piece of chrome, added in the 2026-08 pass so
- * this screen is recognisably the same product the pilot just paid for
- * rather than a bare form on a gray field. It carries the mark and nothing
- * clickable: there is deliberately nowhere to go from here except through
- * the wizard or past it ("Skip for now").
+ * The slim header is the one piece of chrome, so this screen is
+ * recognisably the same product the pilot just paid for rather than a bare
+ * form on a gray field. It carries the mark and nothing clickable: there is
+ * deliberately nowhere to go from here except through the wizard or past it
+ * ("Skip for now").
  */
 export default function OnboardingLayout({
   children,
@@ -25,42 +26,23 @@ export default function OnboardingLayout({
   children: React.ReactNode;
 }) {
   return (
-    <Box
-      // .v1-nozoom-fields: the wizard's eighteen fields take the size="2"
-      // default (12.6px at 90% scaling), well under the 16px below which iOS
-      // Safari zooms on focus. See app/globals.css.
-      className="v1-nozoom-fields"
-      style={{ minHeight: "100dvh", background: "var(--canvas)" }}
-    >
-      <Box
-        style={{
-          borderBottom: "1px solid var(--hair)",
-          background: "var(--paper)",
-        }}
-      >
-        {/* ONE MEASURE, DECLARED ONCE. This was Container size="2" — 688px,
-            minus px="4" each side — sitting above a 704px content box, so
-            the mark rendered 22.4px inboard of the left edge of the card
-            directly beneath it and the caption stopped 22.4px short on the
-            right. Header and body now share the identical wrapper, so the
-            two cannot drift apart again. */}
-        <Box px="4">
-          <Box mx="auto" style={{ width: "100%", maxWidth: "44rem" }}>
-            <Flex align="center" gap="3" py="3">
-              <img src="/brand/navy.svg" alt="" height={20} width={34} />
-              <Text size="1" color="gray">
-                {BRAND.descriptor} · Account setup
-              </Text>
-            </Flex>
-          </Box>
-        </Box>
-      </Box>
+    // .v1-nozoom-fields: the wizard's eighteen fields all render Ledger's
+    // fixed 15px control text — see components/ledger/forms.tsx's own
+    // header on why the shell still carries this class regardless. Pure
+    // touch-device font-sizing, not a value tokens:verify's rules police.
+    <div className="v1-nozoom-fields min-h-dvh bg-canvas font-ledger text-body text-ink">
+      <div className="border-b border-hair bg-card">
+        <div className="mx-auto w-full max-w-[44rem] px-4">
+          <div className="flex items-center gap-3 py-3">
+            <img src="/brand/navy.svg" alt="" height={20} width={34} />
+            <span className="text-caption text-ink-3">{BRAND.descriptor} · Account setup</span>
+          </div>
+        </div>
+      </div>
 
-      <Box px="4" pb="8">
-        <Box mx="auto" py="6" style={{ width: "100%", maxWidth: "44rem" }}>
-          {children}
-        </Box>
-      </Box>
-    </Box>
+      <div className="px-4 pb-8">
+        <div className="mx-auto w-full max-w-[44rem] py-6">{children}</div>
+      </div>
+    </div>
   );
 }

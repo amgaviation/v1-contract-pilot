@@ -1,5 +1,5 @@
 import NextLink from "next/link";
-import { Card, Flex, Heading, Link as RadixLink, Text } from "@/components/ui";
+import { LCard } from "@/components/ledger";
 import type { Database } from "@/lib/supabase/database.types";
 import RateOverrideRow from "./rate-override-row";
 
@@ -28,21 +28,21 @@ export default function RateOverridesPanel({
     .sort((a, b) => a.sort_order - b.sort_order || a.key.localeCompare(b.key));
 
   return (
-    <Card size="3">
-      <Flex direction="column" gap="1" mb="3">
-        <Heading as="h3" size="4">Rate overrides</Heading>
-      </Flex>
+    <LCard>
+      <div className="mb-3 flex flex-col gap-1">
+        <h3 className="text-h3 font-semibold">Rate overrides</h3>
+      </div>
 
       {visibleDayTypes.length === 0 ? (
-        <Text size="2" color="gray">
+        <p className="text-body-s text-ink-2">
           No active day types yet. Add some under{" "}
-          <RadixLink asChild>
-            <NextLink href="/settings?tab=day-types">Settings → Day types</NextLink>
-          </RadixLink>
+          <NextLink href="/settings?tab=day-types" className="text-accent hover:underline">
+            Settings → Day types
+          </NextLink>
           .
-        </Text>
+        </p>
       ) : (
-        <Flex direction="column">
+        <div className="flex flex-col divide-y divide-hair">
           {visibleDayTypes.map((dayType) => (
             <RateOverrideRow
               key={dayType.id}
@@ -54,8 +54,8 @@ export default function RateOverridesPanel({
               overrideRateCents={overrideByDayType.get(dayType.id) ?? null}
             />
           ))}
-        </Flex>
+        </div>
       )}
-    </Card>
+    </LCard>
   );
 }

@@ -15,28 +15,36 @@ import {
 /**
  * The tenant theme's contract, asserted against the REAL token file.
  *
- * This test used to read @radix-ui/themes/styles.css and compare the
- * lightness of slate steps. That apparatus is gone with Radix, but its INTENT
- * was right and is kept: the nav rail must never sink into the canvas it sits
- * on, in either mode. Under the old system that needed a mode-dependent swap
- * of which token the chrome asked for; under INSTRUMENT it falls out of the
- * palette, and this file is what proves the palette actually has that
- * property rather than assuming it.
+ * This test used to assert against app/design/tokens.css: that INSTRUMENT's
+ * accent/density slots each had a `[data-accent="…"]`/`[data-density="…"]`
+ * block, and that every accent's `--signal` was genuinely distinct light and
+ * dark (the "eight identical swatches" regression). All of that apparatus is
+ * gone with INSTRUMENT (docs/design/LEDGER.md, phase 6) — Ledger has exactly
+ * one accent and no per-accent or per-density CSS block, by design ("One
+ * filled accent action per view. Restraint is the brand"). See
+ * lib/theme-slots.ts's own note above ACCENT_SLOTS: the slots stay
+ * enumerated (a tenant's stored choice still round-trips) but currently
+ * carry no visual effect.
+ *
+ * What's still real and still worth asserting: the chrome/canvas contrast
+ * relationship (the rail must never sink into the page it sits on) and
+ * resolveThemeSlots' totality guarantee over untrusted stored data. Both
+ * are checked below against app/design/ledger.css.
  */
 
-const TOKENS = readFileSync(
-  fileURLToPath(new URL("../app/design/tokens.css", import.meta.url)),
+const LEDGER = readFileSync(
+  fileURLToPath(new URL("../app/design/ledger.css", import.meta.url)),
   "utf8"
 );
 
-/** Pull a hex token out of a specific block of tokens.css. */
+/** Pull a hex token out of a specific block of ledger.css. */
 function tokenIn(blockSelector, name) {
-  const start = TOKENS.indexOf(blockSelector);
-  assert.notEqual(start, -1, `tokens.css has no ${blockSelector} block`);
-  const end = TOKENS.indexOf("}", start);
-  const block = TOKENS.slice(start, end);
-  const m = block.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{3,8})`));
-  assert.ok(m, `${blockSelector} does not declare --${name} as a hex`);
+  const start = LEDGER.indexOf(blockSelector);
+  assert.notEqual(start, -1, `ledger.css has no ${blockSelector} block`);
+  const end = LEDGER.indexOf("}", start);
+  const block = LEDGER.slice(start, end);
+  const m = block.match(new RegExp(`--ledger-${name}:\\s*(#[0-9a-fA-F]{3,8})`));
+  assert.ok(m, `${blockSelector} does not declare --ledger-${name} as a hex`);
   return m[1];
 }
 
@@ -58,69 +66,11 @@ test("the resolved theme is three data attributes", async (t) => {
     assert.equal(theme.density, "compact");
   });
 
-  await t.test("every density slot names a density the token layer declares", () => {
-    for (const slot of DENSITY_SLOTS) {
-      // "default" is the unattributed base in tokens.css; the others must
-      // each have a [data-density="…"] block or the setting does nothing.
-      if (slot.density === "default") continue;
-      assert.ok(
-        TOKENS.includes(`[data-density="${slot.density}"]`),
-        `tokens.css has no block for density "${slot.density}"`
-      );
-    }
-  });
-
-  await t.test("every accent slot has a light AND a dark block", () => {
-    for (const slot of ACCENT_SLOTS) {
-      assert.ok(
-        TOKENS.includes(`[data-accent="${slot.value}"]`),
-        `tokens.css has no light block for accent "${slot.value}"`
-      );
-      assert.ok(
-        TOKENS.includes(`[data-appearance="dark"][data-accent="${slot.value}"]`),
-        `tokens.css has no dark counterpart for accent "${slot.value}" — it would ` +
-          `render a mid-tone against the near-black canvas`
-      );
-    }
-  });
-
   await t.test("every appearance slot is a block the token layer declares", () => {
     for (const slot of APPEARANCE_SLOTS) {
       if (slot.value === "light") continue; // the unattributed :root base
-      assert.ok(TOKENS.includes(`[data-appearance="${slot.value}"]`));
+      assert.ok(LEDGER.includes(`[data-appearance="${slot.value}"]`));
     }
-  });
-
-  /**
-   * A regression test for the "eight identical swatches" bug: the accent
-   * picker paints each slot's swatch by stamping data-accent (and the
-   * previewed data-appearance) on the swatch itself so the compound
-   * selectors below resolve --signal per slot rather than inheriting the
-   * account's CURRENT accent from an ancestor. That mechanism only works
-   * if every slot's block actually declares a distinct --signal — this
-   * proves the token layer holds up its half of the contract, in both
-   * appearances.
-   */
-  await t.test("every accent slot's --signal is distinct, light and dark", () => {
-    const light = new Map();
-    const dark = new Map();
-    for (const slot of ACCENT_SLOTS) {
-      light.set(slot.value, tokenIn(`[data-accent="${slot.value}"] {`, "signal"));
-      dark.set(
-        slot.value,
-        tokenIn(`[data-appearance="dark"][data-accent="${slot.value}"] {`, "signal")
-      );
-    }
-    assert.equal(
-      new Set(light.values()).size,
-      ACCENT_SLOTS.length,
-      `light --signal values collide: ${JSON.stringify([...light])}`
-    );
-    assert.equal(
-      new Set(dark.values()).size,
-      ACCENT_SLOTS.length,
-      `dark --signal values collide: ${JSON.stringify([...dark])}`
-    );
   });
 });
 
@@ -134,29 +84,27 @@ test("chrome always sits above the canvas, in both modes", async (t) => {
   await t.test("the resolver asks for the same pair in both modes", () => {
     const light = themeForSlots({ ...DEFAULT_THEME_SLOTS, appearance: "light" });
     const dark = themeForSlots({ ...DEFAULT_THEME_SLOTS, appearance: "dark" });
-    assert.equal(light.chromeBackground, "var(--paper)");
-    assert.equal(light.canvasBackground, "var(--canvas)");
-    // Identical, deliberately: INSTRUMENT's dark palette is a second design
-    // rather than an inversion, so there is no mode-dependent branch here.
+    assert.equal(light.chromeBackground, "var(--ledger-card)");
+    assert.equal(light.canvasBackground, "var(--ledger-canvas)");
     assert.equal(dark.chromeBackground, light.chromeBackground);
     assert.equal(dark.canvasBackground, light.canvasBackground);
   });
 
-  await t.test("LIGHT: paper is brighter than the canvas", () => {
-    const paper = lightness(tokenIn(":root {\n  color-scheme: light;", "paper"));
-    const canvas = lightness(tokenIn(":root {\n  color-scheme: light;", "canvas"));
+  await t.test("LIGHT: card is brighter than the canvas", () => {
+    const card = lightness(tokenIn(":root {", "card"));
+    const canvas = lightness(tokenIn(":root {", "canvas"));
     assert.ok(
-      paper > canvas,
-      `light: --paper (${paper.toFixed(1)}) must be brighter than --canvas (${canvas.toFixed(1)})`
+      card > canvas,
+      `light: --ledger-card (${card.toFixed(1)}) must be brighter than --ledger-canvas (${canvas.toFixed(1)})`
     );
   });
 
-  await t.test("DARK: paper is STILL brighter than the canvas", () => {
-    const paper = lightness(tokenIn('[data-appearance="dark"] {', "paper"));
+  await t.test("DARK: card is STILL brighter than the canvas", () => {
+    const card = lightness(tokenIn('[data-appearance="dark"] {', "card"));
     const canvas = lightness(tokenIn('[data-appearance="dark"] {', "canvas"));
     assert.ok(
-      paper > canvas,
-      `dark: --paper (${paper.toFixed(1)}) must stay brighter than --canvas ` +
+      card > canvas,
+      `dark: --ledger-card (${card.toFixed(1)}) must stay brighter than --ledger-canvas ` +
         `(${canvas.toFixed(1)}) — an inverted palette would sink the rail into the page`
     );
   });

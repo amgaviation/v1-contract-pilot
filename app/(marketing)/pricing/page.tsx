@@ -1,25 +1,7 @@
 import NextLink from "next/link";
-import {
-  Box,
-  Button,
-  Card,
-  Container,
-  Flex,
-  Grid,
-  Heading,
-  Section,
-  Separator,
-  Table,
-  Text,
-} from "@/components/ui";
+import { LCard, LSeparator, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
 import { BRAND } from "@/lib/brand";
 import { TRIAL_PERIOD_DAYS } from "@/lib/stripe/server";
-import {
-  GRAY_BAND,
-  NAVY_INK,
-  NAVY_INK_MUTED,
-  NAVY_SURFACE_INVERSE,
-} from "@/lib/surface-style";
 import {
   BUSINESS_MINIMUM_MONTHLY,
   TIER_DISPLAY,
@@ -32,12 +14,8 @@ import {
 } from "./pricing-model";
 
 /**
- * THE THREE-TIER PRICING PAGE, cut to the same discipline as the landing
- * page in the 2026-08 rewrite (docs/MARKETING.md): the depth on this page
- * is the MATRIX, which is generated, so the prose around it earns nothing
- * by being long. Gone from the previous version: two side-by-side essay
- * cards restating promises the FAQ already makes, and a "Can I get my data
- * out?" answer that was factually wrong (see below).
+ * THE THREE-TIER PRICING PAGE. The depth on this page is the MATRIX, which
+ * is generated, so the prose around it earns nothing by being long.
  *
  * Feature split, tier names and blurbs render from lib/entitlements.ts (via
  * ./pricing-model — see that file for the one public-claim filter it adds),
@@ -60,6 +38,9 @@ import {
  * feature exists (rows entitlements marks comingSoon render AS coming soon,
  * and the counsel-gated currency board is absent entirely), and no copy may
  * state or imply the product determines whether a pilot is legal to fly.
+ *
+ * LEDGER PASS: see ../page.tsx's own header for why the navy register is
+ * retired throughout this route group.
  */
 
 export const metadata = {
@@ -69,6 +50,31 @@ export const metadata = {
     `Business. Your own records are in every plan, and every plan starts ` +
     `with a ${TRIAL_PERIOD_DAYS}-day free trial.`,
 };
+
+/** A full-bleed band with the page's one shared measure inside it. */
+function Band({
+  children,
+  tone = "canvas",
+  narrow = false,
+}: {
+  children: React.ReactNode;
+  tone?: "canvas" | "sunk";
+  narrow?: boolean;
+}) {
+  return (
+    <section className={tone === "sunk" ? "bg-sunk" : undefined}>
+      <div
+        className={
+          narrow
+            ? "mx-auto w-full max-w-2xl px-4 py-12 sm:py-16"
+            : "mx-auto w-full max-w-5xl px-4 py-12 sm:py-16"
+        }
+      >
+        {children}
+      </div>
+    </section>
+  );
+}
 
 /** Per-tier price presentation, derived from the shared copy table. */
 function priceLine(tier: PlanTier): {
@@ -107,249 +113,169 @@ export default function PricingPage() {
 
   return (
     <>
-      {/* ---------------------------------------------------------------
-          HERO — brand ground, per the rebuild brief the navy stays.
-          --------------------------------------------------------------- */}
-      <Box className="v1-m-dark">
-        <Section size={{ initial: "3", md: "4" }}>
-          {/* size="4" like every band below it — see the landing page's hero
-              note. The copy's measure is a maxWidth on the column, not a
-              narrower container, so the hero shares a left edge with the
-              plan cards and the matrix. */}
-          <Container size="4" px="4">
-            <Flex
-              direction="column"
-              gap="4"
-              align="start"
-              style={{ maxWidth: "48rem" }}
-            >
-              <Text size="1" weight="medium" className="v1-m-eyebrow" style={NAVY_INK_MUTED}>
-                Pricing
-              </Text>
-              {/* Radix's Heading defaults to as="h1"; every heading on this
-                  page states its level so the outline is one h1, sections at
-                  h2 and the plan names at h3, rather than ten h1s. */}
-              <Heading as="h1" size={{ initial: "8", sm: "9" }} trim="start" style={NAVY_INK}>
-                Three plans. One record.
-              </Heading>
-              <Text as="p" size={{ initial: "4", sm: "5" }} style={NAVY_INK_MUTED}>
-                The higher plans add business depth. Your logbook, your
-                documents and your export are in all three.
-              </Text>
-              <Text size="2" style={NAVY_INK_MUTED}>
-                {TRIAL_PERIOD_DAYS}-day free trial on every plan. Card required
-                to start; nothing is charged until the trial ends.
-              </Text>
-            </Flex>
-          </Container>
-        </Section>
-      </Box>
+      {/* HERO */}
+      <Band>
+        <div className="flex max-w-3xl flex-col items-start gap-4">
+          <p className="text-caption font-semibold uppercase tracking-wide text-ink-3">Pricing</p>
+          <h1 className="text-h1 font-bold tracking-tight text-ink">Three plans. One record.</h1>
+          <p className="text-lead text-ink-2">
+            The higher plans add business depth. Your logbook, your
+            documents and your export are in all three.
+          </p>
+          <p className="text-caption text-ink-3">
+            {TRIAL_PERIOD_DAYS}-day free trial on every plan. Card required
+            to start; nothing is charged until the trial ends.
+          </p>
+        </div>
+      </Band>
 
-      {/* ---------------------------------------------------------------
-          THE THREE CARDS. Names, blurbs and feature lists come from
-          lib/entitlements.ts via the view-model — not a hand-kept list.
-          --------------------------------------------------------------- */}
-      <Section size={{ initial: "3", md: "4" }}>
-        <Container size="4" px="4">
-          <Grid columns={{ initial: "1", md: "3" }} gap="4" align="stretch">
-            {TIER_ORDER.map((tier) => {
-              const display = TIER_DISPLAY[tier];
-              const price = priceLine(tier);
-              const features = cardFeatures(tier);
-              return (
-                <Card key={tier} size="3">
-                  <Flex direction="column" gap="4" height="100%">
-                    <Flex direction="column" gap="2">
-                      <Heading as="h3" size="5" trim="start">
-                        {display.name}
-                      </Heading>
-                      <Text size="2" color="gray">
-                        {display.blurb}
-                      </Text>
-                    </Flex>
+      {/* THE THREE CARDS. Names, blurbs and feature lists come from
+          lib/entitlements.ts via the view-model — not a hand-kept list. */}
+      <Band>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:items-stretch">
+          {TIER_ORDER.map((tier) => {
+            const display = TIER_DISPLAY[tier];
+            const price = priceLine(tier);
+            const features = cardFeatures(tier);
+            return (
+              <LCard key={tier} className="flex h-full flex-col gap-4">
+                <div className="flex flex-col gap-1">
+                  <h3 className="text-h3 font-semibold text-ink">{display.name}</h3>
+                  <p className="text-body-s text-ink-2">{display.blurb}</p>
+                </div>
 
-                    <Flex direction="column" gap="1">
-                      <Flex align="baseline" gap="1">
-                        <Text size="8" weight="bold" className="tnum">
-                          {price.amount}
-                        </Text>
-                        <Text size="3" color="gray">
-                          {price.per}
-                        </Text>
-                      </Flex>
-                      <Text size="1" color="gray">
-                        {price.annual}
-                      </Text>
-                      {tier === "business" ? (
-                        <Text size="1" color="gray">
-                          Two-seat minimum: {BUSINESS_MINIMUM_MONTHLY}/month
-                          covers both seats.
-                        </Text>
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-baseline gap-1">
+                    <span className="tnum-l text-figure font-bold tracking-tight text-ink">
+                      {price.amount}
+                    </span>
+                    <span className="text-body-s text-ink-2">{price.per}</span>
+                  </div>
+                  <p className="text-caption text-ink-3">{price.annual}</p>
+                  {tier === "business" ? (
+                    <p className="text-caption text-ink-3">
+                      Two-seat minimum: {BUSINESS_MINIMUM_MONTHLY}/month
+                      covers both seats.
+                    </p>
+                  ) : null}
+                </div>
+
+                <LSeparator className="my-0" />
+
+                <div className="flex flex-1 flex-col gap-2">
+                  <p className="text-caption font-medium text-ink-3">
+                    {features.intro.toUpperCase()}
+                  </p>
+                  {features.items.map((item) => (
+                    <div key={item.id} className="flex items-start gap-2">
+                      <span aria-hidden className="text-body-s font-medium text-accent">
+                        —
+                      </span>
+                      <span className="text-body-s text-ink">
+                        {item.label}
+                        {item.comingSoon ? (
+                          <span className="text-caption text-ink-3"> (coming soon)</span>
+                        ) : null}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <NextLink href="/signup" className={lButtonClass({ className: "w-full" })}>
+                  Start the {TRIAL_PERIOD_DAYS}-day trial
+                </NextLink>
+              </LCard>
+            );
+          })}
+        </div>
+      </Band>
+
+      {/* FULL COMPARISON MATRIX — rendered row by row from the same
+          entitlements source the product enforces with. */}
+      <Band tone="sunk">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <h2 className="text-h2 font-bold tracking-tight text-ink">Every feature, every plan</h2>
+            <p className="text-body-s text-ink-2">
+              Generated from the plan definitions the product enforces with.
+              Everything unmarked is live today; anything not yet shipped
+              says so in its row.
+            </p>
+          </div>
+
+          <LCard className="p-0">
+            <LTable className="min-w-[40rem]">
+              <thead>
+                <tr>
+                  <LTh>Feature</LTh>
+                  {TIER_ORDER.map((tier) => (
+                    <LTh key={tier} className="text-center">
+                      {TIER_DISPLAY[tier].name}
+                    </LTh>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {matrix.map((row) => (
+                  <tr key={row.feature}>
+                    <LTd>
+                      {row.label}
+                      {row.comingSoon ? (
+                        <span className="text-caption text-ink-3"> (coming soon)</span>
                       ) : null}
-                    </Flex>
-
-                    <Separator size="4" />
-
-                    <Flex direction="column" gap="2" flexGrow="1">
-                      <Text size="1" weight="medium" color="gray">
-                        {features.intro.toUpperCase()}
-                      </Text>
-                      {features.items.map((item) => (
-                        <Flex key={item.id} gap="2" align="start">
-                          <Text size="2" color="indigo" weight="medium" aria-hidden>
+                    </LTd>
+                    {TIER_ORDER.map((tier) => (
+                      <LTd key={tier} className="text-center">
+                        {row.availability[tier] ? (
+                          <span className="font-medium text-accent" aria-label="Included">
+                            ✓
+                          </span>
+                        ) : (
+                          <span className="text-ink-3" aria-label="Not included">
                             —
-                          </Text>
-                          <Text size="2">
-                            {item.label}
-                            {item.comingSoon ? (
-                              <Text size="1" color="gray">
-                                {" "}
-                                (coming soon)
-                              </Text>
-                            ) : null}
-                          </Text>
-                        </Flex>
-                      ))}
-                    </Flex>
-
-                    <Button asChild size="3">
-                      <NextLink href="/signup">
-                        Start the {TRIAL_PERIOD_DAYS}-day trial
-                      </NextLink>
-                    </Button>
-                  </Flex>
-                </Card>
-              );
-            })}
-          </Grid>
-        </Container>
-      </Section>
-
-      {/* ---------------------------------------------------------------
-          FULL COMPARISON MATRIX — rendered row by row from the same
-          entitlements source the product enforces with.
-          --------------------------------------------------------------- */}
-      <Section size={{ initial: "3", md: "4" }} style={GRAY_BAND}>
-        <Container size="4" px="4">
-          <Flex direction="column" gap="4">
-            <Flex direction="column" gap="2">
-              <Heading as="h2" size={{ initial: "6", sm: "7" }} trim="start">
-                Every feature, every plan
-              </Heading>
-              <Text size="2" color="gray">
-                Generated from the plan definitions the product enforces with.
-                Everything unmarked is live today; anything not yet shipped
-                says so in its row.
-              </Text>
-            </Flex>
-
-            <Card size="2">
-              <Box style={{ overflowX: "auto" }}>
-                <Table.Root size="2" style={{ minWidth: "40rem" }}>
-                  <Table.Header>
-                    <Table.Row>
-                      <Table.ColumnHeaderCell>Feature</Table.ColumnHeaderCell>
-                      {TIER_ORDER.map((tier) => (
-                        <Table.ColumnHeaderCell key={tier} justify="center">
-                          {TIER_DISPLAY[tier].name}
-                        </Table.ColumnHeaderCell>
-                      ))}
-                    </Table.Row>
-                  </Table.Header>
-                  <Table.Body>
-                    {matrix.map((row) => (
-                      <Table.Row key={row.feature}>
-                        <Table.RowHeaderCell>
-                          <Text size="2">
-                            {row.label}
-                            {row.comingSoon ? (
-                              <Text size="1" color="gray">
-                                {" "}
-                                (coming soon)
-                              </Text>
-                            ) : null}
-                          </Text>
-                        </Table.RowHeaderCell>
-                        {TIER_ORDER.map((tier) => (
-                          <Table.Cell key={tier} justify="center">
-                            {row.availability[tier] ? (
-                              <Text size="2" color="indigo" weight="medium" aria-label="Included">
-                                ✓
-                              </Text>
-                            ) : (
-                              <Text size="2" color="gray" aria-label="Not included">
-                                —
-                              </Text>
-                            )}
-                          </Table.Cell>
-                        ))}
-                      </Table.Row>
+                          </span>
+                        )}
+                      </LTd>
                     ))}
-                  </Table.Body>
-                </Table.Root>
-              </Box>
-            </Card>
-          </Flex>
-        </Container>
-      </Section>
+                  </tr>
+                ))}
+              </tbody>
+            </LTable>
+          </LCard>
+        </div>
+      </Band>
 
-      {/* ---------------------------------------------------------------
-          FAQ — the questions a card is entered against, and nothing else.
-          --------------------------------------------------------------- */}
-      <Section size={{ initial: "3", md: "4" }}>
-        <Container size="2" px="4">
-          <Flex direction="column" gap="4">
-            <Heading as="h2" size={{ initial: "6", sm: "7" }} trim="start">
-              Before you enter a card
-            </Heading>
-            <Box>
-              {buildFaq().map((item) => (
-                <details key={item.q} className="v1-m-faq">
-                  <summary>
-                    <Text size="3" weight="medium">
-                      {item.q}
-                    </Text>
-                  </summary>
-                  <Box pb="4" pr="5">
-                    <Text size="2" color="gray">
-                      {item.a}
-                    </Text>
-                  </Box>
-                </details>
-              ))}
-            </Box>
-          </Flex>
-        </Container>
-      </Section>
+      {/* FAQ — the questions a card is entered against, and nothing else. */}
+      <Band narrow>
+        <div className="flex flex-col gap-4">
+          <h2 className="text-h2 font-bold tracking-tight text-ink">Before you enter a card</h2>
+          <div>
+            {buildFaq().map((item) => (
+              <details key={item.q} className="border-b border-hair">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-4 marker:content-none [&::-webkit-details-marker]:hidden">
+                  <span className="text-body font-medium text-ink">{item.q}</span>
+                  <span aria-hidden className="shrink-0 text-body text-ink-3">
+                    +
+                  </span>
+                </summary>
+                <p className="pb-4 pr-5 text-body-s text-ink-2">{item.a}</p>
+              </details>
+            ))}
+          </div>
+        </div>
+      </Band>
 
-      {/* ---------------------------------------------------------------
-          CLOSING CTA BAND.
-          --------------------------------------------------------------- */}
-      {/* No px on the Section — see the note on the landing page's CTA band:
-          px on both Section and Container double-inset this one band. */}
-      <Section size="3">
-        <Container size="4" px="4">
-          <Box className="v1-m-dark" p={{ initial: "5", sm: "8" }}>
-            <Flex
-              direction={{ initial: "column", md: "row" }}
-              align={{ initial: "start", md: "center" }}
-              justify="between"
-              gap="5"
-            >
-              <Heading as="h2" size={{ initial: "6", sm: "7" }} trim="start" style={NAVY_INK}>
-                Start with your next trip.
-              </Heading>
-              <Box flexShrink="0">
-                <Button asChild size="4" style={NAVY_SURFACE_INVERSE}>
-                  <NextLink href="/signup">
-                    Start the {TRIAL_PERIOD_DAYS}-day trial
-                  </NextLink>
-                </Button>
-              </Box>
-            </Flex>
-          </Box>
-        </Container>
-      </Section>
+      {/* CLOSING CTA BAND. */}
+      <Band>
+        <div className="rounded-card border border-accent-soft bg-accent-soft p-6 sm:p-8">
+          <div className="flex flex-col items-start justify-between gap-5 md:flex-row md:items-center">
+            <h2 className="text-h2 font-bold tracking-tight text-ink">Start with your next trip.</h2>
+            <NextLink href="/signup" className={lButtonClass({ size: "lg", className: "shrink-0" })}>
+              Start the {TRIAL_PERIOD_DAYS}-day trial
+            </NextLink>
+          </div>
+        </div>
+      </Band>
     </>
   );
 }
@@ -358,16 +284,13 @@ export default function PricingPage() {
  * FAQ copy. The downgrade and cancellation answers carry the memo's own
  * commitments (docs/PRICING.md §5): data is never deleted, read-only with
  * export working is the norm, and no plan change touches the records that
- * live in every tier. Four questions, down from six — "What happens if I
- * downgrade?" and "What happens if I cancel?" made the same promise twice,
- * so they are one answer now.
+ * live in every tier.
  *
- * THE EXPORT ANSWER WAS WRONG AND IS FIXED HERE. It read "Pro and Business
- * add the account-wide export", which contradicts lib/entitlements.ts,
- * where account_export is minTier "solo" with an explicit comment recording
- * that it was moved there deliberately: "Gating export is the one upsell
- * this product refuses." The page was understating its own strongest trust
- * claim. Do not port that sentence back.
+ * THE EXPORT ANSWER WAS CORRECTED IN THE 2026-08 REWRITE AND MUST STAY
+ * CORRECTED: account_export is minTier "solo" in lib/entitlements.ts, with
+ * an explicit comment recording that it was moved there deliberately —
+ * "Gating export is the one upsell this product refuses." Do not narrow
+ * this answer back to "Pro and Business add the account-wide export".
  */
 function buildFaq(): { q: string; a: string }[] {
   return [

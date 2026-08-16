@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { Button, Callout, Flex } from "@/components/ui";
+import { LAlert, LButton, LCard, lButtonClass } from "@/components/ledger";
 import { getSessionContext } from "@/lib/supabase/account";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import { PLAN_TIERS, TIER_DISPLAY } from "@/lib/entitlements";
@@ -25,11 +25,9 @@ export const metadata = { title: "Welcome" };
  * instead of breaking the page or inventing a figure; that fallback is
  * load-bearing and must survive any redesign of this screen.
  *
- * The pitch itself lives on the navy panel in ../layout.tsx, so this
- * column carries only the decision. One claim rule survives from the copy
- * that used to sit here and binds anything written on this screen later:
- * expenses ATTACH to a trip, they are never "posted from" one — nothing in
- * this product creates an expense from a trip.
+ * One claim rule binds anything written on this screen: expenses ATTACH to
+ * a trip, they are never "posted from" one — nothing in this product
+ * creates an expense from a trip.
  */
 export default async function WelcomePage({
   searchParams,
@@ -48,7 +46,7 @@ export default async function WelcomePage({
   // pitch again to someone who just paid, which would read as a failure.
   if (checkout === "complete") {
     return (
-      <Flex direction="column" gap="6">
+      <LCard className="flex flex-col gap-6 p-6 sm:p-8">
         <AuthHeading title="Setting up your account">
           Payment confirmed. We&rsquo;re provisioning now, which usually takes
           a few seconds.
@@ -56,10 +54,10 @@ export default async function WelcomePage({
         {/* A plain link, not a client poller: one deliberate refresh is
             honest about the state and avoids a spinner that could hide a
             genuine webhook failure forever. */}
-        <Button asChild size="3" style={{ width: "100%" }}>
-          <a href="/welcome">Refresh</a>
-        </Button>
-      </Flex>
+        <a href="/welcome" className={lButtonClass({ size: "lg", className: "w-full" })}>
+          Refresh
+        </a>
+      </LCard>
     );
   }
 
@@ -83,27 +81,25 @@ export default async function WelcomePage({
   }));
 
   return (
-    <Flex direction="column" gap="6">
+    <LCard className="flex flex-col gap-6 p-6 sm:p-8">
       <AuthHeading title="Pick your plan">
         Your account starts the moment checkout completes. You can change
         plans any time from Settings.
       </AuthHeading>
 
       {checkout === "cancelled" ? (
-        <Callout.Root color="gray" size="1">
-          <Callout.Text>Checkout cancelled. Nothing was charged.</Callout.Text>
-        </Callout.Root>
+        <LAlert tone="neutral">Checkout cancelled. Nothing was charged.</LAlert>
       ) : null}
 
       <PlanPicker options={options} trialDays={TRIAL_PERIOD_DAYS} />
 
       <AuthFooter>
         <form action={signOut}>
-          <Button type="submit" variant="ghost" color="gray" size="2">
+          <LButton type="submit" variant="quiet" size="sm">
             Sign out
-          </Button>
+          </LButton>
         </form>
       </AuthFooter>
-    </Flex>
+    </LCard>
   );
 }

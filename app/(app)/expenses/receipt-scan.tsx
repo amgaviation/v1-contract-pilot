@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Box, Button, Callout, Flex, Spinner, Text } from "@/components/ui";
+import { LAlert, LButton, LSpinner } from "@/components/ledger";
 import type { ReceiptExtraction } from "@/lib/receipt-ocr/extract";
 
 /**
@@ -234,7 +234,7 @@ export default function ReceiptScan({
   const scanning = status.phase === "scanning";
 
   return (
-    <Box>
+    <div>
       {/* A plain file input: the receipt is stored privately and read back
           through a short-lived signed URL, never a public URL. On both iOS
           and Android an accept="image/*" input already offers the camera
@@ -247,70 +247,61 @@ export default function ReceiptScan({
         accept={ACCEPT}
         aria-label="Receipt image or PDF"
         onChange={handleChange}
+        className="text-body-s text-ink"
       />
-      <Text as="div" size="1" color="gray" mt="2">
+      <p className="mt-2 text-caption text-ink-3">
         {hasExistingReceipt
           ? "A receipt is already attached. Choosing a file replaces it."
           : "JPEG, PNG, HEIC, WebP or PDF, up to 10 MB. Optional."}
-      </Text>
+      </p>
 
       {scannable ? (
-        <Flex mt="3" gap="3" align="center" wrap="wrap">
-          <Button type="button" variant="soft" onClick={() => void scan()} disabled={inFlight}>
-            {inFlight ? <Spinner /> : null}
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <LButton type="button" variant="outline" onClick={() => void scan()} disabled={inFlight}>
+            {inFlight ? <LSpinner /> : null}
             {inFlight ? "Reading…" : "Read this receipt"}
-          </Button>
+          </LButton>
           {inFlight ? (
-            <Button type="button" variant="ghost" onClick={() => abortRef.current?.abort()}>
+            <LButton type="button" variant="quiet" onClick={() => abortRef.current?.abort()}>
               Cancel
-            </Button>
+            </LButton>
           ) : null}
-          <Text size="1" color="gray">
+          <span className="text-caption text-ink-3">
             {scanning
               ? status.message + (status.fraction === null ? "" : `, ${Math.round(status.fraction * 100)}%`)
               : "Fills in the date, amount, vendor and category for you. Runs on this device; the first scan downloads about 6 MB."}
-          </Text>
-        </Flex>
+          </span>
+        </div>
       ) : null}
 
       {fileName && !scannable ? (
-        <Text as="div" size="1" color="gray" mt="3">
+        <p className="mt-3 text-caption text-ink-3">
           {`${fileName} will be attached. PDFs are stored as-is. Type the amounts below.`}
-        </Text>
+        </p>
       ) : null}
 
       {fileLost ? (
-        <Box mt="3">
-          <Callout.Root color="amber" size="1">
-            <Callout.Text>
-              This browser cleared your photo when the form came back. Choose it again before you
-              save, or the expense saves without a receipt.
-            </Callout.Text>
-          </Callout.Root>
-        </Box>
+        <LAlert tone="warn" className="mt-3">
+          This browser cleared your photo when the form came back. Choose it again before you
+          save, or the expense saves without a receipt.
+        </LAlert>
       ) : null}
 
       {status.phase === "read" ? (
-        <Box mt="3">
-          <Callout.Root color={status.shaky ? "amber" : "green"} size="1">
-            <Callout.Text>
-              {status.summary}
-              {status.shaky
-                ? " That photo read poorly, so check every field against the paper before you save."
-                : " Check them against the receipt before you save."}
-            </Callout.Text>
-          </Callout.Root>
-        </Box>
+        <LAlert tone={status.shaky ? "warn" : "good"} className="mt-3">
+          {status.summary}
+          {status.shaky
+            ? " That photo read poorly, so check every field against the paper before you save."
+            : " Check them against the receipt before you save."}
+        </LAlert>
       ) : null}
 
       {status.phase === "failed" ? (
-        <Box mt="3">
-          <Callout.Root color="amber" size="1">
-            <Callout.Text>{status.message}</Callout.Text>
-          </Callout.Root>
-        </Box>
+        <LAlert tone="warn" className="mt-3">
+          {status.message}
+        </LAlert>
       ) : null}
-    </Box>
+    </div>
   );
 }
 

@@ -1,9 +1,9 @@
-import { Button, Callout, Card, Flex, Table, Text, TextField } from "@/components/ui";
-import { ExclamationTriangleIcon, InfoCircledIcon } from "@radix-ui/react-icons";
+import { LAlert, LButton, LCard, LRow, LRows, lButtonClass } from "@/components/ledger";
+import { LInput } from "@/components/ledger/forms";
+import { LPageShell } from "@/components/ledger/page-shell";
 import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { formatCents, formatDate } from "@/lib/format";
-import PageShell from "../../page-shell";
 import {
   assembleBalanceSheet,
   type BalanceSheetSection,
@@ -15,42 +15,24 @@ export const metadata = { title: "Balance sheet" };
 
 function SectionTable({ section }: { section: BalanceSheetSection }) {
   return (
-    <Card size="3">
-      <Text as="div" size="3" weight="bold" mb="2">
-        {section.label}
-      </Text>
-      <Table.Root variant="ghost">
-        <Table.Body>
-          {section.lines.map((line) => (
-            <Table.Row key={line.chartAccountId}>
-              <Table.RowHeaderCell>
-                <Text size="2">
-                  {line.name}
-                  {line.archived ? " (archived)" : ""}
-                </Text>
-              </Table.RowHeaderCell>
-              <Table.Cell justify="end">
-                <Text size="2" className="tnum">
-                  {formatCents(line.balanceCents)}
-                </Text>
-              </Table.Cell>
-            </Table.Row>
-          ))}
-          <Table.Row>
-            <Table.RowHeaderCell>
-              <Text size="2" weight="bold">
-                Total {section.label.toLowerCase()}
-              </Text>
-            </Table.RowHeaderCell>
-            <Table.Cell justify="end">
-              <Text size="2" weight="bold" className="tnum">
-                {formatCents(section.totalCents)}
-              </Text>
-            </Table.Cell>
-          </Table.Row>
-        </Table.Body>
-      </Table.Root>
-    </Card>
+    <LCard>
+      <p className="mb-2 text-h3 font-semibold">{section.label}</p>
+      <LRows>
+        {section.lines.map((line) => (
+          <LRow key={line.chartAccountId}>
+            <span className="text-ink-2">
+              {line.name}
+              {line.archived ? " (archived)" : ""}
+            </span>
+            <span className="tnum-l text-ink">{formatCents(line.balanceCents)}</span>
+          </LRow>
+        ))}
+        <LRow>
+          <span className="font-semibold text-ink">Total {section.label.toLowerCase()}</span>
+          <span className="tnum-l font-semibold text-ink">{formatCents(section.totalCents)}</span>
+        </LRow>
+      </LRows>
+    </LCard>
   );
 }
 
@@ -83,135 +65,148 @@ export default async function BalanceSheetPage({
   const sheet = error ? null : assembleBalanceSheet((data ?? []) as LedgerBalanceRow[]);
 
   return (
-    <PageShell
+    <LPageShell
       title="Balance sheet"
       subtitle={`As of ${formatDate(asOf)} · derived from your ledger (accrual: receivables count when invoiced)`}
       action={
-        <Button asChild variant="outline" size="2">
-          <a href={`/reports/balance-sheet/export?date=${asOf}`} download>
-            Download CSV
-          </a>
-        </Button>
+        <a
+          href={`/reports/balance-sheet/export?date=${asOf}`}
+          download
+          className={lButtonClass({ variant: "outline" })}
+        >
+          Download CSV
+        </a>
       }
     >
-      <Card size="2">
-        <form method="get" action="/reports/balance-sheet">
-          <Flex gap="3" align="end" wrap="wrap">
-            <Flex direction="column" gap="1">
-              <Text as="label" size="2" weight="medium" htmlFor="bs-date">
-                As of
-              </Text>
-              <TextField.Root id="bs-date" type="date" name="date" defaultValue={asOf} />
-            </Flex>
-            <Button type="submit" variant="soft">
-              View
-            </Button>
-          </Flex>
+      <LCard>
+        <form
+          method="get"
+          action="/reports/balance-sheet"
+          className="flex flex-wrap items-end gap-3"
+        >
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="bs-date" className="text-body-s font-medium text-ink">
+              As of
+            </label>
+            <LInput id="bs-date" type="date" name="date" defaultValue={asOf} className="w-40" />
+          </div>
+          <LButton type="submit" variant="outline" size="sm">
+            View
+          </LButton>
         </form>
-      </Card>
+      </LCard>
 
       {error || !sheet ? (
-        <Callout.Root color="red">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>
-            Couldn&rsquo;t load your balance sheet. Nothing is shown rather than
-            figures that aren&rsquo;t true.
-          </Callout.Text>
-        </Callout.Root>
+        <LAlert tone="crit" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+          <span>
+            Couldn&rsquo;t load your balance sheet. Nothing is shown rather than figures that
+            aren&rsquo;t true.
+          </span>
+        </LAlert>
       ) : !sheet.balances ? (
-        <Callout.Root color="red">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>
-            This sheet does not balance (assets{" "}
-            {formatCents(sheet.totalAssetsCents)} vs liabilities + equity{" "}
-            {formatCents(sheet.totalLiabilitiesAndEquityCents)}), which should be
-            impossible. The ledger enforces debits = credits. This report
-            refuses to present it as if it did. Contact support.
-          </Callout.Text>
-        </Callout.Root>
+        <LAlert tone="crit" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+          <span>
+            This sheet does not balance (assets {formatCents(sheet.totalAssetsCents)} vs
+            liabilities + equity {formatCents(sheet.totalLiabilitiesAndEquityCents)}), which
+            should be impossible. The ledger enforces debits = credits. This report refuses to
+            present it as if it did. Contact support.
+          </span>
+        </LAlert>
       ) : (
         <>
           <SectionTable section={sheet.assets} />
           <SectionTable section={sheet.liabilities} />
-          <Card size="3">
-            <Text as="div" size="3" weight="bold" mb="2">
-              Equity
-            </Text>
-            <Table.Root variant="ghost">
-              <Table.Body>
-                {sheet.equity.lines.map((line) => (
-                  <Table.Row key={line.chartAccountId}>
-                    <Table.RowHeaderCell>
-                      <Text size="2">
-                        {line.name}
-                        {line.archived ? " (archived)" : ""}
-                      </Text>
-                    </Table.RowHeaderCell>
-                    <Table.Cell justify="end">
-                      <Text size="2" className="tnum">
-                        {formatCents(line.balanceCents)}
-                      </Text>
-                    </Table.Cell>
-                  </Table.Row>
-                ))}
-                <Table.Row>
-                  <Table.RowHeaderCell>
-                    <Text size="2">Net income to date</Text>
-                  </Table.RowHeaderCell>
-                  <Table.Cell justify="end">
-                    <Text size="2" className="tnum">
-                      {formatCents(sheet.netIncomeToDateCents)}
-                    </Text>
-                  </Table.Cell>
-                </Table.Row>
-                <Table.Row>
-                  <Table.RowHeaderCell>
-                    <Text size="2" weight="bold">
-                      Total equity
-                    </Text>
-                  </Table.RowHeaderCell>
-                  <Table.Cell justify="end">
-                    <Text size="2" weight="bold" className="tnum">
-                      {formatCents(sheet.equity.totalCents + sheet.netIncomeToDateCents)}
-                    </Text>
-                  </Table.Cell>
-                </Table.Row>
-              </Table.Body>
-            </Table.Root>
-          </Card>
+          <LCard>
+            <p className="mb-2 text-h3 font-semibold">Equity</p>
+            <LRows>
+              {sheet.equity.lines.map((line) => (
+                <LRow key={line.chartAccountId}>
+                  <span className="text-ink-2">
+                    {line.name}
+                    {line.archived ? " (archived)" : ""}
+                  </span>
+                  <span className="tnum-l text-ink">{formatCents(line.balanceCents)}</span>
+                </LRow>
+              ))}
+              <LRow>
+                <span className="text-ink-2">Net income to date</span>
+                <span className="tnum-l text-ink">{formatCents(sheet.netIncomeToDateCents)}</span>
+              </LRow>
+              <LRow>
+                <span className="font-semibold text-ink">Total equity</span>
+                <span className="tnum-l font-semibold text-ink">
+                  {formatCents(sheet.equity.totalCents + sheet.netIncomeToDateCents)}
+                </span>
+              </LRow>
+            </LRows>
+          </LCard>
 
-          <Card size="3">
-            <Flex justify="between" wrap="wrap" gap="3">
-              <Text size="3" weight="bold">
-                Assets {formatCents(sheet.totalAssetsCents)} = Liabilities + equity{" "}
-                {formatCents(sheet.totalLiabilitiesAndEquityCents)}
-              </Text>
-              <Text size="2" color="green" weight="medium">
-                Balances ✓
-              </Text>
-            </Flex>
-          </Card>
+          <LCard className="flex flex-wrap items-center justify-between gap-3">
+            <p className="tnum-l text-body font-semibold text-ink">
+              Assets {formatCents(sheet.totalAssetsCents)} = Liabilities + equity{" "}
+              {formatCents(sheet.totalLiabilitiesAndEquityCents)}
+            </p>
+            <span className="text-body-s font-medium text-good">Balances ✓</span>
+          </LCard>
 
-          <Callout.Root color="blue">
-            <Callout.Icon>
-              <InfoCircledIcon />
-            </Callout.Icon>
-            <Callout.Text>
-              <Text size="2">
-                Accounts receivable counts invoices from the day they were
-                issued (accrual). The P&amp;L and tax reports count income
-                when payments arrive (cash). Both derive from the same
-                records, on different bases, and each screen says which it
-                uses.
-              </Text>
-            </Callout.Text>
-          </Callout.Root>
+          <LAlert tone="accent" className="flex items-start gap-2">
+            <InfoIcon className="mt-0.5 shrink-0 text-accent" />
+            <span>
+              Accounts receivable counts invoices from the day they were issued (accrual). The
+              P&amp;L and tax reports count income when payments arrive (cash). Both derive from
+              the same records, on different bases, and each screen says which it uses.
+            </span>
+          </LAlert>
         </>
       )}
-    </PageShell>
+    </LPageShell>
+  );
+}
+
+/* ── Inline icons ──────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. Same shapes as invoices/page.tsx and
+ * invoices/recurring/schedule-form.tsx's own copies. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function InfoIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <circle cx="8" cy="8" r="6.25" />
+      <path d="M8 7.25v4" />
+      <circle cx="8" cy="4.9" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

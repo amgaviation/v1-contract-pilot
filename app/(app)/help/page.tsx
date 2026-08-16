@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Container, Flex, Heading } from "@/components/ui";
+import { LPageShell } from "@/components/ledger/page-shell";
 import { requireAccount } from "@/lib/supabase/account";
 import HelpBrowser from "./help-browser";
 
@@ -28,13 +28,8 @@ export default async function HelpPage() {
   await requireAccount("/help");
 
   return (
-    <Container size="3">
-      <Flex direction="column" gap="5" py="5">
-        <Heading as="h1" size="6">
-          Help
-        </Heading>
-        <HelpBrowser />
-      </Flex>
-    </Container>
+    <LPageShell title="Help">
+      <HelpBrowser />
+    </LPageShell>
   );
 }

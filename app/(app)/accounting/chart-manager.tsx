@@ -1,16 +1,8 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import {
-  Badge,
-  Button,
-  Card,
-  Flex,
-  Select,
-  Table,
-  Text,
-  TextField,
-} from "@/components/ui";
+import { LButton, LCard, LPill, LTable, LTd, LTh } from "@/components/ledger";
+import { LField, LInput, LSelect } from "@/components/ledger/forms";
 import { formatCents } from "@/lib/format";
 import {
   KIND_LABEL,
@@ -33,58 +25,49 @@ function AddAccountForm() {
   const values = state.values ?? { name: "", kind: "expense" };
 
   return (
-    <Card size="3">
+    <LCard>
       <form action={formAction} key={JSON.stringify(values)}>
-        <Text as="div" size="3" weight="bold" mb="2">
-          Add an account
-        </Text>
-        <Flex gap="3" align="end" wrap="wrap">
-          <Flex direction="column" gap="1" flexGrow="1">
-            <Text as="label" size="2" weight="medium" htmlFor="chart-add-name">
-              Name
-            </Text>
-            <TextField.Root
-              id="chart-add-name"
-              name="name"
-              required
-              placeholder="e.g. Simulator rental income"
-              defaultValue={values.name}
-            />
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" id="chart-add-kind-label">
-              Type
-            </Text>
-            <Select.Root name="kind" defaultValue={values.kind || "expense"}>
-              <Select.Trigger aria-labelledby="chart-add-kind-label" />
-              <Select.Content>
+        <div className="mb-2 text-h3 font-semibold">Add an account</div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-56 flex-1">
+            <LField label="Name" htmlFor="chart-add-name">
+              <LInput
+                id="chart-add-name"
+                name="name"
+                required
+                placeholder="e.g. Simulator rental income"
+                defaultValue={values.name}
+              />
+            </LField>
+          </div>
+          <div className="w-48">
+            <LField label="Type" htmlFor="chart-add-kind">
+              <LSelect id="chart-add-kind" name="kind" defaultValue={values.kind || "expense"}>
                 {KIND_ORDER.map((kind) => (
-                  <Select.Item key={kind} value={kind}>
+                  <option key={kind} value={kind}>
                     {KIND_LABEL[kind]}
-                  </Select.Item>
+                  </option>
                 ))}
-              </Select.Content>
-            </Select.Root>
-          </Flex>
-          <Button type="submit" disabled={pending}>
+              </LSelect>
+            </LField>
+          </div>
+          <LButton type="submit" disabled={pending}>
             {pending ? "Adding…" : "Add account"}
-          </Button>
-        </Flex>
-        <Flex mt="2" role="alert" aria-live="polite">
+          </LButton>
+        </div>
+        <div role="alert" aria-live="polite">
           {state.error ? (
-            <Text size="1" color="red">
-              {state.error}
-            </Text>
+            <p className="mt-2 text-caption font-medium text-crit">{state.error}</p>
           ) : null}
-        </Flex>
-        <Text as="div" size="1" color="gray" mt="2">
+        </div>
+        <p className="mt-2 text-caption text-ink-3">
           The type can&rsquo;t change later. Archive and re-add the account
           if it was wrong. Built-in accounts can be renamed but not
           archived: they&rsquo;re where your invoices, payments, expenses,
           and mileage post automatically.
-        </Text>
+        </p>
       </form>
-    </Card>
+    </LCard>
   );
 }
 
@@ -105,8 +88,11 @@ function AccountRow({ row }: { row: LedgerBalanceRow }) {
   }
 
   return (
-    <Table.Row>
-      <Table.RowHeaderCell>
+    <tr>
+      <th
+        scope="row"
+        className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+      >
         {editing ? (
           <form
             action={(formData) => {
@@ -114,74 +100,66 @@ function AccountRow({ row }: { row: LedgerBalanceRow }) {
               return formAction(formData);
             }}
           >
-            <Flex gap="2" align="center">
-              <TextField.Root
+            <div className="flex flex-wrap items-center gap-2">
+              <LInput
                 name="name"
                 required
                 defaultValue={state.values?.name ?? row.name}
                 aria-label={`Rename ${row.name}`}
               />
-              <Button type="submit" size="1" disabled={pending}>
+              <LButton type="submit" size="sm" disabled={pending}>
                 {pending ? "Saving…" : "Save"}
-              </Button>
-              <Button type="button" size="1" variant="outline" onClick={() => setEditing(false)}>
+              </LButton>
+              <LButton type="button" size="sm" variant="outline" onClick={() => setEditing(false)}>
                 Cancel
-              </Button>
-            </Flex>
+              </LButton>
+            </div>
             {state.error ? (
-              <Text as="div" size="1" color="red" role="alert" mt="1">
+              <p className="mt-1 text-caption font-medium text-crit" role="alert">
                 {state.error}
-              </Text>
+              </p>
             ) : null}
           </form>
         ) : (
-          <Flex gap="2" align="center">
-            <Text weight="medium">{row.name}</Text>
-            {row.system_key ? (
-              <Badge color="gray" variant="soft">
-                built-in
-              </Badge>
-            ) : null}
-            {row.archived ? (
-              <Badge color="gray" variant="outline">
-                archived
-              </Badge>
-            ) : null}
-          </Flex>
+          <div className="flex flex-wrap items-center gap-2">
+            <span>{row.name}</span>
+            {row.system_key ? <LPill tone="neutral">built-in</LPill> : null}
+            {row.archived ? <LPill tone="neutral">archived</LPill> : null}
+          </div>
         )}
-      </Table.RowHeaderCell>
-      <Table.Cell justify="end">
-        <Text className="tnum" color={balance < 0 ? "red" : undefined}>
+      </th>
+      <LTd numeric>
+        <span className={balance < 0 ? "font-medium text-crit" : "font-medium"}>
           {formatCents(balance)}
-        </Text>
-      </Table.Cell>
-      <Table.Cell>
-        <Flex gap="2" justify="end">
+        </span>
+      </LTd>
+      <LTd>
+        <div className="flex justify-end gap-2">
           {!editing ? (
-            <Button type="button" size="1" variant="soft" onClick={() => setEditing(true)}>
+            <LButton type="button" size="sm" variant="outline" onClick={() => setEditing(true)}>
               Rename
-            </Button>
+            </LButton>
           ) : null}
           {!row.system_key ? (
-            <Button
+            <LButton
               type="button"
-              size="1"
-              variant="ghost"
-              color={row.archived ? undefined : "red"}
+              size="sm"
+              variant="quiet"
+              className={row.archived ? undefined : "text-crit hover:text-crit"}
               disabled={archiving}
               onClick={toggleArchive}
             >
               {archiving ? "…" : row.archived ? "Unarchive" : "Archive"}
-            </Button>
+            </LButton>
           ) : null}
-        </Flex>
+        </div>
         {archiveError ? (
-          <Text as="div" size="1" color="red" role="alert" mt="1">
+          <p className="mt-1 text-caption font-medium text-crit" role="alert">
             {archiveError}
-          </Text>
+          </p>
         ) : null}
-      </Table.Cell>
-    </Table.Row>
+      </LTd>
+    </tr>
   );
 }
 
@@ -191,7 +169,7 @@ export default function ChartManager({ rows }: { rows: LedgerBalanceRow[] }) {
   for (const row of rows) byKind.get(row.kind)?.push(row);
 
   return (
-    <Flex direction="column" gap="4">
+    <div className="flex flex-col gap-4">
       <AddAccountForm />
       {KIND_ORDER.map((kind) => {
         const kindRows = (byKind.get(kind) ?? []).sort((a, b) =>
@@ -199,27 +177,30 @@ export default function ChartManager({ rows }: { rows: LedgerBalanceRow[] }) {
         );
         if (kindRows.length === 0) return null;
         return (
-          <Card size="3" key={kind}>
-            <Text as="div" size="3" weight="bold" mb="2">
-              {KIND_LABEL[kind]}
-            </Text>
-            <Table.Root variant="ghost">
-              <Table.Header>
-                <Table.Row>
-                  <Table.ColumnHeaderCell>Account</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell justify="end">Balance</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell />
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
+          <LCard key={kind}>
+            <div className="mb-2 text-h3 font-semibold">{KIND_LABEL[kind]}</div>
+            <LTable>
+              <caption>
+                <span className="sr-only">{KIND_LABEL[kind]} accounts</span>
+              </caption>
+              <thead>
+                <tr>
+                  <LTh>Account</LTh>
+                  <LTh numeric>Balance</LTh>
+                  <LTh>
+                    <span className="sr-only">Actions</span>
+                  </LTh>
+                </tr>
+              </thead>
+              <tbody>
                 {kindRows.map((row) => (
                   <AccountRow key={row.chart_account_id} row={row} />
                 ))}
-              </Table.Body>
-            </Table.Root>
-          </Card>
+              </tbody>
+            </LTable>
+          </LCard>
         );
       })}
-    </Flex>
+    </div>
   );
 }

@@ -63,37 +63,24 @@ function ComparisonTooltip({ active, payload, label }: TooltipContentProps) {
   if (!active || !payload || payload.length === 0) return null;
   return (
     <div
-      style={{
-        background: CHART_TOOLTIP_BG,
-        border: `1px solid ${CHART_TOOLTIP_BORDER}`,
-        borderRadius: "var(--radius)",
-        padding: "var(--space-2) var(--space-3)",
-        boxShadow: "var(--shadow-overlay)",
-        minWidth: 180,
-      }}
+      className="min-w-[180px] rounded-control px-3 py-2 shadow-raised"
+      style={{ background: CHART_TOOLTIP_BG, border: `1px solid ${CHART_TOOLTIP_BORDER}` }}
     >
-      <div style={{ color: "var(--ink-2)", fontSize: "var(--text-1)", marginBottom: "var(--space-1)" }}>
+      <div className="mb-1 text-caption" style={{ color: "var(--ledger-ink-2)" }}>
         {label}
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+      <div className="flex flex-col gap-1">
         {payload.map((entry) => (
-          <div key={String(entry.dataKey)} style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+          <div key={String(entry.dataKey)} className="flex items-center gap-2">
             <span
               aria-hidden
-              style={{
-                width: "var(--space-2)",
-                height: "var(--space-2)",
-                borderRadius: "var(--radius-full)",
-                background: entry.color,
-                display: "inline-block",
-                flexShrink: 0,
-              }}
+              className="inline-block size-2 shrink-0 rounded-full"
+              style={{ background: entry.color }}
             />
-            <span style={{ color: "var(--ink-2)", fontSize: "var(--text-1)" }}>{entry.name}</span>
-            <span
-              className="tnum"
-              style={{ color: "var(--ink)", fontWeight: "var(--weight-semibold)", marginLeft: "auto" }}
-            >
+            <span className="text-caption" style={{ color: "var(--ledger-ink-2)" }}>
+              {entry.name}
+            </span>
+            <span className="tnum-l ml-auto font-semibold" style={{ color: "var(--ledger-ink)" }}>
               {formatCents(Number(entry.value))}
             </span>
           </div>
@@ -112,22 +99,17 @@ function ComparisonLegend({ currentLabel, priorLabel }: { currentLabel: string; 
     { label: priorLabel, color: CHART_PRIOR_COLOR },
   ];
   return (
-    <div style={{ display: "flex", gap: "var(--space-4)", flexWrap: "wrap", marginBottom: "var(--space-2)" }}>
+    <div className="mb-2 flex flex-wrap gap-4">
       {items.map((item) => (
         <span
           key={item.label}
-          style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--text-1)", color: "var(--ink-2)" }}
+          className="inline-flex items-center gap-2 text-caption"
+          style={{ color: "var(--ledger-ink-2)" }}
         >
           <span
             aria-hidden
-            style={{
-              width: "var(--space-3)",
-              height: "var(--space-2)",
-              borderRadius: "var(--radius)",
-              background: item.color,
-              display: "inline-block",
-              flexShrink: 0,
-            }}
+            className="inline-block h-2 w-3 shrink-0 rounded-control"
+            style={{ background: item.color }}
           />
           {item.label}
         </span>
@@ -159,13 +141,13 @@ export function PeriodComparisonBarChart({
             <CartesianGrid stroke={CHART_GRID_COLOR} vertical={false} />
             <XAxis
               dataKey="category"
-              tick={{ fill: CHART_AXIS_TEXT_COLOR, fontSize: "var(--text-1)" }}
+              tick={{ fill: CHART_AXIS_TEXT_COLOR, fontSize: "var(--text-caption)" }}
               axisLine={{ stroke: CHART_GRID_COLOR }}
               tickLine={false}
             />
             <YAxis
               tickFormatter={(value) => formatCents(Number(value))}
-              tick={{ fill: CHART_AXIS_TEXT_COLOR, fontSize: "var(--text-1)" }}
+              tick={{ fill: CHART_AXIS_TEXT_COLOR, fontSize: "var(--text-caption)" }}
               axisLine={false}
               tickLine={false}
               width={76}

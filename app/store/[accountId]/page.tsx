@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { Button, Callout, Card, Container, Flex, Heading, Text } from "@/components/ui";
+import { LAlert, LButton, LCard } from "@/components/ledger";
+import { Logo } from "@/components/logo";
 import { sampleConnectConfigError } from "@/lib/sample-connect/client";
 import { getSampleAccountStatus } from "@/lib/sample-connect/accounts";
 import { listSampleProducts, formatAmount } from "@/lib/sample-connect/products";
@@ -12,6 +13,10 @@ import { buyProductAction } from "./actions";
  *
  * One page per merchant, showing their products and letting anyone buy one.
  * No login: these are the merchant's customers, not the platform's users.
+ *
+ * Ledger's softer marketing variant, same posture as app/vendor/[token]/
+ * page.tsx and app/packet/[token]/page.tsx (both unauthenticated, no
+ * app-shell chrome) — this page mirrors their root and card structure.
  *
  * ── THE ACCOUNT ID IN THE URL ─────────────────────────────────────────────
  * This route keys off the Stripe account id (`/store/acct_123`) because it
@@ -46,14 +51,17 @@ export default async function StorefrontPage({
   const configError = sampleConnectConfigError();
   if (configError) {
     return (
-      <Container size="2">
-        <Flex direction="column" gap="4" py="6">
-          <Heading size="6">Store</Heading>
-          <Callout.Root color="amber">
-            <Callout.Text>{configError}</Callout.Text>
-          </Callout.Root>
-        </Flex>
-      </Container>
+      <div className="min-h-dvh bg-canvas font-ledger text-body text-ink">
+        <div className="mx-auto max-w-xl px-4 py-8 sm:px-8 sm:py-12">
+          <div className="mb-8">
+            <Logo />
+          </div>
+          <LCard className="p-6 sm:p-8">
+            <h1 className="mb-4 text-h3 font-bold text-ink">Store</h1>
+            <LAlert tone="warn">{configError}</LAlert>
+          </LCard>
+        </div>
+      </div>
     );
   }
 
@@ -69,50 +77,50 @@ export default async function StorefrontPage({
   if (!status) notFound();
 
   return (
-    <Container size="3">
-      <Flex direction="column" gap="5" py="6">
-        <Flex direction="column" gap="1">
-          <Heading size="6">{status.displayName ?? "Store"}</Heading>
-          <Text size="2" color="gray">
+    <div className="min-h-dvh bg-canvas font-ledger text-body text-ink">
+      <div className="mx-auto max-w-2xl px-4 py-8 sm:px-8 sm:py-12">
+        <div className="mb-8">
+          <Logo />
+        </div>
+
+        <div className="mb-6 flex flex-col gap-1">
+          <h1 className="text-h1 font-bold tracking-tight text-ink">
+            {status.displayName ?? "Store"}
+          </h1>
+          <p className="text-body-s text-ink-2">
             Payments are processed by {status.displayName ?? "this merchant"} through Stripe.
-          </Text>
-        </Flex>
+          </p>
+        </div>
 
         {/* NEVER TAKE MONEY INTO AN ACCOUNT THAT CANNOT RECEIVE IT. Checkout
             would fail anyway, but failing at the Stripe redirect leaves a
             shopper staring at an error page with no idea what happened. */}
         {!status.readyToProcessPayments ? (
-          <Callout.Root color="amber">
-            <Callout.Text>
-              This store isn&rsquo;t accepting payments yet.
-            </Callout.Text>
-          </Callout.Root>
+          <LAlert tone="warn" className="mb-6">
+            This store isn&rsquo;t accepting payments yet.
+          </LAlert>
         ) : null}
 
         {products.length === 0 ? (
-          <Text size="2" color="gray">
-            Nothing for sale here yet.
-          </Text>
+          <LCard className="p-6">
+            <p className="text-body-s text-ink-2">Nothing for sale here yet.</p>
+          </LCard>
         ) : (
-          <Flex direction="column" gap="3">
+          <div className="flex flex-col gap-3">
             {products.map((product) => (
-              <Card key={product.id}>
-                <Flex justify="between" align="center" gap="4" wrap="wrap" p="1">
-                  <Flex direction="column" gap="1">
-                    <Text size="3" weight="medium">
-                      {product.name}
-                    </Text>
+              <LCard key={product.id} className="p-4 sm:p-5">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-body font-medium text-ink">{product.name}</span>
                     {product.description ? (
-                      <Text size="2" color="gray">
-                        {product.description}
-                      </Text>
+                      <span className="text-body-s text-ink-2">{product.description}</span>
                     ) : null}
-                  </Flex>
+                  </div>
 
-                  <Flex align="center" gap="3">
-                    <Text size="4" weight="bold" className="tnum">
+                  <div className="flex items-center gap-3">
+                    <span className="tnum-l text-lead font-bold tracking-tight text-ink">
                       {formatAmount(product.unitAmount, product.currency)}
-                    </Text>
+                    </span>
 
                     {/* A form, not a link: starting a checkout is a mutation,
                         and a GET that a prefetcher can fire would create
@@ -122,20 +130,20 @@ export default async function StorefrontPage({
                     <form action={buyProductAction}>
                       <input type="hidden" name="accountId" value={accountId} />
                       <input type="hidden" name="productId" value={product.id} />
-                      <Button
+                      <LButton
                         type="submit"
                         disabled={!status.readyToProcessPayments || !product.unitAmount}
                       >
                         Buy
-                      </Button>
+                      </LButton>
                     </form>
-                  </Flex>
-                </Flex>
-              </Card>
+                  </div>
+                </div>
+              </LCard>
             ))}
-          </Flex>
+          </div>
         )}
-      </Flex>
-    </Container>
+      </div>
+    </div>
   );
 }

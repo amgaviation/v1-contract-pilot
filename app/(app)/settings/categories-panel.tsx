@@ -1,5 +1,4 @@
-import { Callout, Card, Flex, Heading, Text } from "@/components/ui";
-import EmptyState from "@/components/ui/empty-state";
+import { LAlert, LCard, LEmpty } from "@/components/ledger";
 import {
   CUSTOM_OPTION_DOMAINS,
   DOMAIN_KEYS_ARE_PINNED,
@@ -57,7 +56,7 @@ export default function CategoriesPanel({
    * The sentence from a FAILED read, or null when the read succeeded.
    * Without it this panel cannot tell "we couldn't read your taxonomy"
    * from "you have none" and states the reassuring one for both — the
-   * exact confusion components/ui/empty-state.tsx exists to prevent.
+   * exact confusion LEmpty exists to prevent.
    */
   readError?: string | null;
 }) {
@@ -72,12 +71,8 @@ export default function CategoriesPanel({
   const canRetireAny = options.some((option) => !option.is_builtin);
 
   return (
-    <Flex direction="column" gap="5">
-      <Flex direction="column" gap="1">
-        <Heading as="h3" size="4">
-          Your categories
-        </Heading>
-      </Flex>
+    <div className="flex flex-col gap-5">
+      <h3 className="text-h3 font-semibold text-ink">Your categories</h3>
 
       {/*
         THE ONE THING THIS SCREEN CANNOT DO YET, said plainly rather than
@@ -97,54 +92,48 @@ export default function CategoriesPanel({
         is the rename / reorder / retire layer, and it says so.
       */}
       {readError ? (
-        <Callout.Root color="red">
-          <Callout.Text>
-            {readError} Your categories aren&rsquo;t shown below because we
-            couldn&rsquo;t read them, not because you have none. Reload in a moment.
-          </Callout.Text>
-        </Callout.Root>
+        <LAlert tone="crit">
+          {readError} Your categories aren&rsquo;t shown below because we
+          couldn&rsquo;t read them, not because you have none. Reload in a moment.
+        </LAlert>
       ) : null}
 
       {CUSTOM_OPTION_DOMAINS.every((domain) => DOMAIN_KEYS_ARE_PINNED[domain]) ? (
-        <Callout.Root color="gray">
-          <Callout.Text>
-            {canRetireAny
-              ? "You can rename, reorder and retire any of these. "
-              : "You can rename and reorder any of these. Retiring one isn't offered because every option here is a built-in: they're what your existing records are already filed under, so the database refuses to hide them. Rename instead; the new name shows everywhere, including on past records. "}
-            Adding a brand-new category isn&rsquo;t available yet. The three lists
-            themselves are fixed in the database, so a new one couldn&rsquo;t be
-            saved onto an expense, trip or document even if this screen offered it.
-            Renaming covers most of what people want from it.
-          </Callout.Text>
-        </Callout.Root>
+        <LAlert tone="neutral">
+          {canRetireAny
+            ? "You can rename, reorder and retire any of these. "
+            : "You can rename and reorder any of these. Retiring one isn't offered because every option here is a built-in: they're what your existing records are already filed under, so the database refuses to hide them. Rename instead; the new name shows everywhere, including on past records. "}
+          Adding a brand-new category isn&rsquo;t available yet. The three lists
+          themselves are fixed in the database, so a new one couldn&rsquo;t be
+          saved onto an expense, trip or document even if this screen offered it.
+          Renaming covers most of what people want from it.
+        </LAlert>
       ) : null}
 
       {CUSTOM_OPTION_DOMAINS.map((domain) => {
         const rows = rowsForDomain(options, domain);
         const copy = DOMAIN_COPY[domain];
         return (
-          <Flex direction="column" gap="3" key={domain}>
-            <Flex direction="column" gap="1">
-              <Heading as="h4" size="3">
-                {copy.title}
-              </Heading>
-              <Text size="1" color="gray">
+          <div className="flex flex-col gap-3" key={domain}>
+            <div className="flex flex-col gap-1">
+              <h4 className="text-lead font-semibold text-ink">{copy.title}</h4>
+              <p className="text-body-s text-ink-3">
                 {copy.where}
                 {canRetireAny
                   ? " Retired options stay on the records already filed under them."
                   : ""}
-              </Text>
-            </Flex>
+              </p>
+            </div>
 
             {readError ? null : rows.length === 0 ? (
-              <Card>
-                <EmptyState title="Nothing here yet">
+              <LCard>
+                <LEmpty title="Nothing here yet">
                   These lists are set up automatically for every account, so this one
                   should fill in shortly. Reload in a moment.
-                </EmptyState>
-              </Card>
+                </LEmpty>
+              </LCard>
             ) : (
-              <Flex direction="column" gap="2">
+              <div className="flex flex-col gap-2">
                 {rows.map((option, index) => (
                   <CategoryRow
                     key={option.id}
@@ -156,17 +145,17 @@ export default function CategoriesPanel({
                     total={rows.length}
                   />
                 ))}
-              </Flex>
+              </div>
             )}
-          </Flex>
+          </div>
         );
       })}
 
       {canEdit ? null : (
-        <Text size="1" color="gray">
+        <p className="text-body-s text-ink-3">
           Only the account owner can change these lists.
-        </Text>
+        </p>
       )}
-    </Flex>
+    </div>
   );
 }

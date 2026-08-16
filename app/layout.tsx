@@ -1,13 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { fontVariables } from "@/lib/fonts";
 import { BRAND, THEME_COLOR } from "@/lib/brand";
-import "./design/tokens.css";
-import "./design/system.generated.css";
-// LEDGER (the successor system, docs/design/LEDGER.md) loads after
-// INSTRUMENT's sheets: theme + utilities only, no preflight, so nothing
-// here restyles an un-migrated screen. Order matters only for the day the
-// two systems disagree on an element both style — later wins, and the
-// migrated screen is the one that should.
 import "./design/ledger.css";
 import "./globals.css";
 
@@ -83,11 +76,13 @@ export default function RootLayout({
     <html
       lang="en"
       className={fontVariables}
-      // THE DESIGN SYSTEM IS THESE THREE ATTRIBUTES plus app/design/tokens.css.
-      // There is no <Theme> component any more: the palette, the space scale
-      // and the control heights are all declared against [data-appearance],
-      // [data-accent] and [data-density], and custom properties inherit — so
-      // the root defaults set here are what every page gets, and the
+      // THE DESIGN SYSTEM IS app/design/ledger.css plus [data-appearance].
+      // [data-accent] and [data-density] are stamped here for parity with
+      // the app shell and lib/theme-slots.ts's ResolvedTheme shape, but
+      // Ledger has no CSS rule keyed on either (see the note above
+      // ACCENT_SLOTS in lib/theme-slots.ts) — only data-appearance (day/
+      // night) has any visual effect. Custom properties inherit, so the
+      // root defaults set here are what every page gets, and the
       // authenticated shell re-stamps them from the tenant's saved
       // preferences for its own subtree (app/(app)/app-shell.tsx).
       //

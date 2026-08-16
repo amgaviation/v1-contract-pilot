@@ -1,5 +1,4 @@
-import { Callout, Card, Flex, Heading, Separator, Text } from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { LAlert, LCard, LSeparator } from "@/components/ledger";
 import type { Database } from "@/lib/supabase/database.types";
 import { includesPart135, type ClientOperatingRule } from "@/lib/operating-rule";
 import {
@@ -108,35 +107,31 @@ export default function OperatorQualificationsPanel({
   };
 
   return (
-    <Card size="3">
-      <Flex direction="column" gap="1" mb="3">
-        <Heading as="h3" size="4">Operator qualifications</Heading>
+    <LCard>
+      <div className="mb-3 flex flex-col gap-1">
+        <h3 className="text-h3 font-semibold">Operator qualifications</h3>
         {showPart135 ? null : (
-          <Callout.Root color="gray" size="1">
-            <Callout.Text>
-              {clientName}&rsquo;s operating rule is set to{" "}
-              {clientOperatingRule === "unspecified" ? "not yet specified" : "Part 91 only"} on
-              the form above, so the Part 135 checks are hidden here: the 135.293 written test and
-              competency check, the 135.297 IPC, and the 135.299 line check. Those regs bind
-              Part 135 operations only. Set the operating rule to Part 135 or Both above if this
-              client ever gives you Part 135 work.
-            </Callout.Text>
-          </Callout.Root>
+          <LAlert tone="neutral">
+            {clientName}&rsquo;s operating rule is set to{" "}
+            {clientOperatingRule === "unspecified" ? "not yet specified" : "Part 91 only"} on
+            the form above, so the Part 135 checks are hidden here: the 135.293 written test and
+            competency check, the 135.297 IPC, and the 135.299 line check. Those regs bind
+            Part 135 operations only. Set the operating rule to Part 135 or Both above if this
+            client ever gives you Part 135 work.
+          </LAlert>
         )}
-      </Flex>
+      </div>
 
       {loadError ? (
-        <Callout.Root color="red">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>Couldn&rsquo;t load operator qualifications. Try reloading the page.</Callout.Text>
-        </Callout.Root>
+        <LAlert tone="crit" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+          <span>Couldn&rsquo;t load operator qualifications. Try reloading the page.</span>
+        </LAlert>
       ) : (
-        <Flex direction="column">
+        <div className="flex flex-col">
           {fixedRequirements.map((req, idx) => (
             <div key={req.value}>
-              {idx > 0 ? <Separator size="4" my="1" /> : null}
+              {idx > 0 ? <LSeparator className="my-1" /> : null}
               <OperatorQualificationRow
                 clientId={clientId}
                 requirement={req.value}
@@ -168,13 +163,9 @@ export default function OperatorQualificationsPanel({
               req.value === IPC_REQUIREMENT ? currentIpcRotationId(rows) : null;
             return (
               <div key={req.value}>
-                <Separator size="4" my="1" />
-                <Text as="div" size="2" weight="medium" mt="2" mb="1">
-                  {req.label}
-                </Text>
-                <Text as="div" size="1" color="gray" mb="2">
-                  {sectionCopy[req.value]}
-                </Text>
+                <LSeparator className="my-1" />
+                <div className="mt-2 mb-1 text-body-s font-medium text-ink">{req.label}</div>
+                <p className="mb-2 text-caption text-ink-3">{sectionCopy[req.value]}</p>
 
                 {rows.map((row) => (
                   <OperatorQualificationRow
@@ -189,7 +180,7 @@ export default function OperatorQualificationsPanel({
                   />
                 ))}
 
-                <Separator size="4" my="1" />
+                <LSeparator className="my-1" />
                 <OperatorQualificationRow
                   key={`${req.value}-new`}
                   clientId={clientId}
@@ -201,7 +192,7 @@ export default function OperatorQualificationsPanel({
               </div>
             );
           })}
-        </Flex>
+        </div>
       )}
 
       {/* ADDING THE NEXT OPERATOR, from here. Recording indoc for an
@@ -211,8 +202,32 @@ export default function OperatorQualificationsPanel({
           whole reasoning. Rendered even when the qualifications above
           failed to load: this control does not depend on that read, and a
           load error is not a reason to also take away the way out. */}
-      <Separator size="4" my="3" />
+      <LSeparator className="my-3" />
       <AddOperatorForm />
-    </Card>
+    </LCard>
+  );
+}
+
+/* ── Inline icon ───────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

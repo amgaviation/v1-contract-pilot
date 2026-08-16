@@ -1,10 +1,9 @@
 import NextLink from "next/link";
-import { Button, Callout, Flex } from "@/components/ui";
-import { ExclamationTriangleIcon, InfoCircledIcon } from "@radix-ui/react-icons";
+import { LAlert, lButtonClass } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { rowsOf } from "@/lib/supabase/rows";
-import PageShell from "../../page-shell";
 import { KIND_LABEL, type ChartKind } from "../ledger-lib";
 import JournalEntryForm, { type AccountOption } from "./journal-entry-form";
 import JournalList, { type JournalEntryView } from "./journal-list";
@@ -165,52 +164,92 @@ export default async function JournalPage() {
   const truncated = entriesResult.ok && entriesResult.rows.length === ENTRIES_LIMIT;
 
   return (
-    <PageShell
+    <LPageShell
       title="Journal"
       subtitle="Every ledger entry, derived from your records automatically, plus your own."
       action={
-        <Flex gap="2">
+        <>
           {/* Plain <a href download>, not a client-side link — it's a file
               download, same pattern as /settings/export and /logbook. */}
-          <Button asChild variant="outline" size="2">
-            <a href="/accounting/journal/export" download>
-              Download CSV
-            </a>
-          </Button>
-          <Button asChild variant="soft" size="2">
-            <NextLink href="/accounting">Chart of accounts</NextLink>
-          </Button>
-        </Flex>
+          <a href="/accounting/journal/export" download className={lButtonClass({ variant: "outline" })}>
+            Download CSV
+          </a>
+          <NextLink href="/accounting" className={lButtonClass({ variant: "outline" })}>
+            Chart of accounts
+          </NextLink>
+        </>
       }
     >
       {failed ? (
-        <Callout.Root color="red">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>
-            Couldn&rsquo;t load the journal. Nothing below is shown rather than
-            showing an empty ledger that isn&rsquo;t true.
-          </Callout.Text>
-        </Callout.Root>
+        <LAlert tone="crit" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+          <span>
+            Couldn&rsquo;t load the journal. Nothing below is shown rather
+            than showing an empty ledger that isn&rsquo;t true.
+          </span>
+        </LAlert>
       ) : (
-        <Flex direction="column" gap="4">
+        <div className="flex flex-col gap-4">
           <JournalEntryForm accounts={accountOptions} />
           {truncated ? (
-            <Callout.Root color="amber">
-              <Callout.Icon>
-                <InfoCircledIcon />
-              </Callout.Icon>
-              <Callout.Text>
-                Showing the most recent {ENTRIES_LIMIT} entries. Older
-                history exists but isn&rsquo;t listed here. The reports
-                still count everything.
-              </Callout.Text>
-            </Callout.Root>
+            <LAlert tone="warn" className="flex items-start gap-2">
+              <InfoIcon className="mt-0.5 shrink-0 text-warn" />
+              <span>
+                Showing the most recent {ENTRIES_LIMIT} entries. Older history
+                exists but isn&rsquo;t listed here. The reports still count
+                everything.
+              </span>
+            </LAlert>
           ) : null}
           <JournalList entries={entries} />
-        </Flex>
+        </div>
       )}
-    </PageShell>
+    </LPageShell>
+  );
+}
+
+/* ── Inline icons ──────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. Same shapes as invoices/page.tsx's own WarningIcon; InfoIcon
+ * is the same outline-icon posture applied to an informational callout. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function InfoIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <circle cx="8" cy="8" r="6.25" />
+      <path d="M8 7.25v4" />
+      <circle cx="8" cy="4.9" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

@@ -24,6 +24,11 @@ next-env.d.ts.bak
 # vercel
 .vercel
 
+# transient git worktrees the Agent tool creates for isolated parallel
+# subagent work — never project content, and each is a full checkout with
+# its own .git, so committing one would vendor a nested repo
+/.claude/worktrees/
+
 # receipt-OCR engine assets, copied from node_modules by
 # scripts/sync-ocr-assets.mjs on predev/prebuild. ~11 MB of binaries whose
 # source of truth is package-lock.json — never committed.

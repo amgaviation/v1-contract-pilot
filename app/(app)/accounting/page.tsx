@@ -1,15 +1,9 @@
 import NextLink from "next/link";
-import {
-  Button,
-  Callout,
-  Flex,
-  Link as RadixLink,
-  Text,
-} from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { LAlert, lButtonClass } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
+
 import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
-import PageShell from "../page-shell";
 import ChartManager from "./chart-manager";
 import type { LedgerBalanceRow } from "./ledger-lib";
 import { todayIso } from "../reports/sales-tax/report-lib";
@@ -43,48 +37,73 @@ export default async function AccountingPage() {
   const rows = (balanceData ?? []) as LedgerBalanceRow[];
 
   return (
-    <PageShell
+    <LPageShell
       title="Accounting"
       subtitle="Your chart of accounts, with balances derived from everything already recorded."
       action={
-        <Flex gap="2">
-          <Button asChild variant="soft" size="2">
-            <NextLink href="/accounting/journal">Journal</NextLink>
-          </Button>
-          <Button asChild variant="soft" size="2">
-            <NextLink href="/accounting/reconcile">Reconcile</NextLink>
-          </Button>
-        </Flex>
+        <>
+          <NextLink href="/accounting/journal" className={lButtonClass({ variant: "outline" })}>
+            Journal
+          </NextLink>
+          <NextLink href="/accounting/reconcile" className={lButtonClass({ variant: "outline" })}>
+            Reconcile
+          </NextLink>
+        </>
       }
     >
       {error ? (
         // A failed read renders as a failure, never as $0 balances —
         // lib/supabase/rows.ts discipline.
-        <Callout.Root color="red">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>
+        <LAlert tone="crit" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+          <span>
             Couldn&rsquo;t load your ledger. The balances below are
             unavailable. Nothing is shown rather than showing zeros that
             aren&rsquo;t true.
-          </Callout.Text>
-        </Callout.Root>
+          </span>
+        </LAlert>
       ) : (
         <>
-          <Text size="2" color="gray">
-            Income, payments, expenses, and mileage post here
-            automatically. See the{" "}
-            <RadixLink asChild>
-              <NextLink href="/accounting/journal">journal</NextLink>
-            </RadixLink>{" "}
+          <p className="text-body-s text-ink-2">
+            Income, payments, expenses, and mileage post here automatically.
+            See the{" "}
+            <NextLink
+              href="/accounting/journal"
+              className="font-medium text-accent underline-offset-2 hover:underline"
+            >
+              journal
+            </NextLink>{" "}
             for every entry. Owner pay is tracked as draws (an equity
-            account), the way a sole proprietor&rsquo;s books actually
-            work, not payroll.
-          </Text>
+            account), the way a sole proprietor&rsquo;s books actually work,
+            not payroll.
+          </p>
           <ChartManager rows={rows} />
         </>
       )}
-    </PageShell>
+    </LPageShell>
+  );
+}
+
+/* ── Inline icon ───────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. Same shape as invoices/page.tsx's own WarningIcon. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

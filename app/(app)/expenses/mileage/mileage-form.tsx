@@ -2,22 +2,9 @@
 
 import { useActionState, useState, useTransition } from "react";
 import NextLink from "next/link";
-import {
-  AlertDialog,
-  Box,
-  Button,
-  Callout,
-  Card,
-  Flex,
-  Grid,
-  Link as RadixLink,
-  Select,
-  Table,
-  Text,
-  TextArea,
-  TextField,
-} from "@/components/ui";
-import { InfoCircledIcon } from "@radix-ui/react-icons";
+import { LAlert, LButton, LCard, LTable, LTd, LTh } from "@/components/ledger";
+import { LConfirmDialog } from "@/components/ledger/dialog";
+import { LField, LInput, LSelect, LTextarea } from "@/components/ledger/forms";
 import { formatCents, formatDate } from "@/lib/format";
 import type { Database } from "@/lib/supabase/database.types";
 import {
@@ -35,8 +22,8 @@ export type ClientOption = { id: string; name: string };
 /** Rates the pilot has recorded (Settings → Mileage), keyed by tax year. */
 export type RatesByYear = Record<number, number>;
 
-// Radix Select forbids value="" — these sentinels stand in for "none" and
-// are translated back to "" on submit, same pattern as expense-form.tsx.
+// These sentinels stand in for "none" and are translated back to "" on
+// submit, same pattern as expense-form.tsx.
 const NO_TRIP = "none";
 const NO_CLIENT = "none";
 
@@ -105,15 +92,12 @@ function EntryFields({
   const yearRate = year !== null ? rates[year] : undefined;
 
   return (
-    <Grid columns={{ initial: "1", md: "4" }} gap="3">
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
       <input type="hidden" name="trip_id" value={tripId === NO_TRIP ? "" : tripId} />
       <input type="hidden" name="client_id" value={clientId === NO_CLIENT ? "" : clientId} />
 
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={`${idPrefix}-drove_on`}>
-          Date
-        </Text>
-        <TextField.Root
+      <LField label="Date" htmlFor={`${idPrefix}-drove_on`}>
+        <LInput
           id={`${idPrefix}-drove_on`}
           type="date"
           name="drove_on"
@@ -122,12 +106,9 @@ function EntryFields({
           value={droveOn}
           onChange={(e) => setDroveOn(e.target.value)}
         />
-      </Flex>
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={`${idPrefix}-miles`}>
-          Miles
-        </Text>
-        <TextField.Root
+      </LField>
+      <LField label="Miles" htmlFor={`${idPrefix}-miles`}>
+        <LInput
           id={`${idPrefix}-miles`}
           name="miles"
           required
@@ -135,12 +116,9 @@ function EntryFields({
           disabled={disabled}
           defaultValue={values.miles}
         />
-      </Flex>
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={`${idPrefix}-from`}>
-          From
-        </Text>
-        <TextField.Root
+      </LField>
+      <LField label="From" htmlFor={`${idPrefix}-from`}>
+        <LInput
           id={`${idPrefix}-from`}
           name="from_place"
           required
@@ -148,12 +126,9 @@ function EntryFields({
           disabled={disabled}
           defaultValue={values.from_place}
         />
-      </Flex>
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={`${idPrefix}-to`}>
-          To
-        </Text>
-        <TextField.Root
+      </LField>
+      <LField label="To" htmlFor={`${idPrefix}-to`}>
+        <LInput
           id={`${idPrefix}-to`}
           name="to_place"
           required
@@ -161,14 +136,15 @@ function EntryFields({
           disabled={disabled}
           defaultValue={values.to_place}
         />
-      </Flex>
+      </LField>
 
-      <Box style={{ gridColumn: "1 / -1" }}>
-        <Flex direction="column" gap="1">
-          <Text as="label" size="2" weight="medium" htmlFor={`${idPrefix}-purpose`}>
-            Purpose
-          </Text>
-          <TextField.Root
+      <div className="md:col-span-4">
+        <LField
+          label="Purpose"
+          htmlFor={`${idPrefix}-purpose`}
+          hint="What the drive was for. This is the record that lets you (or your tax preparer) tell business driving from ordinary commuting later. This product does not decide that for you."
+        >
+          <LInput
             id={`${idPrefix}-purpose`}
             name="purpose"
             required
@@ -176,70 +152,69 @@ function EntryFields({
             disabled={disabled}
             defaultValue={values.purpose}
           />
-          <Text size="1" color="gray">
-            What the drive was for. This is the record that lets you (or your tax preparer) tell
-            business driving from ordinary commuting later. This product does not decide that
-            for you.
-          </Text>
-        </Flex>
-      </Box>
+        </LField>
+      </div>
 
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" id={`${idPrefix}-trip-label`}>
+      <div className="flex flex-col gap-1.5">
+        <label id={`${idPrefix}-trip-label`} className="text-body-s font-medium text-ink">
           Trip
-        </Text>
-        <Select.Root value={tripId} onValueChange={setTripId} disabled={disabled}>
-          <Select.Trigger aria-labelledby={`${idPrefix}-trip-label`} />
-          <Select.Content>
-            <Select.Item value={NO_TRIP}>No trip</Select.Item>
-            {trips.map((trip) => (
-              <Select.Item key={trip.id} value={trip.id}>
-                {trip.label}
-              </Select.Item>
-            ))}
-          </Select.Content>
-        </Select.Root>
-      </Flex>
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" id={`${idPrefix}-client-label`}>
+        </label>
+        <LSelect
+          aria-labelledby={`${idPrefix}-trip-label`}
+          value={tripId}
+          onChange={(e) => setTripId(e.target.value)}
+          disabled={disabled}
+        >
+          <option value={NO_TRIP}>No trip</option>
+          {trips.map((trip) => (
+            <option key={trip.id} value={trip.id}>
+              {trip.label}
+            </option>
+          ))}
+        </LSelect>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label id={`${idPrefix}-client-label`} className="text-body-s font-medium text-ink">
           Client
-        </Text>
-        <Select.Root value={clientId} onValueChange={setClientId} disabled={disabled}>
-          <Select.Trigger aria-labelledby={`${idPrefix}-client-label`} />
-          <Select.Content>
-            <Select.Item value={NO_CLIENT}>No client</Select.Item>
-            {clients.map((client) => (
-              <Select.Item key={client.id} value={client.id}>
-                {client.name}
-              </Select.Item>
-            ))}
-          </Select.Content>
-        </Select.Root>
-      </Flex>
-      <Flex direction="column" gap="1">
-        <Text as="label" size="2" weight="medium" htmlFor={`${idPrefix}-rate`}>
+        </label>
+        <LSelect
+          aria-labelledby={`${idPrefix}-client-label`}
+          value={clientId}
+          onChange={(e) => setClientId(e.target.value)}
+          disabled={disabled}
+        >
+          <option value={NO_CLIENT}>No client</option>
+          {clients.map((client) => (
+            <option key={client.id} value={client.id}>
+              {client.name}
+            </option>
+          ))}
+        </LSelect>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={`${idPrefix}-rate`} className="text-body-s font-medium text-ink">
           Rate (cents/mile)
-        </Text>
+        </label>
         {rateLocked ? (
           <>
-            <TextField.Root
+            <LInput
               id={`${idPrefix}-rate`}
               // NO name — never submitted. Locked once saved; see
               // EntryFields' rateLocked doc comment.
               value={values.rate_cents_per_mile}
               readOnly
               disabled
-              className="tnum"
+              className="tnum-l"
             />
-            <Text size="1" color="gray">
+            <p className="text-caption text-ink-3">
               Locked once saved, so a later rate change can never restate a
               drive already recorded. To fix a wrong rate, delete this drive
               and log it again.
-            </Text>
+            </p>
           </>
         ) : (
           <>
-            <TextField.Root
+            <LInput
               id={`${idPrefix}-rate`}
               name="rate_cents_per_mile"
               required
@@ -249,42 +224,39 @@ function EntryFields({
               onChange={(e) => setRate(e.target.value)}
             />
             {yearRate !== undefined ? (
-              <Button
+              <LButton
                 type="button"
-                variant="ghost"
-                size="1"
+                variant="quiet"
+                size="sm"
                 disabled={disabled}
                 onClick={() => setRate(formatRateForDisplay(yearRate))}
               >
                 Use {year}&rsquo;s rate ({formatRateForDisplay(yearRate)}¢/mi)
-              </Button>
+              </LButton>
             ) : (
-              <Text size="1" color="amber">
+              <p className="text-caption text-warn">
                 {year ? `No rate on file for ${year}. ` : ""}
-                <RadixLink asChild>
-                  <NextLink href="/settings?tab=mileage">Add it in Settings</NextLink>
-                </RadixLink>
+                <NextLink href="/settings?tab=mileage" className="text-accent underline-offset-2 hover:underline">
+                  Add it in Settings
+                </NextLink>
                 , or enter it manually.
-              </Text>
+              </p>
             )}
           </>
         )}
-      </Flex>
-      <Box gridColumn={{ md: "span 2" }}>
-        <Flex direction="column" gap="1">
-          <Text as="label" size="2" weight="medium" htmlFor={`${idPrefix}-notes`}>
-            Notes
-          </Text>
-          <TextArea
+      </div>
+      <div className="md:col-span-2">
+        <LField label="Notes" htmlFor={`${idPrefix}-notes`}>
+          <LTextarea
             id={`${idPrefix}-notes`}
             name="notes"
             rows={1}
             disabled={disabled}
             defaultValue={values.notes}
           />
-        </Flex>
-      </Box>
-    </Grid>
+        </LField>
+      </div>
+    </div>
   );
 }
 
@@ -348,11 +320,9 @@ function AddEntryCard({
     : emptyValues();
 
   return (
-    <Card size="3">
+    <LCard>
       <form action={formAction}>
-        <Text as="div" size="4" weight="bold" mb="3">
-          Log a drive
-        </Text>
+        <p className="mb-3 text-h3 font-bold">Log a drive</p>
         <EntryFields
           // Forces a remount whenever the echoed values change (a failed
           // submit). React calls the native form.reset() after EVERY action
@@ -371,20 +341,16 @@ function AddEntryCard({
           clients={clients}
           rates={rates}
         />
-        <Flex mt="3" role="alert" aria-live="polite">
-          {state.error ? (
-            <Text size="1" color="red">
-              {state.error}
-            </Text>
-          ) : null}
-        </Flex>
-        <Flex mt="3">
-          <Button type="submit" disabled={pending}>
+        <div className="mt-3" role="alert" aria-live="polite">
+          {state.error ? <p className="text-caption font-medium text-crit">{state.error}</p> : null}
+        </div>
+        <div className="mt-3">
+          <LButton type="submit" disabled={pending}>
             {pending ? "Saving…" : "Add drive"}
-          </Button>
-        </Flex>
+          </LButton>
+        </div>
       </form>
-    </Card>
+    </LCard>
   );
 }
 
@@ -439,76 +405,69 @@ function EntryRow({
 
   if (!editing) {
     return (
-      <Table.Row>
-        <Table.RowHeaderCell>
-          <Text weight="medium">{formatDate(entry.drove_on)}</Text>
-        </Table.RowHeaderCell>
-        <Table.Cell>
-          <Text className="tnum">{entry.miles}</Text>
-        </Table.Cell>
-        <Table.Cell>
-          <Text color="gray">
+      <tr>
+        <th
+          scope="row"
+          className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+        >
+          {formatDate(entry.drove_on)}
+        </th>
+        <LTd>
+          <span className="tnum-l">{entry.miles}</span>
+        </LTd>
+        <LTd>
+          <span className="text-ink-2">
             {entry.from_place} → {entry.to_place}
-          </Text>
-        </Table.Cell>
-        <Table.Cell>
-          <Text color="gray">{entry.purpose}</Text>
-        </Table.Cell>
-        <Table.Cell>
-          <Text color="gray">
-            {tripLabel ?? clientLabel ?? "—"}
-          </Text>
-        </Table.Cell>
-        <Table.Cell justify="end">
-          <Text weight="medium" className="tnum">
-            {formatCents(entry.amount_cents)}
-          </Text>
-        </Table.Cell>
-        <Table.Cell>
-          <Flex gap="2">
-            <Button type="button" size="1" variant="soft" onClick={onEdit}>
+          </span>
+        </LTd>
+        <LTd>
+          <span className="text-ink-2">{entry.purpose}</span>
+        </LTd>
+        <LTd>
+          <span className="text-ink-2">{tripLabel ?? clientLabel ?? "—"}</span>
+        </LTd>
+        <LTd numeric>
+          <span className="font-medium">{formatCents(entry.amount_cents)}</span>
+        </LTd>
+        <LTd>
+          <div className="flex gap-2">
+            <LButton type="button" size="sm" variant="outline" onClick={onEdit}>
               Edit
-            </Button>
-            <AlertDialog.Root open={confirmOpen} onOpenChange={setConfirmOpen}>
-              <AlertDialog.Trigger>
-                <Button type="button" size="1" variant="ghost" color="red">
-                  Delete
-                </Button>
-              </AlertDialog.Trigger>
-              <AlertDialog.Content maxWidth="420px">
-                <AlertDialog.Title>Delete this drive?</AlertDialog.Title>
-                <AlertDialog.Description size="2">
+            </LButton>
+            <LButton type="button" size="sm" variant="quiet" onClick={() => setConfirmOpen(true)}>
+              Delete
+            </LButton>
+          </div>
+          <LConfirmDialog
+            open={confirmOpen}
+            onOpenChange={setConfirmOpen}
+            title="Delete this drive?"
+            description={
+              <>
+                <p>
                   {formatDate(entry.drove_on)}, {entry.from_place} to {entry.to_place} (
                   {entry.miles} mi). This can&rsquo;t be undone.
-                </AlertDialog.Description>
+                </p>
                 {deleteError ? (
-                  <Box mt="2">
-                    <Text size="1" color="red" role="alert">
-                      {deleteError}
-                    </Text>
-                  </Box>
+                  <p className="mt-2 text-caption font-medium text-crit" role="alert">
+                    {deleteError}
+                  </p>
                 ) : null}
-                <Flex gap="3" mt="4" justify="end">
-                  <AlertDialog.Cancel>
-                    <Button variant="soft" color="gray" disabled={deleting}>
-                      Cancel
-                    </Button>
-                  </AlertDialog.Cancel>
-                  <Button variant="solid" color="red" disabled={deleting} onClick={handleDelete}>
-                    {deleting ? "Deleting…" : "Delete"}
-                  </Button>
-                </Flex>
-              </AlertDialog.Content>
-            </AlertDialog.Root>
-          </Flex>
-        </Table.Cell>
-      </Table.Row>
+              </>
+            }
+            confirmLabel="Delete"
+            confirmVariant="danger"
+            onConfirm={handleDelete}
+            pending={deleting}
+          />
+        </LTd>
+      </tr>
     );
   }
 
   return (
-    <Table.Row>
-      <Table.Cell colSpan={7}>
+    <tr>
+      <td colSpan={7} className="border-b border-hair px-3 py-2.5 align-baseline">
         <form
           action={(formData) => {
             formData.set("id", entry.id);
@@ -528,24 +487,20 @@ function EntryRow({
             rates={rates}
             rateLocked
           />
-          <Flex mt="2" role="alert" aria-live="polite">
-            {state.error ? (
-              <Text size="1" color="red">
-                {state.error}
-              </Text>
-            ) : null}
-          </Flex>
-          <Flex mt="3" gap="2">
-            <Button type="submit" size="1" disabled={pending}>
+          <div className="mt-2" role="alert" aria-live="polite">
+            {state.error ? <p className="text-caption font-medium text-crit">{state.error}</p> : null}
+          </div>
+          <div className="mt-3 flex gap-2">
+            <LButton type="submit" size="sm" disabled={pending}>
               {pending ? "Saving…" : "Save"}
-            </Button>
-            <Button type="button" size="1" variant="outline" onClick={onDone}>
+            </LButton>
+            <LButton type="button" size="sm" variant="outline" onClick={onDone}>
               Cancel
-            </Button>
-          </Flex>
+            </LButton>
+          </div>
         </form>
-      </Table.Cell>
-    </Table.Row>
+      </td>
+    </tr>
   );
 }
 
@@ -563,49 +518,40 @@ export default function MileageForm({
   const [editingId, setEditingId] = useState<string | null>(null);
 
   return (
-    <Flex direction="column" gap="4">
-      <Callout.Root color="blue">
-        <Callout.Icon>
-          <InfoCircledIcon />
-        </Callout.Icon>
-        <Callout.Text>
-          <Text as="div" size="2">
-            This is a record of drives, not a determination of what&rsquo;s deductible. Commuting
-            between home and a regular place of work generally isn&rsquo;t deductible. Whether a
-            given drive counts turns on facts about your situation this product can&rsquo;t see.
-            The standard mileage rate and actual vehicle expenses (tracked as fuel and rental-car
-            expenses) are alternatives, not additive. Using both for the same vehicle in the same
-            year can double-count. Confirm your method and your deductions with a tax professional.
-          </Text>
-        </Callout.Text>
-      </Callout.Root>
+    <div className="flex flex-col gap-4">
+      <LAlert tone="neutral">
+        This is a record of drives, not a determination of what&rsquo;s deductible. Commuting
+        between home and a regular place of work generally isn&rsquo;t deductible. Whether a
+        given drive counts turns on facts about your situation this product can&rsquo;t see.
+        The standard mileage rate and actual vehicle expenses (tracked as fuel and rental-car
+        expenses) are alternatives, not additive. Using both for the same vehicle in the same
+        year can double-count. Confirm your method and your deductions with a tax professional.
+      </LAlert>
 
       <AddEntryCard trips={trips} clients={clients} rates={rates} />
 
-      <Card size="3">
+      <LCard>
         {entries.length === 0 ? (
-          <Flex direction="column" align="center" gap="2" py="6">
-            <Text size="4" weight="bold">
-              No drives logged yet
-            </Text>
-            <Text size="2" color="gray" align="center">
+          <div className="flex flex-col items-center gap-2 py-6 text-center">
+            <p className="text-h3 font-bold">No drives logged yet</p>
+            <p className="text-body-s text-ink-2">
               Log a drive above: date, miles, and what it was for.
-            </Text>
-          </Flex>
+            </p>
+          </div>
         ) : (
-          <Table.Root variant="ghost">
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Miles</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Route</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Purpose</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Trip / client</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell justify="end">Amount</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell />
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
+          <LTable>
+            <thead>
+              <tr>
+                <LTh>Date</LTh>
+                <LTh>Miles</LTh>
+                <LTh>Route</LTh>
+                <LTh>Purpose</LTh>
+                <LTh>Trip / client</LTh>
+                <LTh numeric>Amount</LTh>
+                <LTh />
+              </tr>
+            </thead>
+            <tbody>
               {entries.map((entry) => (
                 <EntryRow
                   key={entry.id}
@@ -618,10 +564,10 @@ export default function MileageForm({
                   onDone={() => setEditingId(null)}
                 />
               ))}
-            </Table.Body>
-          </Table.Root>
+            </tbody>
+          </LTable>
         )}
-      </Card>
-    </Flex>
+      </LCard>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
 import NextLink from "next/link";
-import { Badge, Card, Flex, Link, Text } from "@/components/ui";
+import { LCard, LPill } from "@/components/ledger";
 import { describeResult } from "@/lib/currency/describe";
 import type { CurrencyResult } from "@/lib/currency/types";
 import {
@@ -8,6 +8,19 @@ import {
   countedEntrySummary,
   formatCurrencyDate,
 } from "./presentation";
+
+/**
+ * Status → LPill tone. STATUS_BADGE_COLOR (presentation.ts) still speaks
+ * Radix Badge's vocabulary (green/red/amber) because it is one of the
+ * things that module documents itself as owning; this is the one
+ * translation point this card needs on top of it, the same shape as
+ * invoices/page.tsx's own statusToPillTone.
+ */
+const BADGE_COLOR_TO_TONE: Record<"green" | "red" | "amber", "good" | "crit" | "warn"> = {
+  green: "good",
+  red: "crit",
+  amber: "warn",
+};
 
 /**
  * One currency card. docs/CURRENCY-SPEC.md §6 fixes what renders and in
@@ -45,91 +58,88 @@ export default function CurrencyCard({ result }: { result: CurrencyResult }) {
   const displayDate = formatCurrencyDate(result.displayDate);
 
   return (
-    <Card variant="surface">
-      <Flex direction="column" gap="3" p="1">
-        <Flex justify="between" align="start" gap="3" wrap="wrap">
-          <Flex direction="column" gap="1" flexGrow="1" flexShrink="1" flexBasis="240px">
-            <Text size="3" weight="medium" as="div">
-              {heading.title}
-            </Text>
-            <Text size="1" color="gray" as="div">
-              {heading.subtitle}
-            </Text>
-          </Flex>
-          <Badge color={STATUS_BADGE_COLOR[result.status]}>{described.headline}</Badge>
-        </Flex>
+    <LCard className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-60 flex-1 flex-col gap-1">
+          <p className="text-body font-medium text-ink">{heading.title}</p>
+          <p className="text-caption text-ink-3">{heading.subtitle}</p>
+        </div>
+        <LPill tone={BADGE_COLOR_TO_TONE[STATUS_BADGE_COLOR[result.status]]}>
+          {described.headline}
+        </LPill>
+      </div>
 
-        <Text size="2" weight="medium" as="div">
-          {described.limitingItem}
-        </Text>
+      <p className="text-body-s font-medium text-ink">{described.limitingItem}</p>
 
-        {displayDate ? (
-          <Text size="2" as="div">
-            {`${displayDateLabel}: ${displayDate}`}
-          </Text>
-        ) : null}
+      {displayDate ? (
+        <p className="tnum-l text-body-s text-ink">{`${displayDateLabel}: ${displayDate}`}</p>
+      ) : null}
 
-        {/* Item 3 — the arithmetic, expanded, never collapsed. */}
-        <Flex direction="column" gap="1">
-          {described.arithmetic.map((line, i) => (
-            <Text key={i} size="1" color="gray" as="div">
-              {line}
-            </Text>
+      {/* Item 3 — the arithmetic, expanded, never collapsed. */}
+      <div className="flex flex-col gap-1">
+        {described.arithmetic.map((line, i) => (
+          <p key={i} className="text-caption text-ink-3">
+            {line}
+          </p>
+        ))}
+      </div>
+
+      {/* Counted-entries transparency: the exact logbook rows that fed
+          this card, each linked, so the pilot can hand-check the
+          arithmetic against their own record. */}
+      {result.counted.length > 0 ? (
+        <div className="flex flex-col gap-1">
+          <p className="text-caption font-medium text-ink">Entries counted</p>
+          {result.counted.map((entry) => (
+            <NextLink
+              key={entry.entryId}
+              href={`/logbook/${entry.entryId}`}
+              className="tnum-l text-caption text-accent hover:underline"
+            >
+              {`${formatCurrencyDate(entry.entryDate) ?? entry.entryDate}: ${countedEntrySummary(entry)}`}
+            </NextLink>
           ))}
-        </Flex>
+        </div>
+      ) : null}
 
-        {/* Counted-entries transparency: the exact logbook rows that fed
-            this card, each linked, so the pilot can hand-check the
-            arithmetic against their own record. */}
-        {result.counted.length > 0 ? (
-          <Flex direction="column" gap="1">
-            <Text size="1" weight="medium" as="div">
-              Entries counted
-            </Text>
-            {result.counted.map((entry) => (
-              <Text key={entry.entryId} size="1" as="div">
-                <Link asChild size="1">
-                  <NextLink href={`/logbook/${entry.entryId}`}>
-                    {`${formatCurrencyDate(entry.entryDate) ?? entry.entryDate}: ${countedEntrySummary(entry)}`}
-                  </NextLink>
-                </Link>
-              </Text>
-            ))}
-          </Flex>
-        ) : null}
+      {/* insufficient_data as a first-class, actionable state: which
+          fact is missing, and a link to the screen where it's entered.
+          Labels and hrefs are describe.ts's, verbatim. */}
+      {described.remedies.length > 0 ? (
+        <div className="flex flex-col gap-1">
+          <p className="text-caption font-medium text-ink">
+            What&rsquo;s missing, and where to record it
+          </p>
+          {described.remedies.map((remedy) => (
+            <NextLink
+              key={remedy.missing}
+              href={remedy.href}
+              className="text-caption text-accent hover:underline"
+            >
+              {remedy.label}
+            </NextLink>
+          ))}
+        </div>
+      ) : null}
 
-        {/* insufficient_data as a first-class, actionable state: which
-            fact is missing, and a link to the screen where it's entered.
-            Labels and hrefs are describe.ts's, verbatim. */}
-        {described.remedies.length > 0 ? (
-          <Flex direction="column" gap="1">
-            <Text size="1" weight="medium" as="div">
-              What&rsquo;s missing, and where to record it
-            </Text>
-            {described.remedies.map((remedy) => (
-              <Text key={remedy.missing} size="1" as="div">
-                <Link asChild size="1">
-                  <NextLink href={remedy.href}>{remedy.label}</NextLink>
-                </Link>
-              </Text>
-            ))}
-          </Flex>
-        ) : null}
-
-        {/* Item 4 — the citation, with the issue date of the text the
-            rule was built from and when it was retrieved. The eCFR is the
-            authority; this engine is a reading of it on a stated date. */}
-        <Text size="1" color="gray" as="div">
-          <Link size="1" href={described.citation.url} target="_blank" rel="noopener noreferrer">
-            {described.citation.section}
-          </Link>
-          {`. Built from the eCFR text at issue date ${
-            formatCurrencyDate(described.citation.issueDate) ?? described.citation.issueDate
-          }, retrieved ${
-            formatCurrencyDate(described.citation.retrievedOn) ?? described.citation.retrievedOn
-          }.`}
-        </Text>
-      </Flex>
-    </Card>
+      {/* Item 4 — the citation, with the issue date of the text the
+          rule was built from and when it was retrieved. The eCFR is the
+          authority; this engine is a reading of it on a stated date. */}
+      <p className="text-caption text-ink-3">
+        <a
+          href={described.citation.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-accent hover:underline"
+        >
+          {described.citation.section}
+        </a>
+        {`. Built from the eCFR text at issue date ${
+          formatCurrencyDate(described.citation.issueDate) ?? described.citation.issueDate
+        }, retrieved ${
+          formatCurrencyDate(described.citation.retrievedOn) ?? described.citation.retrievedOn
+        }.`}
+      </p>
+    </LCard>
   );
 }

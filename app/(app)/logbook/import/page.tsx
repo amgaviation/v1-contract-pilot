@@ -1,5 +1,5 @@
 import { requireAccount } from "@/lib/supabase/account";
-import PageShell from "../../page-shell";
+import { LPageShell } from "@/components/ledger/page-shell";
 import ImportWorkspace from "./import-workspace";
 
 export const metadata = { title: "Import logbook" };
@@ -17,11 +17,11 @@ export default async function LogbookImportPage() {
   await requireAccount("/logbook/import");
 
   return (
-    <PageShell
+    <LPageShell
       title="Import your logbook"
       subtitle="Bring in flight time from ForeFlight, LogTen Pro, or any other CSV export. Nothing is written until you review and confirm."
     >
       <ImportWorkspace />
-    </PageShell>
+    </LPageShell>
   );
 }

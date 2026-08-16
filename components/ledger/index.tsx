@@ -272,6 +272,22 @@ export function LSeparator({ className }: { className?: string }) {
 /**
  * Same scroll-container discipline components/ds/surface.tsx proved: the
  * wrapper owns overflow-x so a wide table scrolls itself, never the page.
+ *
+ * `relative` on the wrapper is load-bearing, not decorative: a `<caption>`'s
+ * visually-hidden accessible name (`<span className="sr-only">`, the
+ * pattern every LTable call site uses) is `position: absolute` with no
+ * offsets, so its layout position falls back to its "static position" —
+ * roughly the horizontal center of the (potentially very wide) `<table>`
+ * it sits in. With no positioned ancestor, that containing block resolves
+ * all the way up to the initial containing block, which escapes this
+ * wrapper's own `overflow-x-auto` clip entirely: the span paints at the
+ * table's true, unclipped center, not the visually scrolled position,
+ * pushing `document.documentElement.scrollWidth` out with it even though
+ * nothing visible moved. `relative` makes this wrapper the span's
+ * containing block, so its own `overflow-x-auto` clips it like everything
+ * else inside — a one-line fix with no visual effect (no offsets are ever
+ * set), caught by scripts/layout-verify.mjs the first time an LTable
+ * narrower than its content rendered somewhere the script could see it.
  */
 export function LTable({
   className,
@@ -281,7 +297,12 @@ export function LTable({
   children: React.ReactNode;
 }) {
   return (
-    <div className="overflow-x-auto">
+    // min-w-0 is load-bearing, not decorative: a flex/grid item's default
+    // min-width is its content size, so without it a wide table's
+    // min-content width propagates straight up through any flex-column
+    // ancestor (LCard included) and widens the whole page instead of
+    // staying inside this div's own overflow-x-auto clip.
+    <div className="relative min-w-0 overflow-x-auto">
       <table className={cn("w-full border-collapse text-body-s", className)}>
         {children}
       </table>
@@ -323,6 +344,61 @@ export function LTd({
   );
 }
 
+/* ── Switch ────────────────────────────────────────────────────────── */
+
+/**
+ * A native checkbox, `role="switch"`, ported from components/ui's own
+ * "a switch is a checkbox with a different skin" — same semantics, same
+ * onCheckedChange convenience wrapper over the native onChange event, new
+ * skin only. The thumb and track are both `::before`-free plain elements
+ * (peer-checked driving the track color, translate-x driving the thumb)
+ * so no extra library and no SVG.
+ */
+export const LSwitch = React.forwardRef<
+  HTMLInputElement,
+  Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange" | "type"> & {
+    checked?: boolean;
+    onCheckedChange?: (checked: boolean) => void;
+  }
+>(function LSwitch({ className, checked, onCheckedChange, ...rest }, ref) {
+  return (
+    <span className={cn("relative inline-flex h-5 w-9 shrink-0 items-center", className)}>
+      <input
+        ref={ref}
+        type="checkbox"
+        role="switch"
+        checked={checked}
+        onChange={onCheckedChange ? (e) => onCheckedChange(e.currentTarget.checked) : undefined}
+        className="peer absolute inset-0 m-0 h-full w-full cursor-pointer appearance-none rounded-full bg-hair-strong transition-colors checked:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-50"
+        {...rest}
+      />
+      <span className="pointer-events-none absolute left-0.5 size-4 translate-x-0 rounded-full bg-card shadow-card transition-transform peer-checked:translate-x-4" />
+    </span>
+  );
+});
+
+/* ── Spinner ───────────────────────────────────────────────────────── */
+
+/** A borrowed-ring spinner, `role="status"`, sized in Tailwind units. */
+export function LSpinner({
+  className,
+  label = "Loading",
+}: {
+  className?: string;
+  label?: string;
+}) {
+  return (
+    <span
+      role="status"
+      aria-label={label}
+      className={cn(
+        "inline-block size-4 animate-spin rounded-full border-2 border-hair-strong border-t-accent motion-reduce:animate-none",
+        className
+      )}
+    />
+  );
+}
+
 /* ── Skeleton ──────────────────────────────────────────────────────── */
 
 /**
@@ -337,10 +413,17 @@ export function LTd({
  * empty boxes read out row by row. See app/(app)/loading-panel.tsx's own
  * header for the INSTRUMENT-side version of the same split.
  */
-export function LSkeleton({ className }: { className?: string }) {
+export function LSkeleton({
+  className,
+  style,
+}: {
+  className?: string;
+  style?: React.CSSProperties;
+}) {
   return (
     <div
       aria-hidden="true"
+      style={style}
       className={cn(
         "animate-pulse rounded-control bg-sunk motion-reduce:animate-none",
         className

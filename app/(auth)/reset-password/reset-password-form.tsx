@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { Flex, TextField } from "@/components/ui";
+import { LCard } from "@/components/ledger";
+import { LInput } from "@/components/ledger/forms";
 import { AuthHeading, Field, FormError, SubmitButton } from "../auth-parts";
 import { setNewPassword, type ResetPasswordState } from "./actions";
 
@@ -14,49 +15,41 @@ export default function ResetPasswordForm() {
   );
 
   return (
-    <Flex direction="column" gap="6">
+    <LCard className="flex flex-col gap-6 p-6 sm:p-8">
       <AuthHeading title="Choose a new password">
         You&rsquo;re signed in from the emailed link. Set a password and
         you&rsquo;re back in.
       </AuthHeading>
 
-      <form action={formAction}>
-        <Flex direction="column" gap="4">
-          <Field
+      <form action={formAction} className="flex flex-col gap-4">
+        <Field id="password" label="New password" hint="At least 8 characters">
+          <LInput
             id="password"
-            label="New password"
-            hint="At least 8 characters"
-          >
-            <TextField.Root
-              id="password"
-              type="password"
-              name="password"
-              size="3"
-              autoComplete="new-password"
-              aria-describedby="password-hint"
-              autoFocus
-              required
-              disabled={pending}
-            />
-          </Field>
+            type="password"
+            name="password"
+            autoComplete="new-password"
+            aria-describedby="password-hint"
+            autoFocus
+            required
+            disabled={pending}
+          />
+        </Field>
 
-          <Field id="confirm" label="Confirm new password">
-            <TextField.Root
-              id="confirm"
-              type="password"
-              name="confirm"
-              size="3"
-              autoComplete="new-password"
-              required
-              disabled={pending}
-            />
-          </Field>
+        <Field id="confirm" label="Confirm new password">
+          <LInput
+            id="confirm"
+            type="password"
+            name="confirm"
+            autoComplete="new-password"
+            required
+            disabled={pending}
+          />
+        </Field>
 
-          <FormError message={state.error} />
+        <FormError message={state.error} />
 
-          <SubmitButton pending={pending} idle="Save password" busy="Saving…" />
-        </Flex>
+        <SubmitButton pending={pending} idle="Save password" busy="Saving…" />
       </form>
-    </Flex>
+    </LCard>
   );
 }

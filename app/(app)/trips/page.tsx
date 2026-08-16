@@ -1,21 +1,11 @@
 import NextLink from "next/link";
-import {
-  Badge,
-  Button,
-  Callout,
-  Card,
-  Flex,
-  Link as RadixLink,
-  Table,
-  Text,
-} from "@/components/ui";
+import { LAlert, LCard, LEmpty, LPill, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
-import EmptyState from "@/components/ui/empty-state";
-import PageShell from "../page-shell";
 import MarkFlownButton from "./mark-flown-button";
 
 export const metadata = { title: "Trips" };
@@ -65,26 +55,26 @@ function formatDayCount(days: number): string {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
-type BadgeInfo = { color: "gray" | "blue" | "green" | "red" | "amber"; label: string };
+type BadgeInfo = { tone: "neutral" | "accent" | "good" | "warn" | "crit"; label: string };
 
-const STATUS_FALLBACK: BadgeInfo = { color: "gray", label: "Scheduled" };
+const STATUS_FALLBACK: BadgeInfo = { tone: "neutral", label: "Scheduled" };
 const STATUS_BADGE: Record<string, BadgeInfo> = {
   scheduled: STATUS_FALLBACK,
-  in_progress: { color: "blue", label: "In progress" },
-  completed: { color: "green", label: "Completed" },
-  canceled: { color: "gray", label: "Canceled" },
-  // 20260814094000: amber reads as "needs a decision" — distinct from the
-  // gray of Scheduled/Canceled (settled either way) and from the blue/
-  // green of active/confirmed work.
-  hold: { color: "amber", label: "Hold" },
+  in_progress: { tone: "accent", label: "In progress" },
+  completed: { tone: "good", label: "Completed" },
+  canceled: { tone: "neutral", label: "Canceled" },
+  // 20260814094000: warn reads as "needs a decision" — distinct from the
+  // neutral of Scheduled/Canceled (settled either way) and from the accent/
+  // good of active/confirmed work.
+  hold: { tone: "warn", label: "Hold" },
 };
 
-const BILLING_FALLBACK: BadgeInfo = { color: "amber", label: "Unbilled" };
+const BILLING_FALLBACK: BadgeInfo = { tone: "warn", label: "Unbilled" };
 const BILLING_BADGE: Record<string, BadgeInfo> = {
   unbilled: BILLING_FALLBACK,
-  invoiced: { color: "blue", label: "Invoiced" },
-  paid: { color: "green", label: "Paid" },
-  written_off: { color: "gray", label: "Written off" },
+  invoiced: { tone: "accent", label: "Invoiced" },
+  paid: { tone: "good", label: "Paid" },
+  written_off: { tone: "neutral", label: "Written off" },
 };
 
 /**
@@ -199,7 +189,7 @@ export default async function TripsPage({
     { hasDayRows: boolean; billableDays: number | null; valueCents: number }
   >();
   // Same H8 reasoning as before: a failed read must not throw and 500 the
-  // whole page (the primary `trips` query above degrades to a Callout, not
+  // whole page (the primary `trips` query above degrades to an alert, not
   // a crash), and on failure the Value column is hidden rather than risk
   // showing a wrong number.
   let dayGridError = false;
@@ -244,7 +234,7 @@ export default async function TripsPage({
   const filterHrefBase = { client: clientFilter ?? undefined, status: statusFilter ?? undefined, billing_state: billingFilter ?? undefined };
 
   return (
-    <PageShell
+    <LPageShell
       title="Trips"
       subtitle={
         error
@@ -254,19 +244,17 @@ export default async function TripsPage({
             }${unbilled ? ` · ${unbilled} flown but not yet invoiced` : ""}`
       }
       action={
-        <Button asChild>
-          <NextLink href="/trips/new">Log a trip</NextLink>
-        </Button>
+        <NextLink href="/trips/new" className={lButtonClass({ variant: "primary" })}>
+          Log a trip
+        </NextLink>
       }
     >
       {tripsTruncated ? (
-        <Callout.Root color="amber" mb="3">
-          <Callout.Text>
-            {`Showing your ${TRIP_LIMIT} most recent trips. Older ones aren't on this
-              screen, but they're still in your account, and your invoices and reports
-              still count them.`}
-          </Callout.Text>
-        </Callout.Root>
+        <LAlert tone="warn">
+          {`Showing your ${TRIP_LIMIT} most recent trips. Older ones aren't on this
+            screen, but they're still in your account, and your invoices and reports
+            still count them.`}
+        </LAlert>
       ) : null}
 
       {/* gap S: status and billing filters, plus the ?client= deep link
@@ -274,203 +262,204 @@ export default async function TripsPage({
           overflow notice to. Link-based chips (no client JS), same idiom
           as invoices/page.tsx's FILTERS row — each link keeps every OTHER
           active filter via tripsFilterHref, and re-clicking the active
-          choice clears just that one. */}
-      <Flex direction="column" gap="2" mb="3">
+          choice clears just that one. The active state is a state
+          indicator, not a second call to action, so it's fine alongside
+          the one filled "Log a trip" button above. */}
+      <div className="flex flex-col gap-2">
         {clientFilter ? (
-          <Flex gap="2" align="center" wrap="wrap">
-            <Text size="2" color="gray">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-body-s text-ink-2">
               Client:{" "}
-              <Text as="span" weight="medium" color="gray">
+              <span className="font-medium text-ink">
                 {clientNames.get(clientFilter) ?? "Unknown client"}
-              </Text>
-            </Text>
-            <RadixLink asChild size="1">
-              <NextLink href={tripsFilterHref(filterHrefBase, { client: null })}>
-                Clear
-              </NextLink>
-            </RadixLink>
-          </Flex>
+              </span>
+            </span>
+            <NextLink
+              href={tripsFilterHref(filterHrefBase, { client: null })}
+              className="text-body-s text-accent hover:underline"
+            >
+              Clear
+            </NextLink>
+          </div>
         ) : null}
-        <Flex gap="2" wrap="wrap">
-          <Button asChild size="1" variant={statusFilter === null ? "solid" : "soft"}>
-            <NextLink href={tripsFilterHref(filterHrefBase, { status: null })}>
-              Any status
-            </NextLink>
-          </Button>
+        <div className="flex flex-wrap gap-2">
+          <NextLink
+            href={tripsFilterHref(filterHrefBase, { status: null })}
+            className={lButtonClass({ variant: statusFilter === null ? "primary" : "outline", size: "sm" })}
+          >
+            Any status
+          </NextLink>
           {STATUS_FILTERS.map((s) => (
-            <Button key={s} asChild size="1" variant={statusFilter === s ? "solid" : "soft"}>
-              <NextLink
-                href={tripsFilterHref(filterHrefBase, {
-                  status: statusFilter === s ? null : s,
-                })}
-              >
-                {(STATUS_BADGE[s] ?? STATUS_FALLBACK).label}
-              </NextLink>
-            </Button>
-          ))}
-        </Flex>
-        <Flex gap="2" wrap="wrap">
-          <Button asChild size="1" variant={billingFilter === null ? "solid" : "soft"}>
-            <NextLink href={tripsFilterHref(filterHrefBase, { billing_state: null })}>
-              Any billing
+            <NextLink
+              key={s}
+              href={tripsFilterHref(filterHrefBase, {
+                status: statusFilter === s ? null : s,
+              })}
+              className={lButtonClass({ variant: statusFilter === s ? "primary" : "outline", size: "sm" })}
+            >
+              {(STATUS_BADGE[s] ?? STATUS_FALLBACK).label}
             </NextLink>
-          </Button>
-          {BILLING_FILTERS.map((b) => (
-            <Button key={b} asChild size="1" variant={billingFilter === b ? "solid" : "soft"}>
-              <NextLink
-                href={tripsFilterHref(filterHrefBase, {
-                  billing_state: billingFilter === b ? null : b,
-                })}
-              >
-                {(BILLING_BADGE[b] ?? BILLING_FALLBACK).label}
-              </NextLink>
-            </Button>
           ))}
-        </Flex>
-      </Flex>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <NextLink
+            href={tripsFilterHref(filterHrefBase, { billing_state: null })}
+            className={lButtonClass({ variant: billingFilter === null ? "primary" : "outline", size: "sm" })}
+          >
+            Any billing
+          </NextLink>
+          {BILLING_FILTERS.map((b) => (
+            <NextLink
+              key={b}
+              href={tripsFilterHref(filterHrefBase, {
+                billing_state: billingFilter === b ? null : b,
+              })}
+              className={lButtonClass({ variant: billingFilter === b ? "primary" : "outline", size: "sm" })}
+            >
+              {(BILLING_BADGE[b] ?? BILLING_FALLBACK).label}
+            </NextLink>
+          ))}
+        </div>
+      </div>
 
-      <Card>
+      <LCard>
         {error ? (
-          <Callout.Root color="red" m="3">
-            <Callout.Text>{friendlyDbError(error, "trips.select")}</Callout.Text>
-          </Callout.Root>
+          <LAlert tone="crit">{friendlyDbError(error, "trips.select")}</LAlert>
         ) : trips.length === 0 ? (
-          // The shared primitive (components/ui/empty-state.tsx). The words
-          // stay here — they are about trips — and only the shape is shared.
-          // The error branch above deliberately does NOT route through it:
-          // "couldn't load" is not "you have none". Filtered-to-nothing is
-          // a third case, distinct from both — the account has trips, this
-          // combination of filters just doesn't match any of them.
+          // The shared primitive (components/ledger's LEmpty). The words
+          // stay here — they are about trips — and only the shape is
+          // shared. The error branch above deliberately does NOT route
+          // through it: "couldn't load" is not "you have none". Filtered-
+          // to-nothing is a third case, distinct from both — the account
+          // has trips, this combination of filters just doesn't match any
+          // of them.
           filtersActive ? (
-            <EmptyState
+            <LEmpty
               title="No trips match these filters"
               action={
-                <Button asChild variant="soft">
-                  <NextLink href="/trips">Clear filters</NextLink>
-                </Button>
+                <NextLink href="/trips" className={lButtonClass({ variant: "outline" })}>
+                  Clear filters
+                </NextLink>
               }
             >
               Nothing in your account matches this combination right now.
-            </EmptyState>
+            </LEmpty>
           ) : (
-            <EmptyState
+            <LEmpty
               title="No trips yet"
               action={
-                <Button asChild>
-                  <NextLink href="/trips/new">Log your first trip</NextLink>
-                </Button>
+                <NextLink href="/trips/new" className={lButtonClass({ variant: "primary" })}>
+                  Log your first trip
+                </NextLink>
               }
             >
               Log the trip once. Its legs feed your logbook, its days feed the
               invoice, and its expenses file themselves against it.
-            </EmptyState>
+            </LEmpty>
           )
         ) : (
           <>
             {clientNamesError ? (
-              <Callout.Root color="amber" m="3">
-                <Callout.Text>
-                  Couldn&rsquo;t load client names, so the Client column
-                  below reads &ldquo;—&rdquo; for trips that do have a
-                  client on file.
-                </Callout.Text>
-              </Callout.Root>
+              <LAlert tone="warn" className="mb-3">
+                Couldn&rsquo;t load client names, so the Client column
+                below reads &ldquo;—&rdquo; for trips that do have a
+                client on file.
+              </LAlert>
             ) : null}
             {dayGridError ? (
-              <Callout.Root color="amber" m="3">
-                <Callout.Text>
-                  Couldn&rsquo;t load day grids for these trips, so the Value
-                  column is hidden rather than risk showing a wrong number.
-                </Callout.Text>
-              </Callout.Root>
+              <LAlert tone="warn" className="mb-3">
+                Couldn&rsquo;t load day grids for these trips, so the Value
+                column is hidden rather than risk showing a wrong number.
+              </LAlert>
             ) : null}
-            <Table.Root>
-              <Table.Header>
-                <Table.Row>
-                  <Table.ColumnHeaderCell>Dates</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Aircraft</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell justify="end">Days</Table.ColumnHeaderCell>
-                  {dayGridError ? null : (
-                    <Table.ColumnHeaderCell justify="end">Value</Table.ColumnHeaderCell>
-                  )}
-                  <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Billing</Table.ColumnHeaderCell>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
+            <LTable>
+              <caption>
+                <span className="sr-only">Trips</span>
+              </caption>
+              <thead>
+                <tr>
+                  <LTh>Dates</LTh>
+                  <LTh>Client</LTh>
+                  <LTh>Aircraft</LTh>
+                  <LTh numeric>Days</LTh>
+                  {dayGridError ? null : <LTh numeric>Value</LTh>}
+                  <LTh>Status</LTh>
+                  <LTh>Billing</LTh>
+                </tr>
+              </thead>
+              <tbody>
                 {trips.map((trip) => {
                   const status = STATUS_BADGE[trip.status] ?? STATUS_FALLBACK;
                   const billing =
                     BILLING_BADGE[trip.billing_state] ?? BILLING_FALLBACK;
                   return (
-                    <Table.Row key={trip.id}>
-                      <Table.RowHeaderCell>
-                        <RadixLink asChild weight="medium">
-                          <NextLink href={`/trips/${trip.id}`}>
-                            {formatDateRange(trip.starts_on, trip.ends_on)}
-                          </NextLink>
-                        </RadixLink>
-                      </Table.RowHeaderCell>
-                      <Table.Cell>
-                        <Text size="2" color="gray">
+                    <tr key={trip.id}>
+                      <th
+                        scope="row"
+                        className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                      >
+                        <NextLink
+                          href={`/trips/${trip.id}`}
+                          className="text-accent hover:underline"
+                        >
+                          {formatDateRange(trip.starts_on, trip.ends_on)}
+                        </NextLink>
+                      </th>
+                      <LTd>
+                        <span className="text-ink-2">
                           {trip.client_id
                             ? clientNames.get(trip.client_id) ?? "—"
                             : "No client"}
-                        </Text>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <Text size="2" color="gray">
-                          {trip.aircraft_ident ?? "—"}
-                        </Text>
-                      </Table.Cell>
-                      <Table.Cell justify="end">
-                        <Text size="2" className="tnum">
-                          {/* P2: once the grid has rows, it is what bills
-                              (see the Value cell below) and it must also be
-                              what this COUNTS — printing a grid-priced
-                              Value next to a day count still read from the
-                              legacy scalar columns is the same
-                              "two sources for one number" defect this
-                              product eradicated for money, just for days.
-                              Falls back to the scalar day_count only when
-                              the trip truly has no day rows yet. */}
-                          {tripValueByTrip.get(trip.id)?.hasDayRows
-                            ? formatDayCount(tripValueByTrip.get(trip.id)!.billableDays ?? 0)
-                            : trip.day_count}
-                        </Text>
-                      </Table.Cell>
+                        </span>
+                      </LTd>
+                      <LTd>
+                        <span className="text-ink-2">{trip.aircraft_ident ?? "—"}</span>
+                      </LTd>
+                      <LTd numeric>
+                        {/* P2: once the grid has rows, it is what bills
+                            (see the Value cell below) and it must also be
+                            what this COUNTS — printing a grid-priced
+                            Value next to a day count still read from the
+                            legacy scalar columns is the same
+                            "two sources for one number" defect this
+                            product eradicated for money, just for days.
+                            Falls back to the scalar day_count only when
+                            the trip truly has no day rows yet. */}
+                        {tripValueByTrip.get(trip.id)?.hasDayRows
+                          ? formatDayCount(tripValueByTrip.get(trip.id)!.billableDays ?? 0)
+                          : trip.day_count}
+                      </LTd>
                       {dayGridError ? null : (
-                        <Table.Cell justify="end">
-                          <Text size="2" weight="medium" className="tnum">
+                        <LTd numeric>
+                          <span className="font-medium">
                             {formatCents(tripValueByTrip.get(trip.id)?.valueCents ?? 0)}
-                          </Text>
-                        </Table.Cell>
+                          </span>
+                        </LTd>
                       )}
-                      <Table.Cell>
+                      <LTd>
                         {/* The badge and the way to change it, together.
                             A pilot scanning a month of flying can mark
                             each trip flown from here without opening it —
                             which is the difference between billing a
                             month in a minute and not billing it at all. */}
-                        <Flex gap="2" align="center" wrap="wrap">
-                          <Badge color={status.color}>{status.label}</Badge>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <LPill tone={status.tone}>{status.label}</LPill>
                           {trip.status === "scheduled" || trip.status === "in_progress" ? (
-                            <MarkFlownButton id={trip.id} size="1" variant="soft" />
+                            <MarkFlownButton id={trip.id} size="sm" variant="outline" />
                           ) : null}
-                        </Flex>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <Badge color={billing.color}>{billing.label}</Badge>
-                      </Table.Cell>
-                    </Table.Row>
+                        </div>
+                      </LTd>
+                      <LTd>
+                        <LPill tone={billing.tone}>{billing.label}</LPill>
+                      </LTd>
+                    </tr>
                   );
                 })}
-              </Table.Body>
-            </Table.Root>
+              </tbody>
+            </LTable>
           </>
         )}
-      </Card>
-    </PageShell>
+      </LCard>
+    </LPageShell>
   );
 }

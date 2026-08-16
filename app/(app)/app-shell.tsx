@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { LAlert, LButton } from "@/components/ledger";
-import { Logo } from "@/components/ui/logo";
+import { Logo } from "@/components/logo";
 import { BRAND } from "@/lib/brand";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import type { NavItem } from "@/lib/nav";

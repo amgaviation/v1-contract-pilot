@@ -1,19 +1,18 @@
 import NextLink from "next/link";
 import {
-  Badge,
-  Callout,
-  Card,
-  DataList,
-  Flex,
-  Grid,
-  Heading,
-  Link as RadixLink,
-  Separator,
-  Table,
-  Text,
-  VisuallyHidden,
-} from "@/components/ui";
-import EmptyState from "@/components/ui/empty-state";
+  LAlert,
+  LCard,
+  LEmpty,
+  LPill,
+  LRow,
+  LRows,
+  LSeparator,
+  LTable,
+  LTd,
+  LTh,
+} from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
+import { cn } from "@/lib/ledger/cn";
 import { accountIsReadOnly, requireAccount } from "@/lib/supabase/account";
 import {
   FEATURES,
@@ -32,12 +31,12 @@ import {
   renewalText,
   statusDisplay,
   statusIsWritable,
+  type StatusTone,
 } from "@/lib/billing-state";
 import { tierPriceLabels } from "@/lib/stripe/prices";
 import { billingHistory, subscriptionFacts } from "@/lib/stripe/billing-facts";
 import { checkPriceDrift, describeMismatch } from "@/lib/stripe/price-drift";
 import { formatDate } from "@/lib/format";
-import PageShell from "../../page-shell";
 import {
   BillingPortalButton,
   CancelResumeButton,
@@ -77,6 +76,42 @@ export const metadata = { title: "Billing" };
 /** Which of the two Stripe reads a card depends on, said once. */
 const STRIPE_UNREACHABLE =
   "We couldn't reach Stripe just now, so the details below are incomplete. This is not a statement about your subscription. Reload in a moment, or open the billing portal.";
+
+/**
+ * lib/billing-state.ts's StatusTone keeps INSTRUMENT's Badge colour
+ * vocabulary (gray/blue/amber/green/red) as its own data. Same dictionary
+ * as invoices/page.tsx's own statusToPillTone: red→crit, amber→warn,
+ * green→good, gray→neutral, blue→accent.
+ */
+function toneToPillTone(tone: StatusTone): "crit" | "warn" | "good" | "neutral" | "accent" {
+  switch (tone) {
+    case "red":
+      return "crit";
+    case "amber":
+      return "warn";
+    case "green":
+      return "good";
+    case "blue":
+      return "accent";
+    default:
+      return "neutral";
+  }
+}
+
+function toneToTextClass(tone: StatusTone): string {
+  switch (tone) {
+    case "red":
+      return "text-crit";
+    case "amber":
+      return "text-warn";
+    case "green":
+      return "text-good";
+    case "blue":
+      return "text-accent";
+    default:
+      return "text-ink-2";
+  }
+}
 
 export default async function BillingPage({
   searchParams,
@@ -160,7 +195,7 @@ export default async function BillingPage({
   );
 
   return (
-    <PageShell
+    <LPageShell
       title="Billing"
       subtitle="Your plan, what it includes, what you're next charged, and your receipts."
     >
@@ -172,24 +207,24 @@ export default async function BillingPage({
           account — because a misconfigured Price affects every future
           checkout regardless of what this one account is on. */}
       {drift.checked && !drift.ok ? (
-        <Callout.Root color="red">
-          <Callout.Text>
-            <Text weight="bold">
+        <LAlert tone="crit" className="flex flex-col gap-2">
+          <p>
+            <span className="font-semibold">
               Price configuration drift: the public pricing page and the
               configured Stripe Price(s) disagree.
-            </Text>{" "}
+            </span>{" "}
             Checkout would charge a different amount than the pricing page shows.
             This is visible to the account owner only. Fix the STRIPE_PRICE_ID_*
             env var(s) or the Stripe Price object before a pilot checks out.
-            <Flex direction="column" gap="1" mt="2">
-              {drift.mismatches.map((m) => (
-                <Text key={`${m.tier}-${m.interval}`} size="1" className="tnum">
-                  {describeMismatch(m)}
-                </Text>
-              ))}
-            </Flex>
-          </Callout.Text>
-        </Callout.Root>
+          </p>
+          <div className="flex flex-col gap-1">
+            {drift.mismatches.map((m) => (
+              <p key={`${m.tier}-${m.interval}`} className="tnum-l text-caption">
+                {describeMismatch(m)}
+              </p>
+            ))}
+          </div>
+        </LAlert>
       ) : null}
 
       {/* WHY THIS CALLOUT AND THE CARD BELOW NO LONGER SAY THE SAME
@@ -202,13 +237,11 @@ export default async function BillingPage({
           most. So it says why the pilot is here and where to go next, and
           nothing the Card already says. */}
       {readOnly ? (
-        <Callout.Root color="amber">
-          <Callout.Text>
-            {state === "read-only"
-              ? "The change you just tried needs an active subscription. This account is read-only until it's resubscribed. Every record stays viewable and exportable in the meantime. Pick a plan below to start making changes again."
-              : "This account is read-only. Every record stays viewable and exportable. Pick a plan below to start making changes again."}
-          </Callout.Text>
-        </Callout.Root>
+        <LAlert tone="warn">
+          {state === "read-only"
+            ? "The change you just tried needs an active subscription. This account is read-only until it's resubscribed. Every record stays viewable and exportable in the meantime. Pick a plan below to start making changes again."
+            : "This account is read-only. Every record stays viewable and exportable. Pick a plan below to start making changes again."}
+        </LAlert>
       ) : null}
 
       {/* `changed || pendingTier`, not `changed` alone. `pendingTier` is a
@@ -219,66 +252,57 @@ export default async function BillingPage({
           invites, and on a plan changed from Stripe's own portal, which
           never sets the param at all. */}
       {changed || pendingTier ? (
-        <Callout.Root color={pendingTier ? "blue" : "green"}>
-          <Callout.Text>
-            {pendingTier
-              ? `Stripe has confirmed your switch to ${TIER_DISPLAY[pendingTier].name}. It takes effect here the moment Stripe's confirmation event arrives, usually within seconds. Refresh to see it.`
-              : changed === "cancel"
-                ? "Cancellation scheduled with Stripe. Nothing changes until the date below, and you can resume any time before it."
-                : changed === "resume"
-                  ? "Cancellation withdrawn. Your subscription renews as normal."
-                  : "Plan change confirmed with Stripe."}
-          </Callout.Text>
-        </Callout.Root>
+        <LAlert tone={pendingTier ? "accent" : "good"}>
+          {pendingTier
+            ? `Stripe has confirmed your switch to ${TIER_DISPLAY[pendingTier].name}. It takes effect here the moment Stripe's confirmation event arrives, usually within seconds. Refresh to see it.`
+            : changed === "cancel"
+              ? "Cancellation scheduled with Stripe. Nothing changes until the date below, and you can resume any time before it."
+              : changed === "resume"
+                ? "Cancellation withdrawn. Your subscription renews as normal."
+                : "Plan change confirmed with Stripe."}
+        </LAlert>
       ) : null}
 
       {/* ------------------------------------------------- current plan */}
-      <Card>
-        <Flex direction="column" gap="3" p="1">
-          <Flex align="center" gap="2" wrap="wrap">
-            <Heading as="h2" size="5" trim="start">
-              {TIER_DISPLAY[tier].name}
-            </Heading>
-            <Badge color={status.tone}>{status.label}</Badge>
+      <LCard>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-h2 font-bold tracking-tight">{TIER_DISPLAY[tier].name}</h2>
+            <LPill tone={toneToPillTone(status.tone)}>{status.label}</LPill>
             {facts?.interval ? (
-              <Badge color="gray">
+              <LPill tone="neutral">
                 {facts.interval === "monthly" ? "Monthly" : "Annual"} billing
-              </Badge>
+              </LPill>
             ) : null}
-            {facts?.cancelAtPeriodEnd ? <Badge color="amber">Cancels</Badge> : null}
-          </Flex>
+            {facts?.cancelAtPeriodEnd ? <LPill tone="warn">Cancels</LPill> : null}
+          </div>
 
-          <Text size="2" color="gray">
-            {status.meaning}
-          </Text>
+          <p className="text-body-s text-ink-2">{status.meaning}</p>
 
           {noticeText ? (
-            <Text size="2" color={notice.tone} weight={notice.tone === "gray" ? undefined : "medium"}>
+            <p className={cn("text-body-s font-medium", toneToTextClass(notice.tone))}>
               {noticeText}
-            </Text>
+            </p>
           ) : null}
 
           {isComped ? (
-            <Text size="2" color="gray">
+            <p className="text-body-s text-ink-2">
               This account isn&rsquo;t billed through Stripe. Its plan is managed for
               you, so there&rsquo;s nothing to change here.
-            </Text>
+            </p>
           ) : (
             <>
-              <Separator size="4" />
+              <LSeparator />
 
               {/* THE FACTS FROM STRIPE. Every row is omitted rather than
                   guessed when Stripe couldn't be read — a "—" here would
                   read as "you have no card on file", which is a different
                   and much more alarming statement. */}
-              <DataList.Root
-                size="2"
-                orientation={{ initial: "vertical", sm: "horizontal" }}
-              >
-                <DataList.Item>
-                  <DataList.Label minWidth="160px">Includes</DataList.Label>
-                  <DataList.Value>{TIER_DISPLAY[tier].blurb}</DataList.Value>
-                </DataList.Item>
+              <LRows>
+                <LRow>
+                  <span className="text-caption text-ink-3">Includes</span>
+                  <span className="text-body-s">{TIER_DISPLAY[tier].blurb}</span>
+                </LRow>
                 {/* GATED ON THE STATUS, NOT JUST ON STRIPE ANSWERING.
                     subscriptionFacts computes renewalLabel from the item's
                     price × quantity and periodEndIso from the item for ANY
@@ -295,82 +319,72 @@ export default async function BillingPage({
                 {facts?.renewalLabel &&
                 statusIsWritable(account.status) &&
                 !facts.cancelAtPeriodEnd ? (
-                  <DataList.Item>
-                    <DataList.Label minWidth="160px">Next charge</DataList.Label>
-                    <DataList.Value>
-                      <Text className="tnum">{facts.renewalLabel}</Text>
-                    </DataList.Value>
-                  </DataList.Item>
+                  <LRow>
+                    <span className="text-caption text-ink-3">Next charge</span>
+                    <span className="tnum-l text-body-s">{facts.renewalLabel}</span>
+                  </LRow>
                 ) : null}
                 {facts?.periodEndIso ? (
-                  <DataList.Item>
-                    <DataList.Label minWidth="160px">
+                  <LRow>
+                    <span className="text-caption text-ink-3">
                       {!statusIsWritable(account.status)
                         ? "Ended"
                         : facts.cancelAtPeriodEnd
                           ? "Ends"
                           : "Renews"}
-                    </DataList.Label>
-                    <DataList.Value>
-                      <Text className="tnum">{formatDate(facts.periodEndIso)}</Text>
-                    </DataList.Value>
-                  </DataList.Item>
+                    </span>
+                    <span className="tnum-l text-body-s">{formatDate(facts.periodEndIso)}</span>
+                  </LRow>
                 ) : null}
                 {typeof facts?.quantity === "number" ? (
-                  <DataList.Item>
-                    <DataList.Label minWidth="160px">Seats billed</DataList.Label>
-                    <DataList.Value>
-                      <Text className="tnum">{facts.quantity}</Text>
-                    </DataList.Value>
-                  </DataList.Item>
+                  <LRow>
+                    <span className="text-caption text-ink-3">Seats billed</span>
+                    <span className="tnum-l text-body-s">{facts.quantity}</span>
+                  </LRow>
                 ) : null}
                 {facts?.card ? (
-                  <DataList.Item>
-                    <DataList.Label minWidth="160px">Card on file</DataList.Label>
-                    <DataList.Value>
-                      <Text className="tnum">
-                        {`${facts.card.brand} ending ${facts.card.last4} · expires ${String(
-                          facts.card.expMonth
-                        ).padStart(2, "0")}/${facts.card.expYear}`}
-                      </Text>
-                    </DataList.Value>
-                  </DataList.Item>
+                  <LRow>
+                    <span className="text-caption text-ink-3">Card on file</span>
+                    <span className="tnum-l text-body-s">
+                      {`${facts.card.brand} ending ${facts.card.last4} · expires ${String(
+                        facts.card.expMonth
+                      ).padStart(2, "0")}/${facts.card.expYear}`}
+                    </span>
+                  </LRow>
                 ) : null}
-              </DataList.Root>
+              </LRows>
 
               {facts && !facts.ok ? (
-                <Text size="1" color="amber">
-                  {STRIPE_UNREACHABLE}
-                </Text>
+                <p className="text-caption text-warn">{STRIPE_UNREACHABLE}</p>
               ) : facts && !facts.hasSubscription ? (
                 // Read fine; there is simply no subscription attached.
                 // Saying "Stripe is unreachable" here would be a different
                 // and wrong claim.
-                <Text size="1" color="gray">
+                <p className="text-caption text-ink-3">
                   There&rsquo;s no active subscription attached to this account yet, so
                   there&rsquo;s no renewal date or card to show. Pick a plan below.
-                </Text>
+                </p>
               ) : null}
 
-              <Text size="1" color="gray">
+              <p className="text-caption text-ink-3">
                 Plan changes are confirmed with Stripe first and take effect here on
                 Stripe&rsquo;s confirmation, the same path your subscription itself
                 arrives by.
-              </Text>
+              </p>
               {!canEdit ? (
-                <Text size="1" color="gray">
+                <p className="text-caption text-ink-3">
                   Only the account owner can change the plan or billing details.
-                </Text>
+                </p>
               ) : null}
             </>
           )}
-        </Flex>
-      </Card>
+        </div>
+      </LCard>
 
       {!isComped ? (
         <>
           {/* ------------------------------------------------ plan cards */}
-          <Grid columns={{ initial: "1", md: "3" }} gap="4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             {PLAN_TIERS.map((planTier) => {
               const isCurrent = planTier === tier;
               const direction: "Upgrade" | "Downgrade" =
@@ -393,48 +407,45 @@ export default async function BillingPage({
                 : null;
 
               return (
-                <Card key={planTier} variant={isCurrent ? "classic" : "surface"}>
-                  <Flex direction="column" gap="2" p="1" height="100%">
-                    <Flex align="center" justify="between" gap="2">
-                      <Text weight="bold" size="4">
+                <LCard
+                  key={planTier}
+                  className={cn(isCurrent && "border-accent")}
+                >
+                  <div className="flex h-full flex-col gap-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-h3 font-semibold">
                         {TIER_DISPLAY[planTier].name}
-                      </Text>
-                      {isCurrent ? <Badge color="blue">Current plan</Badge> : null}
-                    </Flex>
+                      </h3>
+                      {isCurrent ? <LPill tone="accent">Current plan</LPill> : null}
+                    </div>
                     {/* chargeLabel, not label: for Business this is the
                         ×2 total ("$78/month"), which is what an upgrade to
                         Business actually bills now that changePlan sets
                         quantity to the two-seat minimum (Finding 1 + 2). */}
-                    <Text size="2" color="gray" className="tnum">
+                    <p className="tnum-l text-body-s text-ink-2">
                       {monthly ? monthly.chargeLabel : "—"}
                       {annual ? ` · ${annual.chargeLabel}` : ""}
-                    </Text>
+                    </p>
                     {monthly?.seatNote ? (
-                      <Text size="1" color="gray">
-                        {monthly.seatNote}
-                      </Text>
+                      <p className="text-caption text-ink-3">{monthly.seatNote}</p>
                     ) : null}
-                    <Text size="2" color="gray">
-                      {TIER_DISPLAY[planTier].blurb}
-                    </Text>
-                    <Flex direction="column" gap="1" mt="1" flexGrow="1">
+                    <p className="text-body-s text-ink-2">{TIER_DISPLAY[planTier].blurb}</p>
+                    <div className="mt-1 flex flex-1 flex-col gap-1">
                       {previousTier ? (
-                        <Text size="1" weight="bold" color="gray">
+                        <p className="text-caption font-semibold text-ink-3">
                           Everything in {TIER_DISPLAY[previousTier].name}, plus:
-                        </Text>
+                        </p>
                       ) : (
-                        <Text size="1" weight="bold" color="gray">
-                          Includes:
-                        </Text>
+                        <p className="text-caption font-semibold text-ink-3">Includes:</p>
                       )}
                       {added.map((feature) => (
-                        <Text size="1" color="gray" key={feature}>
+                        <p className="text-caption text-ink-3" key={feature}>
                           &bull; {FEATURES[feature].label}
                           {FEATURES[feature].comingSoon ? " (coming soon)" : ""}
-                        </Text>
+                        </p>
                       ))}
-                    </Flex>
-                    <Flex direction="column" gap="2" mt="2">
+                    </div>
+                    <div className="mt-2 flex flex-col gap-2">
                       {needsResubscribe ? (
                         // No live subscription to switch or update — every
                         // card, including the one matching the tier on
@@ -463,202 +474,175 @@ export default async function BillingPage({
                           disabled={!canEdit}
                         />
                       )}
-                    </Flex>
-                  </Flex>
-                </Card>
+                    </div>
+                  </div>
+                </LCard>
               );
             })}
-          </Grid>
+          </div>
 
           {/* ----------------------------------------- feature comparison */}
-          <Card>
-            <Flex direction="column" gap="2" p="1">
-              <Text weight="bold" size="3">
-                What each plan includes
-              </Text>
-              <Text size="2" color="gray">
+          <LCard>
+            <div className="flex flex-col gap-2">
+              <h3 className="text-h3 font-semibold">What each plan includes</h3>
+              <p className="text-body-s text-ink-2">
                 Every row below is read from the same table the app enforces against, so
                 this cannot drift from what your plan actually opens. Your plan&rsquo;s
                 column is marked.
-              </Text>
-              <Table.Root variant="surface" size="1">
-                {/* VisuallyHidden is a Radix COMPONENT (inline styles);
-                    there is no `rt-VisuallyHidden` class in its
-                    stylesheet, so that className rendered the caption as
-                    visible centred text above the table. */}
+              </p>
+              <LTable>
                 <caption>
-                  <VisuallyHidden>Features included in each plan</VisuallyHidden>
+                  <span className="sr-only">Features included in each plan</span>
                 </caption>
-                <Table.Header>
-                  <Table.Row>
-                    <Table.ColumnHeaderCell>Feature</Table.ColumnHeaderCell>
+                <thead>
+                  <tr>
+                    <LTh>Feature</LTh>
                     {PLAN_TIERS.map((planTier) => (
-                      <Table.ColumnHeaderCell key={planTier} justify="center">
-                        <Flex align="center" justify="center" gap="1" wrap="wrap">
+                      <LTh key={planTier} className="text-center">
+                        <span className="inline-flex flex-wrap items-center justify-center gap-1">
                           {TIER_DISPLAY[planTier].name}
-                          {planTier === tier ? <Badge color="blue">Yours</Badge> : null}
-                        </Flex>
-                      </Table.ColumnHeaderCell>
+                          {planTier === tier ? <LPill tone="accent">Yours</LPill> : null}
+                        </span>
+                      </LTh>
                     ))}
-                  </Table.Row>
-                </Table.Header>
-                <Table.Body>
+                  </tr>
+                </thead>
+                <tbody>
                   {matrix.map((row) => (
-                    <Table.Row key={row.feature}>
-                      <Table.RowHeaderCell>
-                        <Text size="2">{row.label}</Text>
+                    <tr key={row.feature}>
+                      <th
+                        scope="row"
+                        className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                      >
+                        {row.label}
                         {row.comingSoon ? (
-                          <Text size="1" color="gray">
-                            {" "}
-                            (coming soon)
-                          </Text>
+                          <span className="text-caption text-ink-3"> (coming soon)</span>
                         ) : null}
-                      </Table.RowHeaderCell>
+                      </th>
                       {PLAN_TIERS.map((planTier) => (
-                        <Table.Cell key={planTier} justify="center">
+                        <LTd key={planTier} className="text-center">
                           {/* A word, not a tick glyph: a screen reader
                               reading a row of unlabelled check marks
                               conveys nothing, and "—" and "✓" look
                               identical at a glance in a dense table. */}
-                          <Text
-                            size="1"
-                            color={row.availability[planTier] ? "green" : "gray"}
+                          <span
+                            className={cn(
+                              "text-caption",
+                              row.availability[planTier] ? "text-good" : "text-ink-3"
+                            )}
                           >
                             {row.availability[planTier] ? "Included" : "—"}
-                          </Text>
-                        </Table.Cell>
+                          </span>
+                        </LTd>
                       ))}
-                    </Table.Row>
+                    </tr>
                   ))}
-                </Table.Body>
-              </Table.Root>
-            </Flex>
-          </Card>
+                </tbody>
+              </LTable>
+            </div>
+          </LCard>
 
           {/* ------------------------------------------------ downgrading */}
-          <Card>
-            <Flex direction="column" gap="2" p="1">
-              <Text weight="bold" size="3">
-                Downgrading
-              </Text>
-              <Text size="2" color="gray">
-                {visibleDowngradeNote()}
-              </Text>
-            </Flex>
-          </Card>
+          <LCard>
+            <div className="flex flex-col gap-2">
+              <h3 className="text-h3 font-semibold">Downgrading</h3>
+              <p className="text-body-s text-ink-2">{visibleDowngradeNote()}</p>
+            </div>
+          </LCard>
 
           {/* --------------------------------------- receipts and payment */}
-          <Grid columns={{ initial: "1", md: "2" }} gap="4">
-            <Card>
-              <Flex direction="column" gap="2" p="1">
-                <Text weight="bold" size="3">
-                  Receipts
-                </Text>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <LCard>
+              <div className="flex flex-col gap-2">
+                <h3 className="text-h3 font-semibold">Receipts</h3>
                 {history && !history.ok ? (
-                  <Text size="2" color="amber">
+                  <p className="text-body-s text-warn">
                     Couldn&rsquo;t load your receipts just now. This is not a statement
                     that you have none. The full archive is always in the billing
                     portal.
-                  </Text>
+                  </p>
                 ) : history && history.rows.length === 0 ? (
-                  // Through EmptyState, like every other empty region in
-                  // the product: a heading that lands in the outline, one
+                  // Through LEmpty, like every other empty region on
+                  // Ledger: a heading that lands in the outline, one
                   // sentence, and a way out. The error branch above is
                   // deliberately NOT routed through it — a failed read is
-                  // not an empty state (see components/ui/empty-state.tsx).
-                  <EmptyState
-                    title="No invoices yet"
-                    action={<BillingPortalButton disabled={!canEdit} />}
-                  >
+                  // not an empty state.
+                  <LEmpty title="No invoices yet" action={<BillingPortalButton disabled={!canEdit} />}>
                     Receipts appear here once Stripe has charged you, starting with the
                     first one after your trial converts. The billing portal always holds
                     the full archive.
-                  </EmptyState>
+                  </LEmpty>
                 ) : (
-                  <Table.Root variant="ghost" size="1">
+                  <LTable>
                     <caption>
-                      <VisuallyHidden>Recent invoices</VisuallyHidden>
+                      <span className="sr-only">Recent invoices</span>
                     </caption>
-                    <Table.Header>
-                      <Table.Row>
-                        <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
-                        <Table.ColumnHeaderCell>Invoice</Table.ColumnHeaderCell>
-                        <Table.ColumnHeaderCell justify="end">
-                          Amount
-                        </Table.ColumnHeaderCell>
-                        <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
-                      </Table.Row>
-                    </Table.Header>
-                    <Table.Body>
+                    <thead>
+                      <tr>
+                        <LTh>Date</LTh>
+                        <LTh>Invoice</LTh>
+                        <LTh numeric>Amount</LTh>
+                        <LTh>Status</LTh>
+                      </tr>
+                    </thead>
+                    <tbody>
                       {(history?.rows ?? []).map((row) => (
-                        <Table.Row key={row.id}>
-                          <Table.Cell>
-                            <Text size="1" className="tnum">
-                              {formatDate(row.createdIso)}
-                            </Text>
-                          </Table.Cell>
-                          <Table.Cell>
+                        <tr key={row.id}>
+                          <LTd>
+                            <span className="tnum-l">{formatDate(row.createdIso)}</span>
+                          </LTd>
+                          <LTd>
                             {row.hostedUrl ? (
-                              <RadixLink
+                              <a
                                 href={row.hostedUrl}
-                                size="1"
                                 target="_blank"
                                 rel="noopener noreferrer"
+                                className="text-accent hover:underline"
                               >
                                 {row.number}
-                              </RadixLink>
+                              </a>
                             ) : (
-                              <Text size="1" color="gray">
-                                {row.number}
-                              </Text>
+                              <span className="text-ink-3">{row.number}</span>
                             )}
-                          </Table.Cell>
-                          <Table.Cell justify="end">
-                            <Text size="1" className="tnum">
-                              {row.amountLabel ?? "—"}
-                            </Text>
-                          </Table.Cell>
-                          <Table.Cell>
-                            <Text size="1" color="gray">
-                              {row.status}
-                            </Text>
-                          </Table.Cell>
-                        </Table.Row>
+                          </LTd>
+                          <LTd numeric>{row.amountLabel ?? "—"}</LTd>
+                          <LTd>
+                            <span className="text-ink-2">{row.status}</span>
+                          </LTd>
+                        </tr>
                       ))}
-                    </Table.Body>
-                  </Table.Root>
+                    </tbody>
+                  </LTable>
                 )}
-                <Text size="1" color="gray">
+                <p className="text-caption text-ink-3">
                   Invoice numbers link to Stripe&rsquo;s hosted receipt, where the PDF
                   is. Older invoices than these are in the portal.
-                </Text>
-              </Flex>
-            </Card>
+                </p>
+              </div>
+            </LCard>
 
-            <Card>
-              <Flex direction="column" gap="2" p="1">
-                <Text weight="bold" size="3">
-                  Payment details
-                </Text>
-                <Text size="2" color="gray">
+            <LCard>
+              <div className="flex flex-col gap-2">
+                <h3 className="text-h3 font-semibold">Payment details</h3>
+                <p className="text-body-s text-ink-2">
                   Your card, your billing address, and the full invoice archive are
                   handled in Stripe&rsquo;s secure billing portal. We never see your
                   card number.
-                </Text>
-                <Flex>
+                </p>
+                <div>
                   <BillingPortalButton disabled={!canEdit} />
-                </Flex>
+                </div>
 
-                <Separator size="4" my="2" />
+                <LSeparator />
 
-                <Text weight="bold" size="3">
+                <p className="text-lead font-bold">
                   {facts?.cancelAtPeriodEnd ? "Resume" : "Cancel"}
-                </Text>
-                <Text size="2" color="gray">
+                </p>
+                <p className="text-body-s text-ink-2">
                   {facts?.cancelAtPeriodEnd
                     ? "Your subscription is set to end at the close of the current period. Resuming withdraws that: no new charge, no gap, and the date above goes back to being a renewal."
                     : "Cancelling stops the NEXT charge. You keep everything you've paid for until the end of the current period. After that, the account goes read-only: every record stays viewable and exportable, and nothing is deleted."}
-                </Text>
+                </p>
                 <CancelResumeButton
                   cancelling={facts?.cancelAtPeriodEnd ?? false}
                   // Refused unless we actually READ the flag this button
@@ -673,30 +657,30 @@ export default async function BillingPage({
                   }
                 />
                 {facts && !facts.ok ? (
-                  <Text size="1" color="amber">
+                  <p className="text-caption text-warn">
                     Cancel and resume are unavailable while we can&rsquo;t read your
                     subscription from Stripe. Use the billing portal above.
-                  </Text>
+                  </p>
                 ) : needsResubscribe ? (
-                  <Text size="1" color="gray">
+                  <p className="text-caption text-ink-3">
                     This subscription has ended, so there&rsquo;s nothing to cancel or
                     resume. Pick a plan above to resubscribe.
-                  </Text>
+                  </p>
                 ) : null}
-              </Flex>
-            </Card>
-          </Grid>
+              </div>
+            </LCard>
+          </div>
 
-          <Text size="1" color="gray">
+          <p className="text-caption text-ink-3">
             Changing what your own clients pay you is a different thing entirely.
             That&rsquo;s in{" "}
-            <RadixLink asChild>
-              <NextLink href="/settings">Settings</NextLink>
-            </RadixLink>
+            <NextLink href="/settings" className="text-accent hover:underline">
+              Settings
+            </NextLink>
             , under your business details.
-          </Text>
+          </p>
         </>
       ) : null}
-    </PageShell>
+    </LPageShell>
   );
 }

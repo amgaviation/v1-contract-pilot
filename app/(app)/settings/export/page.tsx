@@ -1,7 +1,7 @@
 import NextLink from "next/link";
-import { Button, Card, Flex, Heading, Link as RadixLink, Text } from "@/components/ui";
+import { LCard, lButtonClass } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
-import PageShell from "../../page-shell";
 
 export const metadata = { title: "Export your data" };
 
@@ -16,7 +16,8 @@ export const metadata = { title: "Export your data" };
  * routes at /settings/export/<entity> (same pattern as the logbook's
  * download button) — those routes page past the Data API's silent
  * 1000-row cap and fail loudly rather than ever producing a truncated
- * file that looks complete.
+ * file that looks complete. Reskin only: the integration itself (which
+ * routes exist, what each streams) is untouched.
  */
 
 type ExportCard = {
@@ -183,86 +184,69 @@ export default async function ExportPage() {
   await requireEntitlement("account_export", "/settings/export");
 
   return (
-    <PageShell
+    <LPageShell
       title="Export your data"
       subtitle="One CSV per record type: every business, compliance and accounting record this product holds for you, in files a spreadsheet can open."
     >
-      <Flex direction="column" gap="3">
-        <Text size="2" color="gray">
+      <div className="flex flex-col gap-3">
+        <p className="text-body-s text-ink-2">
           Each download is complete: exports are read straight from your live
           records with no row limit, and a failed read produces a failed
           download rather than a file with rows quietly missing. Amounts are in
           US dollars, dates are YYYY-MM-DD.
-        </Text>
+        </p>
 
         {EXPORTS.map((item) => (
-          <Card size="3" key={item.href}>
-            <Flex
-              direction={{ initial: "column", sm: "row" }}
-              justify="between"
-              align={{ initial: "start", sm: "center" }}
-              gap="3"
-            >
-              <Flex direction="column" gap="1">
-                <Heading as="h2" size="4">
-                  {item.title}
-                </Heading>
-                <Text as="div" size="2" color="gray">
-                  {item.description}
-                </Text>
-              </Flex>
-              <Flex flexShrink="0">
+          <LCard key={item.href}>
+            <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+              <div className="flex flex-col gap-1">
+                <h2 className="text-h3 font-semibold text-ink">{item.title}</h2>
+                <p className="text-body-s text-ink-2">{item.description}</p>
+              </div>
+              <div className="shrink-0">
                 {/* Plain <a>, not a client-side link: it's a file download —
                     same pattern as the logbook's download button. */}
-                <Button asChild variant="outline">
-                  <a href={item.href} download>
-                    Download CSV
-                  </a>
-                </Button>
-              </Flex>
-            </Flex>
-          </Card>
-        ))}
-
-        <Card size="3">
-          <Flex
-            direction={{ initial: "column", sm: "row" }}
-            justify="between"
-            align={{ initial: "start", sm: "center" }}
-            gap="3"
-          >
-            <Flex direction="column" gap="1">
-              <Heading as="h2" size="4">
-                Logbook
-              </Heading>
-              <Text as="div" size="2" color="gray">
-                Your flight time already has its own full CSV export, the same
-                download as the button on the{" "}
-                <RadixLink asChild>
-                  <NextLink href="/logbook">Logbook</NextLink>
-                </RadixLink>{" "}
-                page.
-              </Text>
-            </Flex>
-            <Flex flexShrink="0">
-              <Button asChild variant="outline">
-                <a href="/logbook/export" download>
+                <a href={item.href} download className={lButtonClass({ variant: "outline" })}>
                   Download CSV
                 </a>
-              </Button>
-            </Flex>
-          </Flex>
-        </Card>
+              </div>
+            </div>
+          </LCard>
+        ))}
 
-        <Text size="1" color="gray">
+        <LCard>
+          <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-h3 font-semibold text-ink">Logbook</h2>
+              <p className="text-body-s text-ink-2">
+                Your flight time already has its own full CSV export, the same
+                download as the button on the{" "}
+                <NextLink
+                  href="/logbook"
+                  className="font-medium text-accent underline-offset-2 hover:underline"
+                >
+                  Logbook
+                </NextLink>{" "}
+                page.
+              </p>
+            </div>
+            <div className="shrink-0">
+              <a href="/logbook/export" download className={lButtonClass({ variant: "outline" })}>
+                Download CSV
+              </a>
+            </div>
+          </div>
+        </LCard>
+
+        <p className="text-caption text-ink-3">
           Not included as files: receipt images and document scans. The
           expenses and documents CSVs say whether a file is on record; the
           files themselves stay downloadable one at a time from their own
           pages. Also not included: internal bookkeeping trails with no
           data of your own in them, such as bank-import batch/source-file records
           and payment-reminder send logs.
-        </Text>
-      </Flex>
-    </PageShell>
+        </p>
+      </div>
+    </LPageShell>
   );
 }

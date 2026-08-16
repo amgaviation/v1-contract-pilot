@@ -1,12 +1,11 @@
 import NextLink from "next/link";
-import { Box, Button, Callout, Card, Flex, Table, Text } from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { LAlert, LCard, LTable, LTh, lButtonClass } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import { loadOptionChoices } from "@/lib/custom-options-read";
-import PageShell from "../../page-shell";
 import TransactionRow, {
   type DuplicateCandidate,
   type TransactionRowData,
@@ -90,18 +89,14 @@ export default async function TransactionsPage() {
     // no help to the pilot reading it. friendlyDbError logs the detail
     // server-side and returns a sentence instead; see lib/db-errors.ts.
     return (
-      <PageShell title="Review transactions">
-        <Card size="3">
-          <Callout.Root color="red">
-            <Callout.Icon>
-              <ExclamationTriangleIcon />
-            </Callout.Icon>
-            <Callout.Text>
-              {friendlyDbError(error, "bank_transactions.select")}
-            </Callout.Text>
-          </Callout.Root>
-        </Card>
-      </PageShell>
+      <LPageShell title="Review transactions">
+        <LCard>
+          <LAlert tone="crit" className="flex items-start gap-2">
+            <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+            <span>{friendlyDbError(error, "bank_transactions.select")}</span>
+          </LAlert>
+        </LCard>
+      </LPageShell>
     );
   }
 
@@ -135,7 +130,7 @@ export default async function TransactionsPage() {
   // queue costs two round trips rather than one per row.
   //
   // Advisory, never blocking. Two identical same-day charges are real —
-  // two crew meals at the same restaurant, a toll charged both ways — and
+  // two crew meals at the same restaurant, a toll charged both ways —and
   // nothing downstream can tell those from a duplicate either.
   const txns = (txnData ?? []) as TxnRow[];
   const DUP_WINDOW_DAYS = 4;
@@ -227,79 +222,97 @@ export default async function TransactionsPage() {
   );
 
   return (
-    <PageShell
+    <LPageShell
       title="Review imported transactions"
       subtitle="Nothing here is in your books yet. Pick a category and treatment for each transaction to turn it into an expense, or dismiss it if it isn't one."
     >
       {pickersDegraded ? (
-        <Callout.Root color="amber" mb="3">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>
+        <LAlert tone="warn" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+          <span>
             Couldn&rsquo;t load your trips or bank accounts, so the Trip
             picker below is empty and the account label may be blank on
             some rows. Reload before confirming these if you need to
             assign one to a trip.
-          </Callout.Text>
-        </Callout.Root>
+          </span>
+        </LAlert>
       ) : null}
 
       {duplicateCheckFailed ? (
-        <Callout.Root color="amber" mb="3">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>
+        <LAlert tone="warn" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+          <span>
             We couldn&rsquo;t check these against the expenses you&rsquo;ve already
             filed, so none of them are flagged as possible duplicates. Check for
             yourself before confirming. A charge you already photographed a receipt
             for would otherwise be billed twice.
-          </Callout.Text>
-        </Callout.Root>
+          </span>
+        </LAlert>
       ) : null}
 
       {rows.length === 0 ? (
-        <Flex direction="column" align="center" gap="3" py="6">
-          <Text size="4" weight="bold">
-            Nothing to review
-          </Text>
-          <Text size="2" color="gray" align="center">
+        <div className="flex flex-col items-center gap-3 py-6 text-center">
+          <p className="text-h3 font-bold">Nothing to review</p>
+          <p className="text-body-s text-ink-2">
             Import a bank statement and its transactions land here. Pick
             a category and treatment for each one to turn it into an
             expense.
-          </Text>
-          <Button asChild>
-            <NextLink href="/expenses/import">Import a statement</NextLink>
-          </Button>
-        </Flex>
+          </p>
+          <NextLink href="/expenses/import" className={lButtonClass({ variant: "primary" })}>
+            Import a statement
+          </NextLink>
+        </div>
       ) : (
-        <Box style={{ overflowX: "auto" }}>
-          <Table.Root variant="surface">
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Description</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Amount</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell></Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell></Table.ColumnHeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
+        <div className="overflow-x-auto">
+          <LTable>
+            <thead>
+              <tr>
+                <LTh>Date</LTh>
+                <LTh>Description</LTh>
+                <LTh numeric>Amount</LTh>
+                <LTh />
+                <LTh />
+              </tr>
+            </thead>
+            <tbody>
               {rows.map((t) => (
                 <TransactionRow key={t.id} txn={t} trips={trips} categories={categories} />
               ))}
-            </Table.Body>
-          </Table.Root>
+            </tbody>
+          </LTable>
           {rows.length === TXN_LIMIT ? (
-            <Text size="1" color="gray">
+            <p className="text-caption text-ink-3">
               Showing the first {TXN_LIMIT.toLocaleString()} unreviewed transactions.
-            </Text>
+            </p>
           ) : null}
-        </Box>
+        </div>
       )}
 
       <DismissedQueue rows={dismissedRows} />
-    </PageShell>
+    </LPageShell>
+  );
+}
+
+/* ── Inline icon ───────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

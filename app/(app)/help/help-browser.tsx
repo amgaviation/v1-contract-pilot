@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { Box, Card, Flex, Heading, Text, TextField } from "@/components/ui";
+import NextLink from "next/link";
+import { LCard } from "@/components/ledger";
+import { LInput } from "@/components/ledger/forms";
 import { HELP_SECTIONS, searchHelpSections } from "@/lib/help/guide";
 
 /**
@@ -30,13 +31,13 @@ export default function HelpBrowser() {
   const searching = query.trim().length > 0;
 
   return (
-    <Flex direction="column" gap="5">
+    <div className="flex flex-col gap-5">
       {/* The search sits at the top and takes focus on load: someone who
           opened Help has a question already, and making them click the box
           first is a step for nothing. */}
-      <Flex direction="column" gap="2">
-        <TextField.Root
-          size="3"
+      <div className="flex flex-col gap-2">
+        <LInput
+          className="h-11 text-lead"
           // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
           value={query}
@@ -47,73 +48,64 @@ export default function HelpBrowser() {
         />
         {/* Announced, not just shown: a screen-reader user typing into the
             box otherwise gets no feedback that the list below changed. */}
-        <Text size="1" color="gray" role="status" aria-live="polite">
+        <p className="text-caption text-ink-3" role="status" aria-live="polite">
           {searching
             ? `${total} ${total === 1 ? "result" : "results"} for “${query.trim()}”`
             : `${total} topics`}
-        </Text>
-      </Flex>
+        </p>
+      </div>
 
       {sections.length === 0 ? (
-        <Card>
-          <Flex direction="column" gap="2" p="1">
-            <Text size="2">Nothing in the guide matches that.</Text>
-            <Text size="1" color="gray">
-              Try a single word: the name of a screen, or the thing you are looking
-              at. Every word you type has to appear somewhere in a topic for it to
-              show.
-            </Text>
-          </Flex>
-        </Card>
+        <LCard className="flex flex-col gap-2">
+          <p className="text-body-s text-ink">Nothing in the guide matches that.</p>
+          <p className="text-caption text-ink-3">
+            Try a single word: the name of a screen, or the thing you are looking
+            at. Every word you type has to appear somewhere in a topic for it to
+            show.
+          </p>
+        </LCard>
       ) : (
         sections.map((section) => (
-          <Flex key={section.id} direction="column" gap="3">
-            <Heading as="h2" size="3">
-              {section.title}
-            </Heading>
+          <div key={section.id} className="flex flex-col gap-3">
+            <h2 className="text-h3 font-semibold text-ink">{section.title}</h2>
 
             {section.topics.map((topic) => (
-              <Card key={topic.id} id={topic.id}>
-                <Flex direction="column" gap="2" p="1">
-                  <Flex justify="between" align="baseline" gap="3" wrap="wrap">
-                    <Heading as="h3" size="4">
-                      {topic.title}
-                    </Heading>
-                    {/* The guide's job is to end with the pilot on the screen
-                        they were asking about, not with them navigating back
-                        to find it. */}
-                    {topic.href ? (
-                      <Link href={topic.href}>
-                        <Text size="1">Open</Text>
-                      </Link>
-                    ) : null}
-                  </Flex>
+              <LCard key={topic.id} id={topic.id} className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-baseline justify-between gap-3">
+                  <h3 className="text-lead font-semibold text-ink">{topic.title}</h3>
+                  {/* The guide's job is to end with the pilot on the screen
+                      they were asking about, not with them navigating back
+                      to find it. */}
+                  {topic.href ? (
+                    <NextLink
+                      href={topic.href}
+                      className="text-caption font-medium text-accent hover:underline"
+                    >
+                      Open
+                    </NextLink>
+                  ) : null}
+                </div>
 
-                  <Text size="2" color="gray">
-                    {topic.summary}
-                  </Text>
+                <p className="text-body-s text-ink-2">{topic.summary}</p>
 
-                  {topic.body.map((paragraph, i) => (
-                    <Text key={i} size="2" as="p">
-                      {paragraph}
-                    </Text>
-                  ))}
-                </Flex>
-              </Card>
+                {topic.body.map((paragraph, i) => (
+                  <p key={i} className="text-body-s text-ink">
+                    {paragraph}
+                  </p>
+                ))}
+              </LCard>
             ))}
-          </Flex>
+          </div>
         ))
       )}
 
       {/* Rendered only when browsing. During a search it would be one more
           thing between the query and the results. */}
       {!searching ? (
-        <Box>
-          <Text size="1" color="gray">
-            {HELP_SECTIONS.length} sections, {total} topics.
-          </Text>
-        </Box>
+        <p className="text-caption text-ink-3">
+          {HELP_SECTIONS.length} sections, {total} topics.
+        </p>
       ) : null}
-    </Flex>
+    </div>
   );
 }

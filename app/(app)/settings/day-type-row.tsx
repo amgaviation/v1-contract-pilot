@@ -1,7 +1,10 @@
 "use client";
 
 import { useActionState, useEffect, useState, useTransition } from "react";
-import { AlertDialog, Box, Button, Card, Flex, Grid, Select, Switch, Text, TextField } from "@/components/ui";
+import { LButton, LCard, LSwitch } from "@/components/ledger";
+import { LField, LInput, LSelect } from "@/components/ledger/forms";
+import { LConfirmDialog } from "@/components/ledger/dialog";
+import { cn } from "@/lib/ledger/cn";
 import { centsToInput } from "@/lib/format";
 import { unitsToInput } from "@/app/(app)/trips/day-utils";
 import type { Database } from "@/lib/supabase/database.types";
@@ -80,15 +83,13 @@ export default function DayTypeRow({
 
   const archived = Boolean(dayType.archived_at);
 
-  // Radix's Select.Root always renders its posting <select> with
-  // `defaultValue`, never `value` (@radix-ui/react-select's
-  // SelectBubbleInput) — so it is uncontrolled from React's point of view
-  // regardless of what Select.Root is given, and it's what the browser
-  // actually posts as long as `name` stays on it. React 19's post-action
-  // form.reset() restores it to its mount-time option even on a rejected
-  // submit — silently changing a day type's invoice line type to whatever
-  // it was when the row mounted. Fixed by dropping `name` and posting the
-  // real value from a controlled hidden input instead.
+  // LSelect wraps a REAL <select>, but the same fix day-type-row's
+  // predecessor needed still applies: React 19's post-action form.reset()
+  // restores every control in the form to its mount-time state on EVERY
+  // dispatch, error path included, and a controlled `value` with no
+  // `name` on the select itself can't be trusted to survive that — so the
+  // select stays name-less and controlled for display, and the actual
+  // posted value rides a controlled hidden input instead.
   const [invoiceLineType, setInvoiceLineType] = useState(() =>
     initial("invoice_line_type", dayType.invoice_line_type)
   );
@@ -99,177 +100,164 @@ export default function DayTypeRow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitted]);
 
+  const billsAsId = `bills-as-${dayType.id}`;
+
   return (
-    <Card>
+    <LCard>
       <form action={formAction}>
-        <Flex direction="column" gap="3" p="1">
+        <div className="flex flex-col gap-3">
           <input type="hidden" name="id" value={dayType.id} />
           <input type="hidden" name="confirm_reprice" value={awaitingConfirm ? "1" : ""} />
 
-          <Flex justify="between" align="center" wrap="wrap" gap="2">
-            <Text size="1" color="gray" weight="bold" style={{ textTransform: "uppercase" }}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-caption font-bold uppercase tracking-wide text-ink-3">
               {dayType.is_builtin ? "Starting day type" : "Custom day type"}
-            </Text>
+            </p>
             {archived ? (
-              <Text size="1" color="gray">
+              <p className="text-caption text-ink-3">
                 Archived. Hidden from pickers, but still used on past trips
-              </Text>
+              </p>
             ) : null}
-          </Flex>
+          </div>
 
-          <Grid columns={{ initial: "2", md: "12" }} gap="3" align="start">
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
-              <Text size="1" color="gray">
-                Label
-              </Text>
-              <TextField.Root
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-12">
+            <LField label="Label" htmlFor={`label-${dayType.id}`} className="md:col-span-3">
+              <LInput
+                id={`label-${dayType.id}`}
                 name="label"
                 required
                 disabled={!canEdit}
                 defaultValue={initial("label", dayType.label)}
               />
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }} justify="center">
-              <Text as="label" size="2" color="gray">
-                <Flex gap="2" align="center" mt="4">
-                  <Switch
-                    name="billable"
-                    value="on"
-                    disabled={!canEdit}
-                    defaultChecked={checked("billable", dayType.billable)}
-                    aria-label="Billable"
-                  />
-                  Billable
-                </Flex>
-              </Text>
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }} justify="center">
-              <Text as="label" size="2" color="gray">
-                <Flex gap="2" align="center" mt="4">
-                  <Switch
-                    name="counts_for_per_diem"
-                    value="on"
-                    disabled={!canEdit}
-                    defaultChecked={checked("counts_for_per_diem", dayType.counts_for_per_diem)}
-                    aria-label="Counts for per diem"
-                  />
-                  Counts for per diem
-                </Flex>
-              </Text>
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
-              <Text size="1" color="gray">
-                Default rate (USD)
-              </Text>
-              <TextField.Root
+            </LField>
+
+            <div className="flex items-center gap-2 md:col-span-2 md:self-end md:pb-2">
+              <LSwitch
+                name="billable"
+                value="on"
+                disabled={!canEdit}
+                defaultChecked={checked("billable", dayType.billable)}
+                aria-label="Billable"
+              />
+              <span className="text-body-s text-ink-2">Billable</span>
+            </div>
+
+            <div className="flex items-center gap-2 md:col-span-3 md:self-end md:pb-2">
+              <LSwitch
+                name="counts_for_per_diem"
+                value="on"
+                disabled={!canEdit}
+                defaultChecked={checked("counts_for_per_diem", dayType.counts_for_per_diem)}
+                aria-label="Counts for per diem"
+              />
+              <span className="text-body-s text-ink-2">Counts for per diem</span>
+            </div>
+
+            <LField
+              label="Default rate (USD)"
+              htmlFor={`rate-${dayType.id}`}
+              hint="Blank = no rate agreed"
+              className="md:col-span-2"
+            >
+              <LInput
+                id={`rate-${dayType.id}`}
                 name="default_rate"
                 inputMode="decimal"
                 disabled={!canEdit}
+                className="tnum-l"
                 defaultValue={initial("default_rate", centsToInput(dayType.default_rate_cents))}
               />
-              <Text size="1" color="gray">
-                Blank = no rate agreed
-              </Text>
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
-              <Text size="1" color="gray">
-                Default rate fraction
-              </Text>
-              <TextField.Root
+            </LField>
+
+            <LField
+              label="Default rate fraction"
+              htmlFor={`units-${dayType.id}`}
+              hint="0.5 = half rate. Blank = full rate"
+              className="md:col-span-2"
+            >
+              <LInput
+                id={`units-${dayType.id}`}
                 name="default_units"
                 inputMode="decimal"
                 placeholder="1"
                 disabled={!canEdit}
+                className="tnum-l"
                 defaultValue={initial(
                   "default_units",
                   dayType.default_units === null ? "" : unitsToInput(dayType.default_units)
                 )}
               />
-              <Text size="1" color="gray">
-                0.5 = half rate. Blank = full rate
-              </Text>
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
-              <Text size="1" color="gray">
-                Order
-              </Text>
-              <TextField.Root
+            </LField>
+
+            <LField
+              label="Order"
+              htmlFor={`order-${dayType.id}`}
+              hint="Lower shows first"
+              className="md:col-span-2"
+            >
+              <LInput
+                id={`order-${dayType.id}`}
                 type="number"
                 name="sort_order"
                 disabled={!canEdit}
+                className="tnum-l"
                 defaultValue={initial("sort_order", dayType.sort_order)}
               />
-              <Text size="1" color="gray">
-                Lower shows first
-              </Text>
-            </Flex>
+            </LField>
 
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 5" }}>
-              <Text as="label" size="1" color="gray" id={`bills-as-label-${dayType.id}`}>
-                Bills as
-              </Text>
-              <Select.Root
+            <LField label="Bills as" htmlFor={billsAsId} className="md:col-span-5">
+              <LSelect
+                id={billsAsId}
                 disabled={!canEdit}
                 value={invoiceLineType}
-                onValueChange={setInvoiceLineType}
+                onChange={(e) => setInvoiceLineType(e.target.value)}
               >
-                <Select.Trigger aria-labelledby={`bills-as-label-${dayType.id}`} />
-                <Select.Content>
-                  {LINE_TYPE_OPTIONS.map((option) => (
-                    <Select.Item key={option.value} value={option.value}>
-                      {option.label}
-                    </Select.Item>
-                  ))}
-                </Select.Content>
-              </Select.Root>
+                {LINE_TYPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </LSelect>
               <input type="hidden" name="invoice_line_type" value={invoiceLineType} />
-            </Flex>
-            <Flex direction="column" justify="center" gridColumn={{ md: "span 7" }}>
-              <Text size="1" color="gray">
+            </LField>
+            <div className="flex flex-col justify-center md:col-span-7">
+              <p className="text-body-s text-ink-3">
                 The name is yours to change. Which invoice line it bills as is fixed, because the
                 invoice&rsquo;s own billing rules depend on it.
-              </Text>
-            </Flex>
-          </Grid>
+              </p>
+            </div>
+          </div>
 
           <div role="alert" aria-live="polite">
             {state.error ? (
-              <Text size="1" color="red">
-                {state.error}
-              </Text>
+              <p className="text-caption font-medium text-crit">{state.error}</p>
             ) : awaitingConfirm ? (
               // F7: not saved yet — naming the consequence rather than
               // blocking it. Save again (the hidden confirm_reprice field is
               // now "1") to apply the change anyway.
-              <Text size="1" color="amber">
+              <p className="text-caption font-medium text-warn">
                 Changing Billable or Bills as will change how already-recorded days bill on{" "}
                 {state.affectedTripCount}{" "}
                 {state.affectedTripCount === 1 ? "trip that hasn't" : "trips that haven't"} been
                 invoiced yet. Save again to apply it anyway.
-              </Text>
+              </p>
             ) : state.saved ? (
-              <Text size="1" color="green">
-                Saved.
-              </Text>
+              <p className="text-caption font-medium text-good">Saved.</p>
             ) : null}
-            {rowError ? (
-              <Text as="div" size="1" color="red">
-                {rowError}
-              </Text>
-            ) : null}
+            {rowError ? <p className="text-caption font-medium text-crit">{rowError}</p> : null}
           </div>
 
           {canEdit ? (
-            <Flex gap="3" wrap="wrap">
-              <Button type="submit" size="1" disabled={pending}>
+            <div className="flex flex-wrap gap-3">
+              <LButton type="submit" size="sm" disabled={pending}>
                 {pending ? "Saving…" : awaitingConfirm ? "Save anyway" : "Save"}
-              </Button>
-              <Button
+              </LButton>
+              <LButton
                 type="button"
                 variant="outline"
-                color={archived ? undefined : "amber"}
-                size="1"
+                size="sm"
                 disabled={archiving}
+                className={cn(!archived && "border-warn text-warn hover:bg-warn-soft")}
                 onClick={() =>
                   startArchive(async () => {
                     setRowError(null);
@@ -279,50 +267,61 @@ export default function DayTypeRow({
                 }
               >
                 {archiving ? "Working…" : archived ? "Restore" : "Archive"}
-              </Button>
+              </LButton>
               {/* F1: never offer Delete on a built-in row — Archive/Restore
                   already do everything a pilot actually wants here, and
                   unlike delete it's reversible. The database rejects a
                   built-in delete outright (23514), but the control shouldn't
                   exist to invite trying. */}
               {dayType.is_builtin ? null : (
-                <AlertDialog.Root open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
-                  <AlertDialog.Trigger>
-                    <Button type="button" variant="ghost" color="red" size="1" disabled={deleting}>
-                      {deleting ? "Deleting…" : "Delete"}
-                    </Button>
-                  </AlertDialog.Trigger>
-                  <AlertDialog.Content maxWidth="440px">
-                    <AlertDialog.Title>Delete &ldquo;{dayType.label}&rdquo;?</AlertDialog.Title>
-                    <AlertDialog.Description size="2">
-                      This deletes the day type. Any client rate overrides set for it go too.
-                      This can&rsquo;t be undone. (A day type in use on a trip, or a built-in
-                      type, can&rsquo;t be deleted. Archive it instead.)
-                    </AlertDialog.Description>
-                    {deleteDialogError ? (
-                      <Box mt="2">
-                        <Text size="1" color="red" role="alert">
-                          {deleteDialogError}
-                        </Text>
-                      </Box>
-                    ) : null}
-                    <Flex gap="3" mt="4" justify="end">
-                      <AlertDialog.Cancel>
-                        <Button variant="soft" color="gray" disabled={deleting}>
-                          Cancel
-                        </Button>
-                      </AlertDialog.Cancel>
-                      <Button variant="solid" color="red" disabled={deleting} onClick={handleDelete}>
-                        {deleting ? "Deleting…" : "Delete day type"}
-                      </Button>
-                    </Flex>
-                  </AlertDialog.Content>
-                </AlertDialog.Root>
+                <LButton
+                  type="button"
+                  variant="quiet"
+                  size="sm"
+                  disabled={deleting}
+                  className="text-crit hover:bg-crit-soft"
+                  onClick={() => setConfirmDeleteOpen(true)}
+                >
+                  {deleting ? "Deleting…" : "Delete"}
+                </LButton>
               )}
-            </Flex>
+            </div>
           ) : null}
-        </Flex>
+        </div>
       </form>
-    </Card>
+
+      {/* Rendered OUTSIDE the form above, deliberately: LConfirmDialog's own
+          Cancel/Confirm buttons carry no explicit `type`, so a native
+          `<button>` with none defaults to type="submit" — nested inside
+          this row's own <form>, either button would have silently
+          submitted the day-type edit form instead of (or in addition to)
+          running its own handler. `<dialog>`/showModal() positions itself
+          from the top layer, not from its DOM parent, so moving it outside
+          the form costs nothing visually. */}
+      {dayType.is_builtin ? null : (
+        <LConfirmDialog
+          open={confirmDeleteOpen}
+          onOpenChange={setConfirmDeleteOpen}
+          title={`Delete "${dayType.label}"?`}
+          description={
+            <>
+              <p>
+                This deletes the day type. Any client rate overrides set for it go too. This
+                can&rsquo;t be undone. (A day type in use on a trip, or a built-in type,
+                can&rsquo;t be deleted. Archive it instead.)
+              </p>
+              {deleteDialogError ? (
+                <p className="mt-2 text-caption font-medium text-crit" role="alert">
+                  {deleteDialogError}
+                </p>
+              ) : null}
+            </>
+          }
+          confirmLabel="Delete day type"
+          onConfirm={handleDelete}
+          pending={deleting}
+        />
+      )}
+    </LCard>
   );
 }

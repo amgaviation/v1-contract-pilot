@@ -1,23 +1,13 @@
 import NextLink from "next/link";
 import { notFound } from "next/navigation";
-import {
-  Box,
-  Button,
-  Callout,
-  Card,
-  Flex,
-  Grid,
-  Link as RadixLink,
-  Text,
-} from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { LAlert, LCard, LRow, LRows, lButtonClass } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDate, formatDateRange } from "@/lib/format";
 import { COUNTERPARTY_COPY, isInvoicedCounterparty } from "@/lib/counterparty";
 import type { Database } from "@/lib/supabase/database.types";
-import PageShell from "../../page-shell";
 import ClientForm from "../client-form";
 import { updateClientRecord } from "../actions";
 import ArchiveButton from "./archive-button";
@@ -246,7 +236,7 @@ export default async function EditClientPage({
   const linkedRecordsError = openTripsResult.error ?? invoicesResult.error ?? balancesResult.error;
 
   return (
-    <PageShell
+    <LPageShell
       title={client.name}
       subtitle={
         client.archived_at
@@ -269,32 +259,28 @@ export default async function EditClientPage({
               schedule, so the statement behind this button is guaranteed
               empty. Offering it would be offering a blank document. */}
           {invoiced ? (
-            <Button asChild variant="soft">
-              <NextLink href={`/clients/${client.id}/statement`}>
-                Statement
-              </NextLink>
-            </Button>
+            <NextLink href={`/clients/${client.id}/statement`} className={lButtonClass({ variant: "outline" })}>
+              Statement
+            </NextLink>
           ) : null}
           <ArchiveButton id={client.id} archived={Boolean(client.archived_at)} />
         </>
       }
     >
       {client.archived_at ? (
-        <Card mb="4">
-          <Text size="2" color="gray">
+        <LCard>
+          <p className="text-body-s text-ink-2">
             This client is archived. Their trips and invoices are
             untouched. They just won&rsquo;t appear when you pick a client
             for new work.
-          </Text>
-        </Card>
+          </p>
+        </LCard>
       ) : null}
 
       {invoiced ? null : (
-        <Card mb="4">
-          <Text size="2" color="gray">
-            {COUNTERPARTY_COPY.pageNote}
-          </Text>
-        </Card>
+        <LCard>
+          <p className="text-body-s text-ink-2">{COUNTERPARTY_COPY.pageNote}</p>
+        </LCard>
       )}
 
       <ClientForm
@@ -307,87 +293,75 @@ export default async function EditClientPage({
           yet invoiced) and outstanding invoices (already billed, not yet
           paid), each linking straight to its own record. */}
       {linkedRecordsError ? (
-        <Card mt="4">
-          <Callout.Root color="red">
-            <Callout.Icon>
-              <ExclamationTriangleIcon />
-            </Callout.Icon>
-            <Callout.Text>
-              Couldn&rsquo;t load this client&rsquo;s trips and invoices.
-            </Callout.Text>
-          </Callout.Root>
-        </Card>
+        <LCard>
+          <LAlert tone="crit" className="flex items-start gap-2">
+            <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+            <span>Couldn&rsquo;t load this client&rsquo;s trips and invoices.</span>
+          </LAlert>
+        </LCard>
       ) : (
-        <Grid columns={{ initial: "1", md: "2" }} gap="4" mt="4">
-          <Card>
-            <Text as="div" size="4" weight="bold" mb="1">
-              Unbilled trips
-            </Text>
-            <Text as="div" size="2" color="gray" mb="3">
-              Flown or scheduled, not yet invoiced.
-            </Text>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <LCard>
+            <div className="mb-1 text-h3 font-semibold">Unbilled trips</div>
+            <p className="mb-3 text-body-s text-ink-3">Flown or scheduled, not yet invoiced.</p>
             {openTrips.length === 0 ? (
-              <Text size="2" color="gray">
-                None right now.
-              </Text>
+              <p className="text-body-s text-ink-3">None right now.</p>
             ) : (
-              <Flex direction="column" gap="2">
+              <LRows>
                 {openTrips.map((trip) => (
-                  <Flex key={trip.id} justify="between" align="center">
-                    <RadixLink asChild weight="medium">
-                      <NextLink href={`/trips/${trip.id}`}>
-                        {formatDateRange(trip.starts_on, trip.ends_on)}
-                        {trip.aircraft_ident ? ` · ${trip.aircraft_ident}` : ""}
-                      </NextLink>
-                    </RadixLink>
-                  </Flex>
+                  <LRow key={trip.id}>
+                    <NextLink href={`/trips/${trip.id}`} className="font-medium text-accent hover:underline">
+                      {formatDateRange(trip.starts_on, trip.ends_on)}
+                      {trip.aircraft_ident ? ` · ${trip.aircraft_ident}` : ""}
+                    </NextLink>
+                  </LRow>
                 ))}
                 {openTripsTruncated ? (
-                  <RadixLink asChild size="1">
-                    <NextLink href={`/trips?client=${id}&billing_state=unbilled`}>
+                  <LRow>
+                    <NextLink
+                      href={`/trips?client=${id}&billing_state=unbilled`}
+                      className="text-caption text-accent hover:underline"
+                    >
                       Showing the {OPEN_TRIPS_LIMIT} most recent, view all
                     </NextLink>
-                  </RadixLink>
+                  </LRow>
                 ) : null}
-              </Flex>
+              </LRows>
             )}
-          </Card>
+          </LCard>
 
-          <Card>
-            <Text as="div" size="4" weight="bold" mb="1">
-              Outstanding invoices
-            </Text>
-            <Text as="div" size="2" color="gray" mb="3">
-              Sent, awaiting payment.
-            </Text>
+          <LCard>
+            <div className="mb-1 text-h3 font-semibold">Outstanding invoices</div>
+            <p className="mb-3 text-body-s text-ink-3">Sent, awaiting payment.</p>
             {outstandingInvoices.length === 0 ? (
-              <Text size="2" color="gray">
-                None right now.
-              </Text>
+              <p className="text-body-s text-ink-3">None right now.</p>
             ) : (
-              <Flex direction="column" gap="2">
+              <LRows>
                 {outstandingInvoices.map((invoice) => (
-                  <Flex key={invoice.id} justify="between" align="center">
-                    <RadixLink asChild weight="medium">
-                      <NextLink href={`/invoices/${invoice.id}`}>
-                        {invoice.invoice_number ?? "Invoice"}
-                      </NextLink>
-                    </RadixLink>
-                    <Text size="2" color="gray" className="tnum">
+                  <LRow key={invoice.id}>
+                    <NextLink
+                      href={`/invoices/${invoice.id}`}
+                      className="font-medium text-accent hover:underline"
+                    >
+                      {invoice.invoice_number ?? "Invoice"}
+                    </NextLink>
+                    <span className="tnum-l text-body-s text-ink-2">
                       {formatCents(balanceByInvoice.get(invoice.id) ?? 0)}
-                    </Text>
-                  </Flex>
+                    </span>
+                  </LRow>
                 ))}
                 {outstandingInvoicesTruncated ? (
-                  <Text size="1" color="gray">
-                    Showing the {OUTSTANDING_INVOICES_LIMIT} soonest due. More are
-                    outstanding.
-                  </Text>
+                  <LRow>
+                    <span className="text-caption text-ink-3">
+                      Showing the {OUTSTANDING_INVOICES_LIMIT} soonest due. More are
+                      outstanding.
+                    </span>
+                  </LRow>
                 ) : null}
-              </Flex>
+              </LRows>
             )}
-          </Card>
-        </Grid>
+          </LCard>
+        </div>
       )}
 
       {/* Payment behavior — this client's own receivables history (median
@@ -399,17 +373,13 @@ export default async function EditClientPage({
           against their trips and the ones attributed to them directly
           (20260815130000). Sits next to "what do they owe me" because it
           is the other half of the same question. */}
-      <Box mt="4">
-        <CostPanel
-          clientId={client.id}
-          clientName={client.name}
-          archived={Boolean(client.archived_at)}
-        />
-      </Box>
+      <CostPanel
+        clientId={client.id}
+        clientName={client.name}
+        archived={Boolean(client.archived_at)}
+      />
 
-      <Box mt="4">
-        <PaymentInsightPanel accountId={account.id} clientId={client.id} />
-      </Box>
+      <PaymentInsightPanel accountId={account.id} clientId={client.id} />
 
       {/* F5: cancellation_policy_note had nowhere it would ever actually
           be seen — the invoice draft only surfaces it when a CANCELED
@@ -418,59 +388,73 @@ export default async function EditClientPage({
           overrides, the other per-client terms the product records but
           doesn't act on by itself, and labeled the same way. */}
       {client.cancellation_policy_note ? (
-        <Card mt="4">
-          <Text size="2" color="gray">
-            <Text as="span" size="2" weight="bold">
-              Cancellation terms on file:
-            </Text>{" "}
+        <LCard>
+          <p className="text-body-s text-ink-2">
+            <span className="font-bold text-ink">Cancellation terms on file:</span>{" "}
             {client.cancellation_policy_note}
-          </Text>
-          <Text as="p" size="1" color="gray" mt="1">
+          </p>
+          <p className="mt-1 text-caption text-ink-3">
             Recorded for reference only, never applied automatically.
             Add a cancellation fee line on the invoice yourself if this
             client owes one.
-          </Text>
-        </Card>
+          </p>
+        </LCard>
       ) : null}
 
       {ratesLoadError ? (
-        <Card mt="4">
-          <Callout.Root color="red">
-            <Callout.Text>
-              Couldn&rsquo;t load rate overrides. Try reloading the page.
-            </Callout.Text>
-          </Callout.Root>
-        </Card>
+        <LCard>
+          <LAlert tone="crit">
+            Couldn&rsquo;t load rate overrides. Try reloading the page.
+          </LAlert>
+        </LCard>
       ) : (
-        <Box mt="4">
-          <RateOverridesPanel
-            clientId={client.id}
-            dayTypes={dayTypes}
-            overrides={rateOverrides}
-          />
-        </Box>
+        <RateOverridesPanel
+          clientId={client.id}
+          dayTypes={dayTypes}
+          overrides={rateOverrides}
+        />
       )}
 
-      <Box mt="4">
-        <PacketPanel
-          clientId={client.id}
-          clientName={client.name}
-          documents={packetDocuments}
-          documentsLoadError={packetDocumentsLoadError}
-          existing={livePacket}
-          existingLoadError={packetShareLoadError}
-        />
-      </Box>
+      <PacketPanel
+        clientId={client.id}
+        clientName={client.name}
+        documents={packetDocuments}
+        documentsLoadError={packetDocumentsLoadError}
+        existing={livePacket}
+        existingLoadError={packetShareLoadError}
+      />
 
-      <Box mt="4">
-        <OperatorQualificationsPanel
-          clientId={client.id}
-          clientName={client.name}
-          clientOperatingRule={client.operating_rule}
-          qualifications={qualifications}
-          loadError={qualificationsLoadError}
-        />
-      </Box>
-    </PageShell>
+      <OperatorQualificationsPanel
+        clientId={client.id}
+        clientName={client.name}
+        clientOperatingRule={client.operating_rule}
+        qualifications={qualifications}
+        loadError={qualificationsLoadError}
+      />
+    </LPageShell>
+  );
+}
+
+/* ── Inline icon ───────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. Same shape as invoices/[id]/page.tsx's own WarningIcon. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

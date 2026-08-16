@@ -2,20 +2,8 @@
 
 import { useActionState, useEffect, useId, useState } from "react";
 import NextLink from "next/link";
-import {
-  Button,
-  Callout,
-  Card,
-  Checkbox,
-  Flex,
-  Grid,
-  Heading,
-  Select,
-  Separator,
-  Text,
-  TextArea,
-  TextField,
-} from "@/components/ui";
+import { LAlert, LCard, LSeparator, lButtonClass } from "@/components/ledger";
+import { LField, LInput, LSelect, LTextarea, LCheckbox } from "@/components/ledger/forms";
 import { centsToInput } from "@/lib/format";
 import { COUNTERPARTY_COPY } from "@/lib/counterparty";
 import { CLIENT_OPERATING_RULES } from "@/lib/operating-rule";
@@ -128,18 +116,13 @@ export default function ClientForm({
     return stored === null || stored === undefined ? fallback : String(stored);
   };
 
-  // Radix's Select.Root always renders its posting <select> with
-  // `defaultValue`, never `value` (@radix-ui/react-select's
-  // SelectBubbleInput) — so it is uncontrolled from React's point of view
-  // no matter what Select.Root is given, and keeping `name` on it means
-  // THAT stale, mount-time-pinned <select> is what the browser posts.
-  // React 19's post-action form.reset() restores it to its mount-time
-  // option even on a rejected submit. Fix: drop `name` from every
-  // Select.Root below and post from our own controlled hidden input
-  // instead, which React re-asserts after a reset. The generation-keyed
-  // `key` on each Select.Root additionally forces a remount on every
-  // dispatch, so a stray reset-driven onValueChange never has a stale
-  // instance left to fire against.
+  // Every LSelect below is a REAL native <select>, so it is genuinely
+  // controlled by React's own `value` prop — no bubble-input quirk to work
+  // around here, unlike the Radix Select.Root this form used to post
+  // through. The hidden-input-plus-remount pattern that quirk required is
+  // kept anyway, deliberately unchanged, rather than simplified away: this
+  // pass is a skin swap, and the posting mechanism is proven behavior this
+  // brief keeps untouched (docs/design/LEDGER.md's migration rule).
   const [genTick, setGenTick] = useState(0);
   useEffect(() => {
     setGenTick((g) => g + 1);
@@ -276,311 +259,240 @@ export default function ClientForm({
   }
 
   return (
-    <Card size="3">
+    <LCard>
       <form action={formAction}>
         {values.id ? <input type="hidden" name="id" value={values.id} /> : null}
 
-        <Heading as="h2" size="4" mb="3">
-          Who they are
-        </Heading>
-        <Grid columns={{ initial: "1", md: "2" }} gap="3">
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="name">
-              Client name
-            </Text>
-            <TextField.Root
-              id="name"
-              name="name"
-              required
-              defaultValue={initial("name", values.name)}
-            />
-            <Text size="1" color="gray">
-              The name that prints on their invoices
-            </Text>
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="contact_name">
-              Contact
-            </Text>
-            <TextField.Root
+        <h2 className="mb-3 text-h3 font-semibold">Who they are</h2>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <LField label="Client name" htmlFor="name" hint="The name that prints on their invoices">
+            <LInput id="name" name="name" required defaultValue={initial("name", values.name)} />
+          </LField>
+          <LField label="Contact" htmlFor="contact_name">
+            <LInput
               id="contact_name"
               name="contact_name"
               defaultValue={initial("contact_name", values.contact_name)}
             />
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="contact_email">
-              Contact email
-            </Text>
-            <TextField.Root
+          </LField>
+          <LField
+            label="Contact email"
+            htmlFor="contact_email"
+            hint="Where a platform-sent invoice goes"
+          >
+            <LInput
               id="contact_email"
               type="email"
               name="contact_email"
               defaultValue={initial("contact_email", values.contact_email)}
             />
-            <Text size="1" color="gray">
-              Where a platform-sent invoice goes
-            </Text>
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="contact_phone">
-              Contact phone
-            </Text>
-            <TextField.Root
+          </LField>
+          <LField label="Contact phone" htmlFor="contact_phone">
+            <LInput
               id="contact_phone"
               name="contact_phone"
               defaultValue={initial("contact_phone", values.contact_phone)}
             />
-          </Flex>
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
-            <Text as="label" size="2" weight="medium" id={`${operatingRuleId}-label`}>
+          </LField>
+          <div className="flex flex-col gap-1.5 md:col-span-2">
+            <span id={`${operatingRuleId}-label`} className="text-body-s font-medium text-ink">
               Operating rule
-            </Text>
-            <Select.Root
+            </span>
+            <LSelect
               key={`operating-rule-${genTick}`}
+              id={operatingRuleId}
+              aria-labelledby={`${operatingRuleId}-label`}
               value={operatingRule}
-              onValueChange={setOperatingRule}
+              onChange={(e) => setOperatingRule(e.target.value)}
             >
-              <Select.Trigger
-                id={operatingRuleId}
-                aria-labelledby={`${operatingRuleId}-label`}
-              />
-              <Select.Content>
-                {CLIENT_OPERATING_RULES.map((option) => (
-                  <Select.Item key={option.value} value={option.value}>
-                    {option.label}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
+              {CLIENT_OPERATING_RULES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </LSelect>
             <input type="hidden" name="operating_rule" value={operatingRule} />
-            <Text size="1" color="gray">
+            <p className="text-caption text-ink-3">
               Which 14 CFR part this client&rsquo;s work is flown under. Controls whether the
               Part 135 checks (135.293/.297/.299) below show up for this client, and seeds
               (but doesn&rsquo;t fix) the operating rule on every new trip for them.
-            </Text>
-          </Flex>
-        </Grid>
+            </p>
+          </div>
+        </div>
 
-        <Heading as="h2" size="4" mt="5" mb="3">
-          Billing address
-        </Heading>
-        <Grid columns={{ initial: "1", md: "6" }} gap="3">
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
-            <Text as="label" size="2" weight="medium" htmlFor="address_line1">
-              Address
-            </Text>
-            <TextField.Root
+        <h2 className="mt-5 mb-3 text-h3 font-semibold">Billing address</h2>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-6">
+          <LField label="Address" htmlFor="address_line1" className="md:col-span-3">
+            <LInput
               id="address_line1"
               name="address_line1"
               defaultValue={initial("address_line1", values.address_line1)}
             />
-          </Flex>
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
-            <Text as="label" size="2" weight="medium" htmlFor="address_line2">
-              Address line 2
-            </Text>
-            <TextField.Root
+          </LField>
+          <LField label="Address line 2" htmlFor="address_line2" className="md:col-span-3">
+            <LInput
               id="address_line2"
               name="address_line2"
               defaultValue={initial("address_line2", values.address_line2)}
             />
-          </Flex>
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
-            <Text as="label" size="2" weight="medium" htmlFor="city">
-              City
-            </Text>
-            <TextField.Root
-              id="city"
-              name="city"
-              defaultValue={initial("city", values.city)}
-            />
-          </Flex>
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 1" }}>
-            <Text as="label" size="2" weight="medium" htmlFor="state">
-              State
-            </Text>
-            <TextField.Root
-              id="state"
-              name="state"
-              defaultValue={initial("state", values.state)}
-            />
-          </Flex>
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
-            <Text as="label" size="2" weight="medium" htmlFor="postal_code">
-              Postal code
-            </Text>
-            <TextField.Root
+          </LField>
+          <LField label="City" htmlFor="city" className="md:col-span-2">
+            <LInput id="city" name="city" defaultValue={initial("city", values.city)} />
+          </LField>
+          <LField label="State" htmlFor="state" className="md:col-span-1">
+            <LInput id="state" name="state" defaultValue={initial("state", values.state)} />
+          </LField>
+          <LField label="Postal code" htmlFor="postal_code" className="md:col-span-2">
+            <LInput
               id="postal_code"
               name="postal_code"
               defaultValue={initial("postal_code", values.postal_code)}
             />
-          </Flex>
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 1" }}>
-            <Text as="label" size="2" weight="medium" htmlFor="country">
-              Country
-            </Text>
-            <TextField.Root
-              id="country"
-              name="country"
-              defaultValue={initial("country", values.country)}
-            />
-          </Flex>
-        </Grid>
+          </LField>
+          <LField label="Country" htmlFor="country" className="md:col-span-1">
+            <LInput id="country" name="country" defaultValue={initial("country", values.country)} />
+          </LField>
+        </div>
 
-        <Flex direction="column" gap="1" mt="5" mb="3">
-          <Heading as="h2" size="4">Rate agreement</Heading>
-        </Flex>
-        <Grid columns={{ initial: "1", md: "3" }} gap="3">
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="default_day_rate">
-              Day rate (USD)
-            </Text>
-            <TextField.Root
+        <h2 className="mt-5 mb-3 text-h3 font-semibold">Rate agreement</h2>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <LField label="Day rate (USD)" htmlFor="default_day_rate">
+            <LInput
               id="default_day_rate"
               name="default_day_rate"
               inputMode="decimal"
+              className="tnum-l"
               defaultValue={initial(
                 "default_day_rate",
                 centsToInput(values.default_day_rate_cents)
               )}
             />
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="default_per_diem">
-              Per diem (USD)
-            </Text>
-            <TextField.Root
+          </LField>
+          <LField label="Per diem (USD)" htmlFor="default_per_diem">
+            <LInput
               id="default_per_diem"
               name="default_per_diem"
               inputMode="decimal"
+              className="tnum-l"
               defaultValue={initial(
                 "default_per_diem",
                 centsToInput(values.default_per_diem_cents)
               )}
             />
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="default_travel_day_rate">
-              Travel day rate (USD)
-            </Text>
-            <TextField.Root
+          </LField>
+          <LField
+            label="Travel day rate (USD)"
+            htmlFor="default_travel_day_rate"
+            hint="Days getting to or from the aircraft"
+          >
+            <LInput
               id="default_travel_day_rate"
               name="default_travel_day_rate"
               inputMode="decimal"
+              className="tnum-l"
               defaultValue={initial(
                 "default_travel_day_rate",
                 centsToInput(values.default_travel_day_rate_cents)
               )}
             />
-            <Text size="1" color="gray">
-              Days getting to or from the aircraft
-            </Text>
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="payment_terms_days">
-              Payment terms (days)
-            </Text>
-            <TextField.Root
+          </LField>
+          <LField
+            label="Payment terms (days)"
+            htmlFor="payment_terms_days"
+            hint="Net 30 unless you agreed otherwise"
+          >
+            <LInput
               id="payment_terms_days"
               type="number"
               name="payment_terms_days"
+              className="tnum-l"
               defaultValue={initial("payment_terms_days", values.payment_terms_days, "30")}
             />
-            <Text size="1" color="gray">
-              Net 30 unless you agreed otherwise
-            </Text>
-          </Flex>
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
-            <Text as="label" size="2" weight="medium" id={`${expenseTreatmentId}-label`}>
+          </LField>
+          <div className="flex flex-col gap-1.5 md:col-span-2">
+            <span id={`${expenseTreatmentId}-label`} className="text-body-s font-medium text-ink">
               Expenses on this client&rsquo;s trips
-            </Text>
-            <Select.Root
+            </span>
+            <LSelect
               key={`expense-treatment-${genTick}`}
+              id={expenseTreatmentId}
+              aria-labelledby={`${expenseTreatmentId}-label`}
               value={expenseTreatment}
-              onValueChange={setExpenseTreatment}
+              onChange={(e) => setExpenseTreatment(e.target.value)}
             >
-              <Select.Trigger
-                id={expenseTreatmentId}
-                aria-labelledby={`${expenseTreatmentId}-label`}
-              />
-              <Select.Content>
-                {TREATMENTS.map((option) => (
-                  <Select.Item key={option.value} value={option.value}>
-                    {option.label}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
+              {TREATMENTS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </LSelect>
             <input type="hidden" name="default_expense_treatment" value={expenseTreatment} />
-          </Flex>
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
-            <Text as="label" size="2" weight="medium" id={`${w9StatusId}-label`}>
+          </div>
+          <div className="flex flex-col gap-1.5 md:col-span-3">
+            <span id={`${w9StatusId}-label`} className="text-body-s font-medium text-ink">
               W-9
-            </Text>
-            <Select.Root key={`w9-status-${genTick}`} value={w9Status} onValueChange={setW9Status}>
-              <Select.Trigger id={w9StatusId} aria-labelledby={`${w9StatusId}-label`} />
-              <Select.Content>
-                {W9_STATUSES.map((option) => (
-                  <Select.Item key={option.value} value={option.value}>
-                    {option.label}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
+            </span>
+            <LSelect
+              key={`w9-status-${genTick}`}
+              id={w9StatusId}
+              aria-labelledby={`${w9StatusId}-label`}
+              value={w9Status}
+              onChange={(e) => setW9Status(e.target.value)}
+            >
+              {W9_STATUSES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </LSelect>
             <input type="hidden" name="w9_status" value={w9Status} />
-          </Flex>
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
-            <Text as="label" size="2" weight="medium" htmlFor="notes">
-              Notes
-            </Text>
-            <TextArea id="notes" name="notes" rows={3} defaultValue={initial("notes", values.notes)} />
-          </Flex>
+          </div>
+          <LField label="Notes" htmlFor="notes" className="md:col-span-3">
+            <LTextarea
+              id="notes"
+              name="notes"
+              rows={3}
+              defaultValue={initial("notes", values.notes)}
+            />
+          </LField>
           {/* 20260815120000. Sits in the rate agreement block because that
               is the block about money, and this is the switch that says
               whether there is any. Posted through a controlled hidden
               input for the same React 19 reason every other control on
               this form is: an uncontrolled checkbox loses its state on
               every action dispatch, the rejected one included. */}
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
-            <Text as="label" size="2" weight="medium">
-              <Flex align="center" gap="2">
-                <Checkbox
-                  checked={youInvoice}
-                  onCheckedChange={(value) => setYouInvoice(value === true)}
-                />
-                {COUNTERPARTY_COPY.toggleLabel}
-              </Flex>
-            </Text>
+          <div className="flex flex-col gap-1.5 md:col-span-3">
+            <label className="flex items-center gap-2 text-body-s font-medium text-ink">
+              <LCheckbox
+                checked={youInvoice}
+                onChange={(e) => setYouInvoice(e.target.checked)}
+              />
+              {COUNTERPARTY_COPY.toggleLabel}
+            </label>
             <input type="hidden" name="you_invoice" value={youInvoice ? "1" : ""} />
-            <Text size="1" color="gray">
-              {COUNTERPARTY_COPY.toggleHelp}
-            </Text>
-          </Flex>
-        </Grid>
+            <p className="text-caption text-ink-3">{COUNTERPARTY_COPY.toggleHelp}</p>
+          </div>
+        </div>
 
-        <Flex direction="column" gap="1" mt="5" mb="3">
-          <Heading as="h2" size="4">Contract terms</Heading>
-        </Flex>
-        <Grid columns={{ initial: "1", md: "2" }} gap="3">
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" id={`${perDiemModeId}-label`}>
+        <h2 className="mt-5 mb-3 text-h3 font-semibold">Contract terms</h2>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <span id={`${perDiemModeId}-label`} className="text-body-s font-medium text-ink">
               Meals
-            </Text>
-            <Select.Root
+            </span>
+            <LSelect
               key={`per-diem-mode-${genTick}`}
+              id={perDiemModeId}
+              aria-labelledby={`${perDiemModeId}-label`}
               value={perDiemMode}
-              onValueChange={setPerDiemMode}
+              onChange={(e) => setPerDiemMode(e.target.value)}
             >
-              <Select.Trigger id={perDiemModeId} aria-labelledby={`${perDiemModeId}-label`} />
-              <Select.Content>
-                {PER_DIEM_MODES.map((option) => (
-                  <Select.Item key={option.value} value={option.value}>
-                    {option.label}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
+              {PER_DIEM_MODES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </LSelect>
             <input type="hidden" name="per_diem_mode" value={perDiemMode} />
             {/* F3: the old copy read as unconditional. Per diem only
                 reaches the invoice draft for a trip whose day grid has
@@ -588,52 +500,51 @@ export default function ClientForm({
                 per-diem count to draw on otherwise, so a trip without one
                 still falls back to expecting meal receipts regardless of
                 this setting. */}
-            <Text size="1" color="gray">
+            <p className="text-caption text-ink-3">
               Adds a per-diem line on trips whose day grid has been filled
               in. A trip without one still expects meal receipts.
-            </Text>
-          </Flex>
-          <Flex direction="column" gap="1">
+            </p>
+          </div>
+          <LField
+            label="Minimum (days)"
+            htmlFor="minimum_days"
+          >
             {/* F4: "Contract minimum" reads, to most pilots, as the OTHER
                 minimum this industry uses — a full day rate regardless of
                 hours flown — which this product already honors for free
                 by billing in whole days. What this field actually sets is
                 the other one: a floor on the total days billed. Which
                 total it's a floor ON is minimum_basis, right below. */}
-            <Text as="label" size="2" weight="medium" htmlFor="minimum_days">
-              Minimum (days)
-            </Text>
-            <TextField.Root
+            <LInput
               id="minimum_days"
               name="minimum_days"
               inputMode="decimal"
+              className="tnum-l"
               defaultValue={initial("minimum_days", values.minimum_days)}
             />
-          </Flex>
-          <Flex direction="column" gap="1">
+          </LField>
+          <div className="flex flex-col gap-1.5">
             {/* Bug fix (see MINIMUM_BASES above): this used to be an
                 unstated assumption, always "per trip" because that was
                 the only thing createInvoiceDraft could do with the number
                 above. Now it's an explicit choice, worded the way a pilot
                 describes their own deal rather than the schema's
                 vocabulary. */}
-            <Text as="label" size="2" weight="medium" htmlFor={minimumBasisId}>
+            <label htmlFor={minimumBasisId} className="text-body-s font-medium text-ink">
               Applies
-            </Text>
-            <Select.Root
+            </label>
+            <LSelect
               key={`minimum_basis-${genTick}`}
+              id={minimumBasisId}
               value={minimumBasis}
-              onValueChange={setMinimumBasis}
+              onChange={(e) => setMinimumBasis(e.target.value)}
             >
-              <Select.Trigger id={minimumBasisId} />
-              <Select.Content>
-                {MINIMUM_BASES.map((o) => (
-                  <Select.Item key={o.value} value={o.value}>
-                    {o.label}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
+              {MINIMUM_BASES.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </LSelect>
             <input type="hidden" name="minimum_basis" value={minimumBasis} />
             {/* F3 + F4, extended: names the behavior in the same terms a
                 pilot reads their own invoice in, and states the gate —
@@ -644,193 +555,161 @@ export default function ClientForm({
                 month at most once, across however many trips it took —
                 see the invoice draft's own line descriptions for exactly
                 which month got topped up and by how much. */}
-            <Text size="1" color="gray">
+            <p className="text-caption text-ink-3">
               {minimumBasis === "per_month"
                 ? "Four 3-day trips in a month for a client with a 10-day monthly guarantee bill one top-up line for the month, not four."
                 : "A 1-day trip for a client with a 2-day minimum bills 2 days, on every trip that falls short."}
-            </Text>
-          </Flex>
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 2" }}>
-            <Text as="label" size="2" weight="medium" htmlFor="cancellation_policy_note">
-              Cancellation terms
-            </Text>
-            <TextArea
+            </p>
+          </div>
+          <LField
+            label="Cancellation terms"
+            htmlFor="cancellation_policy_note"
+            className="md:col-span-2"
+            hint="Recorded for reference only, not applied automatically. Add the fee line yourself if the client owes one."
+          >
+            <LTextarea
               id="cancellation_policy_note"
               name="cancellation_policy_note"
               rows={2}
               defaultValue={initial("cancellation_policy_note", values.cancellation_policy_note)}
             />
-            <Text size="1" color="gray">
-              Recorded for reference only, not applied automatically. Add
-              the fee line yourself if the client owes one.
-            </Text>
-          </Flex>
-        </Grid>
+          </LField>
+        </div>
 
-        <Flex direction="column" gap="1" mt="5" mb="3">
-          <Heading as="h2" size="4">Chasing this client</Heading>
+        <div className="mt-5 mb-3 flex flex-col gap-1">
+          <h2 className="text-h3 font-semibold">Chasing this client</h2>
           {/* SAYS PLAINLY THAT MAIL LEAVES THE BUILDING. This is the only
               screen in the product where a pilot arms something that emails
               their client without them, so it names the client, says nothing
               is on by default, and says where to stop it. */}
-          <Text size="2" color="gray">
+          <p className="text-body-s text-ink-2">
             Reminders go out on their own, in your name, to the contact above.
             They&rsquo;re the same follow-up you could send by hand from an
             invoice, with the invoice attached. Nothing is on until you tick
             it, and you can switch reminders off for any single invoice from
             that invoice&rsquo;s page.
-          </Text>
-        </Flex>
-        <Grid columns={{ initial: "1", md: "3" }} gap="3">
-          <Flex direction="column" gap="1">
-            <Text as="div" size="2" weight="medium">
-              Before it&rsquo;s due
-            </Text>
-            <Flex direction="column" gap="1" mt="1">
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="flex flex-col gap-1">
+            <span className="text-body-s font-medium text-ink">Before it&rsquo;s due</span>
+            <div className="mt-1 flex flex-col gap-1">
               {REMINDER_BEFORE_DAYS.map((day) => (
-                <Text as="label" size="2" key={`before-${day}`}>
-                  <Flex gap="2" align="center">
-                    <Checkbox
-                      checked={beforeDue.includes(day)}
-                      onCheckedChange={() =>
-                        toggleDay(day, beforeDue, setBeforeDue)
-                      }
-                    />
-                    {day} days before
-                  </Flex>
-                </Text>
+                <label key={`before-${day}`} className="flex items-center gap-2 text-body-s text-ink">
+                  <LCheckbox
+                    checked={beforeDue.includes(day)}
+                    onChange={() => toggleDay(day, beforeDue, setBeforeDue)}
+                  />
+                  {day} days before
+                </label>
               ))}
-            </Flex>
-            <input
-              type="hidden"
-              name="reminder_before_due"
-              value={beforeDue.join(",")}
-            />
-            <Text size="1" color="gray">
+            </div>
+            <input type="hidden" name="reminder_before_due" value={beforeDue.join(",")} />
+            <p className="text-caption text-ink-3">
               A courtesy note while there is still time to pay it.
-            </Text>
-          </Flex>
+            </p>
+          </div>
 
-          <Flex direction="column" gap="1">
-            <Text as="div" size="2" weight="medium">
-              On the due date
-            </Text>
-            <Text as="label" size="2" mt="1">
-              <Flex gap="2" align="center">
-                <Checkbox
-                  checked={onDue}
-                  onCheckedChange={(value) => setOnDue(value === true)}
-                />
-                Send one on the day
-              </Flex>
-            </Text>
+          <div className="flex flex-col gap-1">
+            <span className="text-body-s font-medium text-ink">On the due date</span>
+            <label className="mt-1 flex items-center gap-2 text-body-s text-ink">
+              <LCheckbox checked={onDue} onChange={(e) => setOnDue(e.target.checked)} />
+              Send one on the day
+            </label>
             <input type="hidden" name="reminder_on_due" value={onDue ? "1" : ""} />
-          </Flex>
+          </div>
 
-          <Flex direction="column" gap="1">
-            <Text as="div" size="2" weight="medium">
-              After it&rsquo;s due
-            </Text>
-            <Flex direction="column" gap="1" mt="1">
+          <div className="flex flex-col gap-1">
+            <span className="text-body-s font-medium text-ink">After it&rsquo;s due</span>
+            <div className="mt-1 flex flex-col gap-1">
               {REMINDER_AFTER_DAYS.map((day) => (
-                <Text as="label" size="2" key={`after-${day}`}>
-                  <Flex gap="2" align="center">
-                    <Checkbox
-                      checked={afterDue.includes(day)}
-                      onCheckedChange={() => toggleDay(day, afterDue, setAfterDue)}
-                    />
-                    {day} days past due
-                  </Flex>
-                </Text>
+                <label key={`after-${day}`} className="flex items-center gap-2 text-body-s text-ink">
+                  <LCheckbox
+                    checked={afterDue.includes(day)}
+                    onChange={() => toggleDay(day, afterDue, setAfterDue)}
+                  />
+                  {day} days past due
+                </label>
               ))}
-            </Flex>
-            <input
-              type="hidden"
-              name="reminder_after_due"
-              value={afterDue.join(",")}
-            />
-          </Flex>
+            </div>
+            <input type="hidden" name="reminder_after_due" value={afterDue.join(",")} />
+          </div>
 
-          <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
+          <div className="md:col-span-3">
             {/* THE THREE THINGS A PILOT WOULD OTHERWISE FIND OUT BY WATCHING.
                 Each is a real rule in lib/reminders/policy.ts, not a
                 reassurance: one send per invoice per run, a quiet period after
                 any chase (yours included), and a pause when the client has
                 just opened the link. */}
-            <Text size="1" color="gray">
+            <p className="text-caption text-ink-3">
               Only one reminder ever goes out per invoice per day. If you tick
               several and an invoice is already well past due, the most recent
               one is sent and the earlier ones are skipped, not queued up.
               Nothing goes out within five days of any reminder, including one
               you sent by hand, or while the client has just opened the invoice
               link. Paid and voided invoices are never chased.
-            </Text>
-          </Flex>
-        </Grid>
+            </p>
+          </div>
+        </div>
 
-        <Flex direction="column" gap="1" mt="5" mb="3">
-          <Heading as="h2" size="4">Late fee</Heading>
+        <div className="mt-5 mb-3 flex flex-col gap-1">
+          <h2 className="text-h3 font-semibold">Late fee</h2>
           {/* THE DOMAIN RULE, IN THE COPY. A late fee is a term the pilot
               negotiated, not something this product works out they are owed —
               so the heading is neutral, the wording says "you agreed", and the
               default is none. */}
-          <Text size="2" color="gray">
+          <p className="text-body-s text-ink-2">
             Only if you agreed one with this client. This product never adds a
             fee on its own: when one is due it offers you a separate draft
             invoice, which you review and send like any other.
-          </Text>
-        </Flex>
-        <Grid columns={{ initial: "1", md: "3" }} gap="3">
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor={lateFeeKindId}>
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={lateFeeKindId} className="text-body-s font-medium text-ink">
               What you agreed
-            </Text>
-            <Select.Root
+            </label>
+            <LSelect
               key={`late-fee-kind-${genTick}`}
+              id={lateFeeKindId}
               value={lateFeeKind}
-              onValueChange={setLateFeeKind}
+              onChange={(e) => setLateFeeKind(e.target.value)}
             >
-              <Select.Trigger id={lateFeeKindId} />
-              <Select.Content>
-                {LATE_FEE_KINDS.map((option) => (
-                  <Select.Item key={option.value} value={option.value}>
-                    {option.label}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
+              {LATE_FEE_KINDS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </LSelect>
             <input type="hidden" name="late_fee_kind" value={lateFeeKind} />
-          </Flex>
+          </div>
 
           {lateFeeKind === "flat" ? (
-            <Flex direction="column" gap="1">
-              <Text as="label" size="2" weight="medium" htmlFor="late_fee_flat">
-                Amount (USD)
-              </Text>
-              <TextField.Root
+            <LField label="Amount (USD)" htmlFor="late_fee_flat" hint="Charged once, not every month.">
+              <LInput
                 id="late_fee_flat"
                 name="late_fee_flat"
                 inputMode="decimal"
+                className="tnum-l"
                 defaultValue={initial(
                   "late_fee_flat",
                   centsToInput(values.late_fee_flat_cents)
                 )}
               />
-              <Text size="1" color="gray">
-                Charged once, not every month.
-              </Text>
-            </Flex>
+            </LField>
           ) : null}
 
           {lateFeeKind === "rate" ? (
-            <Flex direction="column" gap="1">
-              <Text as="label" size="2" weight="medium" htmlFor="late_fee_rate_percent">
-                Percent per month
-              </Text>
-              <TextField.Root
+            <LField
+              label="Percent per month"
+              htmlFor="late_fee_rate_percent"
+              hint="1.5% is the common convention. The fee applies to the balance still outstanding, charged per complete month, up to a cap of 5%."
+            >
+              <LInput
                 id="late_fee_rate_percent"
                 name="late_fee_rate_percent"
                 inputMode="decimal"
+                className="tnum-l"
                 defaultValue={initial(
                   "late_fee_rate_percent",
                   values.late_fee_bps_per_month == null
@@ -838,44 +717,37 @@ export default function ClientForm({
                     : String(values.late_fee_bps_per_month / 100)
                 )}
               />
-              <Text size="1" color="gray">
-                1.5% is the common convention. The fee applies to the balance
-                still outstanding, charged per complete month, up to a cap of 5%.
-              </Text>
-            </Flex>
+            </LField>
           ) : null}
 
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="late_fee_grace_days">
-              Grace period (days)
-            </Text>
-            <TextField.Root
+          <LField
+            label="Grace period (days)"
+            htmlFor="late_fee_grace_days"
+            hint="Days past due before anything starts running."
+          >
+            <LInput
               id="late_fee_grace_days"
               type="number"
               name="late_fee_grace_days"
+              className="tnum-l"
               defaultValue={initial(
                 "late_fee_grace_days",
                 values.late_fee_grace_days,
                 "0"
               )}
             />
-            <Text size="1" color="gray">
-              Days past due before anything starts running.
-            </Text>
-          </Flex>
+          </LField>
 
           {lateFeeKind !== "none" ? (
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
-              <Separator size="4" my="1" />
-              <Text as="label" size="2">
-                <Flex gap="2" align="center">
-                  <Checkbox
-                    checked={lateFeeNote}
-                    onCheckedChange={(value) => setLateFeeNote(value === true)}
-                  />
-                  Mention it in reminders to this client
-                </Flex>
-              </Text>
+            <div className="flex flex-col gap-1.5 md:col-span-3">
+              <LSeparator className="my-1" />
+              <label className="flex items-center gap-2 text-body-s text-ink">
+                <LCheckbox
+                  checked={lateFeeNote}
+                  onChange={(e) => setLateFeeNote(e.target.checked)}
+                />
+                Mention it in reminders to this client
+              </label>
               <input
                 type="hidden"
                 name="late_fee_note_on_reminders"
@@ -884,36 +756,32 @@ export default function ClientForm({
               {/* SAYS EXACTLY WHAT THE CLIENT WOULD READ, because "mention it"
                   could mean anything and this is a sentence going to somebody
                   else's accounts department in the pilot's name. */}
-              <Text size="1" color="gray">
+              <p className="text-caption text-ink-3">
                 Adds one line to reminders: &ldquo;Per our agreement, a late fee
                 of {lateFeeKind === "flat" ? "$X" : "X% per month"} applies on
                 balances more than N days past their due date.&rdquo; It states
                 the term only. There is no running total, and it is never
                 shown as part of the amount due.
-              </Text>
-            </Flex>
+              </p>
+            </div>
           ) : null}
-        </Grid>
+        </div>
 
         {/* role="alert" so a screen reader hears the rejection; without it
             the form silently resets and nothing is announced. */}
-        <Flex mt="4" role="alert" aria-live="polite">
-          {state.error ? (
-            <Callout.Root color="red" size="1">
-              <Callout.Text>{state.error}</Callout.Text>
-            </Callout.Root>
-          ) : null}
-        </Flex>
+        <div className="mt-4" role="alert" aria-live="polite">
+          {state.error ? <LAlert tone="crit">{state.error}</LAlert> : null}
+        </div>
 
-        <Flex mt="5" gap="3">
-          <Button type="submit" disabled={pending}>
+        <div className="mt-5 flex gap-3">
+          <button type="submit" disabled={pending} className={lButtonClass({ variant: "primary" })}>
             {pending ? "Saving…" : submitLabel}
-          </Button>
-          <Button asChild variant="outline">
-            <NextLink href="/clients">Cancel</NextLink>
-          </Button>
-        </Flex>
+          </button>
+          <NextLink href="/clients" className={lButtonClass({ variant: "outline" })}>
+            Cancel
+          </NextLink>
+        </div>
       </form>
-    </Card>
+    </LCard>
   );
 }

@@ -1,4 +1,5 @@
-import { Badge, Box, Button, Card, Flex, Grid, Separator, Table, Text } from "@/components/ui";
+import { LPill, LSeparator, LTable, LTd, LTh } from "@/components/ledger";
+import { cn } from "@/lib/ledger/cn";
 import { BRAND } from "@/lib/brand";
 import { formatDate, formatDateRange } from "@/lib/format";
 import { visibleNavSections } from "@/lib/nav";
@@ -20,12 +21,11 @@ const MOCK_NAV_SECTIONS = visibleNavSections(false);
  * The real screen is behind requireAccount() (app/(app)/layout.tsx), so it
  * cannot be screenshotted for a signed-out visitor and a screenshot would
  * go stale the first time the dashboard changed. This is the honest
- * alternative: the same Radix components from "@/components/ui", the same
- * Theme (radius, scaling, panelBackground all inherited from the one
- * <Theme> in app/layout.tsx), the same section names from lib/nav.ts, and
- * the same panel structure the real app/(app)/overview/page.tsx renders —
- * KPI row, document expirations, ready-to-invoice — so it looks like the
- * product because it is built out of the product's own parts.
+ * alternative: Ledger's own primitives and tokens (components/ledger), so
+ * it looks like the product because it is built out of the product's own
+ * parts — same section names from lib/nav.ts, same panel structure the
+ * real app/(app)/overview/page.tsx renders (KPI row, ready-to-invoice,
+ * document expirations).
  *
  * EVERY FIGURE, NAME AND TAIL NUMBER BELOW IS INVENTED. There is no
  * customer here and nothing on this component may ever be presented as
@@ -34,8 +34,11 @@ const MOCK_NAV_SECTIONS = visibleNavSections(false);
  * ICAO identifiers because a made-up identifier would read as wrong to the
  * only audience this page has.
  *
- * It is deliberately static markup — no state, no props, no data — so it
- * can never drift into being mistaken for a live view of anything.
+ * It is deliberately static markup — no state, no props, no data, and its
+ * two look-alike buttons are plain <span>s rather than real <button>s, so
+ * they cannot enter the tab order and cannot be mistaken for a live
+ * control. It can never drift into being mistaken for a real view of
+ * anything.
  */
 
 const KPIS = [
@@ -80,186 +83,154 @@ const READY_TO_INVOICE = [
   },
 ];
 
-const EXPIRATIONS: { label: string; date: string; tone: "amber" | "gray"; badge: string }[] = [
+const EXPIRATIONS: { label: string; date: string; tone: "warn" | "neutral"; badge: string }[] = [
   // 61.23: medical validity always runs through the LAST DAY of a
   // calendar month, so a mid-month date here would read as wrong to the
   // only audience this page has — see the file header's own standard.
-  { label: "First-class medical", date: "2026-04-30", tone: "amber", badge: "30 days" },
-  { label: "Flight review", date: "2026-09-30", tone: "gray", badge: "OK" },
-  { label: "Passport", date: "2028-06-14", tone: "gray", badge: "OK" },
+  { label: "First-class medical", date: "2026-04-30", tone: "warn", badge: "30 days" },
+  { label: "Flight review", date: "2026-09-30", tone: "neutral", badge: "OK" },
+  { label: "Passport", date: "2028-06-14", tone: "neutral", badge: "OK" },
 ];
 
 export default function ProductMock() {
   return (
-    <Box className="v1-m-mock-scroll">
-      <Box className="v1-m-mock-inner">
-        {/* color re-established explicitly: the mock sits inside the navy
-            hero (.v1-m-dark), whose white ink otherwise INHERITS into any
-            Text that doesn't set a color prop — the rail's current item
-            and the mock's page title were rendering white-on-white. The
-            frame paints the app's light ground, so it must also restore
-            the app's default ink (--ink, the app's ink token
-            sets). Caught by the rebuild QA pass, rule 12. */}
-        <Box className="v1-m-mock-frame" style={{ color: "var(--ink)" }}>
+    <div
+      className="overflow-x-auto [overscroll-behavior-inline:contain] [-webkit-overflow-scrolling:touch]"
+    >
+      <div className="min-w-[42rem] max-w-full">
+        <div className="overflow-hidden rounded-card border border-hair bg-card shadow-card">
           {/* Window chrome, so this reads as a screen rather than a card. */}
-          <Flex align="center" gap="2" px="3" py="2" className="v1-m-mock-chrome">
-            <Box className="v1-m-mock-dot" />
-            <Box className="v1-m-mock-dot" />
-            <Box className="v1-m-mock-dot" />
-            <Text size="1" color="gray" ml="2">
-              {BRAND.name}: Overview
-            </Text>
-          </Flex>
+          <div className="flex items-center gap-2 border-b border-hair bg-sunk px-3 py-2">
+            <span className="size-2 rounded-full bg-ink-3" />
+            <span className="size-2 rounded-full bg-ink-3" />
+            <span className="size-2 rounded-full bg-ink-3" />
+            <span className="ml-2 text-caption text-ink-3">{BRAND.name}: Overview</span>
+          </div>
 
-          <Flex>
+          <div className="flex">
             {/* Nav rail, labelled from lib/nav.ts so it can never name a
                 section the product does not have. */}
-            <Box
-              p="3"
-              width="9rem"
-              flexShrink="0"
-              display={{ initial: "none", sm: "block" }}
-              style={{ borderRight: "1px solid var(--edge)" }}
-            >
-              <Flex direction="column" gap="2">
+            <div className="hidden w-36 shrink-0 border-r border-hair p-3 sm:block">
+              <div className="flex flex-col gap-2">
                 {MOCK_NAV_SECTIONS.map((item, index) => (
-                  <Text
+                  <span
                     key={item.href}
-                    size="1"
-                    color={index === 0 ? undefined : "gray"}
-                    weight={index === 0 ? "medium" : "light"}
+                    className={cn(
+                      "text-caption",
+                      index === 0 ? "font-medium text-ink" : "font-light text-ink-3"
+                    )}
                   >
                     {item.label}
-                  </Text>
+                  </span>
                 ))}
-              </Flex>
-            </Box>
+              </div>
+            </div>
 
-            <Box p="4" flexGrow="1">
-              <Flex direction="column" gap="4">
-                <Flex justify="between" align="start" gap="3">
-                  <Flex direction="column" gap="1">
-                    <Text size="4" weight="medium">
-                      Overview
-                    </Text>
-                    <Text size="1" color="gray">
+            <div className="flex-1 p-4">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-body font-medium text-ink">Overview</span>
+                    <span className="text-caption text-ink-3">
                       3 trips flown and logged but not yet invoiced. No invoices
                       past due.
-                    </Text>
-                  </Flex>
-                  <Flex gap="2" flexShrink="0">
-                    <Button size="1" variant="outline" tabIndex={-1}>
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <span className="rounded-control border border-hair-strong bg-card px-3 py-1 text-caption font-medium text-ink">
                       Log a trip
-                    </Button>
-                    <Button size="1" tabIndex={-1}>
+                    </span>
+                    <span className="rounded-control bg-accent px-3 py-1 text-caption font-medium text-accent-ink">
                       Create invoice
-                    </Button>
-                  </Flex>
-                </Flex>
+                    </span>
+                  </div>
+                </div>
 
-                <Grid columns={{ initial: "2", md: "4" }} gap="3">
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                   {KPIS.map((kpi) => (
-                    <Card key={kpi.label} variant="surface" size="1">
-                      <Flex direction="column" gap="1">
-                        <Text size="1" color="gray">
-                          {kpi.label}
-                        </Text>
-                        <Text size="5" weight="bold" className="tnum">
+                    <div key={kpi.label} className="rounded-card border border-hair bg-card p-3">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-caption text-ink-3">{kpi.label}</span>
+                        <span className="tnum-l text-h3 font-bold tracking-tight text-ink">
                           {kpi.value}
-                        </Text>
-                        <Text size="1" color="gray">
-                          {kpi.sub}
-                        </Text>
-                      </Flex>
-                    </Card>
+                        </span>
+                        <span className="text-caption text-ink-3">{kpi.sub}</span>
+                      </div>
+                    </div>
                   ))}
-                </Grid>
+                </div>
 
-                <Grid columns={{ initial: "1", md: "2" }} gap="3">
-                  <Card variant="surface" size="1">
-                    <Flex direction="column" gap="1" mb="2">
-                      <Text size="2" weight="medium">
-                        Ready to invoice
-                      </Text>
-                      <Text size="1" color="gray">
-                        3 trips
-                      </Text>
-                    </Flex>
-                    <Flex direction="column">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="rounded-card border border-hair bg-card p-3">
+                    <div className="mb-2 flex flex-col gap-1">
+                      <span className="text-body-s font-medium text-ink">Ready to invoice</span>
+                      <span className="text-caption text-ink-3">3 trips</span>
+                    </div>
+                    <div className="flex flex-col">
                       {READY_TO_INVOICE.map((trip, index) => (
-                        <Box key={trip.client}>
-                          {index > 0 ? <Separator size="4" /> : null}
-                          <Flex justify="between" align="start" gap="3" py="2">
-                            <Flex direction="column">
-                              <Text size="1" weight="medium">
+                        <div key={trip.client}>
+                          {index > 0 ? <LSeparator className="my-0" /> : null}
+                          <div className="flex items-start justify-between gap-3 py-2">
+                            <div className="flex flex-col">
+                              <span className="text-caption font-medium text-ink">
                                 {trip.client}
-                              </Text>
-                              <Text size="1" color="gray">
-                                {trip.route}
-                              </Text>
-                              <Text size="1" color="gray">
+                              </span>
+                              <span className="text-caption text-ink-3">{trip.route}</span>
+                              <span className="text-caption text-ink-3">
                                 {trip.tailNumber} · {trip.days} days ·{" "}
                                 {formatDateRange(trip.startsOn, trip.endsOn)}
-                              </Text>
-                            </Flex>
-                            <Text size="1" weight="medium" className="tnum">
+                              </span>
+                            </div>
+                            <span className="tnum-l text-caption font-medium text-ink">
                               {trip.amount}
-                            </Text>
-                          </Flex>
-                        </Box>
+                            </span>
+                          </div>
+                        </div>
                       ))}
-                    </Flex>
-                  </Card>
+                    </div>
+                  </div>
 
-                  <Card variant="surface" size="1">
-                    <Flex direction="column" gap="1" mb="2">
-                      <Text size="2" weight="medium">
+                  <div className="rounded-card border border-hair bg-card p-3">
+                    <div className="mb-2 flex flex-col gap-1">
+                      <span className="text-body-s font-medium text-ink">
                         Document expirations
-                      </Text>
-                      <Text size="1" color="gray">
+                      </span>
+                      <span className="text-caption text-ink-3">
                         Medical, flight review, and passport dates from your
                         documents
-                      </Text>
-                    </Flex>
-                    <Table.Root variant="surface" size="1">
-                      <Table.Header>
-                        <Table.Row>
-                          <Table.ColumnHeaderCell>Document</Table.ColumnHeaderCell>
-                          <Table.ColumnHeaderCell>Expires</Table.ColumnHeaderCell>
-                          <Table.ColumnHeaderCell justify="end">
-                            Status
-                          </Table.ColumnHeaderCell>
-                        </Table.Row>
-                      </Table.Header>
-                      <Table.Body>
+                      </span>
+                    </div>
+                    <LTable>
+                      <thead>
+                        <tr>
+                          <LTh>Document</LTh>
+                          <LTh>Expires</LTh>
+                          <LTh numeric>Status</LTh>
+                        </tr>
+                      </thead>
+                      <tbody>
                         {EXPIRATIONS.map((row) => (
-                          <Table.Row key={row.label}>
-                            <Table.Cell>
-                              <Text size="1" weight="medium">
-                                {row.label}
-                              </Text>
-                            </Table.Cell>
-                            <Table.Cell>
-                              <Text size="1" color="gray">
-                                {formatDate(row.date)}
-                              </Text>
-                            </Table.Cell>
-                            <Table.Cell justify="end">
-                              <Badge color={row.tone} size="1">
-                                {row.badge}
-                              </Badge>
-                            </Table.Cell>
-                          </Table.Row>
+                          <tr key={row.label}>
+                            <LTd>
+                              <span className="font-medium text-ink">{row.label}</span>
+                            </LTd>
+                            <LTd>
+                              <span className="text-ink-2">{formatDate(row.date)}</span>
+                            </LTd>
+                            <LTd numeric>
+                              <LPill tone={row.tone}>{row.badge}</LPill>
+                            </LTd>
+                          </tr>
                         ))}
-                      </Table.Body>
-                    </Table.Root>
-                  </Card>
-                </Grid>
-              </Flex>
-            </Box>
-          </Flex>
-        </Box>
-      </Box>
-    </Box>
+                      </tbody>
+                    </LTable>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

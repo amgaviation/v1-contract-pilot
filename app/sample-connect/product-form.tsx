@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { Button, Callout, Flex, Text, TextField } from "@/components/ui";
+import { LAlert, LButton } from "@/components/ledger";
+import { LField, LInput } from "@/components/ledger/forms";
 import { createProductAction, type ProductFormState } from "./actions";
 
 const initialState: ProductFormState = { error: null };
@@ -17,40 +18,31 @@ export default function ProductForm({ disabled }: { disabled: boolean }) {
   const [state, formAction, pending] = useActionState(createProductAction, initialState);
 
   return (
-    <form action={formAction}>
-      <Flex direction="column" gap="3">
-        <Flex direction="column" gap="1">
-          <Text as="label" size="1" color="gray" htmlFor="sample-product-name">
-            Name
-          </Text>
-          <TextField.Root
+    <form action={formAction} className="mb-2">
+      <div className="flex flex-col gap-3">
+        <LField label="Name" htmlFor="sample-product-name">
+          <LInput
             id="sample-product-name"
             name="name"
             placeholder="Charter briefing pack"
             required
             disabled={disabled || pending}
           />
-        </Flex>
+        </LField>
 
-        <Flex direction="column" gap="1">
-          <Text as="label" size="1" color="gray" htmlFor="sample-product-description">
-            Description
-          </Text>
-          <TextField.Root
+        <LField label="Description" htmlFor="sample-product-description">
+          <LInput
             id="sample-product-description"
             name="description"
             placeholder="What the customer gets"
             disabled={disabled || pending}
           />
-        </Flex>
+        </LField>
 
-        <Flex direction="column" gap="1">
-          <Text as="label" size="1" color="gray" htmlFor="sample-product-price">
-            Price (USD)
-          </Text>
+        <LField label="Price (USD)" htmlFor="sample-product-price">
           {/* Dollars here, converted to cents in the action — Stripe amounts
               are always in the smallest currency unit. */}
-          <TextField.Root
+          <LInput
             id="sample-product-price"
             name="price"
             type="number"
@@ -60,25 +52,21 @@ export default function ProductForm({ disabled }: { disabled: boolean }) {
             required
             disabled={disabled || pending}
           />
-        </Flex>
+        </LField>
 
-        <Button type="submit" disabled={disabled || pending}>
+        <LButton type="submit" disabled={disabled || pending} className="self-start">
           {pending ? "Creating…" : "Create product"}
-        </Button>
+        </LButton>
 
-        <Flex direction="column" gap="2" role="status" aria-live="polite">
-          {state.error ? (
-            <Callout.Root color="red" size="1">
-              <Callout.Text>{state.error}</Callout.Text>
-            </Callout.Root>
-          ) : null}
+        <div className="flex flex-col gap-2" role="status" aria-live="polite">
+          {state.error ? <LAlert tone="crit">{state.error}</LAlert> : null}
           {state.created ? (
-            <Callout.Root color="green" size="1">
-              <Callout.Text>Created &ldquo;{state.created}&rdquo; on your Stripe account.</Callout.Text>
-            </Callout.Root>
+            <LAlert tone="good">
+              Created &ldquo;{state.created}&rdquo; on your Stripe account.
+            </LAlert>
           ) : null}
-        </Flex>
-      </Flex>
+        </div>
+      </div>
     </form>
   );
 }

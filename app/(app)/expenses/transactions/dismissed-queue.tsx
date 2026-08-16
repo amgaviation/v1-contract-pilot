@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Badge, Box, Button, Flex, Table, Text } from "@/components/ui";
+import { LButton, LPill, LTable, LTd, LTh } from "@/components/ledger";
 import { formatCents, formatDate } from "@/lib/format";
 import { unignoreTransaction } from "./actions";
 
@@ -30,31 +30,31 @@ export default function DismissedQueue({ rows }: { rows: DismissedRow[] }) {
   if (rows.length === 0) return null;
 
   return (
-    <Box mt="4">
-      <Button type="button" size="1" variant="ghost" onClick={() => setOpen((v) => !v)}>
+    <div className="mt-4">
+      <LButton type="button" size="sm" variant="quiet" onClick={() => setOpen((v) => !v)}>
         {open ? "Hide" : "Show"} dismissed &amp; unrecoverable ({rows.length})
-      </Button>
+      </LButton>
       {open ? (
-        <Box mt="2" style={{ overflowX: "auto" }}>
-          <Table.Root variant="surface">
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Description</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Amount</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell></Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell></Table.ColumnHeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
+        <div className="mt-2 overflow-x-auto">
+          <LTable>
+            <thead>
+              <tr>
+                <LTh>Date</LTh>
+                <LTh>Description</LTh>
+                <LTh numeric>Amount</LTh>
+                <LTh />
+                <LTh />
+              </tr>
+            </thead>
+            <tbody>
               {rows.map((row) => (
                 <DismissedRowItem key={row.id} row={row} />
               ))}
-            </Table.Body>
-          </Table.Root>
-        </Box>
+            </tbody>
+          </LTable>
+        </div>
       ) : null}
-    </Box>
+    </div>
   );
 }
 
@@ -78,37 +78,36 @@ function DismissedRowItem({ row }: { row: DismissedRow }) {
   };
 
   return (
-    <Table.Row>
-      <Table.Cell className="tnum">{formatDate(row.posted_on)}</Table.Cell>
-      <Table.Cell>{row.description}</Table.Cell>
-      <Table.Cell className="tnum">{formatCents(Math.abs(row.amount_cents))}</Table.Cell>
-      <Table.Cell>
+    <tr>
+      <th
+        scope="row"
+        className="tnum-l border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+      >
+        {formatDate(row.posted_on)}
+      </th>
+      <LTd>{row.description}</LTd>
+      <LTd numeric>{formatCents(Math.abs(row.amount_cents))}</LTd>
+      <LTd>
         {row.kind === "orphaned" ? (
-          <Badge color="gray">The expense this became was deleted</Badge>
+          <LPill tone="neutral">The expense this became was deleted</LPill>
         ) : (
-          <Badge color="gray">Dismissed</Badge>
+          <LPill tone="neutral">Dismissed</LPill>
         )}
-      </Table.Cell>
-      <Table.Cell>
+      </LTd>
+      <LTd>
         {row.kind === "ignored" ? (
           restored ? (
-            <Text size="1" color="gray">
-              Back in the queue above.
-            </Text>
+            <span className="text-caption text-ink-3">Back in the queue above.</span>
           ) : (
-            <Flex direction="column" gap="1" align="end">
-              <Button type="button" size="1" variant="soft" onClick={handleUndo} disabled={pending}>
+            <div className="flex flex-col items-end gap-1">
+              <LButton type="button" size="sm" variant="outline" onClick={handleUndo} disabled={pending}>
                 {pending ? "Restoring…" : "Undo"}
-              </Button>
-              {error ? (
-                <Text size="1" color="red">
-                  {error}
-                </Text>
-              ) : null}
-            </Flex>
+              </LButton>
+              {error ? <span className="text-caption font-medium text-crit">{error}</span> : null}
+            </div>
           )
         ) : null}
-      </Table.Cell>
-    </Table.Row>
+      </LTd>
+    </tr>
   );
 }

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import NextLink from "next/link";
-import { Box, Button, Callout, Card, Flex, Grid, Heading, Text } from "@/components/ui";
+import { LAlert, LCard, lButtonClass } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
@@ -15,7 +16,6 @@ import {
   type TripSettlementLineRow,
   type TripSettlementPaymentRow,
 } from "@/lib/trip-settlement";
-import PageShell from "../../page-shell";
 import TripForm, { type ClientOption, type TripFormValues } from "../trip-form";
 import LegEditor, { type LegRow } from "../leg-editor";
 import DayGrid, {
@@ -306,28 +306,30 @@ export default async function TripPage({
   const dayGridKey = `${trip.id}|${trip.starts_on}|${trip.ends_on}`;
 
   return (
-    <PageShell
+    <LPageShell
       title={formatDateRange(trip.starts_on, trip.ends_on)}
       subtitle={`${formatCents(value)} · ${dayCountLabel} · ${legs.length} leg${
         legs.length === 1 ? "" : "s"
       }`}
       action={
-        <Flex gap="2" wrap="wrap" align="start">
+        <div className="flex flex-wrap items-start gap-2">
           {/* The trip's own state is what everything downstream filters
               on, so the action that changes it belongs here — beside the
-              title — not buried mid-form. See markTripCompleted. */}
+              title — not buried mid-form. See markTripCompleted. Outline,
+              not the filled accent: TripForm's own "Save trip" submit is
+              this page's one filled action, so the two never compete. */}
           {trip.status === "scheduled" || trip.status === "in_progress" ? (
-            <MarkFlownButton id={trip.id} />
+            <MarkFlownButton id={trip.id} variant="outline" />
           ) : null}
           {/* gap S: the recurring-gig case — same client, same tail, same
               rates, next week — typed from scratch every time until now.
               A plain link, not a server action: nothing is written until
               the pre-filled form on the other end is actually submitted. */}
-          <Button asChild variant="soft">
-            <NextLink href={`/trips/new?clone=${trip.id}`}>Duplicate</NextLink>
-          </Button>
+          <NextLink href={`/trips/new?clone=${trip.id}`} className={lButtonClass({ variant: "outline" })}>
+            Duplicate
+          </NextLink>
           <DeleteTripButton id={trip.id} disabled={locked} />
-        </Flex>
+        </div>
       }
     >
       {/* THE THESIS, MADE NAVIGABLE. One trip produces a logbook entry, a
@@ -337,30 +339,23 @@ export default async function TripPage({
           preselect on the expense form was already built and had no caller
           anywhere in the app. */}
       {trip.status === "completed" ? (
-        <Card mb="4">
-          <Flex gap="3" wrap="wrap" align="center">
-            <Text size="2" color="gray">
-              This trip is flown. Next:
-            </Text>
-            <Button asChild variant="soft" size="2">
-              <NextLink href={`/expenses/new?trip=${trip.id}`}>Add an expense</NextLink>
-            </Button>
-            <Button asChild variant="soft" size="2">
-              <NextLink href="/logbook/drafts">Confirm logbook entries</NextLink>
-            </Button>
-            <Button asChild variant="soft" size="2">
-              <NextLink
-                href={
-                  trip.client_id
-                    ? `/invoices/new?client=${trip.client_id}`
-                    : "/invoices/new"
-                }
-              >
-                Invoice it
-              </NextLink>
-            </Button>
-          </Flex>
-        </Card>
+        <LCard>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-body-s text-ink-2">This trip is flown. Next:</span>
+            <NextLink href={`/expenses/new?trip=${trip.id}`} className={lButtonClass({ variant: "outline", size: "sm" })}>
+              Add an expense
+            </NextLink>
+            <NextLink href="/logbook/drafts" className={lButtonClass({ variant: "outline", size: "sm" })}>
+              Confirm logbook entries
+            </NextLink>
+            <NextLink
+              href={trip.client_id ? `/invoices/new?client=${trip.client_id}` : "/invoices/new"}
+              className={lButtonClass({ variant: "outline", size: "sm" })}
+            >
+              Invoice it
+            </NextLink>
+          </div>
+        </LCard>
       ) : null}
       {trip.status === "canceled" ? (
         // gap S: guided cancellation-fee billing. The machinery was
@@ -373,66 +368,56 @@ export default async function TripPage({
         // trips (see clients/[id]/page.tsx's own comment on that), so
         // this still can't preselect the trip — it can only get the
         // pilot to the right client with the right terms in view.
-        <Card mb="4">
-          <Flex direction="column" gap="2">
-            <Text size="2" color="gray">
+        <LCard>
+          <div className="flex flex-col gap-2">
+            <p className="text-body-s text-ink-2">
               This trip is canceled
               {trip.canceled_at ? ` (recorded ${formatDate(trip.canceled_at.slice(0, 10))})` : ""}
               {trip.cancellation_notice_from
                 ? `, notice from ${trip.cancellation_notice_from}`
                 : ""}
               .
-            </Text>
+            </p>
             {cancellationNote ? (
-              <Text size="2" color="gray">
-                <Text as="span" weight="bold">
-                  Cancellation terms on file:
-                </Text>{" "}
-                {cancellationNote}
-              </Text>
+              <p className="text-body-s text-ink-2">
+                <span className="font-bold">Cancellation terms on file:</span> {cancellationNote}
+              </p>
             ) : null}
-            <Flex gap="3" wrap="wrap" align="center">
-              <Button asChild variant="soft" size="2">
-                <NextLink
-                  href={
-                    trip.client_id
-                      ? `/invoices/new?client=${trip.client_id}`
-                      : "/invoices/new"
-                  }
-                >
-                  Bill a cancellation fee
-                </NextLink>
-              </Button>
-              <Text size="1" color="gray">
+            <div className="flex flex-wrap items-center gap-3">
+              <NextLink
+                href={trip.client_id ? `/invoices/new?client=${trip.client_id}` : "/invoices/new"}
+                className={lButtonClass({ variant: "outline", size: "sm" })}
+              >
+                Bill a cancellation fee
+              </NextLink>
+              <span className="text-caption text-ink-3">
                 Opens a new invoice for this client. The fee is a
                 hand-typed line, never computed automatically.
-              </Text>
-            </Flex>
-          </Flex>
-        </Card>
+              </span>
+            </div>
+          </div>
+        </LCard>
       ) : null}
       {locked ? (
-        <Card mb="4">
-          <Text size="2" color="gray">
+        <LCard>
+          <p className="text-body-s text-ink-2">
             This trip is billed on {billedOn}. Its dates and amounts are
             frozen here. Correcting them would leave the trip and that
             invoice disagreeing about what was flown. Remove it from the
             invoice first.
-          </Text>
-        </Card>
+          </p>
+        </LCard>
       ) : null}
       {overlap === "1" ? (
         // gap S: advisory only, never a block — this trip already saved.
-        <Callout.Root color="amber" mb="4">
-          <Callout.Text>
-            This trip&rsquo;s dates overlap another trip on your calendar.
-            Check you haven&rsquo;t double-booked or double-entered it.
-          </Callout.Text>
-        </Callout.Root>
+        <LAlert tone="warn">
+          This trip&rsquo;s dates overlap another trip on your calendar.
+          Check you haven&rsquo;t double-booked or double-entered it.
+        </LAlert>
       ) : null}
 
-      <Grid columns={{ initial: "1", lg: "12" }} gap="4">
-        <Box gridColumn={{ lg: "span 7" }}>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+        <div className="lg:col-span-7">
           <TripForm
             action={updateTrip}
             clients={clients}
@@ -444,28 +429,28 @@ export default async function TripPage({
             hasDayRows={hasDayRows}
             fleet={fleet}
           />
-        </Box>
-        <Box gridColumn={{ lg: "span 5" }}>
-          <Card size="3">
-            <Heading as="h2" size="4">Legs</Heading>
-            <Text as="p" size="2" color="gray" className="tnum">
+        </div>
+        <div className="lg:col-span-5">
+          <LCard>
+            <h2 className="text-h3 font-semibold">Legs</h2>
+            <p className="tnum-l text-body-s text-ink-2">
               {blockTotal.toFixed(1)} block hours ·{" "}
               {nightFullStop} night full-stop landing
               {nightFullStop === 1 ? "" : "s"}
-            </Text>
+            </p>
             <LegEditor tripId={trip.id} legs={legs} defaultDate={trip.starts_on} />
-          </Card>
-        </Box>
+          </LCard>
+        </div>
 
-        <Box gridColumn={{ lg: "span 12" }}>
-          <Card size="3">
-            <Heading as="h2" size="4">Day grid</Heading>
-            <Text as="p" size="2" color="gray" mb="3">
+        <div className="lg:col-span-12">
+          <LCard>
+            <h2 className="text-h3 font-semibold">Day grid</h2>
+            <p className="mb-3 text-body-s text-ink-2">
               One row per calendar day of the trip. This is what feeds
               invoicing and per diem, and once it has rows it is what
               sets the headline value above, not the flight/travel
               totals below.
-            </Text>
+            </p>
             <DayGrid
               key={dayGridKey}
               tripId={trip.id}
@@ -483,13 +468,13 @@ export default async function TripPage({
                 travelDayCount: Number(trip.travel_day_count ?? 0),
               }}
             />
-          </Card>
-        </Box>
+          </LCard>
+        </div>
 
-        <Box gridColumn={{ lg: "span 12" }}>
+        <div className="lg:col-span-12">
           <SettlementPanel settlement={settlement} loadError={settlementLoadError} />
-        </Box>
-      </Grid>
-    </PageShell>
+        </div>
+      </div>
+    </LPageShell>
   );
 }

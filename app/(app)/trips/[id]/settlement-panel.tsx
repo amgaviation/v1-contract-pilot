@@ -1,4 +1,4 @@
-import { Badge, Callout, Card, Flex, Grid, Heading, Text } from "@/components/ui";
+import { LAlert, LCard, LPill } from "@/components/ledger";
 import { formatCents } from "@/lib/format";
 import type { TripSettlement } from "@/lib/trip-settlement";
 
@@ -29,22 +29,20 @@ export default function SettlementPanel({
   loadError: string | null;
 }) {
   return (
-    <Card size="3">
-      <Heading as="h2" size="4">Settlement</Heading>
-      <Text as="p" size="2" color="gray" mb="3">
+    <LCard>
+      <div className="text-h3 font-semibold">Settlement</div>
+      <p className="mb-3 text-body-s text-ink-2">
         What this trip&rsquo;s flight and travel days are worth, what has
         been invoiced for them, and what has been paid. Per diem,
         cancellation fees, and rebilled expenses bill separately and
         aren&rsquo;t counted here.
-      </Text>
+      </p>
 
       {loadError ? (
-        <Callout.Root color="red">
-          <Callout.Text>{loadError}</Callout.Text>
-        </Callout.Root>
+        <LAlert tone="crit">{loadError}</LAlert>
       ) : settlement ? (
         <>
-          <Grid columns={{ initial: "1", sm: "3" }} gap="4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <Figure label="Expected" cents={settlement.expectedCents} />
             <Figure
               label="Invoiced"
@@ -64,31 +62,29 @@ export default function SettlementPanel({
                   : null
               }
             />
-          </Grid>
+          </div>
 
-          <Flex direction="column" gap="2" mt="4">
+          <div className="mt-4 flex flex-col gap-2">
             <DeltaRow
               label="Unbilled remainder"
               cents={settlement.unbilledRemainderCents}
-              zeroTone="green"
               zeroWord="fully invoiced"
             />
             <DeltaRow
               label="Unpaid balance"
               cents={settlement.unpaidBalanceCents}
-              zeroTone="green"
               zeroWord={settlement.invoicedCents > 0 ? "fully paid" : "nothing invoiced yet"}
             />
-          </Flex>
+          </div>
 
-          <Text as="p" size="1" color="gray" mt="3">
+          <p className="mt-3 text-caption text-ink-3">
             {settlement.invoiceLabel
               ? `Billed on ${settlement.invoiceLabel}.`
               : "Not yet on an invoice."}
-          </Text>
+          </p>
         </>
       ) : null}
-    </Card>
+    </LCard>
   );
 }
 
@@ -102,36 +98,32 @@ function Figure({
   note?: string | null;
 }) {
   return (
-    <Flex direction="column" gap="1">
-      <Text size="1" color="gray">{label}</Text>
-      <Text size="6" weight="bold" className="tnum">{formatCents(cents)}</Text>
-      {note ? (
-        <Text size="1" color="gray">{note}</Text>
-      ) : null}
-    </Flex>
+    <div className="flex flex-col gap-1">
+      <span className="text-caption text-ink-3">{label}</span>
+      <span className="tnum-l text-h2 font-bold">{formatCents(cents)}</span>
+      {note ? <span className="text-caption text-ink-3">{note}</span> : null}
+    </div>
   );
 }
 
 function DeltaRow({
   label,
   cents,
-  zeroTone,
   zeroWord,
 }: {
   label: string;
   cents: number;
-  zeroTone: "green";
   zeroWord: string;
 }) {
   const isZero = cents === 0;
   return (
-    <Flex justify="between" align="center" gap="3">
-      <Text size="2" color="gray">{label}</Text>
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-body-s text-ink-2">{label}</span>
       {isZero ? (
-        <Badge color={zeroTone}>{zeroWord}</Badge>
+        <LPill tone="good">{zeroWord}</LPill>
       ) : (
-        <Text size="3" weight="bold" className="tnum">{formatCents(cents)}</Text>
+        <span className="tnum-l text-lead font-bold">{formatCents(cents)}</span>
       )}
-    </Flex>
+    </div>
   );
 }

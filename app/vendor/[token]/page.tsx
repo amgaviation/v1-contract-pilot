@@ -1,7 +1,7 @@
 import NextLink from "next/link";
 import { notFound } from "next/navigation";
 import { LCard, LPill, LSeparator, LTable, LTd, LTh } from "@/components/ledger";
-import { Logo } from "@/components/ui/logo";
+import { Logo } from "@/components/logo";
 import { createClient } from "@/lib/supabase/server";
 import { formatCents, formatDate } from "@/lib/format";
 

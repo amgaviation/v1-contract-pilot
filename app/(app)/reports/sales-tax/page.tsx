@@ -1,26 +1,12 @@
 import NextLink from "next/link";
-import {
-  Badge,
-  Box,
-  Button,
-  Callout,
-  Card,
-  Flex,
-  Heading,
-  Table,
-  Text,
-  TextField,
-} from "@/components/ui";
-import {
-  ExclamationTriangleIcon,
-  InfoCircledIcon,
-} from "@radix-ui/react-icons";
+import { LAlert, LButton, LCard, LPill, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
+import { LInput } from "@/components/ledger/forms";
+import { LPageShell } from "@/components/ledger/page-shell";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
-import PageShell from "../../page-shell";
 import { loadSalesTaxReport, SALES_TAX_LIMIT } from "./queries";
 import {
   correctionNote,
@@ -71,255 +57,287 @@ export default async function SalesTaxReportPage({
   const csvHref = `/reports/sales-tax/export?from=${period.from}&to=${period.to}`;
 
   return (
-    <PageShell
+    <LPageShell
       title="Sales tax"
       subtitle={`${formatDate(period.from)} to ${formatDate(period.to)} · tax charged on invoices, cash-basis`}
       action={
         report.error === null && !report.truncated ? (
-          <Button asChild variant="outline" size="2">
-            <a href={csvHref} download>
-              Download CSV
-            </a>
-          </Button>
+          <a href={csvHref} download className={lButtonClass({ variant: "outline" })}>
+            Download CSV
+          </a>
         ) : undefined
       }
     >
       {/* Period controls: two presets plus an explicit range. Links and a
           GET form, no client component — the server re-resolves
           ?from=/?to= on every request, so the URL is shareable and the
-          back button works (same pattern as the client statement). */}
-      <Flex gap="2" wrap="wrap" align="center" mb="4">
-        <Button asChild size="2" variant={isThisYear ? "solid" : "soft"}>
-          <NextLink href="/reports/sales-tax">This year</NextLink>
-        </Button>
-        <Button asChild size="2" variant={isLastYear ? "solid" : "soft"}>
-          <NextLink href={`/reports/sales-tax?from=${lastYear.from}&to=${lastYear.to}`}>
-            Last year
-          </NextLink>
-        </Button>
-        <form method="get">
-          <Flex gap="2" align="center" wrap="wrap">
-            <TextField.Root
-              type="date"
-              name="from"
-              defaultValue={period.from}
-              aria-label="Report period start"
-            />
-            <Text size="1" color="gray">
-              to
-            </Text>
-            <TextField.Root
-              type="date"
-              name="to"
-              defaultValue={period.to}
-              aria-label="Report period end"
-            />
-            <Button type="submit" size="1" variant="soft">
-              Apply
-            </Button>
-          </Flex>
+          back button works (same pattern as the invoice list's filter
+          chips: the active preset's filled state is a state indicator,
+          not a second call to action). */}
+      <div className="flex flex-wrap items-center gap-2">
+        <NextLink
+          href="/reports/sales-tax"
+          className={lButtonClass({ variant: isThisYear ? "primary" : "outline", size: "sm" })}
+        >
+          This year
+        </NextLink>
+        <NextLink
+          href={`/reports/sales-tax?from=${lastYear.from}&to=${lastYear.to}`}
+          className={lButtonClass({ variant: isLastYear ? "primary" : "outline", size: "sm" })}
+        >
+          Last year
+        </NextLink>
+        <form method="get" className="flex flex-wrap items-center gap-2">
+          <LInput
+            type="date"
+            name="from"
+            defaultValue={period.from}
+            aria-label="Report period start"
+            className="w-40"
+          />
+          <span className="text-body-s text-ink-3">to</span>
+          <LInput
+            type="date"
+            name="to"
+            defaultValue={period.to}
+            aria-label="Report period end"
+            className="w-40"
+          />
+          <LButton type="submit" variant="outline" size="sm">
+            Apply
+          </LButton>
         </form>
-      </Flex>
+      </div>
 
       {/* LOAD-BEARING, deliberately first — same placement and register as
           the other reports' disclaimers. States the basis in plain words
           and what this page is NOT: it reports figures for whoever
           prepares the pilot's filings; it does not know or say what is
           owed, or where. */}
-      <Callout.Root color="blue" mb="4">
-        <Callout.Icon>
-          <InfoCircledIcon />
-        </Callout.Icon>
-        <Callout.Text>
-          <Text as="div" weight="medium">
-            What your invoices charged as sales tax, and what&rsquo;s been
-            collected. These are the figures for whoever prepares your
-            filings.
-          </Text>
-          <Text as="div" size="2">
-            Cash-basis, matching this product&rsquo;s other reports: an
-            invoice&rsquo;s tax counts on the day it was paid in full, not
-            the day it was issued. If a payment is corrected later, the
-            period it was originally counted in stands unchanged, and the
-            correction appears as a negative row in the period the
-            correction was made. Tax charged on invoices still awaiting
-            payment is shown separately below and is not in the totals.
-            This page doesn&rsquo;t know your filing requirements and
-            doesn&rsquo;t calculate what to remit.
-          </Text>
-        </Callout.Text>
-      </Callout.Root>
+      <LAlert tone="accent" className="flex items-start gap-2">
+        <InfoIcon className="mt-0.5 shrink-0 text-accent" />
+        <div className="flex flex-col gap-1">
+          <p className="font-medium text-ink">
+            What your invoices charged as sales tax, and what&rsquo;s been collected. These are
+            the figures for whoever prepares your filings.
+          </p>
+          <p className="text-body-s">
+            Cash-basis, matching this product&rsquo;s other reports: an invoice&rsquo;s tax
+            counts on the day it was paid in full, not the day it was issued. If a payment is
+            corrected later, the period it was originally counted in stands unchanged, and the
+            correction appears as a negative row in the period the correction was made. Tax
+            charged on invoices still awaiting payment is shown separately below and is not in
+            the totals. This page doesn&rsquo;t know your filing requirements and doesn&rsquo;t
+            calculate what to remit.
+          </p>
+        </div>
+      </LAlert>
 
       {report.error !== null ? (
         // A failed read renders a FAILURE, never an empty report — a tax
         // page showing $0.00 is a claim that no tax was collected, and
         // this screen has no basis for that claim right now. See
         // lib/supabase/rows.ts for the house reasoning.
-        <Card size="3">
-          <Callout.Root color="red">
-            <Callout.Icon>
-              <ExclamationTriangleIcon />
-            </Callout.Icon>
-            <Callout.Text>
-              {friendlyDbError({ message: report.error }, "sales-tax.load")}{" "}
-              Nothing is shown rather than a partial figure. A short total
-              here would misstate what was collected.
-            </Callout.Text>
-          </Callout.Root>
-        </Card>
+        <LCard>
+          <LAlert tone="crit" className="flex items-start gap-2">
+            <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+            <span>
+              {friendlyDbError({ message: report.error }, "sales-tax.load")} Nothing is shown
+              rather than a partial figure. A short total here would misstate what was
+              collected.
+            </span>
+          </LAlert>
+        </LCard>
       ) : (
-        <Flex direction="column" gap="5">
+        <div className="flex flex-col gap-5">
           {report.truncated ? (
-            <Callout.Root color="amber">
-              <Callout.Icon>
-                <ExclamationTriangleIcon />
-              </Callout.Icon>
-              <Callout.Text>
-                This period has more than {SALES_TAX_LIMIT} rows behind one
-                of its figures, so the totals below may be partial. Narrow
-                the date range. The CSV export refuses a partial file
-                outright.
-              </Callout.Text>
-            </Callout.Root>
+            <LAlert tone="warn" className="flex items-start gap-2">
+              <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+              <span>
+                This period has more than {SALES_TAX_LIMIT} rows behind one of its figures, so
+                the totals below may be partial. Narrow the date range. The CSV export refuses
+                a partial file outright.
+              </span>
+            </LAlert>
           ) : null}
 
           {/* ---------------- Collected ---------------- */}
-          <Card size="3">
-            <Flex justify="between" align="start" mb="3" wrap="wrap" gap="2">
-              <Box>
-                <Heading as="h2" size="4">
-                  Tax collected
-                </Heading>
-                <Text as="div" size="2" color="gray">
+          <LCard>
+            <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+              <div>
+                <p className="text-h3 font-semibold">Tax collected</p>
+                <p className="text-body-s text-ink-2">
                   Invoices paid in full {formatDate(period.from)} through{" "}
-                  {formatDate(period.to)} that charged tax, and corrections
-                  made this period to previously counted payments.
-                </Text>
-              </Box>
-              <Text weight="bold" size="6" className="tnum">
+                  {formatDate(period.to)} that charged tax, and corrections made this period to
+                  previously counted payments.
+                </p>
+              </div>
+              <p className="tnum-l text-figure font-bold tracking-tight">
                 {formatCents(report.taxTotalCents)}
-              </Text>
-            </Flex>
+              </p>
+            </div>
 
             {report.rows.length === 0 ? (
-              <Text size="2" color="gray">
+              <p className="text-body-s text-ink-3">
                 No tax was collected on invoices paid in full this period.
-              </Text>
+              </p>
             ) : (
-              <Table.Root variant="ghost">
-                <Table.Header>
-                  <Table.Row>
-                    <Table.ColumnHeaderCell>Invoice</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell>Issued</Table.ColumnHeaderCell>
+              <LTable>
+                <caption>
+                  <span className="sr-only">Tax collected</span>
+                </caption>
+                <thead>
+                  <tr>
+                    <LTh>Invoice</LTh>
+                    <LTh>Client</LTh>
+                    <LTh>Issued</LTh>
                     {/* "Counted on", not "Paid in full": for a collected
                         row it IS the day the invoice was paid in full; for
                         a correction row it's the day the correction was
                         made — the header must be true of both. */}
-                    <Table.ColumnHeaderCell>Counted on</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell justify="end">
-                      Taxable subtotal
-                    </Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell justify="end">Rate</Table.ColumnHeaderCell>
-                    <Table.ColumnHeaderCell justify="end">Tax</Table.ColumnHeaderCell>
-                  </Table.Row>
-                </Table.Header>
-                <Table.Body>
+                    <LTh>Counted on</LTh>
+                    <LTh numeric>Taxable subtotal</LTh>
+                    <LTh numeric>Rate</LTh>
+                    <LTh numeric>Tax</LTh>
+                  </tr>
+                </thead>
+                <tbody>
                   {report.rows.map((row) => (
                     // One invoice can legitimately appear more than once —
                     // settled, corrected, settled again — so the key is
                     // the (invoice, event kind, date) triple, which the
                     // assembly guarantees unique.
-                    <Table.Row key={`${row.invoiceId}-${row.kind}-${row.countedOn}`}>
-                      <Table.RowHeaderCell>
+                    <tr key={`${row.invoiceId}-${row.kind}-${row.countedOn}`}>
+                      <th
+                        scope="row"
+                        className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                      >
                         {row.invoiceNumber}
                         {row.kind === "correction" && row.previouslyCountedOn ? (
-                          <Text as="div" size="1" color="gray">
+                          <span className="block text-caption font-normal text-ink-3">
                             {correctionNote(formatDate(row.previouslyCountedOn))}
-                          </Text>
+                          </span>
                         ) : null}
-                      </Table.RowHeaderCell>
-                      <Table.Cell>{row.clientName}</Table.Cell>
-                      <Table.Cell>{formatDate(row.issuedOn)}</Table.Cell>
-                      <Table.Cell>{formatDate(row.countedOn)}</Table.Cell>
-                      <Table.Cell justify="end">
-                        <Text className="tnum">
-                          {formatCents(row.taxableSubtotalCents)}
-                        </Text>
-                      </Table.Cell>
-                      <Table.Cell justify="end">
-                        <Text className="tnum">{formatBps(row.taxRateBps)}</Text>
-                      </Table.Cell>
-                      <Table.Cell justify="end">
-                        <Text className="tnum" weight="medium">
-                          {formatCents(row.taxCents)}
-                        </Text>
-                      </Table.Cell>
-                    </Table.Row>
+                      </th>
+                      <LTd>
+                        <span className="text-ink-2">{row.clientName}</span>
+                      </LTd>
+                      <LTd>
+                        <span className="text-ink-2">{formatDate(row.issuedOn)}</span>
+                      </LTd>
+                      <LTd>
+                        <span className="text-ink-2">{formatDate(row.countedOn)}</span>
+                      </LTd>
+                      <LTd numeric>{formatCents(row.taxableSubtotalCents)}</LTd>
+                      <LTd numeric>{formatBps(row.taxRateBps)}</LTd>
+                      <LTd numeric>
+                        <span className="font-medium">{formatCents(row.taxCents)}</span>
+                      </LTd>
+                    </tr>
                   ))}
-                  <Table.Row>
-                    <Table.RowHeaderCell>
-                      <Text weight="bold">Total</Text>
-                    </Table.RowHeaderCell>
-                    <Table.Cell />
-                    <Table.Cell />
-                    <Table.Cell />
-                    <Table.Cell justify="end">
-                      <Text className="tnum" weight="bold">
-                        {formatCents(report.taxableTotalCents)}
-                      </Text>
-                    </Table.Cell>
-                    <Table.Cell />
-                    <Table.Cell justify="end">
-                      <Text className="tnum" weight="bold">
-                        {formatCents(report.taxTotalCents)}
-                      </Text>
-                    </Table.Cell>
-                  </Table.Row>
-                </Table.Body>
-              </Table.Root>
+                  <tr>
+                    <th
+                      scope="row"
+                      className="border-b border-hair px-3 py-2.5 text-left align-baseline font-semibold text-ink first:pl-0 last:pr-0"
+                    >
+                      Total
+                    </th>
+                    <LTd />
+                    <LTd />
+                    <LTd />
+                    <LTd numeric>
+                      <span className="font-semibold">{formatCents(report.taxableTotalCents)}</span>
+                    </LTd>
+                    <LTd />
+                    <LTd numeric>
+                      <span className="font-semibold">{formatCents(report.taxTotalCents)}</span>
+                    </LTd>
+                  </tr>
+                </tbody>
+              </LTable>
             )}
 
             {report.untaxedPaidCount > 0 ? (
-              <Text as="div" size="2" color="gray" mt="3">
+              <p className="mt-3 text-body-s text-ink-2">
                 {report.untaxedPaidCount} other invoice
-                {report.untaxedPaidCount === 1 ? "" : "s"} paid in full this
-                period charged no tax and {report.untaxedPaidCount === 1 ? "isn't" : "aren't"}{" "}
-                listed.
-              </Text>
+                {report.untaxedPaidCount === 1 ? "" : "s"} paid in full this period charged no
+                tax and {report.untaxedPaidCount === 1 ? "isn't" : "aren't"} listed.
+              </p>
             ) : null}
-          </Card>
+          </LCard>
 
           {/* ---------------- Charged, not yet collected ---------------- */}
-          <Card size="3">
-            <Flex justify="between" align="start" wrap="wrap" gap="2">
-              <Box>
-                <Heading as="h2" size="4">
-                  Charged, not yet collected
-                </Heading>
-                <Text as="div" size="2" color="gray">
+          <LCard>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="text-h3 font-semibold">Charged, not yet collected</p>
+                <p className="text-body-s text-ink-2">
                   Tax on invoices issued {formatDate(period.from)} through{" "}
-                  {formatDate(period.to)} that are still awaiting full
-                  payment. It is not included in the totals above. Each will
-                  count on the day it&rsquo;s paid in full.
-                </Text>
-              </Box>
+                  {formatDate(period.to)} that are still awaiting full payment. It is not
+                  included in the totals above. Each will count on the day it&rsquo;s paid in
+                  full.
+                </p>
+              </div>
               {report.awaitingCount > 0 ? (
-                <Badge color="amber" size="2">
-                  <span className="tnum">
-                    {report.awaitingCount} · {formatCents(report.awaitingTaxCents)}
-                  </span>
-                </Badge>
+                <LPill tone="warn" className="tnum-l">
+                  {report.awaitingCount} · {formatCents(report.awaitingTaxCents)}
+                </LPill>
               ) : null}
-            </Flex>
+            </div>
             {report.awaitingCount === 0 ? (
-              <Text size="2" color="gray">
+              <p className="mt-3 text-body-s text-ink-3">
                 No tax outstanding on invoices issued this period.
-              </Text>
+              </p>
             ) : null}
-          </Card>
-        </Flex>
+          </LCard>
+        </div>
       )}
-    </PageShell>
+    </LPageShell>
+  );
+}
+
+/* ── Inline icons ──────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. Same shapes as invoices/page.tsx and
+ * invoices/recurring/schedule-form.tsx's own copies. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function InfoIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <circle cx="8" cy="8" r="6.25" />
+      <path d="M8 7.25v4" />
+      <circle cx="8" cy="4.9" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }
