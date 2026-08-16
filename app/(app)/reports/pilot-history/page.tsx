@@ -1,27 +1,13 @@
 import NextLink from "next/link";
-import {
-  Badge,
-  Box,
-  Button,
-  Callout,
-  Card,
-  Flex,
-  Heading,
-  Link as RadixLink,
-  Table,
-  Text,
-} from "@/components/ui";
-import {
-  ExclamationTriangleIcon,
-  InfoCircledIcon,
-} from "@radix-ui/react-icons";
+import { LAlert, LCard, LPill, LTable, LTd, LTh } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
+import { cn } from "@/lib/ledger/cn";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatDate } from "@/lib/format";
 import { loadOptionLabels } from "@/lib/custom-options-read";
 import { BRAND } from "@/lib/brand";
-import PageShell from "../../page-shell";
 import {
   compiledFromFooter,
   flagIsAnswerable,
@@ -70,7 +56,7 @@ export default async function PilotHistoryReportPage() {
   const data = report.data;
 
   return (
-    <PageShell
+    <LPageShell
       title="Pilot history"
       subtitle="Your hours and your recorded dates, in the shape a history form asks for"
       action={
@@ -79,14 +65,19 @@ export default async function PilotHistoryReportPage() {
             {/* Plain <a>, not a client-side link: these are file
                 downloads, the same pattern as the logbook export and the
                 invoice PDF. */}
-            <Button asChild variant="outline">
-              <a href="/reports/pilot-history/export?section=summary" download>
-                Download (CSV)
-              </a>
-            </Button>
-            <Button asChild>
-              <a href="/reports/pilot-history/pdf">Download (PDF)</a>
-            </Button>
+            <a
+              href="/reports/pilot-history/export?section=summary"
+              download
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-control border border-hair-strong bg-card px-4 text-body font-medium text-ink hover:bg-sunk"
+            >
+              Download (CSV)
+            </a>
+            <a
+              href="/reports/pilot-history/pdf"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-control bg-accent px-4 text-body font-medium text-accent-ink hover:opacity-92"
+            >
+              Download (PDF)
+            </a>
           </>
         ) : null
       }
@@ -94,15 +85,13 @@ export default async function PilotHistoryReportPage() {
       {/* LOAD-BEARING, and deliberately first — the same placement as the
           year-end and flight-time reports' framing callouts: what this
           page is and is not, above every figure on it. */}
-      <Callout.Root color="blue" mb="4">
-        <Callout.Icon>
-          <InfoCircledIcon />
-        </Callout.Icon>
-        <Callout.Text>
-          <Text as="div" weight="medium">
+      <LAlert tone="accent" className="flex items-start gap-2">
+        <InfoIcon className="mt-0.5 shrink-0 text-accent" />
+        <div>
+          <div className="font-medium text-ink">
             Arithmetic on your own records. Nothing more.
-          </Text>
-          <Text as="div" size="2">
+          </div>
+          <div className="mt-1">
             Every figure below is a sum of the hours you logged and a
             restatement of the dates you entered. This page draws no
             conclusion from them. It does not assess your experience
@@ -114,16 +103,14 @@ export default async function PilotHistoryReportPage() {
             questions from one place, instead of a calculator and an
             evening with your logbook. The numbers are exactly as complete
             as the records behind them.
-          </Text>
-        </Callout.Text>
-      </Callout.Root>
+          </div>
+        </div>
+      </LAlert>
 
       {report.error ? (
-        <Card size="3">
-          <Callout.Root color="red">
-            <Callout.Icon>
-              <ExclamationTriangleIcon />
-            </Callout.Icon>
+        <LCard>
+          <LAlert tone="crit" className="flex items-start gap-2">
+            <WarningIcon className="mt-0.5 shrink-0 text-crit" />
             {/* THE LOADER'S OWN SENTENCE, verbatim. Every value `error`
                 can hold is written for the pilot (queries.ts logs the raw
                 database detail and never passes it up), and each says which
@@ -133,37 +120,33 @@ export default async function PilotHistoryReportPage() {
                 save that. Try again." — a sentence about writing, on a page
                 that only reads, that threw away the one thing the pilot
                 needed to know. */}
-            <Callout.Text>{`Sorry, ${report.error}.`}</Callout.Text>
-          </Callout.Root>
-        </Card>
+            <span>{`Sorry, ${report.error}.`}</span>
+          </LAlert>
+        </LCard>
       ) : data && !data.ok ? (
-        <Card size="3">
-          <Heading as="h2" size="4" mb="2">
-            No figures to state yet
-          </Heading>
-          <Text as="p" size="2" color="gray">
+        <LCard>
+          <h2 className="mb-2 text-h3 font-semibold">No figures to state yet</h2>
+          <p className="text-body-s text-ink-2">
             Your logbook has no entries, so this page shows no totals. A
             column of 0.0-hour figures would claim something about your
             flying with no record behind it. Log a flight or import your
             history in{" "}
-            <RadixLink asChild>
-              <NextLink href="/logbook">Logbook</NextLink>
-            </RadixLink>{" "}
+            <NextLink href="/logbook" className="text-accent hover:underline">
+              Logbook
+            </NextLink>{" "}
             and the figures appear.
-          </Text>
-        </Card>
+          </p>
+        </LCard>
       ) : data ? (
-        <Flex direction="column" gap="4">
-          <Card size="3">
-            <Box mb="3">
-              <Heading as="h2" size="4">
-                Flight time
-              </Heading>
-              <Text as="div" size="2" color="gray">
+        <>
+          <LCard>
+            <div className="mb-3">
+              <h2 className="text-h3 font-semibold">Flight time</h2>
+              <p className="text-body-s text-ink-2">
                 {`Compiled ${formatDate(data.compiledOn)}. Your logbook runs from ${formatDate(
                   data.earliestEntryDate
                 )} to ${formatDate(data.latestEntryDate)}. Simulator time is on its own line and is never added to a total. Every hour above it is time in an aircraft.`}
-              </Text>
+              </p>
               {/* Almost always a mistyped year. Said out loud, because the
                   entry is in the pilot's logbook and in none of these
                   figures, and they are the only person who can reconcile
@@ -175,90 +158,78 @@ export default async function PilotHistoryReportPage() {
               <Caveat
                 text={unattributedEntriesNote(data.unattributedEntryCount)}
               />
-            </Box>
+            </div>
 
-            <Table.Root variant="ghost">
-              <Table.Header>
-                <Table.Row>
-                  <Table.ColumnHeaderCell />
-                  <Table.ColumnHeaderCell justify="end">
-                    All time
-                  </Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell justify="end">
-                    <Text as="div">Last 12 months</Text>
-                    <Text as="div" size="1" weight="regular" color="gray">
+            <LTable>
+              <thead>
+                <tr>
+                  <LTh />
+                  <LTh numeric>All time</LTh>
+                  <LTh numeric>
+                    <span className="block">Last 12 months</span>
+                    <span className="block font-normal">
                       {data.lastTwelveMonths.window.label}
-                    </Text>
-                  </Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell justify="end">
-                    <Text as="div">Last 90 days</Text>
-                    <Text as="div" size="1" weight="regular" color="gray">
+                    </span>
+                  </LTh>
+                  <LTh numeric>
+                    <span className="block">Last 90 days</span>
+                    <span className="block font-normal">
                       {formatDate(data.lastNinetyDays.window.from ?? data.lastNinetyDays.window.to)}
                       {" to "}
                       {formatDate(data.lastNinetyDays.window.to)}
-                    </Text>
-                  </Table.ColumnHeaderCell>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
+                    </span>
+                  </LTh>
+                </tr>
+              </thead>
+              <tbody>
                 {hourRows(data.allTime, data.lastTwelveMonths, data.lastNinetyDays).map((row) => (
-                  <Table.Row key={row.label}>
-                    <Table.RowHeaderCell>
-                      <Text as="div" weight={row.strong ? "medium" : "regular"}>
+                  <tr key={row.label}>
+                    <th
+                      scope="row"
+                      className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                    >
+                      <span className={row.strong ? undefined : "font-normal text-ink-2"}>
                         {row.label}
-                      </Text>
+                      </span>
                       {row.note ? (
-                        <Text as="div" size="1" color="gray">
-                          {row.note}
-                        </Text>
+                        <div className="text-caption font-normal text-ink-3">{row.note}</div>
                       ) : null}
-                    </Table.RowHeaderCell>
-                    <Table.Cell justify="end">
-                      <Text
-                        className="tnum"
-                        weight={row.strong ? "medium" : "regular"}
-                      >
-                        {row.decimals === 0
-                          ? row.allTime
-                          : row.allTime.toFixed(1)}
-                      </Text>
-                    </Table.Cell>
-                    <Table.Cell justify="end">
-                      <Text className="tnum" color={row.strong ? undefined : "gray"}>
-                        {row.decimals === 0
-                          ? row.recent
-                          : row.recent.toFixed(1)}
-                      </Text>
-                    </Table.Cell>
-                    <Table.Cell justify="end">
-                      <Text className="tnum" color={row.strong ? undefined : "gray"}>
-                        {row.decimals === 0
-                          ? row.ninety
-                          : row.ninety.toFixed(1)}
-                      </Text>
-                    </Table.Cell>
-                  </Table.Row>
+                    </th>
+                    <LTd numeric>
+                      <span className={row.strong ? "font-medium text-ink" : "text-ink-2"}>
+                        {row.decimals === 0 ? row.allTime : row.allTime.toFixed(1)}
+                      </span>
+                    </LTd>
+                    <LTd numeric>
+                      <span className={row.strong ? "font-medium text-ink" : "text-ink-2"}>
+                        {row.decimals === 0 ? row.recent : row.recent.toFixed(1)}
+                      </span>
+                    </LTd>
+                    <LTd numeric>
+                      <span className={row.strong ? "font-medium text-ink" : "text-ink-2"}>
+                        {row.decimals === 0 ? row.ninety : row.ninety.toFixed(1)}
+                      </span>
+                    </LTd>
+                  </tr>
                 ))}
-              </Table.Body>
-            </Table.Root>
-          </Card>
+              </tbody>
+            </LTable>
+          </LCard>
 
-          <Card size="3">
-            <Box mb="3">
-              <Heading as="h2" size="4">
-                Turbine and retractable gear
-              </Heading>
-              <Text as="div" size="2" color="gray">
+          <LCard>
+            <div className="mb-3">
+              <h2 className="text-h3 font-semibold">Turbine and retractable gear</h2>
+              <p className="text-body-s text-ink-2">
                 Two lines rated separately on most history forms. Both come
                 from what you recorded about each airframe in{" "}
-                <RadixLink asChild>
-                  <NextLink href="/logbook/aircraft">your aircraft</NextLink>
-                </RadixLink>
+                <NextLink href="/logbook/aircraft" className="text-accent hover:underline">
+                  your aircraft
+                </NextLink>
                 , so an aeroplane you have not annotated yet is counted as
                 unrecorded rather than as a no.
-              </Text>
-            </Box>
-            <Flex direction="column" gap="3">
+              </p>
+            </div>
+            <div className="flex flex-col gap-3">
               <FlagFigureRow
                 label="Turbine time"
                 figure={data.allTime.turbine}
@@ -269,8 +240,8 @@ export default async function PilotHistoryReportPage() {
                 figure={data.allTime.retractable}
                 recentFigure={data.lastTwelveMonths.retractable}
               />
-            </Flex>
-          </Card>
+            </div>
+          </LCard>
 
           <BreakdownCard
             title="By category and class"
@@ -309,96 +280,83 @@ export default async function PilotHistoryReportPage() {
             showLastFlown
           />
 
-          <Card size="3">
-            <Box mb="3">
-              <Heading as="h2" size="4">
-                Recorded dates
-              </Heading>
-              <Text as="div" size="2" color="gray">
+          <LCard>
+            <div className="mb-3">
+              <h2 className="text-h3 font-semibold">Recorded dates</h2>
+              <p className="text-body-s text-ink-2">
                 Exactly as you entered them in{" "}
-                <RadixLink asChild>
-                  <NextLink href="/documents">Documents</NextLink>
-                </RadixLink>
+                <NextLink href="/documents" className="text-accent hover:underline">
+                  Documents
+                </NextLink>
                 . Nothing here is derived, checked against a registry, or
                 calculated from another date. An expiry shown is one you
                 typed, not one this page worked out.
-              </Text>
-            </Box>
+              </p>
+            </div>
 
             {data.recordedDates.length === 0 ? (
-              <Text as="p" size="2" color="gray">
+              <p className="text-body-s text-ink-2">
                 You have no medical, flight review, proficiency check or
                 certificate on file with a date on it. Add one and it
                 appears here and on the downloads.
-              </Text>
+              </p>
             ) : (
               <>
-                <Table.Root variant="ghost">
-                  <Table.Header>
-                    <Table.Row>
-                      <Table.ColumnHeaderCell>Document</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell>Completed</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell>Issued</Table.ColumnHeaderCell>
-                      <Table.ColumnHeaderCell>
-                        Expires (as you entered it)
-                      </Table.ColumnHeaderCell>
-                    </Table.Row>
-                  </Table.Header>
-                  <Table.Body>
+                <LTable>
+                  <thead>
+                    <tr>
+                      <LTh>Document</LTh>
+                      <LTh>Completed</LTh>
+                      <LTh>Issued</LTh>
+                      <LTh>Expires (as you entered it)</LTh>
+                    </tr>
+                  </thead>
+                  <tbody>
                     {data.recordedDates.map((date, index) => (
-                      <Table.Row key={`${date.kind}-${date.label}-${index}`}>
-                        <Table.RowHeaderCell>
-                          <Flex align="center" gap="2" wrap="wrap">
-                            <Text weight="medium">{date.label}</Text>
-                            <Badge color="gray" variant="outline">
-                              {kindLabels[date.kind] ?? date.kind}
-                            </Badge>
+                      <tr key={`${date.kind}-${date.label}-${index}`}>
+                        <th
+                          scope="row"
+                          className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span>{date.label}</span>
+                            <LPill tone="neutral">{kindLabels[date.kind] ?? date.kind}</LPill>
                             {date.attribution === "unattributed" ? (
-                              <Badge color="amber" variant="outline">
-                                No airman recorded
-                              </Badge>
+                              <LPill tone="warn">No airman recorded</LPill>
                             ) : null}
-                          </Flex>
-                        </Table.RowHeaderCell>
-                        <Table.Cell>
-                          <Text size="2" color="gray">
-                            {formatDate(date.completedOn)}
-                          </Text>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Text size="2" color="gray">
-                            {formatDate(date.issuedOn)}
-                          </Text>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Text size="2" color="gray">
-                            {formatDate(date.expiresOn)}
-                          </Text>
-                        </Table.Cell>
-                      </Table.Row>
+                          </div>
+                        </th>
+                        <LTd>
+                          <span className="text-ink-2">{formatDate(date.completedOn)}</span>
+                        </LTd>
+                        <LTd>
+                          <span className="text-ink-2">{formatDate(date.issuedOn)}</span>
+                        </LTd>
+                        <LTd>
+                          <span className="text-ink-2">{formatDate(date.expiresOn)}</span>
+                        </LTd>
+                      </tr>
                     ))}
-                  </Table.Body>
-                </Table.Root>
+                  </tbody>
+                </LTable>
                 {data.hasUnattributedDates ? (
-                  <Text as="p" size="1" color="gray" mt="2">
+                  <p className="mt-2 text-caption text-ink-3">
                     A document marked &ldquo;No airman recorded&rdquo; is on
                     this account without saying whose it is. It is listed
                     because it is almost certainly yours on a single-pilot
                     account, but this page will not assert that for you.
                     Open the document and record the airman to remove the
                     mark.
-                  </Text>
+                  </p>
                 ) : null}
               </>
             )}
-          </Card>
+          </LCard>
 
-          <Text as="p" size="1" color="gray">
-            {compiledFromFooter(BRAND.name)}
-          </Text>
-        </Flex>
+          <p className="text-caption text-ink-3">{compiledFromFooter(BRAND.name)}</p>
+        </>
       ) : null}
-    </PageShell>
+    </LPageShell>
   );
 }
 
@@ -415,16 +373,16 @@ export default async function PilotHistoryReportPage() {
  */
 function Caveat({
   text,
-  color = "amber",
+  tone = "warn",
 }: {
   text: string | null;
-  color?: React.ComponentProps<typeof Text>["color"];
+  tone?: "warn" | "neutral";
 }) {
   if (text === null) return null;
   return (
-    <Text as="div" size="1" color={color}>
+    <div className={cn("text-caption", tone === "warn" ? "text-warn" : "text-ink-3")}>
       {text}
-    </Text>
+    </div>
   );
 }
 
@@ -561,36 +519,30 @@ function FlagFigureRow({
 }) {
   if (!flagIsAnswerable(figure)) {
     return (
-      <Box>
-        <Text as="div" weight="medium">
-          {label}
-        </Text>
-        <Text as="div" size="2" color="gray">
+      <div>
+        <div className="font-medium text-ink">{label}</div>
+        <p className="text-body-s text-ink-2">
           Not recorded. None of your aircraft says one way or the other, so
           there is no figure to give. A 0.0 here would read as an answer
           rather than as a blank.
-        </Text>
-      </Box>
+        </p>
+      </div>
     );
   }
   return (
-    <Box>
-      <Flex align="baseline" gap="3" wrap="wrap">
-        <Text as="span" weight="medium">
-          {label}
-        </Text>
-        <Text as="span" size="5" weight="bold" className="tnum">
-          {figure.hours.toFixed(1)}
-        </Text>
-        <Text as="span" size="2" color="gray" className="tnum">
+    <div>
+      <div className="flex flex-wrap items-baseline gap-3">
+        <span className="font-medium text-ink">{label}</span>
+        <span className="tnum-l text-lead font-bold">{figure.hours.toFixed(1)}</span>
+        <span className="tnum-l text-body-s text-ink-2">
           {`${recentFigure.hours.toFixed(1)} in the last 12 months`}
-        </Text>
-      </Flex>
+        </span>
+      </div>
       {/* THE SHORTFALL NAMES ITS WINDOW. Beside a last-12-months figure, an
           unlabelled all-time shortfall qualifies a number the reader is not
           looking at. */}
       <Caveat text={unrecordedHoursNote(figure, recentFigure)} />
-    </Box>
+    </div>
   );
 }
 
@@ -610,47 +562,38 @@ function BreakdownCard({
   showLastFlown?: boolean;
 }) {
   return (
-    <Card size="3">
-      <Box mb="3">
-        <Heading as="h2" size="4">
-          {title}
-        </Heading>
-        <Text as="div" size="2" color="gray">
-          {caption}
-        </Text>
-      </Box>
+    <LCard>
+      <div className="mb-3">
+        <h2 className="text-h3 font-semibold">{title}</h2>
+        <p className="text-body-s text-ink-2">{caption}</p>
+      </div>
 
       {withheld !== null ? (
-        <Text as="p" size="2" color="gray">
-          {withheld}
-        </Text>
+        <p className="text-body-s text-ink-2">{withheld}</p>
       ) : rows.length === 0 ? (
-        <Text as="p" size="2" color="gray">
-          Nothing to show here yet.
-        </Text>
+        <p className="text-body-s text-ink-2">Nothing to show here yet.</p>
       ) : (
-        <Table.Root variant="ghost">
-          <Table.Header>
-            <Table.Row>
-              <Table.ColumnHeaderCell>{title.replace("By ", "")}</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell justify="end">Total</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell justify="end">PIC</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell justify="end">SIC</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell justify="end">Night</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell justify="end">Sim</Table.ColumnHeaderCell>
-              {showLastFlown ? (
-                <Table.ColumnHeaderCell justify="end">
-                  Last flown
-                </Table.ColumnHeaderCell>
-              ) : null}
-            </Table.Row>
-          </Table.Header>
-          <Table.Body>
+        <LTable>
+          <thead>
+            <tr>
+              <LTh>{title.replace("By ", "")}</LTh>
+              <LTh numeric>Total</LTh>
+              <LTh numeric>PIC</LTh>
+              <LTh numeric>SIC</LTh>
+              <LTh numeric>Night</LTh>
+              <LTh numeric>Sim</LTh>
+              {showLastFlown ? <LTh numeric>Last flown</LTh> : null}
+            </tr>
+          </thead>
+          <tbody>
             {rows.map((row) => (
-              <Table.Row key={row.label}>
-                <Table.RowHeaderCell>
-                  <Flex align="center" gap="2" wrap="wrap">
-                    <Text weight="medium">{row.label}</Text>
+              <tr key={row.label}>
+                <th
+                  scope="row"
+                  className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>{row.label}</span>
                     {/* Says WHY a row reads the way it does. Hours logged
                         against an aeroplane that is not on file are still
                         counted — they are just grouped by what was typed
@@ -658,56 +601,83 @@ function BreakdownCard({
                         hold both kinds, so the badge marks the rows with
                         NO airframe behind them and the note below marks
                         the mixed ones. */}
-                    {row.registered ? null : (
-                      <Badge color="gray" variant="outline">
-                        No aircraft on file
-                      </Badge>
-                    )}
-                  </Flex>
+                    {row.registered ? null : <LPill tone="neutral">No aircraft on file</LPill>}
+                  </div>
                   {row.sublabel ? (
-                    <Text as="div" size="1" color="gray">
-                      {row.sublabel}
-                    </Text>
+                    <div className="text-caption font-normal text-ink-3">{row.sublabel}</div>
                   ) : null}
-                  <Caveat text={mixedProvenanceNote(row)} color="gray" />
-                </Table.RowHeaderCell>
-                <Table.Cell justify="end">
-                  <Text weight="medium" className="tnum">
-                    {row.total.toFixed(1)}
-                  </Text>
-                </Table.Cell>
-                <Table.Cell justify="end">
-                  <Text color="gray" className="tnum">
-                    {row.pic.toFixed(1)}
-                  </Text>
-                </Table.Cell>
-                <Table.Cell justify="end">
-                  <Text color="gray" className="tnum">
-                    {row.sic.toFixed(1)}
-                  </Text>
-                </Table.Cell>
-                <Table.Cell justify="end">
-                  <Text color="gray" className="tnum">
-                    {row.night.toFixed(1)}
-                  </Text>
-                </Table.Cell>
-                <Table.Cell justify="end">
-                  <Text color="gray" className="tnum">
-                    {row.simulator.toFixed(1)}
-                  </Text>
-                </Table.Cell>
+                  <Caveat text={mixedProvenanceNote(row)} tone="neutral" />
+                </th>
+                <LTd numeric>
+                  <span className="font-medium text-ink">{row.total.toFixed(1)}</span>
+                </LTd>
+                <LTd numeric>
+                  <span className="text-ink-2">{row.pic.toFixed(1)}</span>
+                </LTd>
+                <LTd numeric>
+                  <span className="text-ink-2">{row.sic.toFixed(1)}</span>
+                </LTd>
+                <LTd numeric>
+                  <span className="text-ink-2">{row.night.toFixed(1)}</span>
+                </LTd>
+                <LTd numeric>
+                  <span className="text-ink-2">{row.simulator.toFixed(1)}</span>
+                </LTd>
                 {showLastFlown ? (
-                  <Table.Cell justify="end">
-                    <Text color="gray" size="2">
-                      {formatDate(row.lastFlownOn)}
-                    </Text>
-                  </Table.Cell>
+                  <LTd>
+                    <span className="text-body-s text-ink-2">{formatDate(row.lastFlownOn)}</span>
+                  </LTd>
                 ) : null}
-              </Table.Row>
+              </tr>
             ))}
-          </Table.Body>
-        </Table.Root>
+          </tbody>
+        </LTable>
       )}
-    </Card>
+    </LCard>
+  );
+}
+
+/* ── Inline icons ─────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. */
+function InfoIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <circle cx="8" cy="8" r="6.25" />
+      <path d="M8 7.25v4" />
+      <circle cx="8" cy="4.9" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

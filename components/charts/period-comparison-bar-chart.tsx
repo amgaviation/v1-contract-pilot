@@ -72,7 +72,7 @@ function ComparisonTooltip({ active, payload, label }: TooltipContentProps) {
         minWidth: 180,
       }}
     >
-      <div style={{ color: "var(--ink-2)", fontSize: "var(--text-1)", marginBottom: "var(--space-1)" }}>
+      <div style={{ color: "var(--ledger-ink-2)", fontSize: "var(--text-1)", marginBottom: "var(--space-1)" }}>
         {label}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
@@ -89,10 +89,10 @@ function ComparisonTooltip({ active, payload, label }: TooltipContentProps) {
                 flexShrink: 0,
               }}
             />
-            <span style={{ color: "var(--ink-2)", fontSize: "var(--text-1)" }}>{entry.name}</span>
+            <span style={{ color: "var(--ledger-ink-2)", fontSize: "var(--text-1)" }}>{entry.name}</span>
             <span
-              className="tnum"
-              style={{ color: "var(--ink)", fontWeight: "var(--weight-semibold)", marginLeft: "auto" }}
+              className="tnum-l"
+              style={{ color: "var(--ledger-ink)", fontWeight: "var(--weight-semibold)", marginLeft: "auto" }}
             >
               {formatCents(Number(entry.value))}
             </span>
@@ -116,7 +116,7 @@ function ComparisonLegend({ currentLabel, priorLabel }: { currentLabel: string; 
       {items.map((item) => (
         <span
           key={item.label}
-          style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--text-1)", color: "var(--ink-2)" }}
+          style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--text-1)", color: "var(--ledger-ink-2)" }}
         >
           <span
             aria-hidden

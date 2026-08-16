@@ -98,13 +98,13 @@ function MarginTooltip({ active, payload }: TooltipContentProps) {
         boxShadow: "var(--shadow-overlay)",
       }}
     >
-      <div style={{ color: "var(--ink-2)", fontSize: "var(--text-1)", marginBottom: "var(--space-1)" }}>
+      <div style={{ color: "var(--ledger-ink-2)", fontSize: "var(--text-1)", marginBottom: "var(--space-1)" }}>
         {datum?.label ?? ""}
       </div>
       <span
-        className="tnum"
+        className="tnum-l"
         style={{
-          color: cents < 0 ? CHART_NEGATIVE_COLOR : "var(--ink)",
+          color: cents < 0 ? CHART_NEGATIVE_COLOR : "var(--ledger-ink)",
           fontWeight: "var(--weight-semibold)",
         }}
       >
@@ -127,7 +127,7 @@ function CategoryTick(props: YAxisTickContentProps) {
   const label = String(payload?.value ?? "");
   const truncated = label.length > LABEL_MAX_CHARS ? `${label.slice(0, LABEL_MAX_CHARS - 1)}…` : label;
   return (
-    <text x={x} y={y} dy={4} textAnchor="end" fill="var(--ink)" fontSize="var(--text-1)">
+    <text x={x} y={y} dy={4} textAnchor="end" fill="var(--ledger-ink)" fontSize="var(--text-1)">
       {label !== truncated ? <title>{label}</title> : null}
       {truncated}
     </text>
@@ -143,7 +143,7 @@ export function ItemMarginBarChart({ data, ariaLabel }: ItemMarginBarChartProps)
           so this caption is a caveat for a colorblind or grayscale reader,
           not a required legend box (dataviz skill's marks-and-anatomy.md:
           a single series needs no legend box). */}
-      <div style={{ fontSize: "var(--text-1)", color: "var(--ink-2)", marginBottom: "var(--space-2)" }}>
+      <div style={{ fontSize: "var(--text-1)", color: "var(--ledger-ink-2)", marginBottom: "var(--space-2)" }}>
         <span aria-hidden style={{ color: CHART_POSITIVE_COLOR, fontWeight: "var(--weight-semibold)" }}>
           ●
         </span>{" "}
@@ -172,7 +172,7 @@ export function ItemMarginBarChart({ data, ariaLabel }: ItemMarginBarChartProps)
               axisLine={false}
               tickLine={false}
             />
-            <ReferenceLine x={0} stroke="var(--ink-3)" />
+            <ReferenceLine x={0} stroke="var(--ledger-ink-3)" />
             <Tooltip content={MarginTooltip} cursor={{ fill: CHART_CURSOR_FILL }} />
             <Bar dataKey="marginCents" shape={marginBarShape} isAnimationActive={false} />
           </BarChart>
