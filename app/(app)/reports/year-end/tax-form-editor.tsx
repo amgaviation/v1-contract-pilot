@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Box, Button, Flex, Select, Text, TextField } from "@/components/ui";
+import { LButton } from "@/components/ledger";
+import { LField, LInput, LSelect } from "@/components/ledger/forms";
 import { centsToInput } from "@/lib/format";
 import { saveClientTaxForm, type TaxFormState } from "./actions";
 
@@ -50,26 +51,20 @@ export default function TaxFormEditor({
 
   if (!open) {
     return (
-      <Button
-        size="1"
-        variant="soft"
+      <LButton
+        type="button"
+        size="sm"
+        variant="outline"
         onClick={() => setOpen(true)}
         aria-label={`${existing ? "Edit" : "Record"} ${clientName}'s ${year} 1099`}
       >
         {existing ? "Edit" : "Record 1099"}
-      </Button>
+      </LButton>
     );
   }
 
   return (
-    <Box
-      style={{
-        border: "1px solid var(--edge)",
-        borderRadius: "var(--radius)",
-      }}
-      p="3"
-      mt="2"
-    >
+    <div className="mt-2 rounded-control border border-hair-strong bg-card p-3">
       <form
         action={(formData) => {
           formData.set("form_type", formType);
@@ -79,32 +74,27 @@ export default function TaxFormEditor({
         <input type="hidden" name="client_id" value={clientId} />
         <input type="hidden" name="tax_year" value={year} />
 
-        <Text as="div" size="2" weight="medium" mb="2">
+        <div className="mb-2 text-body-s font-medium text-ink">
           {clientName} &middot; {year}
-        </Text>
+        </div>
 
-        <Flex direction={{ initial: "column", sm: "row" }} gap="3" wrap="wrap">
-          <Flex direction="column" gap="1">
-            <Text as="label" size="1" color="gray" id={`form-type-${clientId}`}>
-              Form type
-            </Text>
-            <Select.Root value={formType} onValueChange={setFormType}>
-              <Select.Trigger aria-labelledby={`form-type-${clientId}`} />
-              <Select.Content>
-                {FORM_TYPES.map((f) => (
-                  <Select.Item key={f.value} value={f.value}>
-                    {f.label}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-          </Flex>
+        <div className="flex flex-col flex-wrap gap-3 sm:flex-row">
+          <LField label="Form type" htmlFor={`form-type-${clientId}`} className="sm:w-40">
+            <LSelect
+              id={`form-type-${clientId}`}
+              value={formType}
+              onChange={(e) => setFormType(e.target.value)}
+            >
+              {FORM_TYPES.map((f) => (
+                <option key={f.value} value={f.value}>
+                  {f.label}
+                </option>
+              ))}
+            </LSelect>
+          </LField>
 
-          <Flex direction="column" gap="1">
-            <Text as="label" size="1" color="gray" htmlFor={`amount-${clientId}`}>
-              Amount the form reports
-            </Text>
-            <TextField.Root
+          <LField label="Amount the form reports" htmlFor={`amount-${clientId}`} className="sm:w-36">
+            <LInput
               id={`amount-${clientId}`}
               name="reported_amount"
               inputMode="decimal"
@@ -117,58 +107,48 @@ export default function TaxFormEditor({
                     : ""
               }
               required
-              style={{ width: "9rem" }}
+              className="tnum-l"
             />
-          </Flex>
+          </LField>
 
-          <Flex direction="column" gap="1">
-            <Text as="label" size="1" color="gray" htmlFor={`received-${clientId}`}>
-              Received (optional)
-            </Text>
-            <TextField.Root
+          <LField label="Received (optional)" htmlFor={`received-${clientId}`} className="sm:w-40">
+            <LInput
               id={`received-${clientId}`}
               type="date"
               name="received_on"
               defaultValue={submitted ? submitted.received_on : existing?.receivedOn ?? ""}
-              style={{ width: "10rem" }}
             />
-          </Flex>
+          </LField>
 
-          <Flex direction="column" gap="1" flexGrow="1">
-            <Text as="label" size="1" color="gray" htmlFor={`notes-${clientId}`}>
-              Notes (optional)
-            </Text>
-            <TextField.Root
+          <LField label="Notes (optional)" htmlFor={`notes-${clientId}`} className="flex-1">
+            <LInput
               id={`notes-${clientId}`}
               name="notes"
               defaultValue={submitted ? submitted.notes : existing?.notes ?? ""}
               placeholder="e.g. corrected form received"
             />
-          </Flex>
-        </Flex>
+          </LField>
+        </div>
 
-        {state.error ? (
-          <Text as="div" size="1" color="red" mt="2" role="alert">
-            {state.error}
-          </Text>
-        ) : null}
+        <div className="mt-2" role="alert" aria-live="polite">
+          {state.error ? <p className="text-caption font-medium text-crit">{state.error}</p> : null}
+        </div>
 
-        <Flex gap="2" mt="3">
-          <Button type="submit" size="1" disabled={pending}>
+        <div className="mt-3 flex gap-2">
+          <LButton type="submit" size="sm" disabled={pending}>
             {pending ? "Saving…" : "Save"}
-          </Button>
-          <Button
+          </LButton>
+          <LButton
             type="button"
-            size="1"
-            variant="soft"
-            color="gray"
+            size="sm"
+            variant="quiet"
             onClick={() => setOpen(false)}
             disabled={pending}
           >
             Cancel
-          </Button>
-        </Flex>
+          </LButton>
+        </div>
       </form>
-    </Box>
+    </div>
   );
 }
