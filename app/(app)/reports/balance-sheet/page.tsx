@@ -1,4 +1,5 @@
 import { LAlert, LButton, LCard, LRow, LRows, lButtonClass } from "@/components/ledger";
+import { LInput } from "@/components/ledger/forms";
 import { LPageShell } from "@/components/ledger/page-shell";
 import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
@@ -11,16 +12,6 @@ import {
 import { isValidIsoDate, todayIso } from "../sales-tax/report-lib";
 
 export const metadata = { title: "Balance sheet" };
-
-// components/ledger/forms.tsx (LInput/LField) hasn't landed on this branch
-// yet — it ships from the same money-surface migration that also does
-// Invoices/Estimates, elsewhere in this Phase 4/5 fan-out. This is the one
-// field this screen needs, styled inline to LInput's own control recipe
-// (see that file's header once it lands) rather than reaching for
-// components/ui.
-const FIELD_INPUT =
-  "h-9 w-40 rounded-control border border-hair-strong bg-card px-3 text-body text-ink " +
-  "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent";
 
 function SectionTable({ section }: { section: BalanceSheetSection }) {
   return (
@@ -97,13 +88,7 @@ export default async function BalanceSheetPage({
             <label htmlFor="bs-date" className="text-body-s font-medium text-ink">
               As of
             </label>
-            <input
-              id="bs-date"
-              type="date"
-              name="date"
-              defaultValue={asOf}
-              className={FIELD_INPUT}
-            />
+            <LInput id="bs-date" type="date" name="date" defaultValue={asOf} className="w-40" />
           </div>
           <LButton type="submit" variant="outline" size="sm">
             View

@@ -1,5 +1,6 @@
 import NextLink from "next/link";
 import { LAlert, LButton, LCard, LPill, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
+import { LInput } from "@/components/ledger/forms";
 import { LPageShell } from "@/components/ledger/page-shell";
 
 import { createClient } from "@/lib/supabase/server";
@@ -15,16 +16,6 @@ import {
 } from "./report-lib";
 
 export const metadata = { title: "Sales tax" };
-
-// components/ledger/forms.tsx (LInput) hasn't landed on this branch yet —
-// it ships from the same money-surface migration that also does
-// Invoices/Estimates, elsewhere in this Phase 4/5 fan-out. These are the
-// two fields this screen needs, styled inline to LInput's own control
-// recipe (see that file's header once it lands) rather than reaching for
-// components/ui.
-const FIELD_INPUT =
-  "h-9 w-40 rounded-control border border-hair-strong bg-card px-3 text-body text-ink " +
-  "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent";
 
 /**
  * The sales tax report: what the pilot's invoices charged as state
@@ -97,20 +88,20 @@ export default async function SalesTaxReportPage({
           Last year
         </NextLink>
         <form method="get" className="flex flex-wrap items-center gap-2">
-          <input
+          <LInput
             type="date"
             name="from"
             defaultValue={period.from}
             aria-label="Report period start"
-            className={FIELD_INPUT}
+            className="w-40"
           />
           <span className="text-body-s text-ink-3">to</span>
-          <input
+          <LInput
             type="date"
             name="to"
             defaultValue={period.to}
             aria-label="Report period end"
-            className={FIELD_INPUT}
+            className="w-40"
           />
           <LButton type="submit" variant="outline" size="sm">
             Apply

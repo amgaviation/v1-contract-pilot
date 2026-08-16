@@ -1,5 +1,6 @@
 import NextLink from "next/link";
 import { LAlert, LButton, LCard, LTd, LTh, LTable, lButtonClass } from "@/components/ledger";
+import { LInput } from "@/components/ledger/forms";
 import { LPageShell } from "@/components/ledger/page-shell";
 import { cn } from "@/lib/ledger/cn";
 
@@ -30,15 +31,6 @@ function csvHref(year: number): string {
 const ROW_HEADER =
   "border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0";
 
-// components/ledger/forms.tsx (LInput) hasn't landed on this branch yet —
-// it ships from the same money-surface migration that also does
-// Invoices/Estimates, elsewhere in this Phase 4/5 fan-out. This is the one
-// field this screen needs, styled inline to LInput's own control recipe
-// (see that file's header once it lands) rather than reaching for
-// components/ui.
-const FIELD_INPUT =
-  "h-9 w-24 rounded-control border border-hair-strong bg-card px-3 text-body text-ink " +
-  "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent";
 
 /**
  * Parses the ?setAside= query param into a percentage (0-100), or null
@@ -181,7 +173,7 @@ export default async function QuarterlyReportPage({
             </p>
             <form method="GET" action="/reports/quarterly" className="flex flex-wrap items-center gap-2">
               <input type="hidden" name="year" value={year} />
-              <input
+              <LInput
                 type="number"
                 name="setAside"
                 min={0}
@@ -190,7 +182,7 @@ export default async function QuarterlyReportPage({
                 placeholder="e.g. 25"
                 defaultValue={setAsidePercent ?? ""}
                 aria-label="Set-aside percentage"
-                className={FIELD_INPUT}
+                className="w-24"
               />
               <span className="text-body-s text-ink-3">%</span>
               <LButton type="submit" variant="outline" size="sm">

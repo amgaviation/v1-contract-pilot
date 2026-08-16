@@ -1,7 +1,7 @@
 "use client";
 
 import NextLink from "next/link";
-import { Button, Card, Flex, Text } from "@/components/ui";
+import { LButton, LCard, lButtonClass } from "@/components/ledger";
 import { DASHBOARD_PATH } from "@/lib/nav";
 
 /**
@@ -30,21 +30,19 @@ export default function AppError({
   reset: () => void;
 }) {
   return (
-    <Card size="3">
-      <Flex direction="column" gap="3">
-        <Text size="5" weight="bold">
-          Something went wrong
-        </Text>
-        <Text size="2" color="gray">
+    <LCard className="p-6">
+      <div className="flex flex-col gap-3">
+        <h1 className="text-h3 font-bold text-ink">Something went wrong</h1>
+        <p className="text-body-s text-ink-2">
           That didn&rsquo;t load. Try again, or head back to the overview.
-        </Text>
-        <Flex gap="3">
-          <Button onClick={reset}>Try again</Button>
-          <Button asChild variant="outline">
-            <NextLink href={DASHBOARD_PATH}>Back to overview</NextLink>
-          </Button>
-        </Flex>
-      </Flex>
-    </Card>
+        </p>
+        <div className="flex gap-3">
+          <LButton onClick={reset}>Try again</LButton>
+          <NextLink href={DASHBOARD_PATH} className={lButtonClass({ variant: "outline" })}>
+            Back to overview
+          </NextLink>
+        </div>
+      </div>
+    </LCard>
   );
 }

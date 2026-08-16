@@ -1,4 +1,5 @@
 import { LAlert, LButton, LCard, LRow, LRows, LStat, lButtonClass } from "@/components/ledger";
+import { LInput } from "@/components/ledger/forms";
 import { LPageShell } from "@/components/ledger/page-shell";
 import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
@@ -14,16 +15,6 @@ import {
 import { resolveSalesTaxPeriod, todayIso } from "../sales-tax/report-lib";
 
 export const metadata = { title: "Cash flow" };
-
-// components/ledger/forms.tsx (LInput/LField) hasn't landed on this branch
-// yet — it ships from the same money-surface migration that also does
-// Invoices/Estimates, elsewhere in this Phase 4/5 fan-out. These are the
-// two fields this screen needs, styled inline to LInput's own control
-// recipe (see that file's header once it lands) rather than reaching for
-// components/ui.
-const FIELD_INPUT =
-  "h-9 w-40 rounded-control border border-hair-strong bg-card px-3 text-body text-ink " +
-  "focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent";
 
 function bankBalanceCents(rows: LedgerBalanceRow[]): number | null {
   const bank = rows.find((r) => r.system_key === "bank");
@@ -143,25 +134,13 @@ export default async function CashFlowPage({
             <label htmlFor="cf-from" className="text-body-s font-medium text-ink">
               From
             </label>
-            <input
-              id="cf-from"
-              type="date"
-              name="from"
-              defaultValue={period.from}
-              className={FIELD_INPUT}
-            />
+            <LInput id="cf-from" type="date" name="from" defaultValue={period.from} className="w-40" />
           </div>
           <div className="flex flex-col gap-1.5">
             <label htmlFor="cf-to" className="text-body-s font-medium text-ink">
               To
             </label>
-            <input
-              id="cf-to"
-              type="date"
-              name="to"
-              defaultValue={period.to}
-              className={FIELD_INPUT}
-            />
+            <LInput id="cf-to" type="date" name="to" defaultValue={period.to} className="w-40" />
           </div>
           <LButton type="submit" variant="outline" size="sm">
             View period
