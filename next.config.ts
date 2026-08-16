@@ -62,10 +62,36 @@ function supabaseOrigins(): { http: string | null; ws: string | null } {
 //     anyone, including itself (no iframe/frame use exists in the
 //     codebase — checked). Stricter than the legacy X-Frame-Options:
 //     SAMEORIGIN header kept below for pre-CSP3 browsers.
+//   - vercel.live is admitted on PREVIEW DEPLOYMENTS ONLY, never in
+//     production. The Vercel Toolbar and its Comments feature inject
+//     https://vercel.live/_next-live/feedback/feedback.js, which this
+//     policy blocked outright, so review comments on a preview silently
+//     did nothing. The hosts are Vercel's documented set
+//     (vercel.com/docs/vercel-toolbar/managing-toolbar, read 2026-08-16);
+//     the pusher socket is how the toolbar streams comments live.
+//
+//     GATED ON VERCEL_ENV, not on NODE_ENV. A preview build is a
+//     production build, so NODE_ENV is "production" on both and could not
+//     tell them apart. VERCEL_ENV is "preview" only on preview
+//     deployments and is absent when building anywhere else, so the
+//     default when it is missing is the strict policy rather than the
+//     loose one. The production header is byte for byte what it was
+//     before this block existed, which is the property that matters: a
+//     review convenience must not widen what the deployed product allows.
 function contentSecurityPolicy(): string {
   const { http: supabaseHttp, ws: supabaseWs } = supabaseOrigins();
-  const connectSrc = ["'self'", supabaseHttp, supabaseWs].filter(Boolean).join(" ");
-  const imgSrc = ["'self'", "data:", supabaseHttp].filter(Boolean).join(" ");
+
+  const isPreview = process.env.VERCEL_ENV === "preview";
+  const live = isPreview ? ["https://vercel.live"] : [];
+
+  const connectSrc = ["'self'", supabaseHttp, supabaseWs]
+    .concat(isPreview ? ["https://vercel.live", "wss://ws-us3.pusher.com"] : [])
+    .filter(Boolean)
+    .join(" ");
+  const imgSrc = ["'self'", "data:", supabaseHttp]
+    .concat(isPreview ? ["https://vercel.live", "https://vercel.com"] : [])
+    .filter(Boolean)
+    .join(" ");
 
   // Development only: React's dev build reconstructs component stacks with
   // eval(), so `next dev` under this CSP renders a page that never hydrates
@@ -74,17 +100,29 @@ function contentSecurityPolicy(): string {
   // console message says so — so the production policy stays eval-free.
   const scriptEval = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
 
+  const scriptSrc = ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'"]
+    .concat(live)
+    .join(" ");
+  const styleSrc = ["'self'", "'unsafe-inline'"].concat(live).join(" ");
+  const fontSrc = ["'self'", "data:"]
+    .concat(isPreview ? ["https://vercel.live", "https://assets.vercel.com"] : [])
+    .join(" ");
+
   return [
     "default-src 'self'",
-    `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${scriptEval}`,
-    "style-src 'self' 'unsafe-inline'",
+    `script-src ${scriptSrc}${scriptEval}`,
+    `style-src ${styleSrc}`,
     `img-src ${imgSrc}`,
-    "font-src 'self' data:",
+    `font-src ${fontSrc}`,
     `connect-src ${connectSrc}`,
     "worker-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
+    // frame-src, not frame-ancestors: the toolbar renders its own UI in an
+    // iframe this page embeds. frame-ancestors stays 'none' below, so
+    // nothing gains the right to embed THIS app.
+    ...(isPreview ? ["frame-src 'self' https://vercel.live"] : []),
     "frame-ancestors 'none'",
   ].join("; ");
 }
