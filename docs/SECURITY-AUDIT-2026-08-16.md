@@ -165,7 +165,9 @@ all future database state preserves the same controls.
 
 1. Run the complete migration and tenancy suite against an isolated PostgreSQL
    instance (`npm run verify:all`). This is required before treating RLS and
-   grants as fully regression-tested for this commit.
+   grants as fully regression-tested for this commit. The reproducible Claude
+   Code handoff and disposable Docker runner live in
+   `handoffs/claude-postgres-security/`.
 2. Confirm production environment scoping and key separation. In particular,
    the Supabase service-role key, Stripe secrets, cron secret, and email token
    must exist only in server-side production/preview scopes appropriate to each
