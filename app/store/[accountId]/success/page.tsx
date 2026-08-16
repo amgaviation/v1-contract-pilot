@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Button, Callout, Card, Container, Flex, Heading, Text } from "@/components/ui";
+import { LAlert, LCard, lButtonClass } from "@/components/ledger";
+import { Logo } from "@/components/ui/logo";
 import { getStorefrontSession } from "@/lib/sample-connect/checkout";
 import { formatAmount } from "@/lib/sample-connect/products";
 
@@ -18,6 +19,9 @@ import { formatAmount } from "@/lib/sample-connect/products";
  * merchant's account. The production integration in this same codebase does
  * exactly that in app/api/stripe/connect-webhook/route.ts, and its header
  * explains the async-payment trap in detail.
+ *
+ * Ledger's softer marketing variant, same root as this route's own storefront
+ * page and app/vendor/[token]/page.tsx / app/packet/[token]/page.tsx.
  */
 
 export const dynamic = "force-dynamic";
@@ -40,40 +44,40 @@ export default async function StorefrontSuccessPage({
   const pending = session?.payment_status === "unpaid" && session?.status === "complete";
 
   return (
-    <Container size="2">
-      <Flex direction="column" gap="4" py="6">
-        <Heading size="6">Thank you</Heading>
+    <div className="min-h-dvh bg-canvas font-ledger text-body text-ink">
+      <div className="mx-auto max-w-xl px-4 py-8 sm:px-8 sm:py-12">
+        <div className="mb-8">
+          <Logo />
+        </div>
+
+        <h1 className="mb-6 text-h1 font-bold tracking-tight text-ink">Thank you</h1>
 
         {!session ? (
-          <Callout.Root color="amber">
-            <Callout.Text>
-              We couldn&rsquo;t find that checkout session. If you were charged, your
-              receipt from Stripe is the record. Nothing here changes it.
-            </Callout.Text>
-          </Callout.Root>
+          <LAlert tone="warn" className="mb-6">
+            We couldn&rsquo;t find that checkout session. If you were charged, your
+            receipt from Stripe is the record. Nothing here changes it.
+          </LAlert>
         ) : (
-          <Card>
-            <Flex direction="column" gap="2" p="1">
-              <Text size="2" color="gray">
-                {paid
-                  ? "Payment received."
-                  : pending
-                    ? "Payment started. Some methods take a few business days to settle. You'll get a receipt from Stripe when it does."
-                    : `Payment status: ${session.payment_status}`}
-              </Text>
-              {session.amount_total !== null ? (
-                <Text size="5" weight="bold" className="tnum">
-                  {formatAmount(session.amount_total, session.currency ?? "usd")}
-                </Text>
-              ) : null}
-            </Flex>
-          </Card>
+          <LCard className="mb-6 p-6 sm:p-8">
+            <p className="mb-2 text-body-s text-ink-2">
+              {paid
+                ? "Payment received."
+                : pending
+                  ? "Payment started. Some methods take a few business days to settle. You'll get a receipt from Stripe when it does."
+                  : `Payment status: ${session.payment_status}`}
+            </p>
+            {session.amount_total !== null ? (
+              <p className="tnum-l text-figure font-bold tracking-tight text-ink">
+                {formatAmount(session.amount_total, session.currency ?? "usd")}
+              </p>
+            ) : null}
+          </LCard>
         )}
 
-        <Link href={`/store/${accountId}`}>
-          <Button variant="outline">Back to the store</Button>
+        <Link href={`/store/${accountId}`} className={lButtonClass({ variant: "outline" })}>
+          Back to the store
         </Link>
-      </Flex>
-    </Container>
+      </div>
+    </div>
   );
 }
