@@ -95,7 +95,12 @@ export function LDialogShell({
     <dialog
       ref={ref}
       className={cn(
-        "m-auto w-full max-w-[480px] overflow-hidden rounded-card border border-hair " +
+        // `l-dialog` carries no styles of its own — it's the selector
+        // ledger.css's dialog-motion rules hang off, kept separate from the
+        // Tailwind utility list below so that block can target the plain
+        // element selector (`dialog.l-dialog`) instead of guessing at a
+        // hashed utility class.
+        "l-dialog m-auto w-full max-w-[480px] overflow-hidden rounded-card border border-hair " +
           "bg-card p-0 font-ledger text-body text-ink shadow-raised " +
           // `ink` is theme-aware (see ledger.css: dark ink is a light
           // tone), so one low-opacity fill reads as a dim scrim in day and
