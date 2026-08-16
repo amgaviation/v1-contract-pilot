@@ -208,10 +208,23 @@ export function LConfirmDialog({
       description={description}
       footer={
         <>
-          <LButton ref={cancelRef} variant="quiet" onClick={() => onOpenChange(false)}>
+          {/* type="button" is load-bearing, not defensive style: a native
+              button with no type defaults to type="submit", and a caller
+              is free to render this dialog as a sibling of its own <form>
+              rather than nested inside it (LDialogShell's <dialog> isn't a
+              portal the way Radix's AlertDialog was, so nothing here
+              removes it from that form's DOM subtree automatically).
+              Without this, Cancel or Confirm would silently submit
+              whatever form happens to be nearby. */}
+          <LButton
+            ref={cancelRef}
+            type="button"
+            variant="quiet"
+            onClick={() => onOpenChange(false)}
+          >
             {cancelLabel}
           </LButton>
-          <LButton variant={confirmVariant} onClick={onConfirm} disabled={pending}>
+          <LButton type="button" variant={confirmVariant} onClick={onConfirm} disabled={pending}>
             {pending ? "Working…" : confirmLabel}
           </LButton>
         </>
