@@ -126,6 +126,9 @@ export async function sendEstimateEmail(
     text: message.text,
     replyTo: looksLikeEmail(replyTo) ? replyTo : undefined,
     attachments: [{ filename: doc.filename, content: doc.buffer }],
+    // The pilot's own business name on the From line — see
+    // sendInvoiceEmail's identical fromName for the reasoning.
+    fromName: doc.accountName,
   });
 
   if (!result.ok) return { ok: false, error: result.error };

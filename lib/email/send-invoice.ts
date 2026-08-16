@@ -350,6 +350,12 @@ export async function sendInvoiceEmail(
     // than none, because some clients silently drop the whole message.
     replyTo: looksLikeEmail(replyTo) ? replyTo : undefined,
     attachments: [{ filename: doc.filename, content: doc.buffer }],
+    // THE PILOT'S OWN BUSINESS NAME on the From line — the same name the
+    // message body signs with (doc.accountName) — so a client's inbox shows
+    // who billed them, not this product's name or a bare address. See
+    // lib/email/send.ts's fromName for the "AMG is not a party to this"
+    // reasoning this mirrors from the message body.
+    fromName: doc.accountName,
   });
 
   if (!result.ok) return { ok: false, kind: result.kind, error: result.error };

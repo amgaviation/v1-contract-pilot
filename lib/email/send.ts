@@ -74,6 +74,16 @@ export type Message = {
   html?: string;
   replyTo?: string;
   attachments?: Attachment[];
+  /**
+   * The display name on the From line — the pilot's own business name, so a
+   * client's inbox shows who actually billed them rather than this
+   * product's name or a bare address. See sendInvoiceEmail/sendEstimateEmail
+   * for where this is resolved (pilot.accounts.legal_name, the same name the
+   * message body signs with). Omitted only when the caller has no name to
+   * give, in which case Resend falls back to whatever display name is
+   * configured on INVOICE_FROM_EMAIL itself.
+   */
+  fromName?: string;
 };
 
 const ENDPOINT = "https://api.resend.com/emails";
@@ -128,6 +138,21 @@ export function emailIsConfigured(): boolean {
   return Boolean(process.env.RESEND_API_KEY && process.env.INVOICE_FROM_EMAIL);
 }
 
+/**
+ * "Name <address>" for the From header — RFC 5322's quoted-display-name
+ * form, since a business name is free text a pilot typed and may contain a
+ * comma, a quote, or nothing printable at all. A blank/whitespace-only name
+ * is treated as absent rather than sent as `"" <email>`, which some clients
+ * render literally. `"` and `\` are backslash-escaped, the two characters
+ * quoted-string syntax requires it for; nothing else needs it inside quotes.
+ */
+function formatFrom(address: string, name: string | undefined): string {
+  const trimmed = name?.trim();
+  if (!trimmed) return address;
+  const escaped = trimmed.replace(/(["\\])/g, "\\$1");
+  return `"${escaped}" <${address}>`;
+}
+
 export async function sendEmail(message: Message): Promise<SendResult> {
   const config = readConfig();
   if ("error" in config) return { ok: false, kind: "refused", error: config.error };
@@ -141,7 +166,7 @@ export async function sendEmail(message: Message): Promise<SendResult> {
   }
 
   const body: Record<string, unknown> = {
-    from: config.from,
+    from: formatFrom(config.from, message.fromName),
     to: [message.to.trim()],
     subject: message.subject,
     text: message.text,
