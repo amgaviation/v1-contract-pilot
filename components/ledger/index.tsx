@@ -297,7 +297,12 @@ export function LTable({
   children: React.ReactNode;
 }) {
   return (
-    <div className="relative overflow-x-auto">
+    // min-w-0 is load-bearing, not decorative: a flex/grid item's default
+    // min-width is its content size, so without it a wide table's
+    // min-content width propagates straight up through any flex-column
+    // ancestor (LCard included) and widens the whole page instead of
+    // staying inside this div's own overflow-x-auto clip.
+    <div className="relative min-w-0 overflow-x-auto">
       <table className={cn("w-full border-collapse text-body-s", className)}>
         {children}
       </table>
