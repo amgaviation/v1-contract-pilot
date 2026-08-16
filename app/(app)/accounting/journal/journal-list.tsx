@@ -1,16 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import {
-  AlertDialog,
-  Badge,
-  Box,
-  Button,
-  Card,
-  Flex,
-  Table,
-  Text,
-} from "@/components/ui";
+import { LButton, LCard, LEmpty, LPill, LTd } from "@/components/ledger";
+import { LConfirmDialog } from "@/components/ledger/dialog";
 import { formatCents, formatDate } from "@/lib/format";
 import { deleteJournalEntry } from "./actions";
 
@@ -45,113 +37,105 @@ function EntryCard({ entry }: { entry: JournalEntryView }) {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   function handleDelete() {
+    // Closes the instant it's pressed, same posture as invoices/[id]/
+    // lines-editor.tsx's EditableRow: not gated on the async result.
+    // deleteError renders below the Delete button, after the dialog is
+    // already gone.
+    setConfirmOpen(false);
     startDelete(async () => {
       setDeleteError(null);
       const result = await deleteJournalEntry(entry.id);
       if (result.error) setDeleteError(result.error);
-      else setConfirmOpen(false);
     });
   }
 
   return (
-    <Card size="2">
-      <Flex justify="between" align="center" gap="3" wrap="wrap">
-        <Flex gap="2" align="center" wrap="wrap">
-          <Text size="2" weight="medium">
+    <LCard>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-body-s font-medium text-ink">
             {formatDate(entry.entryDate)}
-          </Text>
-          <Text size="2">{entry.memo}</Text>
-          <Badge
-            color={entry.sourceType === "manual" ? "blue" : "gray"}
-            variant="soft"
-          >
+          </span>
+          <span className="text-body-s text-ink">{entry.memo}</span>
+          <LPill tone={entry.sourceType === "manual" ? "accent" : "neutral"}>
             {SOURCE_LABEL[entry.sourceType] ?? entry.sourceType}
-          </Badge>
-        </Flex>
+          </LPill>
+        </div>
         {entry.sourceType === "manual" ? (
-          <AlertDialog.Root open={confirmOpen} onOpenChange={setConfirmOpen}>
-            <AlertDialog.Trigger>
-              <Button type="button" size="1" variant="ghost" color="red">
-                Delete
-              </Button>
-            </AlertDialog.Trigger>
-            <AlertDialog.Content maxWidth="420px">
-              <AlertDialog.Title>Delete this journal entry?</AlertDialog.Title>
-              <AlertDialog.Description size="2">
-                {formatDate(entry.entryDate)}: {entry.memo}. Fixing a
-                mistake means deleting and re-entering it. This
-                can&rsquo;t be undone.
-              </AlertDialog.Description>
-              {deleteError ? (
-                <Box mt="2">
-                  <Text size="1" color="red" role="alert">
-                    {deleteError}
-                  </Text>
-                </Box>
-              ) : null}
-              <Flex gap="3" mt="4" justify="end">
-                <AlertDialog.Cancel>
-                  <Button variant="soft" color="gray" disabled={deleting}>
-                    Cancel
-                  </Button>
-                </AlertDialog.Cancel>
-                <Button variant="solid" color="red" disabled={deleting} onClick={handleDelete}>
-                  {deleting ? "Deleting…" : "Delete"}
-                </Button>
-              </Flex>
-            </AlertDialog.Content>
-          </AlertDialog.Root>
+          <>
+            <LButton
+              type="button"
+              size="sm"
+              variant="quiet"
+              className="text-crit hover:text-crit"
+              onClick={() => setConfirmOpen(true)}
+            >
+              Delete
+            </LButton>
+            <LConfirmDialog
+              open={confirmOpen}
+              onOpenChange={setConfirmOpen}
+              title="Delete this journal entry?"
+              description={
+                <>
+                  {formatDate(entry.entryDate)}: {entry.memo}. Fixing a
+                  mistake means deleting and re-entering it. This
+                  can&rsquo;t be undone.
+                </>
+              }
+              confirmLabel="Delete"
+              confirmVariant="danger"
+              pending={deleting}
+              onConfirm={handleDelete}
+            />
+          </>
         ) : null}
-      </Flex>
-      <Table.Root variant="ghost" size="1">
-        <Table.Body>
+      </div>
+      {deleteError ? (
+        <p className="mt-1 text-caption font-medium text-crit" role="alert">
+          {deleteError}
+        </p>
+      ) : null}
+      <table className="mt-2 w-full border-collapse text-body-s">
+        <caption>
+          <span className="sr-only">Entry lines</span>
+        </caption>
+        <tbody>
           {entry.lines.map((line) => (
-            <Table.Row key={line.id}>
-              <Table.Cell>
-                <Text size="1" color="gray">
-                  {line.accountName}
-                </Text>
-              </Table.Cell>
-              <Table.Cell justify="end">
-                <Text size="1" className="tnum">
-                  {line.side === "debit" ? formatCents(line.amountCents) : ""}
-                </Text>
-              </Table.Cell>
-              <Table.Cell justify="end">
-                <Text size="1" className="tnum" color="gray">
-                  {line.side === "credit" ? formatCents(line.amountCents) : ""}
-                </Text>
-              </Table.Cell>
-            </Table.Row>
+            <tr key={line.id}>
+              <LTd className="border-b-0 py-1">
+                <span className="text-ink-2">{line.accountName}</span>
+              </LTd>
+              <LTd numeric className="border-b-0 py-1">
+                {line.side === "debit" ? formatCents(line.amountCents) : ""}
+              </LTd>
+              <LTd numeric className="border-b-0 py-1 text-ink-2">
+                {line.side === "credit" ? formatCents(line.amountCents) : ""}
+              </LTd>
+            </tr>
           ))}
-        </Table.Body>
-      </Table.Root>
-    </Card>
+        </tbody>
+      </table>
+    </LCard>
   );
 }
 
 export default function JournalList({ entries }: { entries: JournalEntryView[] }) {
   if (entries.length === 0) {
     return (
-      <Card size="3">
-        <Flex direction="column" align="center" gap="2" py="6">
-          <Text size="4" weight="bold">
-            No journal entries yet
-          </Text>
-          <Text size="2" color="gray" align="center">
-            Issue an invoice, record a payment, or log an expense, and it
-            posts here automatically. You can also record a manual entry
-            above.
-          </Text>
-        </Flex>
-      </Card>
+      <LCard>
+        <LEmpty title="No journal entries yet">
+          Issue an invoice, record a payment, or log an expense, and it posts
+          here automatically. You can also record a manual entry above.
+        </LEmpty>
+      </LCard>
     );
   }
   return (
-    <Flex direction="column" gap="3">
+    <div className="flex flex-col gap-3">
       {entries.map((entry) => (
         <EntryCard key={entry.id} entry={entry} />
       ))}
-    </Flex>
+    </div>
   );
 }

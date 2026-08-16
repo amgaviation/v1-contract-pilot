@@ -1,14 +1,8 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import {
-  Button,
-  Card,
-  Flex,
-  Select,
-  Text,
-  TextField,
-} from "@/components/ui";
+import { LButton, LCard } from "@/components/ledger";
+import { LField, LInput, LSelect } from "@/components/ledger/forms";
 import { formatCents } from "@/lib/format";
 import { parsePositiveDollarsToCents } from "../ledger-lib";
 import { createJournalEntry, type JournalFormState } from "./actions";
@@ -78,7 +72,7 @@ type LineDraft = {
   amount: string;
 };
 
-const NO_ACCOUNT = "none";
+const NO_ACCOUNT = "";
 
 function draftsFromEcho(values: NonNullable<JournalFormState["values"]>): LineDraft[] {
   const count = Math.max(values.accounts.length, 2);
@@ -114,7 +108,7 @@ export default function JournalEntryForm({ accounts }: { accounts: AccountOption
   const values = state.values;
 
   return (
-    <Card size="3">
+    <LCard>
       <FormBody
         key={values ? JSON.stringify(values) : "fresh"}
         accounts={accounts}
@@ -123,7 +117,7 @@ export default function JournalEntryForm({ accounts }: { accounts: AccountOption
         error={state.error}
         echoed={values}
       />
-    </Card>
+    </LCard>
   );
 }
 
@@ -183,120 +177,112 @@ function FormBody({
 
   return (
     <form action={formAction}>
-      <Text as="div" size="4" weight="bold" mb="3">
-        Record a journal entry
-      </Text>
-      <Flex gap="3" wrap="wrap" mb="3">
-        <Flex direction="column" gap="1">
-          <Text as="label" size="2" weight="medium" htmlFor="je-date">
-            Date
-          </Text>
-          <TextField.Root
-            id="je-date"
-            type="date"
-            name="entry_date"
-            required
-            defaultValue={echoed?.entry_date ?? ""}
-          />
-        </Flex>
-        <Flex direction="column" gap="1" flexGrow="1">
-          <Text as="label" size="2" weight="medium" htmlFor="je-memo">
-            Memo
-          </Text>
-          <TextField.Root
-            id="je-memo"
-            name="memo"
-            required
-            placeholder="e.g. Owner draw, August"
-            value={memo}
-            onChange={(e) => setMemo(e.target.value)}
-          />
-        </Flex>
-      </Flex>
+      <div className="mb-3 text-h3 font-semibold">Record a journal entry</div>
+      <div className="mb-3 flex flex-wrap gap-3">
+        <div className="flex flex-col gap-1">
+          <LField label="Date" htmlFor="je-date">
+            <LInput
+              id="je-date"
+              type="date"
+              name="entry_date"
+              required
+              defaultValue={echoed?.entry_date ?? ""}
+            />
+          </LField>
+        </div>
+        <div className="min-w-56 flex-1">
+          <LField label="Memo" htmlFor="je-memo">
+            <LInput
+              id="je-memo"
+              name="memo"
+              required
+              placeholder="e.g. Owner draw, August"
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+            />
+          </LField>
+        </div>
+      </div>
 
-      <Flex gap="2" wrap="wrap" mb="3" align="center">
-        <Text size="1" color="gray">
-          Common entries:
-        </Text>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="text-caption text-ink-3">Common entries:</span>
         {PRESETS.map((preset) => (
-          <Button
+          <LButton
             key={preset.key}
             type="button"
-            size="1"
-            variant="soft"
-            color="gray"
+            size="sm"
+            variant="outline"
             onClick={() => applyPreset(preset)}
           >
             {preset.label}
-          </Button>
+          </LButton>
         ))}
-        <Text size="1" color="gray">
+        <span className="text-caption text-ink-3">
           Fills in the two accounts and a memo. You still set the date and
           amount.
-        </Text>
-      </Flex>
+        </span>
+      </div>
 
-      <Flex direction="column" gap="2">
+      <div className="flex flex-col gap-2">
         {lines.map((line, i) => (
-          <Flex key={line.key} gap="2" align="center" wrap="wrap">
-            <input type="hidden" name="line_account" value={line.account} />
-            <Select.Root
-              value={line.account === "" ? NO_ACCOUNT : line.account}
-              onValueChange={(v) => update(line.key, { account: v === NO_ACCOUNT ? "" : v })}
-            >
-              <Select.Trigger
+          <div key={line.key} className="flex flex-wrap items-center gap-2">
+            <div className="w-56">
+              <LSelect
                 aria-label={`Line ${i + 1} account`}
-                placeholder="Account"
-              />
-              <Select.Content>
-                <Select.Item value={NO_ACCOUNT}>Pick an account…</Select.Item>
+                value={line.account === "" ? NO_ACCOUNT : line.account}
+                onChange={(e) => update(line.key, { account: e.target.value })}
+              >
+                <option value={NO_ACCOUNT}>Pick an account…</option>
                 {accounts.map((a) => (
-                  <Select.Item key={a.id} value={a.id}>
+                  <option key={a.id} value={a.id}>
                     {a.name} ({a.kindLabel})
-                  </Select.Item>
+                  </option>
                 ))}
-              </Select.Content>
-            </Select.Root>
-            <input type="hidden" name="line_side" value={line.side} />
-            <Select.Root
-              value={line.side}
-              onValueChange={(v) => update(line.key, { side: v === "credit" ? "credit" : "debit" })}
-            >
-              <Select.Trigger aria-label={`Line ${i + 1} direction`} />
-              <Select.Content>
-                <Select.Item value="debit">Debit</Select.Item>
-                <Select.Item value="credit">Credit</Select.Item>
-              </Select.Content>
-            </Select.Root>
-            <TextField.Root
-              name="line_amount"
-              inputMode="decimal"
-              placeholder="0.00"
-              aria-label={`Line ${i + 1} amount`}
-              value={line.amount}
-              onChange={(e) => update(line.key, { amount: e.target.value })}
-              className="tnum"
-            />
+              </LSelect>
+              <input type="hidden" name="line_account" value={line.account} />
+            </div>
+            <div className="w-32">
+              <LSelect
+                aria-label={`Line ${i + 1} direction`}
+                value={line.side}
+                onChange={(e) => update(line.key, { side: e.target.value === "credit" ? "credit" : "debit" })}
+              >
+                <option value="debit">Debit</option>
+                <option value="credit">Credit</option>
+              </LSelect>
+              <input type="hidden" name="line_side" value={line.side} />
+            </div>
+            <div className="w-32">
+              <LInput
+                name="line_amount"
+                inputMode="decimal"
+                placeholder="0.00"
+                aria-label={`Line ${i + 1} amount`}
+                value={line.amount}
+                onChange={(e) => update(line.key, { amount: e.target.value })}
+                className="tnum-l"
+              />
+            </div>
             {lines.length > 2 ? (
-              <Button
+              <LButton
                 type="button"
-                size="1"
-                variant="ghost"
-                color="red"
+                size="sm"
+                variant="quiet"
+                className="text-crit hover:text-crit"
                 onClick={() => setLines((prev) => prev.filter((l) => l.key !== line.key))}
               >
                 Remove
-              </Button>
+              </LButton>
             ) : null}
-          </Flex>
+          </div>
         ))}
-      </Flex>
+      </div>
 
-      <Flex mt="2" gap="3" align="center" wrap="wrap">
-        <Button
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <LButton
           type="button"
-          size="1"
-          variant="soft"
+          size="sm"
+          variant="outline"
           onClick={() => {
             setLines((prev) => [
               ...prev,
@@ -306,29 +292,25 @@ function FormBody({
           }}
         >
           Add line
-        </Button>
-        <Text size="1" color="gray" className="tnum">
+        </LButton>
+        <span className="tnum-l text-caption text-ink-3">
           Debits {formatCents(debitCents)} · Credits {formatCents(creditCents)}
-        </Text>
+        </span>
         {!balanced && (debitCents > 0 || creditCents > 0) ? (
-          <Text size="1" color="amber">
+          <span className="tnum-l text-caption font-medium text-warn">
             Out of balance by {formatCents(Math.abs(debitCents - creditCents))}
-          </Text>
+          </span>
         ) : null}
-      </Flex>
+      </div>
 
-      <Flex mt="2" role="alert" aria-live="polite">
-        {error ? (
-          <Text size="1" color="red">
-            {error}
-          </Text>
-        ) : null}
-      </Flex>
-      <Flex mt="3">
-        <Button type="submit" disabled={pending}>
+      <div role="alert" aria-live="polite">
+        {error ? <p className="mt-2 text-caption font-medium text-crit">{error}</p> : null}
+      </div>
+      <div className="mt-3">
+        <LButton type="submit" disabled={pending}>
           {pending ? "Recording…" : "Record entry"}
-        </Button>
-      </Flex>
+        </LButton>
+      </div>
     </form>
   );
 }

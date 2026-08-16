@@ -1,21 +1,12 @@
 import NextLink from "next/link";
-import {
-  Button,
-  Callout,
-  Card,
-  Flex,
-  Grid,
-  Link as RadixLink,
-  Text,
-  TextField,
-} from "@/components/ui";
-import { ExclamationTriangleIcon, InfoCircledIcon } from "@radix-ui/react-icons";
+import { LAlert, LButton, LCard, LEmpty, lButtonClass } from "@/components/ledger";
+import { LField, LInput } from "@/components/ledger/forms";
+import { LPageShell } from "@/components/ledger/page-shell";
 import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { rowsOf } from "@/lib/supabase/rows";
 import { BRAND } from "@/lib/brand";
 import { formatCents } from "@/lib/format";
-import PageShell from "../../page-shell";
 import { reconciliationTotals } from "../ledger-lib";
 import ReconcileBoard, {
   type LedgerLineView,
@@ -101,17 +92,16 @@ export default async function ReconcilePage({
 
   if (syncError || !bankAccountsResult.ok) {
     return (
-      <PageShell title="Reconcile">
-        <Callout.Root color="red">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>
-            Couldn&rsquo;t load your reconciliation data. Nothing is shown rather
-            than a screen that pretends there&rsquo;s nothing to reconcile.
-          </Callout.Text>
-        </Callout.Root>
-      </PageShell>
+      <LPageShell title="Reconcile">
+        <LAlert tone="crit" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+          <span>
+            Couldn&rsquo;t load your reconciliation data. Nothing is shown
+            rather than a screen that pretends there&rsquo;s nothing to
+            reconcile.
+          </span>
+        </LAlert>
+      </LPageShell>
     );
   }
 
@@ -126,26 +116,23 @@ export default async function ReconcilePage({
 
   if (bankAccounts.length === 0) {
     return (
-      <PageShell
+      <LPageShell
         title="Reconcile"
         subtitle="Match imported statement lines against your ledger's Cash & bank account."
       >
-        <Card size="3">
-          <Flex direction="column" align="center" gap="2" py="6">
-            <Text size="4" weight="bold">
-              No bank statements imported yet
-            </Text>
-            <Text size="2" color="gray" align="center">
-              Import a bank or card statement under{" "}
-              <RadixLink asChild>
-                <NextLink href="/expenses/import">Expenses → Import</NextLink>
-              </RadixLink>{" "}
-              first. Reconciliation matches those lines against your
-              ledger.
-            </Text>
-          </Flex>
-        </Card>
-      </PageShell>
+        <LCard>
+          <LEmpty title="No bank statements imported yet">
+            Import a bank or card statement under{" "}
+            <NextLink
+              href="/expenses/import"
+              className="font-medium text-accent underline-offset-2 hover:underline"
+            >
+              Expenses → Import
+            </NextLink>{" "}
+            first. Reconciliation matches those lines against your ledger.
+          </LEmpty>
+        </LCard>
+      </LPageShell>
     );
   }
 
@@ -212,17 +199,15 @@ export default async function ReconcilePage({
 
   if (!txnResult.ok || !ledgerResult.ok || !matchResult.ok) {
     return (
-      <PageShell title="Reconcile">
-        <Callout.Root color="red">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>
-            Couldn&rsquo;t load this period&rsquo;s lines. Nothing is shown rather than
-            a difference figure that isn&rsquo;t true.
-          </Callout.Text>
-        </Callout.Root>
-      </PageShell>
+      <LPageShell title="Reconcile">
+        <LAlert tone="crit" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+          <span>
+            Couldn&rsquo;t load this period&rsquo;s lines. Nothing is shown
+            rather than a difference figure that isn&rsquo;t true.
+          </span>
+        </LAlert>
+      </LPageShell>
     );
   }
 
@@ -268,42 +253,39 @@ export default async function ReconcilePage({
     : `${sourceLabel.get(bankAccounts[0]!.id) ?? "Bank"} · ${month}`;
 
   return (
-    <PageShell
+    <LPageShell
       title="Reconcile"
       subtitle={subtitle}
       action={
-        <Button asChild variant="soft" size="2">
-          <NextLink href="/accounting">Chart of accounts</NextLink>
-        </Button>
+        <NextLink href="/accounting" className={lButtonClass({ variant: "outline" })}>
+          Chart of accounts
+        </NextLink>
       }
     >
-      <Card size="2">
+      <LCard>
         <form method="get" action="/accounting/reconcile">
-          <Flex gap="3" align="end" wrap="wrap">
-            <Flex direction="column" gap="1">
-              <Text as="label" size="2" weight="medium" htmlFor="rec-month">
-                Month
-              </Text>
-              <TextField.Root id="rec-month" type="month" name="month" defaultValue={month} />
-            </Flex>
-            <Button type="submit" variant="soft">
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <LField label="Month" htmlFor="rec-month">
+                <LInput id="rec-month" type="month" name="month" defaultValue={month} />
+              </LField>
+            </div>
+            <LButton type="submit" variant="outline">
               View period
-            </Button>
-          </Flex>
+            </LButton>
+          </div>
         </form>
-      </Card>
+      </LCard>
 
-      <Callout.Root color="blue">
-        <Callout.Icon>
-          <InfoCircledIcon />
-        </Callout.Icon>
-        <Callout.Text>
+      <LAlert tone="accent" className="flex items-start gap-2">
+        <InfoIcon className="mt-0.5 shrink-0 text-accent" />
+        <span>
           {multipleSources ? (
             <>
               {BRAND.name} keeps one Cash &amp; bank ledger account, so
               reconciliation trues your combined statements, all{" "}
-              {bankAccounts.length} imported sources together, against it
-              for the month. Per-account reconciliation would need a bank
+              {bankAccounts.length} imported sources together, against it for
+              the month. Per-account reconciliation would need a bank
               dimension on the ledger, which isn&rsquo;t built. The
               difference below compares every statement line against your
               book cash, like with like.
@@ -312,84 +294,122 @@ export default async function ReconcilePage({
             <>
               {BRAND.name} keeps one Cash &amp; bank ledger account, so
               reconciliation trues this statement against it for the month.
-              Per-account reconciliation needs a bank dimension on the ledger,
-              which isn&rsquo;t built.
+              Per-account reconciliation needs a bank dimension on the
+              ledger, which isn&rsquo;t built.
             </>
           )}
-        </Callout.Text>
-      </Callout.Root>
+        </span>
+      </LAlert>
 
-      <Grid columns={{ initial: "1", sm: "3" }} gap="3">
-        <Card size="2">
-          <Text as="div" size="1" color="gray">
-            Statement total
-          </Text>
-          <Text as="div" size="4" weight="bold" className="tnum">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <LCard>
+          <div className="text-caption text-ink-3">Statement total</div>
+          <div className="tnum-l text-h2 font-bold tracking-tight">
             {formatCents(totals.statementTotalCents)}
-          </Text>
-        </Card>
-        <Card size="2">
-          <Text as="div" size="1" color="gray">
-            Ledger total
-          </Text>
-          <Text as="div" size="4" weight="bold" className="tnum">
+          </div>
+        </LCard>
+        <LCard>
+          <div className="text-caption text-ink-3">Ledger total</div>
+          <div className="tnum-l text-h2 font-bold tracking-tight">
             {formatCents(totals.ledgerTotalCents)}
-          </Text>
-        </Card>
-        <Card size="2">
-          <Text as="div" size="1" color="gray">
-            Difference (statement − ledger)
-          </Text>
-          <Text
-            as="div"
-            size="4"
-            weight="bold"
-            className="tnum"
-            color={
-              totals.reconciled ? "green" : totals.differenceCents === 0 ? "amber" : "red"
+          </div>
+        </LCard>
+        <LCard>
+          <div className="text-caption text-ink-3">Difference (statement − ledger)</div>
+          <div
+            className={
+              "tnum-l text-h2 font-bold tracking-tight " +
+              (totals.reconciled
+                ? "text-good"
+                : totals.differenceCents === 0
+                  ? "text-warn"
+                  : "text-crit")
             }
           >
             {formatCents(totals.differenceCents)}
-          </Text>
+          </div>
           {totals.reconciled ? (
-            <Text as="div" size="1" color="green">
-              Reconciled. Every line is matched, and the books fully
-              explain this period.
-            </Text>
+            <p className="mt-1 text-caption text-good">
+              Reconciled. Every line is matched, and the books fully explain
+              this period.
+            </p>
           ) : totals.differenceCents === 0 ? (
-            <Text as="div" size="1" color="amber">
-              The totals net to zero, but {totals.unmatchedStatementCount} statement
-              and {totals.unmatchedLedgerCount} ledger line
+            <p className="mt-1 text-caption text-warn">
+              The totals net to zero, but {totals.unmatchedStatementCount}{" "}
+              statement and {totals.unmatchedLedgerCount} ledger line
               {totals.unmatchedStatementCount + totals.unmatchedLedgerCount === 1
                 ? ""
                 : "s"}{" "}
               are still unmatched. They only cancel out. Match every line
               before this period reads as reconciled.
-            </Text>
+            </p>
           ) : (
-            <Text as="div" size="1" color="gray">
-              Record the missing side (confirm an expense, record a
-              payment, or add a journal entry) to bring this to zero.
-              Matching alone never moves it.
-            </Text>
+            <p className="mt-1 text-caption text-ink-3">
+              Record the missing side (confirm an expense, record a payment,
+              or add a journal entry) to bring this to zero. Matching alone
+              never moves it.
+            </p>
           )}
-        </Card>
-      </Grid>
+        </LCard>
+      </div>
 
       {truncated ? (
-        <Callout.Root color="amber">
-          <Callout.Icon>
-            <InfoCircledIcon />
-          </Callout.Icon>
-          <Callout.Text>
-            This period has more lines than one screen can safely total.
-            The difference figure above may be incomplete. Narrow to a
-            month with fewer lines.
-          </Callout.Text>
-        </Callout.Root>
+        <LAlert tone="warn" className="flex items-start gap-2">
+          <InfoIcon className="mt-0.5 shrink-0 text-warn" />
+          <span>
+            This period has more lines than one screen can safely total. The
+            difference figure above may be incomplete. Narrow to a month with
+            fewer lines.
+          </span>
+        </LAlert>
       ) : null}
 
       <ReconcileBoard statementLines={statementLines} ledgerLines={ledgerLines} />
-    </PageShell>
+    </LPageShell>
+  );
+}
+
+/* ── Inline icons ──────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. Same shapes as accounting/journal/page.tsx's own. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function InfoIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <circle cx="8" cy="8" r="6.25" />
+      <path d="M8 7.25v4" />
+      <circle cx="8" cy="4.9" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }
