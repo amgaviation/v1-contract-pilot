@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { Badge, Card, Container, Flex, Heading, Table, Text } from "@/components/ui";
+import { LCard, LPill, LTable, LTd, LTh } from "@/components/ledger";
 import { Logo } from "@/components/ui/logo";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate } from "@/lib/format";
@@ -77,72 +77,82 @@ export default async function PacketPage({
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <Container size="2" p="4">
-      <Flex direction="column" gap="4">
-        <Flex justify="between" align="center" wrap="wrap" gap="3">
+    // Ledger's softer marketing variant, hand-painted — same posture as
+    // app/invoice/[token]/page.tsx's own root (this page previously had no
+    // explicit canvas ground of its own; it gets one now, matching every
+    // sibling portal in this migration).
+    <div className="min-h-dvh bg-canvas font-ledger text-body text-ink">
+      <div className="mx-auto max-w-2xl px-4 py-8 sm:px-8 sm:py-12">
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
           <Logo />
-        </Flex>
+        </div>
 
-        <Card size="3">
-          <Heading size="5" mb="1">
-            {businessName}
-          </Heading>
-          <Text as="p" size="2" color="gray" mb="4">
+        <LCard className="mb-6 p-6 sm:p-8">
+          <h1 className="mb-1 text-h3 font-bold text-ink">{businessName}</h1>
+          <p className="mb-6 text-lead text-ink-2">
             Current paperwork, shared with you directly. Ask for a copy of
             anything you need on file.
-          </Text>
+          </p>
 
-          <Table.Root variant="ghost">
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Document</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Type</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Issued</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Expires</Table.ColumnHeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
+          <LTable>
+            <thead>
+              <tr>
+                <LTh>Document</LTh>
+                <LTh>Type</LTh>
+                <LTh>Issued</LTh>
+                <LTh>Expires</LTh>
+              </tr>
+            </thead>
+            <tbody>
               {rows.map((row, index) => {
                 // An expired certificate of insurance is the single fact a
                 // client most needs to see, so it is not rendered as an
                 // ordinary date.
                 const expired = row.expires_on !== null && row.expires_on < today;
                 return (
-                  <Table.Row key={`${row.document_label}-${index}`}>
-                    <Table.RowHeaderCell>{row.document_label}</Table.RowHeaderCell>
-                    <Table.Cell>
-                      <Text color="gray">
+                  <tr key={`${row.document_label}-${index}`}>
+                    {/* scope="row": the row-header semantics the old
+                        Table.RowHeaderCell carried — a screen reader
+                        announces the other cells against this label. */}
+                    <th
+                      scope="row"
+                      className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                    >
+                      {row.document_label}
+                    </th>
+                    <LTd>
+                      <span className="text-ink-2">
                         {KIND_LABEL[row.document_kind] ?? row.document_kind}
-                      </Text>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Text color="gray">
+                      </span>
+                    </LTd>
+                    <LTd>
+                      <span className="text-ink-2">
                         {row.issued_on ? formatDate(row.issued_on) : "—"}
-                      </Text>
-                    </Table.Cell>
-                    <Table.Cell>
+                      </span>
+                    </LTd>
+                    <LTd>
                       {row.expires_on ? (
                         expired ? (
-                          <Badge color="red">{`Expired ${formatDate(row.expires_on)}`}</Badge>
+                          <LPill tone="crit">{`Expired ${formatDate(row.expires_on)}`}</LPill>
                         ) : (
-                          <Text>{formatDate(row.expires_on)}</Text>
+                          formatDate(row.expires_on)
                         )
                       ) : (
-                        <Text color="gray">—</Text>
+                        <span className="text-ink-2">—</span>
                       )}
-                    </Table.Cell>
-                  </Table.Row>
+                    </LTd>
+                  </tr>
                 );
               })}
-            </Table.Body>
-          </Table.Root>
-        </Card>
+            </tbody>
+          </LTable>
+        </LCard>
 
-        <Text size="1" color="gray">
+        <p className="text-caption text-ink-3">
           This link was shared by {businessName} and stops working on its own.
           If you need it again, ask them to send a new one.
-        </Text>
-      </Flex>
-    </Container>
+        </p>
+      </div>
+    </div>
   );
 }

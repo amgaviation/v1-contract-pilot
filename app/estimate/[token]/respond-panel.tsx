@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertDialog, Button, Flex, Text } from "@/components/ui";
+import { LButton } from "@/components/ledger";
+import { LConfirmDialog } from "@/components/ledger/dialog";
 import { acceptPublicEstimate, declinePublicEstimate } from "./respond-actions";
 
 /**
@@ -16,13 +17,28 @@ import { acceptPublicEstimate, declinePublicEstimate } from "./respond-actions";
  * re-fetch pilot.estimate_public and show whatever the real row now says —
  * never to optimistically claim "Accepted" for a click that may have done
  * nothing.
+ *
+ * LConfirmDialog on native <dialog>, replacing the old AlertDialog pair —
+ * same two-step shape (a trigger button, a confirm/cancel dialog), and the
+ * same close-then-run order Radix's AlertDialog.Action gave for free: the
+ * dialog closes the instant "Accept"/"Decline" is confirmed, and `pending`
+ * plays out on the ORIGINAL trigger button underneath (its own
+ * "Working…" label) rather than inside a dialog that has already gone.
+ *
+ * Accept is Ledger's one filled-accent action for this view (LEDGER.md's
+ * "one filled accent action per view"), matching this page's own positive
+ * default; Decline stays outline, and only steps up to `danger` at the
+ * point of actual commitment — the confirm button inside its own dialog —
+ * not on the trigger a client might tap by accident.
  */
 export default function RespondPanel({ token }: { token: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<"accept" | "decline" | null>(null);
 
   function respond(action: (token: string) => Promise<{ error: string | null }>) {
+    setConfirming(null);
     startTransition(async () => {
       setError(null);
       const result = await action(token);
@@ -35,70 +51,52 @@ export default function RespondPanel({ token }: { token: string }) {
   }
 
   return (
-    <Flex direction="column" gap="2" mt="4">
-      <Flex gap="2">
-        <AlertDialog.Root>
-          <AlertDialog.Trigger>
-            <Button size="3" style={{ flex: 1 }} disabled={pending}>
-              {pending ? "Working…" : "Accept this quote"}
-            </Button>
-          </AlertDialog.Trigger>
-          <AlertDialog.Content maxWidth="420px">
-            <AlertDialog.Title>Accept this quote?</AlertDialog.Title>
-            <AlertDialog.Description size="2">
-              Your pilot will see this as accepted and can turn it into an
-              invoice for the work. This doesn&rsquo;t charge you anything now.
-            </AlertDialog.Description>
-            <Flex gap="3" mt="4" justify="end">
-              <AlertDialog.Cancel>
-                <Button variant="soft" color="gray">
-                  Cancel
-                </Button>
-              </AlertDialog.Cancel>
-              <AlertDialog.Action>
-                <Button variant="solid" onClick={() => respond(acceptPublicEstimate)}>
-                  Accept
-                </Button>
-              </AlertDialog.Action>
-            </Flex>
-          </AlertDialog.Content>
-        </AlertDialog.Root>
-        <AlertDialog.Root>
-          <AlertDialog.Trigger>
-            <Button size="3" variant="outline" color="red" style={{ flex: 1 }} disabled={pending}>
-              Decline
-            </Button>
-          </AlertDialog.Trigger>
-          <AlertDialog.Content maxWidth="420px">
-            <AlertDialog.Title>Decline this quote?</AlertDialog.Title>
-            <AlertDialog.Description size="2">
-              Your pilot will see this as declined. If you change your mind, ask
-              them to send it again.
-            </AlertDialog.Description>
-            <Flex gap="3" mt="4" justify="end">
-              <AlertDialog.Cancel>
-                <Button variant="soft" color="gray">
-                  Cancel
-                </Button>
-              </AlertDialog.Cancel>
-              <AlertDialog.Action>
-                <Button
-                  variant="solid"
-                  color="red"
-                  onClick={() => respond(declinePublicEstimate)}
-                >
-                  Decline
-                </Button>
-              </AlertDialog.Action>
-            </Flex>
-          </AlertDialog.Content>
-        </AlertDialog.Root>
-      </Flex>
+    <div className="flex flex-col gap-3">
+      <div className="flex gap-3">
+        <LButton
+          size="lg"
+          className="flex-1"
+          disabled={pending}
+          onClick={() => setConfirming("accept")}
+        >
+          {pending ? "Working…" : "Accept this quote"}
+        </LButton>
+        <LButton
+          size="lg"
+          variant="outline"
+          className="flex-1"
+          disabled={pending}
+          onClick={() => setConfirming("decline")}
+        >
+          Decline
+        </LButton>
+      </div>
       {error ? (
-        <Text as="div" size="1" color="red" role="alert">
+        <p role="alert" className="text-caption font-medium text-crit">
           {error}
-        </Text>
+        </p>
       ) : null}
-    </Flex>
+
+      <LConfirmDialog
+        open={confirming === "accept"}
+        onOpenChange={(open) => !open && setConfirming(null)}
+        title="Accept this quote?"
+        description="Your pilot will see this as accepted and can turn it into an invoice for the work. This doesn't charge you anything now."
+        confirmLabel="Accept"
+        confirmVariant="primary"
+        pending={pending}
+        onConfirm={() => respond(acceptPublicEstimate)}
+      />
+      <LConfirmDialog
+        open={confirming === "decline"}
+        onOpenChange={(open) => !open && setConfirming(null)}
+        title="Decline this quote?"
+        description="Your pilot will see this as declined. If you change your mind, ask them to send it again."
+        confirmLabel="Decline"
+        confirmVariant="danger"
+        pending={pending}
+        onConfirm={() => respond(declinePublicEstimate)}
+      />
+    </div>
   );
 }

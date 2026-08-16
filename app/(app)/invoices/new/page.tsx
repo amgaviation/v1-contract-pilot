@@ -4,7 +4,7 @@ import { friendlyDbError } from "@/lib/db-errors";
 import { countOf } from "@/lib/supabase/rows";
 import { YOU_INVOICE_COLUMN } from "@/lib/counterparty";
 import { tripValueCents, type TripDayValueRow } from "@/lib/trip-value";
-import PageShell from "../../page-shell";
+import { LPageShell } from "@/components/ledger/page-shell";
 import { createInvoiceDraft } from "../actions";
 import DraftForm, { type ClientOption, type TripOption } from "./draft-form";
 
@@ -263,7 +263,7 @@ export default async function NewInvoicePage({
   }
 
   return (
-    <PageShell
+    <LPageShell
       title="New invoice"
       subtitle="Bill a client, or type the details in for a one-off. Pick trips you have already flown to turn flight days, travel days and rebilled expenses into lines, or take an empty invoice and write the lines yourself."
     >
@@ -276,6 +276,6 @@ export default async function NewInvoicePage({
         unmarkedTripCount={unmarkedTripCount ?? 0}
         unmarkedTripCountFailed={unmarkedTripCountFailed}
       />
-    </PageShell>
+    </LPageShell>
   );
 }

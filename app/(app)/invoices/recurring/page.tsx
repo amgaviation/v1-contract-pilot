@@ -1,11 +1,10 @@
-import { Callout, Card, Flex } from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { LAlert, LCard } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { friendlyDbError } from "@/lib/db-errors";
 import { YOU_INVOICE_COLUMN } from "@/lib/counterparty";
-import PageShell from "../../page-shell";
 import type { Database } from "@/lib/supabase/database.types";
 import ScheduleManager from "./schedule-form";
 import DueQueue, { type DueRow } from "./due-queue";
@@ -84,7 +83,7 @@ export default async function RecurringInvoicesPage() {
   dueRows.sort((a, b) => a.due_on.localeCompare(b.due_on));
 
   return (
-    <PageShell
+    <LPageShell
       title="Recurring invoices"
       subtitle={
         firstError
@@ -93,20 +92,42 @@ export default async function RecurringInvoicesPage() {
       }
     >
       {firstError ? (
-        <Card size="3">
-          <Callout.Root color="red">
-            <Callout.Icon>
-              <ExclamationTriangleIcon />
-            </Callout.Icon>
-            <Callout.Text>{friendlyDbError(firstError, "recurring.select")}</Callout.Text>
-          </Callout.Root>
-        </Card>
+        <LCard>
+          <LAlert tone="crit" className="flex items-start gap-2">
+            <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+            <span>{friendlyDbError(firstError, "recurring.select")}</span>
+          </LAlert>
+        </LCard>
       ) : (
-        <Flex direction="column" gap="4">
+        <div className="flex flex-col gap-4">
           <DueQueue rows={dueRows} hasActiveSchedules={schedules.some((s) => s.active)} />
           <ScheduleManager schedules={schedules} clients={clients} />
-        </Flex>
+        </div>
       )}
-    </PageShell>
+    </LPageShell>
+  );
+}
+
+/* ── Inline icon ───────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. Same shape as overview/page.tsx's own WarningIcon. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

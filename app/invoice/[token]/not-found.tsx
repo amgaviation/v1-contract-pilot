@@ -1,4 +1,4 @@
-import { Box, Card, Container, Text } from "@/components/ui";
+import { LCard } from "@/components/ledger";
 import { Logo } from "@/components/ui/logo";
 
 /**
@@ -18,24 +18,27 @@ import { Logo } from "@/components/ui/logo";
  * They don't have an account here and never will, so the copy names the
  * one thing they CAN do (ask the pilot who sent it) rather than a
  * generic "contact support".
+ *
+ * Ledger's softer marketing variant, not the app register: no PageShell,
+ * a hand-painted canvas ground, and a taller `max-w-md` column than the
+ * app would use for a single-card notice — this is the one page a client
+ * with no account of their own ever sees, so it gets the fuller air.
  */
 export default function InvoiceNotFound() {
   return (
-    <Box style={{ minHeight: "100dvh", background: "var(--canvas)" }}>
-      <Container size="1" p={{ initial: "4", sm: "6" }}>
-        <Box mb="5">
+    <div className="min-h-dvh bg-canvas font-ledger text-body text-ink">
+      <div className="mx-auto max-w-md px-4 py-8 sm:px-8 sm:py-12">
+        <div className="mb-8">
           <Logo />
-        </Box>
-        <Card size="4">
-          <Text as="div" size="5" weight="bold" mb="2">
-            This link isn&rsquo;t valid
-          </Text>
-          <Text as="div" color="gray">
+        </div>
+        <LCard className="p-6 sm:p-8">
+          <div className="mb-2 text-h3 font-bold text-ink">This link isn&rsquo;t valid</div>
+          <p className="text-lead text-ink-2">
             It may have been cut short when it was copied, or your pilot may have sent a
             newer one since. Ask them for a fresh link.
-          </Text>
-        </Card>
-      </Container>
-    </Box>
+          </p>
+        </LCard>
+      </div>
+    </div>
   );
 }

@@ -1,26 +1,25 @@
 import NextLink from "next/link";
 import {
-  Badge,
-  Button,
-  Callout,
-  Card,
-  Flex,
-  Link as RadixLink,
-  Table,
-  Text,
-} from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+  LAlert,
+  LCard,
+  LEmpty,
+  LPill,
+  LTable,
+  LTd,
+  LTh,
+  lButtonClass,
+} from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import { rowsOf, type DbErrorLike } from "@/lib/supabase/rows";
-import EmptyState from "@/components/ui/empty-state";
-import PageShell from "../page-shell";
 import {
   ESTIMATE_STATUS_BADGE,
   ESTIMATE_STATUS_FALLBACK,
+  type EstimateBadge,
   type EstimateStatus,
 } from "./estimate-lib";
 
@@ -52,6 +51,30 @@ const FILTERS = [
   { key: "all", label: "All" },
 ] as const;
 type FilterKey = (typeof FILTERS)[number]["key"];
+
+// The status/badge vocabulary is shared with the detail screen
+// ([id]/page.tsx), which carries the identical mapping under the identical
+// comment — duplicated rather than imported, same posture estimate-lib.ts's
+// own header documents for cross-agent-surface helpers this session
+// (estimate-lib.ts itself is a read-only logic file for this pass). A
+// straight, restrained dictionary, the same one Overview's ladder uses:
+// red→crit, amber→warn, green→good, gray→neutral, blue→accent.
+function estimateBadgeTone(
+  color: EstimateBadge["color"]
+): "crit" | "warn" | "good" | "neutral" | "accent" {
+  switch (color) {
+    case "red":
+      return "crit";
+    case "amber":
+      return "warn";
+    case "green":
+      return "good";
+    case "blue":
+      return "accent";
+    default:
+      return "neutral";
+  }
+}
 
 export default async function EstimatesPage({
   searchParams,
@@ -185,7 +208,7 @@ export default async function EstimatesPage({
       : null;
 
   return (
-    <PageShell
+    <LPageShell
       title="Estimates"
       subtitle={
         errorText
@@ -194,66 +217,64 @@ export default async function EstimatesPage({
               awaitingCount ? ` · ${awaitingCount} awaiting an answer` : ""
             }${expiredIds.size ? ` · ${expiredIds.size} expired` : ""}`
       }
+      // THE ONE FILLED ACCENT BUTTON on this screen (docs/design/LEDGER.md's
+      // restraint rule) — every filter chip and row action below is outline
+      // or quiet.
       action={
-        <Button asChild>
-          <NextLink href="/estimates/new">New estimate</NextLink>
-        </Button>
+        <NextLink href="/estimates/new" className={lButtonClass({ variant: "primary" })}>
+          New estimate
+        </NextLink>
       }
     >
       {truncated ? (
-        <Callout.Root color="amber">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>
-            Only the most recent {LIST_LIMIT} estimates could be loaded, so the
-            list below covers those and not your whole history.
-          </Callout.Text>
-        </Callout.Root>
+        <LAlert tone="warn" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+          <span>
+            {`Only the most recent ${LIST_LIMIT} estimates could be loaded, so the list below covers those and not your whole history.`}
+          </span>
+        </LAlert>
       ) : null}
 
-      <Flex gap="2" wrap="wrap">
-        {FILTERS.map((f) => (
-          <Button
-            key={f.key}
-            asChild
-            size="2"
-            variant={filter === f.key ? "solid" : "soft"}
-          >
-            <NextLink href={f.key === "open" ? "/estimates" : `/estimates?show=${f.key}`}>
+      <div className="flex flex-wrap gap-2">
+        {FILTERS.map((f) => {
+          const active = filter === f.key;
+          return (
+            <NextLink
+              key={f.key}
+              href={f.key === "open" ? "/estimates" : `/estimates?show=${f.key}`}
+              className={lButtonClass({ variant: active ? "outline" : "quiet", size: "sm" })}
+            >
               {f.label}
             </NextLink>
-          </Button>
-        ))}
-      </Flex>
+          );
+        })}
+      </div>
 
-      <Card size="3">
+      <LCard>
         {errorText ? (
-          <Callout.Root color="red">
-            <Callout.Icon>
-              <ExclamationTriangleIcon />
-            </Callout.Icon>
-            <Callout.Text>{errorText}</Callout.Text>
-          </Callout.Root>
+          <LAlert tone="crit" className="flex items-start gap-2">
+            <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+            <span>{errorText}</span>
+          </LAlert>
         ) : visible.length === 0 ? (
           // "No estimates yet" is only true when there are none at all —
           // saying it while a filter hides the rest is the class of lie
           // the trips screens used to tell. Empty ≠ failed ≠ filtered.
           estimates.length === 0 ? (
-            <EmptyState
+            <LEmpty
               title="No estimates yet"
               action={
-                <Button asChild>
-                  <NextLink href="/estimates/new">Draft your first estimate</NextLink>
-                </Button>
+                <NextLink href="/estimates/new" className={lButtonClass({ variant: "outline" })}>
+                  Draft your first estimate
+                </NextLink>
               }
             >
               Quote the trip before it&rsquo;s booked: day rates, travel days, per
               diem. When the client accepts, the estimate becomes a draft invoice
               without retyping a number.
-            </EmptyState>
+            </LEmpty>
           ) : (
-            <EmptyState
+            <LEmpty
               title={
                 filter === "open"
                   ? "Nothing open"
@@ -262,69 +283,87 @@ export default async function EstimatesPage({
                     : "Nothing here"
               }
               action={
-                <Button asChild variant="soft">
-                  <NextLink href="/estimates?show=all">Show all estimates</NextLink>
-                </Button>
+                <NextLink
+                  href="/estimates?show=all"
+                  className={lButtonClass({ variant: "outline" })}
+                >
+                  Show all estimates
+                </NextLink>
               }
             >
               {filter === "open"
                 ? `Every estimate has an answer. You have ${estimates.length} in total.`
                 : `None of your ${estimates.length} estimates match this filter.`}
-            </EmptyState>
+            </LEmpty>
           )
         ) : (
-          <Table.Root variant="ghost">
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Number</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Issued</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Valid until</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell justify="end">Total</Table.ColumnHeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
+          <LTable>
+            <caption>
+              <span className="sr-only">Estimates</span>
+            </caption>
+            <thead>
+              <tr>
+                <LTh>Number</LTh>
+                <LTh>Client</LTh>
+                <LTh>Issued</LTh>
+                <LTh>Valid until</LTh>
+                <LTh>Status</LTh>
+                <LTh numeric>Total</LTh>
+              </tr>
+            </thead>
+            <tbody>
               {visible.map((estimate) => {
                 const badge = ESTIMATE_STATUS_BADGE[estimate.status] ?? ESTIMATE_STATUS_FALLBACK;
                 const expired = expiredIds.has(estimate.id);
                 return (
-                  <Table.Row key={estimate.id}>
-                    <Table.RowHeaderCell>
-                      <RadixLink asChild weight="medium">
-                        <NextLink href={`/estimates/${estimate.id}`}>
-                          {estimate.estimate_number ?? "Draft"}
-                        </NextLink>
-                      </RadixLink>
-                    </Table.RowHeaderCell>
-                    <Table.Cell>
-                      <Text color="gray">{clientNames.get(estimate.client_id) ?? "—"}</Text>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Text color="gray">{formatDate(estimate.issued_on)}</Text>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Text color={expired ? "amber" : "gray"} weight={expired ? "medium" : "regular"}>
+                  <tr key={estimate.id}>
+                    {/* scope="row": the accessible-name row header Radix's
+                        Table.RowHeaderCell gave this cell, restated as a
+                        plain <th> since LTd has no row-header variant —
+                        same idiom as invoices/page.tsx. Without it a
+                        screen reader announces Client/Status/Total with
+                        no estimate identifier attached. */}
+                    <th
+                      scope="row"
+                      className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                    >
+                      <NextLink
+                        href={`/estimates/${estimate.id}`}
+                        className="font-medium text-accent hover:underline"
+                      >
+                        {estimate.estimate_number ?? "Draft"}
+                      </NextLink>
+                    </th>
+                    <LTd>
+                      <span className="text-ink-2">
+                        {clientNames.get(estimate.client_id) ?? "—"}
+                      </span>
+                    </LTd>
+                    <LTd>
+                      <span className="text-ink-2">{formatDate(estimate.issued_on)}</span>
+                    </LTd>
+                    <LTd>
+                      <span className={expired ? "font-medium text-warn" : "text-ink-2"}>
                         {formatDate(estimate.valid_until)}
-                      </Text>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Flex gap="1" wrap="wrap">
+                      </span>
+                    </LTd>
+                    <LTd>
+                      <div className="flex flex-wrap gap-1">
                         {/* estimates_expired only carries SENT quotes past
                             their date (an answered quote is no longer
                             waiting to expire), so this override can never
                             hide an Accepted or Declined badge. */}
                         {expired ? (
-                          <Badge color="amber">Expired</Badge>
+                          <LPill tone="warn">Expired</LPill>
                         ) : (
-                          <Badge color={badge.color}>{badge.label}</Badge>
+                          <LPill tone={estimateBadgeTone(badge.color)}>{badge.label}</LPill>
                         )}
                         {estimate.converted_invoice_id ? (
-                          <Badge color="gray">Invoiced</Badge>
+                          <LPill tone="neutral">Invoiced</LPill>
                         ) : null}
-                      </Flex>
-                    </Table.Cell>
-                    <Table.Cell justify="end">
+                      </div>
+                    </LTd>
+                    <LTd numeric>
                       {/* The table only renders when errorText is null, at
                           which point every visible id verifiably has a
                           totals row — but a missing one still refuses
@@ -332,22 +371,45 @@ export default async function EstimatesPage({
                           in the gating above can quietly print $0.00 for
                           "we could not find out". */}
                       {totalsByEstimate.has(estimate.id) ? (
-                        <Text weight="medium" className="tnum">
+                        <span className="font-medium">
                           {formatCents(totalsByEstimate.get(estimate.id) as number)}
-                        </Text>
+                        </span>
                       ) : (
-                        <Text size="1" color="red">
-                          Couldn&rsquo;t load
-                        </Text>
+                        <span className="text-caption text-crit">Couldn&rsquo;t load</span>
                       )}
-                    </Table.Cell>
-                  </Table.Row>
+                    </LTd>
+                  </tr>
                 );
               })}
-            </Table.Body>
-          </Table.Root>
+            </tbody>
+          </LTable>
         )}
-      </Card>
-    </PageShell>
+      </LCard>
+    </LPageShell>
+  );
+}
+
+/* Local inline icon — same posture as overview/page.tsx's own header rule:
+   Ledger screens carry no icon dependency, so a compact 16px outline is
+   defined once per file that needs it rather than pulled from a shared
+   dependency. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

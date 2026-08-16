@@ -1,7 +1,9 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { AlertDialog, Button, Card, Flex, Text, TextField } from "@/components/ui";
+import { LButton, LCard } from "@/components/ledger";
+import { LDialog } from "@/components/ledger/dialog";
+import { LInput } from "@/components/ledger/forms";
 import { formatDate } from "@/lib/format";
 import { createInvoiceShare, revokeInvoiceShare, type ShareState } from "../share-actions";
 
@@ -74,6 +76,8 @@ export default function SharePanel({
 }) {
   const [createState, createAction, creating] = useActionState(createInvoiceShare, initialState);
   const [revokeState, revokeAction, revoking] = useActionState(revokeInvoiceShare, initialState);
+  const [rotateOpen, setRotateOpen] = useState(false);
+  const [revokeOpen, setRevokeOpen] = useState(false);
 
   // The token this render should show: a freshly-minted one from THIS
   // request beats whatever was already on the row, so the pilot sees the
@@ -109,14 +113,12 @@ export default function SharePanel({
   const error = createState.error ?? revokeState.error;
 
   return (
-    <Card size="3">
-      <Text as="div" size="4" weight="bold" mb="2">
-        Share with client
-      </Text>
-      <Text as="div" size="1" color="gray" mb="3">
+    <LCard>
+      <div className="mb-2 text-h3 font-semibold">Share with client</div>
+      <p className="mb-3 text-caption text-ink-3">
         A link your client can open without an account: the invoice, its status, and a Pay
         button if one is set up. You send it; nothing here emails it for you.
-      </Text>
+      </p>
 
       {/* SAID BEFORE THE LINK EXISTS, not after. This sits above the
           create/rotate controls so a pilot reads it while deciding, and it
@@ -126,7 +128,7 @@ export default function SharePanel({
           way to learn that the link they are about to hand over shows the
           images anyway. See this component's header. */}
       {receiptCount > 0 ? (
-        <Text as="div" size="1" color="gray" mb="3">
+        <p className="mb-3 text-caption text-ink-3">
           It also shows{" "}
           {receiptCount === 1
             ? "the receipt for the rebilled expense"
@@ -134,17 +136,17 @@ export default function SharePanel({
           on this invoice, whether or not you attached{" "}
           {receiptCount === 1 ? "it" : "them"} to the email. Revoke the link if you&rsquo;d
           rather your client didn&rsquo;t see {receiptCount === 1 ? "it" : "them"}.
-        </Text>
+        </p>
       ) : null}
 
       {shareUrl ? (
-        <Flex direction="column" gap="2" width="100%">
-          <TextField.Root readOnly value={shareUrl} onFocus={(e) => e.currentTarget.select()} />
+        <div className="flex w-full flex-col gap-2">
+          <LInput readOnly value={shareUrl} onFocus={(e) => e.currentTarget.select()} />
           {/* States exactly what is knowable: the LINK was opened while
               valid. Mail scanners and link previewers open links, so this
               deliberately never says "your client read it" — Wave's viewed
               tracking has the same property and the same honest ceiling. */}
-          <Text as="div" size="1" color="gray">
+          <p className="text-caption text-ink-3">
             {viewed
               ? `Viewed ${formatDate(viewed)}${
                   firstViewed && formatDate(firstViewed) !== formatDate(viewed)
@@ -152,102 +154,99 @@ export default function SharePanel({
                     : ""
                 }. Opening counts even if it was an email scanner, not your client.`
               : "Not viewed yet."}
-          </Text>
-          <Flex gap="2">
+          </p>
+          <div className="flex gap-2">
             {/* CONFIRMED, like Revoke beside it. Rotating is not a gentler
                 action than revoking — it revokes AND replaces in one press.
                 Whatever link the client already has stops working the
                 instant this is clicked, and the pilot has no way to know
                 the client had it open. An unconfirmed button that breaks
                 something on someone else's screen is the wrong shape. */}
-            <AlertDialog.Root>
-              <AlertDialog.Trigger>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={pending}
-                  style={{ flex: 1, width: "100%" }}
-                >
-                  {creating ? "Rotating…" : "Generate a new link"}
-                </Button>
-              </AlertDialog.Trigger>
-              <AlertDialog.Content maxWidth="420px">
-                <AlertDialog.Title>Replace this client link?</AlertDialog.Title>
-                <AlertDialog.Description size="2">
-                  The link you already sent stops working immediately. If your client
-                  has it bookmarked or in their inbox, it will 404 for them. You&rsquo;ll
-                  get a new link to send instead.
-                </AlertDialog.Description>
-                <Flex gap="3" mt="4" justify="end">
-                  <AlertDialog.Cancel>
-                    <Button variant="soft" color="gray">
-                      Keep the current link
-                    </Button>
-                  </AlertDialog.Cancel>
-                  <AlertDialog.Action>
-                    <form action={createAction}>
-                      <input type="hidden" name="invoice_id" value={invoiceId} />
-                      <Button type="submit" variant="solid" disabled={pending}>
-                        Replace it
-                      </Button>
-                    </form>
-                  </AlertDialog.Action>
-                </Flex>
-              </AlertDialog.Content>
-            </AlertDialog.Root>
-            <AlertDialog.Root>
-              <AlertDialog.Trigger>
-                <Button type="button" variant="outline" color="red" disabled={pending}>
-                  Revoke
-                </Button>
-              </AlertDialog.Trigger>
-              <AlertDialog.Content maxWidth="420px">
-                <AlertDialog.Title>Revoke this client link?</AlertDialog.Title>
-                <AlertDialog.Description size="2">
-                  The link stops working immediately. If your client has it bookmarked or in
-                  their email, it will 404 for them. Generate a new one if they still need
-                  access.
-                </AlertDialog.Description>
-                <Flex gap="3" mt="4" justify="end">
-                  <AlertDialog.Cancel>
-                    <Button variant="soft" color="gray">
-                      Cancel
-                    </Button>
-                  </AlertDialog.Cancel>
-                  <AlertDialog.Action>
-                    <form action={revokeAction}>
-                      <input type="hidden" name="invoice_id" value={invoiceId} />
-                      <Button type="submit" variant="solid" color="red" disabled={pending}>
-                        Revoke
-                      </Button>
-                    </form>
-                  </AlertDialog.Action>
-                </Flex>
-              </AlertDialog.Content>
-            </AlertDialog.Root>
-          </Flex>
-        </Flex>
+            <LButton
+              type="button"
+              variant="outline"
+              disabled={pending}
+              className="flex-1"
+              onClick={() => setRotateOpen(true)}
+            >
+              {creating ? "Rotating…" : "Generate a new link"}
+            </LButton>
+            <LDialog
+              open={rotateOpen}
+              onOpenChange={setRotateOpen}
+              title="Replace this client link?"
+              description="The link you already sent stops working immediately. If your client has it bookmarked or in their inbox, it will 404 for them. You’ll get a new link to send instead."
+              footer={
+                <>
+                  <LButton type="button" variant="quiet" onClick={() => setRotateOpen(false)}>
+                    Keep the current link
+                  </LButton>
+                  <form action={createAction}>
+                    <input type="hidden" name="invoice_id" value={invoiceId} />
+                    {/* Closes the instant it's pressed, exactly as Radix's
+                        AlertDialog.Action always did — not gated on the
+                        form's async result. */}
+                    <LButton type="submit" disabled={pending} onClick={() => setRotateOpen(false)}>
+                      Replace it
+                    </LButton>
+                  </form>
+                </>
+              }
+            />
+            <LButton
+              type="button"
+              variant="outline"
+              className="text-crit hover:text-crit"
+              disabled={pending}
+              onClick={() => setRevokeOpen(true)}
+            >
+              Revoke
+            </LButton>
+            <LDialog
+              open={revokeOpen}
+              onOpenChange={setRevokeOpen}
+              title="Revoke this client link?"
+              description="The link stops working immediately. If your client has it bookmarked or in their email, it will 404 for them. Generate a new one if they still need access."
+              footer={
+                <>
+                  <LButton type="button" variant="quiet" onClick={() => setRevokeOpen(false)}>
+                    Cancel
+                  </LButton>
+                  <form action={revokeAction}>
+                    <input type="hidden" name="invoice_id" value={invoiceId} />
+                    <LButton
+                      type="submit"
+                      variant="danger"
+                      disabled={pending}
+                      onClick={() => setRevokeOpen(false)}
+                    >
+                      Revoke
+                    </LButton>
+                  </form>
+                </>
+              }
+            />
+          </div>
+        </div>
       ) : (
-        <Flex direction="column" gap="2" align="start">
+        <div className="flex flex-col items-start gap-2">
           {share?.revoked_at ? (
-            <Text size="1" color="gray">
-              The previous link was revoked.
-            </Text>
+            <p className="text-caption text-ink-3">The previous link was revoked.</p>
           ) : null}
           <form action={createAction}>
             <input type="hidden" name="invoice_id" value={invoiceId} />
-            <Button type="submit" disabled={pending}>
+            <LButton type="submit" variant="outline" disabled={pending}>
               {creating ? "Creating…" : "Create client link"}
-            </Button>
+            </LButton>
           </form>
-        </Flex>
+        </div>
       )}
 
       {error ? (
-        <Text as="div" size="1" color="red" mt="2" role="alert">
+        <p className="mt-2 text-caption font-medium text-crit" role="alert">
           {error}
-        </Text>
+        </p>
       ) : null}
-    </Card>
+    </LCard>
   );
 }

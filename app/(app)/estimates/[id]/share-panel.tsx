@@ -1,7 +1,9 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
-import { AlertDialog, Button, Card, Flex, Text, TextField } from "@/components/ui";
+import { useActionState, useEffect, useRef, useState } from "react";
+import { LButton, LCard } from "@/components/ledger";
+import { LConfirmDialog } from "@/components/ledger/dialog";
+import { LInput } from "@/components/ledger/forms";
 import { formatDate } from "@/lib/format";
 import { createEstimateShare, revokeEstimateShare, type EstimateShareState } from "../share-actions";
 
@@ -39,6 +41,16 @@ export default function SharePanel({
 }) {
   const [createState, createAction, creating] = useActionState(createEstimateShare, initialState);
   const [revokeState, revokeAction, revoking] = useActionState(revokeEstimateShare, initialState);
+  const [replaceConfirmOpen, setReplaceConfirmOpen] = useState(false);
+  const [revokeConfirmOpen, setRevokeConfirmOpen] = useState(false);
+  // The confirm dialogs below don't own a submit button of their own — they
+  // trigger these hidden forms via requestSubmit(), the same real form
+  // submission a visible submit button would fire, so createAction/
+  // revokeAction (React 19 form actions) dispatch through the exact
+  // mechanism every other action-bound form in this product uses rather
+  // than being called as plain functions.
+  const createFormRef = useRef<HTMLFormElement>(null);
+  const revokeFormRef = useRef<HTMLFormElement>(null);
 
   const liveToken = createState.token ?? (share && !share.revoked_at ? share.token : null);
 
@@ -61,20 +73,18 @@ export default function SharePanel({
   const error = createState.error ?? revokeState.error;
 
   return (
-    <Card size="3">
-      <Text as="div" size="4" weight="bold" mb="2">
-        Share with client
-      </Text>
-      <Text as="div" size="1" color="gray" mb="3">
+    <LCard>
+      <p className="mb-2 text-lead font-bold text-ink">Share with client</p>
+      <p className="mb-3 text-caption text-ink-3">
         A link your client can open without an account: the quote, its status,
         and buttons to accept or decline it, if it&rsquo;s still awaiting an
         answer. You send it; nothing here emails it for you.
-      </Text>
+      </p>
 
       {shareUrl ? (
-        <Flex direction="column" gap="2" width="100%">
-          <TextField.Root readOnly value={shareUrl} onFocus={(e) => e.currentTarget.select()} />
-          <Text as="div" size="1" color="gray">
+        <div className="flex w-full flex-col gap-2">
+          <LInput readOnly value={shareUrl} onFocus={(e) => e.currentTarget.select()} />
+          <p className="text-caption text-ink-3">
             {viewed
               ? `Viewed ${formatDate(viewed)}${
                   firstViewed && formatDate(firstViewed) !== formatDate(viewed)
@@ -82,96 +92,82 @@ export default function SharePanel({
                     : ""
                 }. Opening counts even if it was an email scanner, not your client.`
               : "Not viewed yet."}
-          </Text>
-          <Flex gap="2">
-            <AlertDialog.Root>
-              <AlertDialog.Trigger>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={pending}
-                  style={{ flex: 1, width: "100%" }}
-                >
-                  {creating ? "Rotating…" : "Generate a new link"}
-                </Button>
-              </AlertDialog.Trigger>
-              <AlertDialog.Content maxWidth="420px">
-                <AlertDialog.Title>Replace this client link?</AlertDialog.Title>
-                <AlertDialog.Description size="2">
-                  The link you already sent stops working immediately. If your client
-                  has it bookmarked or in their inbox, it will 404 for them. You&rsquo;ll
-                  get a new link to send instead.
-                </AlertDialog.Description>
-                <Flex gap="3" mt="4" justify="end">
-                  <AlertDialog.Cancel>
-                    <Button variant="soft" color="gray">
-                      Keep the current link
-                    </Button>
-                  </AlertDialog.Cancel>
-                  <AlertDialog.Action>
-                    <form action={createAction}>
-                      <input type="hidden" name="estimate_id" value={estimateId} />
-                      <Button type="submit" variant="solid" disabled={pending}>
-                        Replace it
-                      </Button>
-                    </form>
-                  </AlertDialog.Action>
-                </Flex>
-              </AlertDialog.Content>
-            </AlertDialog.Root>
-            <AlertDialog.Root>
-              <AlertDialog.Trigger>
-                <Button type="button" variant="outline" color="red" disabled={pending}>
-                  Revoke
-                </Button>
-              </AlertDialog.Trigger>
-              <AlertDialog.Content maxWidth="420px">
-                <AlertDialog.Title>Revoke this client link?</AlertDialog.Title>
-                <AlertDialog.Description size="2">
-                  The link stops working immediately. If your client has it bookmarked or in
-                  their email, it will 404 for them. Generate a new one if they still need
-                  access.
-                </AlertDialog.Description>
-                <Flex gap="3" mt="4" justify="end">
-                  <AlertDialog.Cancel>
-                    <Button variant="soft" color="gray">
-                      Cancel
-                    </Button>
-                  </AlertDialog.Cancel>
-                  <AlertDialog.Action>
-                    <form action={revokeAction}>
-                      <input type="hidden" name="estimate_id" value={estimateId} />
-                      <Button type="submit" variant="solid" color="red" disabled={pending}>
-                        Revoke
-                      </Button>
-                    </form>
-                  </AlertDialog.Action>
-                </Flex>
-              </AlertDialog.Content>
-            </AlertDialog.Root>
-          </Flex>
-        </Flex>
+          </p>
+          <div className="flex gap-2">
+            {/* Outline, not filled — the detail page's one accent action is
+                StatusActions' live CTA. */}
+            <LButton
+              type="button"
+              variant="outline"
+              className="w-full flex-1"
+              disabled={pending}
+              onClick={() => setReplaceConfirmOpen(true)}
+            >
+              {creating ? "Rotating…" : "Generate a new link"}
+            </LButton>
+            <LConfirmDialog
+              open={replaceConfirmOpen}
+              onOpenChange={setReplaceConfirmOpen}
+              title="Replace this client link?"
+              description="The link you already sent stops working immediately. If your client has it bookmarked or in their inbox, it will 404 for them. You'll get a new link to send instead."
+              confirmLabel="Replace it"
+              cancelLabel="Keep the current link"
+              confirmVariant="primary"
+              onConfirm={() => {
+                setReplaceConfirmOpen(false);
+                createFormRef.current?.requestSubmit();
+              }}
+            />
+            <LButton
+              type="button"
+              variant="outline"
+              className="border-crit text-crit hover:bg-crit-soft"
+              disabled={pending}
+              onClick={() => setRevokeConfirmOpen(true)}
+            >
+              Revoke
+            </LButton>
+            <LConfirmDialog
+              open={revokeConfirmOpen}
+              onOpenChange={setRevokeConfirmOpen}
+              title="Revoke this client link?"
+              description="The link stops working immediately. If your client has it bookmarked or in their email, it will 404 for them. Generate a new one if they still need access."
+              confirmLabel="Revoke"
+              confirmVariant="danger"
+              onConfirm={() => {
+                setRevokeConfirmOpen(false);
+                revokeFormRef.current?.requestSubmit();
+              }}
+            />
+          </div>
+          {/* Hidden forms the two dialogs above submit via requestSubmit(). */}
+          <form ref={createFormRef} action={createAction} className="hidden">
+            <input type="hidden" name="estimate_id" value={estimateId} />
+          </form>
+          <form ref={revokeFormRef} action={revokeAction} className="hidden">
+            <input type="hidden" name="estimate_id" value={estimateId} />
+          </form>
+        </div>
       ) : (
-        <Flex direction="column" gap="2" align="start">
+        <div className="flex flex-col items-start gap-2">
           {share?.revoked_at ? (
-            <Text size="1" color="gray">
-              The previous link was revoked.
-            </Text>
+            <p className="text-caption text-ink-3">The previous link was revoked.</p>
           ) : null}
           <form action={createAction}>
             <input type="hidden" name="estimate_id" value={estimateId} />
-            <Button type="submit" disabled={pending}>
+            {/* Outline, not filled — see the header comment above. */}
+            <LButton type="submit" variant="outline" disabled={pending}>
               {creating ? "Creating…" : "Create client link"}
-            </Button>
+            </LButton>
           </form>
-        </Flex>
+        </div>
       )}
 
       {error ? (
-        <Text as="div" size="1" color="red" mt="2" role="alert">
+        <p className="mt-2 text-caption text-crit" role="alert">
           {error}
-        </Text>
+        </p>
       ) : null}
-    </Card>
+    </LCard>
   );
 }

@@ -1,5 +1,6 @@
+import NextLink from "next/link";
 import { notFound } from "next/navigation";
-import { Badge, Box, Card, Container, Flex, Heading, Link as RadixLink, Separator, Table, Text } from "@/components/ui";
+import { LCard, LPill, LSeparator, LTable, LTd, LTh } from "@/components/ledger";
 import { Logo } from "@/components/ui/logo";
 import { createClient } from "@/lib/supabase/server";
 import { formatCents, formatDate } from "@/lib/format";
@@ -81,9 +82,11 @@ function addressLines(entity: {
   return lines;
 }
 
-const OPEN_STATUS_LABEL: Record<string, { color: "blue" | "amber"; label: string }> = {
-  sent: { color: "blue", label: "Awaiting payment" },
-  partial: { color: "amber", label: "Partially paid" },
+// Same blue/amber -> neutral/warn dictionary as
+// app/invoice/[token]/page.tsx's STATUS_LABEL.
+const OPEN_STATUS_LABEL: Record<string, { tone: "neutral" | "warn"; label: string }> = {
+  sent: { tone: "neutral", label: "Awaiting payment" },
+  partial: { tone: "warn", label: "Partially paid" },
 };
 
 export default async function VendorPage({
@@ -141,163 +144,154 @@ export default async function VendorPage({
   const page = data as unknown as VendorPage;
 
   return (
-    <Box style={{ minHeight: "100dvh", background: "var(--canvas)" }}>
-      <Container size="3" p={{ initial: "4", sm: "6" }}>
-        <Flex align="center" justify="between" mb="5">
+    // Ledger's softer marketing variant, hand-painted — same posture as
+    // app/invoice/[token]/page.tsx's own root.
+    <div className="min-h-dvh bg-canvas font-ledger text-body text-ink">
+      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8 sm:py-12">
+        <div className="mb-8 flex items-center justify-between gap-3">
           <Logo />
-        </Flex>
+        </div>
 
-        <Card size="4" mb="4">
-          <Flex justify="between" wrap="wrap" gap="4" mb="4">
-            <Box>
-              <Text as="div" size="5" weight="bold">
-                {page.account.legal_name}
-              </Text>
+        <LCard className="mb-6 p-6 sm:p-8">
+          <div className="mb-6 flex flex-wrap justify-between gap-6">
+            <div>
+              <div className="text-h3 font-bold text-ink">{page.account.legal_name}</div>
               {addressLines(page.account).map((line, i) => (
-                <Text as="div" key={i} color="gray" size="2">
+                <div key={i} className="text-body-s text-ink-2">
                   {line}
-                </Text>
+                </div>
               ))}
-            </Box>
-            <Box>
-              <Text as="div" size="2" color="gray">
-                Vendor page for
-              </Text>
-              <Text as="div" size="5" weight="bold">
-                {page.client.name}
-              </Text>
-            </Box>
-          </Flex>
+            </div>
+            <div>
+              <div className="text-caption font-semibold text-ink-3">Vendor page for</div>
+              <div className="text-h3 font-bold text-ink">{page.client.name}</div>
+            </div>
+          </div>
 
-          <Separator size="4" mb="4" />
+          <LSeparator className="mb-6" />
 
-          <Flex justify="between" align="center" wrap="wrap" gap="3">
-            <Text size="3" weight="medium">
-              Total outstanding
-            </Text>
-            <Text size="6" weight="bold" className="tnum">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-body font-medium text-ink">Total outstanding</span>
+            <span className="tnum-l text-figure font-bold tracking-tight text-ink">
               {formatCents(page.total_outstanding_cents)}
-            </Text>
-          </Flex>
-        </Card>
+            </span>
+          </div>
+        </LCard>
 
-        <Card size="4" mb="4">
-          <Heading as="h2" size="4" mb="1">
-            Open invoices
-          </Heading>
-          <Text as="p" size="2" color="gray" mb="4">
-            Sent, awaiting payment.
-          </Text>
+        <LCard className="mb-6 p-6 sm:p-8">
+          <h2 className="mb-1 text-h3 font-semibold text-ink">Open invoices</h2>
+          <p className="mb-6 text-body-s text-ink-2">Sent, awaiting payment.</p>
 
           {page.open_invoices.length === 0 ? (
-            <Text size="2" color="gray">
-              Nothing outstanding right now.
-            </Text>
+            <p className="text-body-s text-ink-2">Nothing outstanding right now.</p>
           ) : (
-            <Table.Root variant="surface">
-              <Table.Header>
-                <Table.Row>
-                  <Table.ColumnHeaderCell>Invoice</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Due</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell align="right">Balance due</Table.ColumnHeaderCell>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
+            <LTable>
+              <thead>
+                <tr>
+                  <LTh>Invoice</LTh>
+                  <LTh>Due</LTh>
+                  <LTh>Status</LTh>
+                  <LTh numeric>Balance due</LTh>
+                </tr>
+              </thead>
+              <tbody>
                 {page.open_invoices.map((invoice, i) => {
                   const status = OPEN_STATUS_LABEL[invoice.status] ?? OPEN_STATUS_LABEL.sent!;
                   return (
-                    <Table.Row key={`${invoice.invoice_number}-${i}`}>
-                      <Table.RowHeaderCell>{invoice.invoice_number ?? "—"}</Table.RowHeaderCell>
-                      <Table.Cell>
-                        <Text color="gray">
+                    <tr key={`${invoice.invoice_number}-${i}`}>
+                      {/* scope="row": the row-header semantics the old
+                          Table.RowHeaderCell carried, per the invoices
+                          list idiom. */}
+                      <th
+                        scope="row"
+                        className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                      >
+                        {invoice.invoice_number ?? "—"}
+                      </th>
+                      <LTd>
+                        <span className="text-ink-2">
                           {invoice.due_on ? formatDate(invoice.due_on) : "—"}
-                        </Text>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <Badge color={status.color}>{status.label}</Badge>
-                      </Table.Cell>
-                      <Table.Cell align="right" className="tnum">
-                        {formatCents(invoice.balance_due_cents)}
-                      </Table.Cell>
-                    </Table.Row>
+                        </span>
+                      </LTd>
+                      <LTd>
+                        <LPill tone={status.tone}>{status.label}</LPill>
+                      </LTd>
+                      <LTd numeric>{formatCents(invoice.balance_due_cents)}</LTd>
+                    </tr>
                   );
                 })}
-              </Table.Body>
-            </Table.Root>
+              </tbody>
+            </LTable>
           )}
           {page.open_invoices_truncated ? (
-            <Text as="p" size="1" color="gray" mt="3">
+            <p className="mt-3 text-caption text-ink-3">
               Showing the 200 soonest due. More are outstanding, and the total
               above includes all of them.
-            </Text>
+            </p>
           ) : null}
-        </Card>
+        </LCard>
 
-        <Card size="4" mb="4">
-          <Heading as="h2" size="4" mb="1">
-            Payment history
-          </Heading>
-          <Text as="p" size="2" color="gray" mb="4">
-            Recently paid.
-          </Text>
+        <LCard className="mb-6 p-6 sm:p-8">
+          <h2 className="mb-1 text-h3 font-semibold text-ink">Payment history</h2>
+          <p className="mb-6 text-body-s text-ink-2">Recently paid.</p>
 
           {page.paid_invoices.length === 0 ? (
-            <Text size="2" color="gray">
-              No payments on file yet.
-            </Text>
+            <p className="text-body-s text-ink-2">No payments on file yet.</p>
           ) : (
-            <Table.Root variant="ghost">
-              <Table.Header>
-                <Table.Row>
-                  <Table.ColumnHeaderCell>Invoice</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell>Paid</Table.ColumnHeaderCell>
-                  <Table.ColumnHeaderCell align="right">Amount</Table.ColumnHeaderCell>
-                </Table.Row>
-              </Table.Header>
-              <Table.Body>
+            <LTable>
+              <thead>
+                <tr>
+                  <LTh>Invoice</LTh>
+                  <LTh>Paid</LTh>
+                  <LTh numeric>Amount</LTh>
+                </tr>
+              </thead>
+              <tbody>
                 {page.paid_invoices.map((invoice, i) => (
-                  <Table.Row key={`${invoice.invoice_number}-${i}`}>
-                    <Table.RowHeaderCell>{invoice.invoice_number ?? "—"}</Table.RowHeaderCell>
-                    <Table.Cell>
-                      <Text color="gray">
+                  <tr key={`${invoice.invoice_number}-${i}`}>
+                    {/* scope="row", same as the outstanding table above. */}
+                    <th
+                      scope="row"
+                      className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                    >
+                      {invoice.invoice_number ?? "—"}
+                    </th>
+                    <LTd>
+                      <span className="text-ink-2">
                         {invoice.paid_on ? formatDate(invoice.paid_on) : "—"}
-                      </Text>
-                    </Table.Cell>
-                    <Table.Cell align="right" className="tnum">
-                      {formatCents(invoice.total_cents)}
-                    </Table.Cell>
-                  </Table.Row>
+                      </span>
+                    </LTd>
+                    <LTd numeric>{formatCents(invoice.total_cents)}</LTd>
+                  </tr>
                 ))}
-              </Table.Body>
-            </Table.Root>
+              </tbody>
+            </LTable>
           )}
           {page.paid_invoices_truncated ? (
-            <Text as="p" size="1" color="gray" mt="3">
-              Showing the 50 most recently paid.
-            </Text>
+            <p className="mt-3 text-caption text-ink-3">Showing the 50 most recently paid.</p>
           ) : null}
-        </Card>
+        </LCard>
 
         {page.packet_token ? (
-          <Card size="4" mb="4">
-            <Heading as="h2" size="4" mb="1">
-              Paperwork on file
-            </Heading>
-            <Text as="p" size="2" color="gray" mb="3">
+          <LCard className="mb-6 p-6 sm:p-8">
+            <h2 className="mb-1 text-h3 font-semibold text-ink">Paperwork on file</h2>
+            <p className="mb-3 text-body-s text-ink-2">
               W-9, certificate of insurance, and other documents shared with you.
-            </Text>
-            <RadixLink asChild weight="medium">
-              <a href={`/packet/${page.packet_token}`}>View the current paperwork</a>
-            </RadixLink>
-          </Card>
+            </p>
+            <NextLink
+              href={`/packet/${page.packet_token}`}
+              className="text-body-s font-medium text-accent hover:underline"
+            >
+              View the current paperwork
+            </NextLink>
+          </LCard>
         ) : null}
 
-        <Text size="1" color="gray">
+        <p className="text-caption text-ink-3">
           This link was shared by {page.account.legal_name} and stops working
           on its own. If you need it again, ask them for a new one.
-        </Text>
-      </Container>
-    </Box>
+        </p>
+      </div>
+    </div>
   );
 }

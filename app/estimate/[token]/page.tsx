@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { Badge, Box, Card, Container, Flex, Separator, Table, Text } from "@/components/ui";
+import { LAlert, LCard, LPill, LSeparator, LTable, LTd, LTh } from "@/components/ledger";
 import { Logo } from "@/components/ui/logo";
 import { createClient } from "@/lib/supabase/server";
 import { formatCents, formatDate } from "@/lib/format";
@@ -93,10 +93,14 @@ function addressLines(entity: {
   return lines;
 }
 
-const STATUS_LABEL: Record<string, { color: "blue" | "green" | "red"; label: string }> = {
-  sent: { color: "blue", label: "Awaiting your answer" },
-  accepted: { color: "green", label: "Accepted" },
-  declined: { color: "red", label: "Declined" },
+// Same blue/green/red -> neutral/good/crit dictionary as
+// app/invoice/[token]/page.tsx's STATUS_LABEL: blue (waiting, nothing
+// wrong) -> neutral; green (resolved well) -> good; red (a negative
+// resolution) -> crit.
+const STATUS_LABEL: Record<string, { tone: "neutral" | "good" | "crit"; label: string }> = {
+  sent: { tone: "neutral", label: "Awaiting your answer" },
+  accepted: { tone: "good", label: "Accepted" },
+  declined: { tone: "crit", label: "Declined" },
 };
 
 export default async function PublicEstimatePage({
@@ -142,135 +146,115 @@ export default async function PublicEstimatePage({
   const status = STATUS_LABEL[estimate.estimate.status] ?? STATUS_LABEL.sent!;
 
   return (
-    <Box style={{ minHeight: "100dvh", background: "var(--canvas)" }}>
-      <Container size="3" p={{ initial: "4", sm: "6" }}>
-        <Flex align="center" justify="between" mb="5">
+    // Ledger's softer marketing variant, hand-painted — same posture as
+    // app/invoice/[token]/page.tsx's own root: no PageShell, more air than
+    // the app, trust-first because the reader is deciding whether to accept
+    // a quote, not the pilot.
+    <div className="min-h-dvh bg-canvas font-ledger text-body text-ink">
+      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8 sm:py-12">
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
           <Logo />
-          <Badge color={status.color} size="2">
-            {status.label}
-          </Badge>
-        </Flex>
+          <LPill tone={status.tone}>{status.label}</LPill>
+        </div>
 
-        <Card size="4">
-          <Flex justify="between" wrap="wrap" gap="4" mb="4">
-            <Box>
-              <Text as="div" size="5" weight="bold">
-                {estimate.account.legal_name}
-              </Text>
+        <LCard className="p-6 sm:p-8">
+          <div className="mb-6 flex flex-wrap justify-between gap-6">
+            <div>
+              <div className="text-h3 font-bold text-ink">{estimate.account.legal_name}</div>
               {addressLines(estimate.account).map((line, i) => (
-                <Text as="div" key={i} color="gray" size="2">
+                <div key={i} className="text-body-s text-ink-2">
                   {line}
-                </Text>
+                </div>
               ))}
-            </Box>
-            <Box>
-              <Text as="div" size="2" color="gray">
-                Estimate
-              </Text>
-              <Text as="div" size="5" weight="bold">
+            </div>
+            <div>
+              <div className="text-caption font-semibold text-ink-3">Estimate</div>
+              <div className="text-h3 font-bold text-ink">
                 {estimate.estimate.estimate_number ?? "—"}
-              </Text>
-              <Text as="div" size="2" color="gray">
-                {estimate.estimate.issued_on ? `Sent ${formatDate(estimate.estimate.issued_on)}` : null}
-              </Text>
-              <Text as="div" size="2" color="gray">
-                {estimate.estimate.valid_until
-                  ? `Valid until ${formatDate(estimate.estimate.valid_until)}`
-                  : null}
-              </Text>
-            </Box>
-          </Flex>
+              </div>
+              {estimate.estimate.issued_on ? (
+                <div className="text-body-s text-ink-2">
+                  Sent {formatDate(estimate.estimate.issued_on)}
+                </div>
+              ) : null}
+              {estimate.estimate.valid_until ? (
+                <div className="text-body-s text-ink-2">
+                  Valid until {formatDate(estimate.estimate.valid_until)}
+                </div>
+              ) : null}
+            </div>
+          </div>
 
-          <Box mb="4" style={{ background: "var(--sunk)", borderRadius: "var(--radius)", padding: "8px 12px" }}>
-            <Text as="div" size="2" color="gray">
-              This is a price quote, not an invoice. No payment is due.
-            </Text>
-          </Box>
+          <LAlert tone="neutral" className="mb-6">
+            This is a price quote, not an invoice. No payment is due.
+          </LAlert>
 
-          <Separator size="4" mb="4" />
+          <LSeparator className="my-6" />
 
-          <Box mb="4">
-            <Text as="div" size="1" color="gray" mb="1">
-              Quote for
-            </Text>
-            <Text as="div" weight="medium">
-              {estimate.client.name}
-            </Text>
+          <div className="mb-6">
+            <div className="mb-1 text-caption font-semibold text-ink-3">Quote for</div>
+            <div className="text-body font-medium text-ink">{estimate.client.name}</div>
             {estimate.client.contact_name ? (
-              <Text as="div" color="gray" size="2">
-                Attn: {estimate.client.contact_name}
-              </Text>
+              <div className="text-body-s text-ink-2">Attn: {estimate.client.contact_name}</div>
             ) : null}
             {addressLines(estimate.client).map((line, i) => (
-              <Text as="div" key={i} color="gray" size="2">
+              <div key={i} className="text-body-s text-ink-2">
                 {line}
-              </Text>
+              </div>
             ))}
-          </Box>
+          </div>
 
-          <Table.Root variant="surface" mb="4">
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Description</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell align="right">Qty</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell align="right">Rate</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell align="right">Amount</Table.ColumnHeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
+          <LTable className="mb-6">
+            <thead>
+              <tr>
+                <LTh>Description</LTh>
+                <LTh numeric>Qty</LTh>
+                <LTh numeric>Rate</LTh>
+                <LTh numeric>Amount</LTh>
+              </tr>
+            </thead>
+            <tbody>
               {estimate.lines.map((line, i) => (
-                <Table.Row key={i}>
-                  <Table.Cell>{line.description}</Table.Cell>
-                  <Table.Cell align="right" className="tnum">
-                    {line.quantity}
-                  </Table.Cell>
-                  <Table.Cell align="right" className="tnum">
-                    {formatCents(line.unit_amount_cents)}
-                  </Table.Cell>
-                  <Table.Cell align="right" className="tnum">
-                    {formatCents(line.amount_cents)}
-                  </Table.Cell>
-                </Table.Row>
+                <tr key={i}>
+                  <LTd>{line.description}</LTd>
+                  <LTd numeric>{line.quantity}</LTd>
+                  <LTd numeric>{formatCents(line.unit_amount_cents)}</LTd>
+                  <LTd numeric>{formatCents(line.amount_cents)}</LTd>
+                </tr>
               ))}
-            </Table.Body>
-          </Table.Root>
+            </tbody>
+          </LTable>
 
-          <Flex direction="column" gap="1" align="end" mb="4">
+          <div className="mb-6 flex flex-col items-end gap-1">
             <TotalsLine label="Subtotal" value={estimate.totals.subtotal_cents} />
             <TotalsLine label="Tax" value={estimate.totals.tax_cents} />
             <TotalsLine label="Total" value={estimate.totals.total_cents} emphasize />
-          </Flex>
+          </div>
 
           {estimate.estimate.terms ? (
             <>
-              <Separator size="4" mb="3" />
-              <Text as="div" size="1" color="gray" mb="1">
-                Terms
-              </Text>
-              <Text as="div" size="2" color="gray">
-                {estimate.estimate.terms}
-              </Text>
+              <LSeparator className="mb-3" />
+              <div className="mb-1 text-caption font-semibold text-ink-3">Terms</div>
+              <p className="text-body-s text-ink-2">{estimate.estimate.terms}</p>
             </>
           ) : null}
 
           {estimate.estimate.notes ? (
             <>
-              <Separator size="4" my="3" />
-              <Text as="div" size="2" color="gray">
-                {estimate.estimate.notes}
-              </Text>
+              <LSeparator className="my-3" />
+              <p className="text-body-s text-ink-2">{estimate.estimate.notes}</p>
             </>
           ) : null}
 
           {estimate.estimate.status === "sent" ? (
             <>
-              <Separator size="4" my="4" />
+              <LSeparator className="my-6" />
               <RespondPanel token={token} />
             </>
           ) : null}
-        </Card>
-      </Container>
-    </Box>
+        </LCard>
+      </div>
+    </div>
   );
 }
 
@@ -281,16 +265,25 @@ function TotalsLine({
 }: {
   label: string;
   value: number;
+  /** Total only — this page carries no "sole emphasized line" rule (there
+   *  is no balance still owed to single out), so emphasize steps every part
+   *  of the row to text-ink/semibold, the same weight app/invoice/[token]'s
+   *  non-Balance-due lines use, rather than the figure-size jump reserved
+   *  for a check-writer's balance due. */
   emphasize?: boolean;
 }) {
   return (
-    <Flex gap="4" minWidth="220px" justify="between">
-      <Text color="gray" weight={emphasize ? "bold" : "regular"}>
+    <div className="flex min-w-56 justify-between gap-4">
+      <span className={emphasize ? "text-body font-semibold text-ink" : "text-body-s text-ink-2"}>
         {label}
-      </Text>
-      <Text weight={emphasize ? "bold" : "regular"} className="tnum">
+      </span>
+      <span
+        className={
+          emphasize ? "tnum-l text-body font-semibold text-ink" : "tnum-l text-body-s text-ink-2"
+        }
+      >
         {formatCents(value)}
-      </Text>
-    </Flex>
+      </span>
+    </div>
   );
 }

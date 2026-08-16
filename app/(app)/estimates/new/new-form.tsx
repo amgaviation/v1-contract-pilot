@@ -2,18 +2,8 @@
 
 import { useActionState, useState } from "react";
 import NextLink from "next/link";
-import {
-  Box,
-  Button,
-  Card,
-  Checkbox,
-  Flex,
-  Grid,
-  Select,
-  Text,
-  TextArea,
-  TextField,
-} from "@/components/ui";
+import { LButton, LCard, lButtonClass } from "@/components/ledger";
+import { LCheckbox, LField, LInput, LSelect, LTextarea } from "@/components/ledger/forms";
 import { formatCents, parseDollarsToCents } from "@/lib/format";
 import type { EstimateFormState } from "../actions";
 import {
@@ -103,71 +93,65 @@ export default function NewEstimateForm({
   const preview = previewTotals(parsedForPreview, previewBps ?? 0);
 
   return (
-    <Card size="3">
+    <LCard>
       <form action={formAction}>
         <input type="hidden" name="client_id" value={clientId} />
 
-        <Grid columns={{ initial: "1", md: "3" }} gap="4">
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" id="estimate-client-label">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="flex flex-col gap-1">
+            <label id="estimate-client-label" className="text-body-s font-medium text-ink">
               Client
-            </Text>
-            <Select.Root value={clientId || undefined} onValueChange={setClientId}>
-              <Select.Trigger
-                aria-labelledby="estimate-client-label"
-                placeholder="Choose a client"
-              />
-              <Select.Content>
-                {clients.map((client) => (
-                  <Select.Item key={client.id} value={client.id}>
-                    {client.name}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-            <Text size="1" color="gray">
+            </label>
+            <LSelect
+              aria-labelledby="estimate-client-label"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+            >
+              <option value="" disabled>
+                Choose a client
+              </option>
+              {clients.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.name}
+                </option>
+              ))}
+            </LSelect>
+            <p className="text-caption text-ink-3">
               {clients.length === 0
                 ? "No active clients yet. Add one before you can draft an estimate."
                 : "Who this quote is for"}
-            </Text>
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="valid_until">
-              Valid until
-            </Text>
-            <TextField.Root
+            </p>
+          </div>
+          <LField
+            label="Valid until"
+            htmlFor="valid_until"
+            hint="How long the quoted price stands. Optional, but a quote with no expiry holds the price open indefinitely"
+          >
+            <LInput
               id="valid_until"
               type="date"
               name="valid_until"
               value={validUntil}
               onChange={(e) => setValidUntil(e.target.value)}
             />
-            <Text size="1" color="gray">
-              How long the quoted price stands. Optional, but a quote with no
-              expiry holds the price open indefinitely
-            </Text>
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="tax_rate_percent">
-              Tax rate (%)
-            </Text>
-            <TextField.Root
+          </LField>
+          <LField
+            label="Tax rate (%)"
+            htmlFor="tax_rate_percent"
+            hint="State sales or service tax, if any. Applies to taxable lines only"
+          >
+            <LInput
               id="tax_rate_percent"
               name="tax_rate_percent"
               inputMode="decimal"
               value={taxRate}
               onChange={(e) => setTaxRate(e.target.value)}
             />
-            <Text size="1" color="gray">
-              State sales or service tax, if any. Applies to taxable lines only
-            </Text>
-          </Flex>
-        </Grid>
+          </LField>
+        </div>
 
-        <Flex direction="column" gap="3" mt="6">
-          <Text size="4" weight="bold">
-            Line items
-          </Text>
+        <div className="mt-6 flex flex-col gap-3">
+          <p className="text-lead font-bold text-ink">Line items</p>
           {lines.map((line, index) => (
             <LineRow
               key={line.key}
@@ -178,26 +162,27 @@ export default function NewEstimateForm({
               onRemove={() => removeLine(line.key)}
             />
           ))}
-          <Flex>
-            <Button type="button" variant="soft" size="2" onClick={addLine}>
+          <div>
+            <LButton type="button" variant="outline" size="sm" onClick={addLine}>
               Add another line
-            </Button>
-          </Flex>
+            </LButton>
+          </div>
           {parsedForPreview.length > 0 ? (
-            <Flex direction="column" gap="1" align="end">
+            <div className="flex flex-col items-end gap-1">
               <PreviewLine label="Subtotal" value={preview.subtotalCents} />
               <PreviewLine label="Tax" value={preview.taxCents} />
               <PreviewLine label="Total" value={preview.totalCents} emphasize />
-            </Flex>
+            </div>
           ) : null}
-        </Flex>
+        </div>
 
-        <Grid columns={{ initial: "1", md: "2" }} gap="4" mt="6">
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="terms">
-              Terms
-            </Text>
-            <TextArea
+        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <LField
+            label="Terms"
+            htmlFor="terms"
+            hint="What the client is being told beyond the line items"
+          >
+            <LTextarea
               id="terms"
               name="terms"
               rows={3}
@@ -205,51 +190,43 @@ export default function NewEstimateForm({
               onChange={(e) => setTerms(e.target.value)}
               placeholder="Cancellation terms, per-diem basis, what's not included…"
             />
-            <Text size="1" color="gray">
-              What the client is being told beyond the line items
-            </Text>
-          </Flex>
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="notes">
-              Notes
-            </Text>
-            <TextArea
+          </LField>
+          <LField
+            label="Notes"
+            htmlFor="notes"
+            hint="Carried onto the invoice if this estimate converts"
+          >
+            <LTextarea
               id="notes"
               name="notes"
               rows={3}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
-            <Text size="1" color="gray">
-              Carried onto the invoice if this estimate converts
-            </Text>
-          </Flex>
-        </Grid>
+          </LField>
+        </div>
 
-        <Text as="div" size="1" color="gray" mt="4">
+        <p className="mt-4 text-caption text-ink-3">
           An estimate is a quote, not an invoice. No payment can be recorded
           against it, and nothing goes to the client until you send it. It gets
           its permanent number when sent.
-        </Text>
+        </p>
 
-        <Flex mt="3" role="alert" aria-live="polite">
-          {state.error ? (
-            <Text size="1" color="red">
-              {state.error}
-            </Text>
-          ) : null}
-        </Flex>
+        <div role="alert" aria-live="polite" className="mt-3">
+          {state.error ? <p className="text-caption font-medium text-crit">{state.error}</p> : null}
+        </div>
 
-        <Flex mt="4" gap="3">
-          <Button type="submit" disabled={pending || !clientId}>
+        <div className="mt-4 flex gap-3">
+          {/* THE ONE FILLED ACCENT BUTTON on this screen. */}
+          <LButton type="submit" disabled={pending || !clientId}>
             {pending ? "Drafting…" : "Draft estimate"}
-          </Button>
-          <Button asChild variant="outline">
-            <NextLink href="/estimates">Cancel</NextLink>
-          </Button>
-        </Flex>
+          </LButton>
+          <NextLink href="/estimates" className={lButtonClass({ variant: "outline" })}>
+            Cancel
+          </NextLink>
+        </div>
       </form>
-    </Card>
+    </LCard>
   );
 }
 
@@ -257,7 +234,11 @@ export default function NewEstimateForm({
  * Each field posts on every row — the selects and checkboxes through
  * hidden inputs — so the server's parallel `getAll` arrays can never
  * misalign (an unchecked native checkbox posts nothing, which is exactly
- * the misalignment the hidden input exists to prevent).
+ * the misalignment the hidden input exists to prevent). Kept unchanged by
+ * the Ledger port even though LSelect is a real `<select>` that would post
+ * its own value: the hidden input stays the single posting mechanism for
+ * every row field so the server-visible form data is provably identical to
+ * before, not merely equivalent.
  */
 function LineRow({
   line,
@@ -273,89 +254,78 @@ function LineRow({
   onRemove: () => void;
 }) {
   return (
-    <Flex gap="3" align="start" wrap="wrap">
-      <Box style={{ width: "170px" }}>
-        <Text as="label" size="1" color="gray" id={`line-type-label-${line.key}`}>
+    <div className="flex flex-wrap items-start gap-3">
+      <div className="w-44">
+        <label id={`line-type-label-${line.key}`} className="text-caption text-ink-3">
           Type
-        </Text>
-        <Select.Root
+        </label>
+        <LSelect
+          aria-labelledby={`line-type-label-${line.key}`}
           value={line.line_type}
-          onValueChange={(value) => onChange({ line_type: value })}
+          onChange={(e) => onChange({ line_type: e.target.value })}
         >
-          <Select.Trigger aria-labelledby={`line-type-label-${line.key}`} />
-          <Select.Content>
-            {ESTIMATE_LINE_TYPES.map((value) => (
-              <Select.Item key={value} value={value}>
-                {ESTIMATE_LINE_TYPE_LABEL[value]}
-              </Select.Item>
-            ))}
-          </Select.Content>
-        </Select.Root>
+          {ESTIMATE_LINE_TYPES.map((value) => (
+            <option key={value} value={value}>
+              {ESTIMATE_LINE_TYPE_LABEL[value]}
+            </option>
+          ))}
+        </LSelect>
         <input type="hidden" name="line_type" value={line.line_type} />
-      </Box>
-      <Box style={{ flex: "1 1 220px" }}>
-        <Text as="label" size="1" color="gray" htmlFor={`line-description-${line.key}`}>
+      </div>
+      <div className="min-w-56 flex-1">
+        <label htmlFor={`line-description-${line.key}`} className="text-caption text-ink-3">
           Description
-        </Text>
-        <TextField.Root
+        </label>
+        <LInput
           id={`line-description-${line.key}`}
           name="line_description"
           placeholder={index === 0 ? "e.g. Flight day, CE-560XL" : "Description"}
           value={line.description}
           onChange={(e) => onChange({ description: e.target.value })}
-          size="2"
         />
-      </Box>
-      <Box style={{ width: "90px" }}>
-        <Text as="label" size="1" color="gray" htmlFor={`line-quantity-${line.key}`}>
+      </div>
+      <div className="w-24">
+        <label htmlFor={`line-quantity-${line.key}`} className="text-caption text-ink-3">
           Qty
-        </Text>
-        <TextField.Root
+        </label>
+        <LInput
           id={`line-quantity-${line.key}`}
           name="line_quantity"
           value={line.quantity}
           onChange={(e) => onChange({ quantity: e.target.value })}
-          size="2"
         />
-      </Box>
-      <Box style={{ width: "120px" }}>
-        <Text as="label" size="1" color="gray" htmlFor={`line-unit-${line.key}`}>
+      </div>
+      <div className="w-28">
+        <label htmlFor={`line-unit-${line.key}`} className="text-caption text-ink-3">
           Unit (USD)
-        </Text>
-        <TextField.Root
+        </label>
+        <LInput
           id={`line-unit-${line.key}`}
           name="line_unit_amount"
           placeholder="1500.00"
           value={line.unit_amount}
           onChange={(e) => onChange({ unit_amount: e.target.value })}
-          size="2"
         />
-      </Box>
-      <Flex align="center" gap="2" mt="4" asChild>
-        <label>
-          <input type="hidden" name="line_taxable" value={line.taxable ? "on" : "off"} />
-          <Checkbox
-            checked={line.taxable}
-            onCheckedChange={(checked) => onChange({ taxable: checked === true })}
-          />
-          <Text size="1">Taxable</Text>
-        </label>
-      </Flex>
+      </div>
+      <label className="mt-6 flex items-center gap-2">
+        <input type="hidden" name="line_taxable" value={line.taxable ? "on" : "off"} />
+        <LCheckbox
+          checked={line.taxable}
+          onChange={(e) => onChange({ taxable: e.target.checked })}
+        />
+        <span className="text-caption text-ink">Taxable</span>
+      </label>
       {removable ? (
-        <Flex mt="4">
-          <Button
-            type="button"
-            variant="ghost"
-            color="red"
-            size="1"
-            aria-label={`Remove line ${index + 1}`}
-            onClick={onRemove}
-          >
-            Remove
-          </Button>
-        </Flex>
+        <button
+          type="button"
+          aria-label={`Remove line ${index + 1}`}
+          onClick={onRemove}
+          className="mt-6 text-caption font-medium text-crit hover:underline"
+        >
+          Remove
+        </button>
       ) : null}
-    </Flex>
+    </div>
   );
 }
 
@@ -369,13 +339,13 @@ function PreviewLine({
   emphasize?: boolean;
 }) {
   return (
-    <Flex gap="4" minWidth="220px" justify="between">
-      <Text size="2" color="gray" weight={emphasize ? "bold" : "regular"}>
+    <div className="flex min-w-56 justify-between gap-4">
+      <span className={emphasize ? "text-body-s font-bold text-ink-2" : "text-body-s text-ink-2"}>
         {label}
-      </Text>
-      <Text size="2" weight={emphasize ? "bold" : "regular"} className="tnum">
+      </span>
+      <span className={emphasize ? "tnum-l text-body-s font-bold" : "tnum-l text-body-s"}>
         {formatCents(value)}
-      </Text>
-    </Flex>
+      </span>
+    </div>
   );
 }

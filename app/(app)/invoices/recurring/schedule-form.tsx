@@ -1,22 +1,10 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import NextLink from "next/link";
-import {
-  AlertDialog,
-  Badge,
-  Box,
-  Button,
-  Callout,
-  Card,
-  Flex,
-  Grid,
-  Select,
-  Table,
-  Text,
-  TextField,
-} from "@/components/ui";
-import { InfoCircledIcon } from "@radix-ui/react-icons";
+import { LAlert, LButton, LCard, LEmpty, LPill, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
+import { LDialog } from "@/components/ledger/dialog";
+import { LField, LInput, LSelect } from "@/components/ledger/forms";
 import { centsToInput, formatCents, formatDate } from "@/lib/format";
 import type { Database } from "@/lib/supabase/database.types";
 import {
@@ -61,48 +49,42 @@ function AddScheduleCard({ clients }: { clients: ClientOption[] }) {
   const [cadence, setCadence] = useState(v.cadence || "monthly");
 
   return (
-    <Card size="3">
+    <LCard>
       <form action={formAction} key={JSON.stringify(v)}>
-        <Text as="div" size="4" weight="bold" mb="3">
-          New recurring schedule
-        </Text>
-        <Grid columns={{ initial: "1", md: "3" }} gap="3">
+        <h2 className="mb-3 text-h3 font-semibold">New recurring schedule</h2>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <input type="hidden" name="client_id" value={clientId} />
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" id="new-client-label">
-              Client
-            </Text>
-            <Select.Root value={clientId || undefined} onValueChange={setClientId}>
-              <Select.Trigger aria-labelledby="new-client-label" placeholder="Choose a client" />
-              <Select.Content>
-                {clients.map((c) => (
-                  <Select.Item key={c.id} value={c.id}>
-                    {c.name}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-          </Flex>
+          <LField label="Client" htmlFor="new-client">
+            <LSelect
+              id="new-client"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+            >
+              <option value="" disabled>
+                Choose a client
+              </option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </LSelect>
+          </LField>
 
           <input type="hidden" name="cadence" value={cadence} />
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" id="new-cadence-label">
-              Cadence
-            </Text>
-            <Select.Root value={cadence} onValueChange={setCadence}>
-              <Select.Trigger aria-labelledby="new-cadence-label" />
-              <Select.Content>
-                <Select.Item value="monthly">Monthly</Select.Item>
-                <Select.Item value="quarterly">Quarterly</Select.Item>
-              </Select.Content>
-            </Select.Root>
-          </Flex>
+          <LField label="Cadence" htmlFor="new-cadence">
+            <LSelect id="new-cadence" value={cadence} onChange={(e) => setCadence(e.target.value)}>
+              <option value="monthly">Monthly</option>
+              <option value="quarterly">Quarterly</option>
+            </LSelect>
+          </LField>
 
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="new-anchor">
-              First bill date
-            </Text>
-            <TextField.Root
+          <LField
+            label="First bill date"
+            htmlFor="new-anchor"
+            hint="A date further in the past can queue up many months of due invoices at once."
+          >
+            <LInput
               id="new-anchor"
               type="date"
               name="anchor_date"
@@ -116,77 +98,60 @@ function AddScheduleCard({ clients }: { clients: ClientOption[] }) {
               min={FIVE_YEARS_AGO}
               defaultValue={v.anchor_date ?? ""}
             />
-            <Text size="1" color="gray">
-              A date further in the past can queue up many months of due invoices at once.
-            </Text>
-          </Flex>
+          </LField>
 
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="new-end">
-              End date (optional)
-            </Text>
-            <TextField.Root id="new-end" type="date" name="end_date" defaultValue={v.end_date ?? ""} />
-          </Flex>
+          <LField label="End date (optional)" htmlFor="new-end">
+            <LInput id="new-end" type="date" name="end_date" defaultValue={v.end_date ?? ""} />
+          </LField>
 
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="new-amount">
-              Amount billed
-            </Text>
-            <TextField.Root
+          <LField label="Amount billed" htmlFor="new-amount">
+            <LInput
               id="new-amount"
               name="amount"
               required
               inputMode="decimal"
               placeholder="5000.00"
               defaultValue={v.amount ?? ""}
-              className="tnum"
+              className="tnum-l"
             />
-          </Flex>
+          </LField>
 
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="new-tax">
-              Tax rate % (optional)
-            </Text>
-            <TextField.Root
+          <LField label="Tax rate % (optional)" htmlFor="new-tax">
+            <LInput
               id="new-tax"
               name="tax_rate_percent"
               inputMode="decimal"
               placeholder="0"
               defaultValue={v.tax_rate_percent ?? ""}
-              className="tnum"
+              className="tnum-l"
             />
-          </Flex>
+          </LField>
 
-          <Box style={{ gridColumn: "1 / -1" }}>
-            <Flex direction="column" gap="1">
-              <Text as="label" size="2" weight="medium" htmlFor="new-description">
-                Description (appears on the invoice line)
-              </Text>
-              <TextField.Root
-                id="new-description"
-                name="description"
-                required
-                placeholder="Monthly retainer"
-                defaultValue={v.description ?? ""}
-              />
-            </Flex>
-          </Box>
-        </Grid>
+          <LField
+            label="Description (appears on the invoice line)"
+            htmlFor="new-description"
+            className="md:col-span-3"
+          >
+            <LInput
+              id="new-description"
+              name="description"
+              required
+              placeholder="Monthly retainer"
+              defaultValue={v.description ?? ""}
+            />
+          </LField>
+        </div>
 
-        <Flex mt="3" role="alert" aria-live="polite">
-          {state.error ? (
-            <Text size="1" color="red">
-              {state.error}
-            </Text>
-          ) : null}
-        </Flex>
-        <Flex mt="3">
-          <Button type="submit" disabled={pending}>
+        <div className="mt-3" role="alert" aria-live="polite">
+          {state.error ? <p className="text-caption text-crit">{state.error}</p> : null}
+        </div>
+        <div className="mt-3">
+          <LButton type="submit" disabled={pending}>
             {pending ? "Saving…" : "Add schedule"}
-          </Button>
-        </Flex>
+          </LButton>
+        </div>
       </form>
-    </Card>
+    </LCard>
   );
 }
 
@@ -200,77 +165,61 @@ function EditScheduleRow({ schedule, onDone }: { schedule: ScheduleRow; onDone: 
   };
 
   return (
-    <Table.Row>
-      <Table.Cell colSpan={6}>
+    <tr>
+      <LTd colSpan={6}>
         <form action={formAction} key={JSON.stringify(v)}>
           <input type="hidden" name="id" value={schedule.id} />
-          <Grid columns={{ initial: "1", md: "4" }} gap="3">
-            <Flex direction="column" gap="1">
-              <Text as="label" size="2" weight="medium" htmlFor={`edit-desc-${schedule.id}`}>
-                Description
-              </Text>
-              <TextField.Root
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+            <LField label="Description" htmlFor={`edit-desc-${schedule.id}`}>
+              <LInput
                 id={`edit-desc-${schedule.id}`}
                 name="description"
                 required
                 defaultValue={v.description}
               />
-            </Flex>
-            <Flex direction="column" gap="1">
-              <Text as="label" size="2" weight="medium" htmlFor={`edit-amount-${schedule.id}`}>
-                Amount
-              </Text>
-              <TextField.Root
+            </LField>
+            <LField label="Amount" htmlFor={`edit-amount-${schedule.id}`}>
+              <LInput
                 id={`edit-amount-${schedule.id}`}
                 name="amount"
                 required
                 inputMode="decimal"
                 defaultValue={v.amount}
-                className="tnum"
+                className="tnum-l"
               />
-            </Flex>
-            <Flex direction="column" gap="1">
-              <Text as="label" size="2" weight="medium" htmlFor={`edit-tax-${schedule.id}`}>
-                Tax rate %
-              </Text>
-              <TextField.Root
+            </LField>
+            <LField label="Tax rate %" htmlFor={`edit-tax-${schedule.id}`}>
+              <LInput
                 id={`edit-tax-${schedule.id}`}
                 name="tax_rate_percent"
                 inputMode="decimal"
                 defaultValue={v.tax_rate_percent}
-                className="tnum"
+                className="tnum-l"
               />
-            </Flex>
-            <Flex direction="column" gap="1">
-              <Text as="label" size="2" weight="medium" htmlFor={`edit-end-${schedule.id}`}>
-                End date
-              </Text>
-              <TextField.Root
+            </LField>
+            <LField label="End date" htmlFor={`edit-end-${schedule.id}`}>
+              <LInput
                 id={`edit-end-${schedule.id}`}
                 type="date"
                 name="end_date"
                 defaultValue={v.end_date}
               />
-            </Flex>
-          </Grid>
-          <Flex mt="2" role="alert" aria-live="polite">
-            {state.error ? (
-              <Text size="1" color="red">
-                {state.error}
-              </Text>
-            ) : null}
-          </Flex>
-          <Flex mt="3" gap="2">
-            <Button type="submit" size="1" disabled={pending}>
+            </LField>
+          </div>
+          <div className="mt-2" role="alert" aria-live="polite">
+            {state.error ? <p className="text-caption text-crit">{state.error}</p> : null}
+          </div>
+          <div className="mt-3 flex gap-2">
+            <LButton type="submit" size="sm" disabled={pending}>
               {pending ? "Saving…" : "Save"}
-            </Button>
-            <Button type="button" size="1" variant="outline" onClick={onDone}>
+            </LButton>
+            <LButton type="button" size="sm" variant="outline" onClick={onDone}>
               Cancel
-            </Button>
-          </Flex>
+            </LButton>
+          </div>
         </form>
-      </Table.Cell>
-    </Table.Row>
+      </LTd>
+    </tr>
   );
 }
 
@@ -291,6 +240,13 @@ function ScheduleRowView({
   const [toggleError, setToggleError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Same reasoning as due-queue.tsx's own create-all confirm: focus opens
+  // on Cancel, not the destructive Delete, so an Enter already in flight
+  // when the dialog opens does not confirm the deletion.
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (confirmOpen) cancelRef.current?.focus();
+  }, [confirmOpen]);
 
   function handleToggle() {
     startTransition(async () => {
@@ -314,80 +270,84 @@ function ScheduleRowView({
   }
 
   return (
-    <Table.Row>
-      <Table.RowHeaderCell>
-        <Text weight="medium">{clientName}</Text>
-      </Table.RowHeaderCell>
-      <Table.Cell>
-        <Text color="gray">{schedule.description}</Text>
-      </Table.Cell>
-      <Table.Cell>
-        <Text color="gray">{CADENCE_LABEL[schedule.cadence] ?? schedule.cadence}</Text>
-      </Table.Cell>
-      <Table.Cell justify="end">
-        <Text weight="medium" className="tnum">
-          {formatCents(schedule.amount_cents)}
-        </Text>
-      </Table.Cell>
-      <Table.Cell>
-        <Text color="gray">
+    <tr>
+      {/* scope="row": the accessible-name row header Radix's
+          Table.RowHeaderCell gave this cell. */}
+      <th
+        scope="row"
+        className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+      >
+        {clientName}
+      </th>
+      <LTd>
+        <span className="text-ink-2">{schedule.description}</span>
+      </LTd>
+      <LTd>
+        <span className="text-ink-2">{CADENCE_LABEL[schedule.cadence] ?? schedule.cadence}</span>
+      </LTd>
+      <LTd numeric>
+        <span className="font-medium">{formatCents(schedule.amount_cents)}</span>
+      </LTd>
+      <LTd>
+        <span className="text-ink-2">
           {formatDate(schedule.anchor_date)}
           {schedule.end_date ? ` to ${formatDate(schedule.end_date)}` : ""}
-        </Text>
-      </Table.Cell>
-      <Table.Cell>
-        <Flex gap="2" align="center" wrap="wrap">
-          {schedule.active ? (
-            <Badge color="green">Active</Badge>
-          ) : (
-            <Badge color="gray">Paused</Badge>
-          )}
-          <Button type="button" size="1" variant="soft" onClick={handleToggle} disabled={pending}>
+        </span>
+      </LTd>
+      <LTd>
+        <div className="flex flex-wrap items-center gap-2">
+          {schedule.active ? <LPill tone="good">Active</LPill> : <LPill tone="neutral">Paused</LPill>}
+          <LButton type="button" variant="outline" size="sm" onClick={handleToggle} disabled={pending}>
             {schedule.active ? "Pause" : "Resume"}
-          </Button>
-          <Button type="button" size="1" variant="soft" onClick={onEdit} disabled={pending}>
+          </LButton>
+          <LButton type="button" variant="outline" size="sm" onClick={onEdit} disabled={pending}>
             Edit
-          </Button>
-          <AlertDialog.Root open={confirmOpen} onOpenChange={setConfirmOpen}>
-            <AlertDialog.Trigger>
-              <Button type="button" size="1" variant="ghost" color="red" disabled={pending}>
-                Delete
-              </Button>
-            </AlertDialog.Trigger>
-            <AlertDialog.Content maxWidth="440px">
-              <AlertDialog.Title>Delete this schedule?</AlertDialog.Title>
-              <AlertDialog.Description size="2">
-                {clientName}, {schedule.description} ({formatCents(schedule.amount_cents)}{" "}
-                {CADENCE_LABEL[schedule.cadence]?.toLowerCase()}). Invoices already created from it
-                are unaffected; this only stops future ones.
-              </AlertDialog.Description>
-              {deleteError ? (
-                <Box mt="2">
-                  <Text size="1" color="red" role="alert">
+          </LButton>
+          <LButton
+            type="button"
+            variant="quiet"
+            size="sm"
+            className="text-crit hover:text-crit"
+            onClick={() => setConfirmOpen(true)}
+            disabled={pending}
+          >
+            Delete
+          </LButton>
+          <LDialog
+            open={confirmOpen}
+            onOpenChange={setConfirmOpen}
+            title="Delete this schedule?"
+            description={
+              <>
+                {`${clientName}, ${schedule.description} (${formatCents(schedule.amount_cents)} ${CADENCE_LABEL[schedule.cadence]?.toLowerCase()}). Invoices already created from it are unaffected; this only stops future ones.`}
+                {deleteError ? (
+                  <span className="mt-2 block text-caption font-medium text-crit" role="alert">
                     {deleteError}
-                  </Text>
-                </Box>
-              ) : null}
-              <Flex gap="3" mt="4" justify="end">
-                <AlertDialog.Cancel>
-                  <Button variant="soft" color="gray" disabled={pending}>
-                    Cancel
-                  </Button>
-                </AlertDialog.Cancel>
-                <Button variant="solid" color="red" disabled={pending} onClick={handleDelete}>
+                  </span>
+                ) : null}
+              </>
+            }
+            footer={
+              <>
+                <LButton
+                  ref={cancelRef}
+                  type="button"
+                  variant="quiet"
+                  disabled={pending}
+                  onClick={() => setConfirmOpen(false)}
+                >
+                  Cancel
+                </LButton>
+                <LButton type="button" variant="danger" disabled={pending} onClick={handleDelete}>
                   {pending ? "Deleting…" : "Delete"}
-                </Button>
-              </Flex>
-            </AlertDialog.Content>
-          </AlertDialog.Root>
-        </Flex>
-        {toggleError ? (
-          <Text as="div" size="1" color="red" mt="1">
-            {toggleError}
-          </Text>
-        ) : null}
-      </Table.Cell>
-    </Table.Row>
+                </LButton>
+              </>
+            }
+          />
+        </div>
+        {toggleError ? <p className="mt-1 text-caption text-crit">{toggleError}</p> : null}
+      </LTd>
+    </tr>
   );
 }
 
@@ -402,83 +362,79 @@ export default function ScheduleManager({
   const clientNames = new Map(clients.map((c) => [c.id, c.name]));
 
   return (
-    <Flex direction="column" gap="4">
-      <Callout.Root color="blue">
-        <Callout.Icon>
-          <InfoCircledIcon />
-        </Callout.Icon>
-        <Callout.Text>
-          <Text as="div" size="2">
-            A schedule never sends anything by itself. It only records a cadence. The app tells
-            you when a period is due, and every invoice it creates is a draft you review before
-            sending, the same as any other invoice.
-          </Text>
-        </Callout.Text>
-      </Callout.Root>
+    <div className="flex flex-col gap-4">
+      <LAlert tone="accent" className="flex items-start gap-2">
+        <InfoIcon className="mt-0.5 shrink-0 text-accent" />
+        <span>
+          A schedule never sends anything by itself. It only records a cadence. The app tells
+          you when a period is due, and every invoice it creates is a draft you review before
+          sending, the same as any other invoice.
+        </span>
+      </LAlert>
 
       {clients.length === 0 ? (
-        <Card size="3">
-          <Flex direction="column" align="center" gap="3" py="5">
-            <Text size="4" weight="bold">
-              Add a client first
-            </Text>
-            <Text size="2" color="gray" align="center">
-              A recurring schedule bills exactly one client: the owner, operator, or
-              management company on a retainer or a committed-rate contract. The
-              arrangement repeats, so the payer is worth a record. A one-off invoice
-              needs no client at all.
-            </Text>
-            <Flex gap="3" wrap="wrap" justify="center">
-              <Button asChild>
-                <NextLink href="/clients/new">Add a client</NextLink>
-              </Button>
-              <Button asChild variant="outline">
-                <NextLink href="/invoices/new">Raise a one-off invoice</NextLink>
-              </Button>
-            </Flex>
-          </Flex>
-        </Card>
+        <LCard>
+          <LEmpty
+            title="Add a client first"
+            action={
+              <NextLink href="/clients/new" className={lButtonClass({ variant: "primary" })}>
+                Add a client
+              </NextLink>
+            }
+            secondaryAction={
+              <NextLink href="/invoices/new" className={lButtonClass({ variant: "outline" })}>
+                Raise a one-off invoice
+              </NextLink>
+            }
+          >
+            A recurring schedule bills exactly one client: the owner, operator, or
+            management company on a retainer or a committed-rate contract. The
+            arrangement repeats, so the payer is worth a record. A one-off invoice
+            needs no client at all.
+          </LEmpty>
+        </LCard>
       ) : (
         <AddScheduleCard clients={clients} />
       )}
 
-      <Card size="3">
+      <LCard>
         {schedules.length === 0 ? (
-          <Flex direction="column" align="center" gap="2" py="6">
-            <Text size="4" weight="bold">
-              No recurring schedules yet
-            </Text>
-            <Text size="2" color="gray" align="center">
-              A schedule is for the billing that repeats on a cadence: a monthly retainer or a
-              committed-rate contract you re-bill by hand today. It records the cadence only:
-              every invoice it creates is a draft you review before sending.
-              {clients.length === 0
+          <LEmpty
+            title="No recurring schedules yet"
+            action={
+              clients.length === 0 ? (
+                <NextLink href="/clients/new" className={lButtonClass({ variant: "outline" })}>
+                  Add a client
+                </NextLink>
+              ) : (
+                <NextLink href="/invoices" className={lButtonClass({ variant: "outline" })}>
+                  Back to invoices
+                </NextLink>
+              )
+            }
+          >
+            {`A schedule is for the billing that repeats on a cadence: a monthly retainer or a committed-rate contract you re-bill by hand today. It records the cadence only: every invoice it creates is a draft you review before sending.${
+              clients.length === 0
                 ? " Add a client above and this list fills in from there."
-                : " Add one above and the periods it owes you show up in the queue at the top of this screen."}
-            </Text>
-            {clients.length === 0 ? (
-              <Button asChild>
-                <NextLink href="/clients/new">Add a client</NextLink>
-              </Button>
-            ) : (
-              <Button asChild variant="outline">
-                <NextLink href="/invoices">Back to invoices</NextLink>
-              </Button>
-            )}
-          </Flex>
+                : " Add one above and the periods it owes you show up in the queue at the top of this screen."
+            }`}
+          </LEmpty>
         ) : (
-          <Table.Root variant="ghost">
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Description</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Cadence</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell justify="end">Amount</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Term</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
+          <LTable>
+            <caption>
+              <span className="sr-only">Recurring schedules</span>
+            </caption>
+            <thead>
+              <tr>
+                <LTh>Client</LTh>
+                <LTh>Description</LTh>
+                <LTh>Cadence</LTh>
+                <LTh numeric>Amount</LTh>
+                <LTh>Term</LTh>
+                <LTh>Status</LTh>
+              </tr>
+            </thead>
+            <tbody>
               {schedules.map((schedule) => (
                 <ScheduleRowView
                   key={schedule.id}
@@ -489,10 +445,34 @@ export default function ScheduleManager({
                   onDone={() => setEditingId(null)}
                 />
               ))}
-            </Table.Body>
-          </Table.Root>
+            </tbody>
+          </LTable>
         )}
-      </Card>
-    </Flex>
+      </LCard>
+    </div>
+  );
+}
+
+/* ── Inline icon ───────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. */
+function InfoIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <circle cx="8" cy="8" r="6.25" />
+      <path d="M8 7.25v4" />
+      <circle cx="8" cy="4.9" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

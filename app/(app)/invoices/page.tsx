@@ -1,24 +1,13 @@
 import NextLink from "next/link";
-import {
-  Badge,
-  Button,
-  Callout,
-  Card,
-  Flex,
-  Grid,
-  Link as RadixLink,
-  Table,
-  Text,
-} from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { LAlert, LCard, LEmpty, LPill, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
+import { cn } from "@/lib/ledger/cn";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { formatCents, formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import { billToListLabel } from "@/lib/invoice-bill-to";
-import EmptyState from "@/components/ui/empty-state";
-import PageShell from "../page-shell";
 import { computeDuePeriods } from "./recurring/actions";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -57,6 +46,28 @@ const STATUS_BADGE: Record<string, Badge> = {
   paid: { color: "green", label: "Paid" },
   void: { color: "gray", label: "Void" },
 };
+
+// STATUS_BADGE keeps INSTRUMENT's Radix Badge colour vocabulary (gray/blue/
+// amber/green/red) as its own data — it is this screen's one remaining tie
+// to that vocabulary, and Ledger's LPill has its own tone vocabulary, so
+// this is the one translation point this screen needs on top of it. Same
+// dictionary as Overview's ladderToPillTone: red→crit, amber→warn,
+// green→good, gray→neutral, and blue→accent (the one status this screen
+// has that ladder didn't: "Sent").
+function statusToPillTone(color: Badge["color"]): "crit" | "warn" | "good" | "neutral" | "accent" {
+  switch (color) {
+    case "red":
+      return "crit";
+    case "amber":
+      return "warn";
+    case "green":
+      return "good";
+    case "blue":
+      return "accent";
+    default:
+      return "neutral";
+  }
+}
 
 /**
  * Supabase's Data API caps rows and TRUNCATES SILENTLY (200, not an
@@ -253,7 +264,7 @@ export default async function InvoicesPage({
   });
 
   return (
-    <PageShell
+    <LPageShell
       title="Invoices"
       subtitle={
         firstError
@@ -273,135 +284,132 @@ export default async function InvoicesPage({
               }`
       }
       action={
-        <Flex gap="2" wrap="wrap">
-          <Button asChild variant="soft">
-            <NextLink href="/invoices/recurring">
-              Recurring
-              {dueToCreateCount > 0 ? (
-                <Badge color="amber" ml="1" className="tnum">
-                  {dueToCreateCount} due
-                </Badge>
-              ) : null}
-            </NextLink>
-          </Button>
-          <Button asChild>
-            <NextLink href="/invoices/new">New invoice</NextLink>
-          </Button>
-        </Flex>
+        <>
+          <NextLink href="/invoices/recurring" className={lButtonClass({ variant: "outline" })}>
+            Recurring
+            {dueToCreateCount > 0 ? (
+              <LPill tone="warn" className="tnum-l">
+                {dueToCreateCount} due
+              </LPill>
+            ) : null}
+          </NextLink>
+          {/* THE ONE FILLED ACCENT BUTTON on this screen — the filter chips'
+              active state is a state indicator, not a second call to
+              action, and every other action on this screen is outline or
+              quiet. */}
+          <NextLink href="/invoices/new" className={lButtonClass({ variant: "primary" })}>
+            New invoice
+          </NextLink>
+        </>
       }
     >
       {dueToCreateCount > 0 ? (
-        <Callout.Root color="amber">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>
-            <Text as="span" className="tnum">
-              {dueToCreateCount}
-            </Text>{" "}
-            recurring invoice{dueToCreateCount === 1 ? " is" : "s are"} due to create.{" "}
-            <RadixLink asChild>
-              <NextLink href="/invoices/recurring">Review the queue</NextLink>
-            </RadixLink>
+        <LAlert tone="warn" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+          <span>
+            <span className="tnum-l">{dueToCreateCount}</span>{" "}
+            {`recurring invoice${dueToCreateCount === 1 ? " is" : "s are"} due to create. `}
+            <NextLink
+              href="/invoices/recurring"
+              className="font-medium text-accent underline-offset-2 hover:underline"
+            >
+              Review the queue
+            </NextLink>
             .
-          </Callout.Text>
-        </Callout.Root>
+          </span>
+        </LAlert>
       ) : null}
       {truncated ? (
-        <Callout.Root color="amber">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>
-            Only the most recent {LIST_LIMIT} invoices could be loaded, so the
-            figures below cover those and not your whole history.
-          </Callout.Text>
-        </Callout.Root>
+        <LAlert tone="warn" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+          <span>
+            {`Only the most recent ${LIST_LIMIT} invoices could be loaded, so the figures below cover those and not your whole history.`}
+          </span>
+        </LAlert>
       ) : null}
 
       {!firstError && outstandingCents > 0 ? (
-        <Card size="3">
-          <Flex justify="between" align="baseline" wrap="wrap" gap="2" mb="3">
-            <Text size="2" weight="bold">
-              Owed to you
-            </Text>
-            <Text size="5" weight="bold" className="tnum">
+        <LCard>
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-h3 font-semibold">Owed to you</h2>
+            <p className="tnum-l text-figure font-bold tracking-tight">
               {formatCents(outstandingCents)}
-            </Text>
-          </Flex>
-          <Grid columns={{ initial: "1", sm: "5" }} gap="3">
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-5">
             {AGING_BUCKETS.map((bucket) => {
               const cell = aging.get(bucket.key)!;
               return (
-                <Flex key={bucket.key} direction="column" gap="1">
-                  <Text size="1" color="gray">
-                    {bucket.label}
-                  </Text>
-                  <Text
-                    size="3"
-                    weight="medium"
-                    className="tnum"
-                    // Only real lateness is coloured. A pilot glancing at
-                    // this needs the 90+ column to be the one that shouts.
-                    color={cell.cents === 0 ? "gray" : bucket.key === "d90" ? "red" : undefined}
+                <div key={bucket.key} className="flex flex-col gap-1">
+                  <span className="text-caption text-ink-3">{bucket.label}</span>
+                  <span
+                    className={cn(
+                      "tnum-l text-body font-medium",
+                      // Only real lateness is coloured. A pilot glancing at
+                      // this needs the 90+ column to be the one that
+                      // shouts.
+                      cell.cents === 0
+                        ? "text-ink-3"
+                        : bucket.key === "d90"
+                          ? "text-crit"
+                          : "text-ink"
+                    )}
                   >
                     {formatCents(cell.cents)}
-                  </Text>
-                  <Text size="1" color="gray">
+                  </span>
+                  <span className="text-caption text-ink-3">
                     {cell.count === 1 ? "1 invoice" : `${cell.count} invoices`}
-                  </Text>
-                </Flex>
+                  </span>
+                </div>
               );
             })}
-          </Grid>
-        </Card>
+          </div>
+        </LCard>
       ) : null}
 
-      <Flex gap="2" wrap="wrap">
+      <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => (
-          <Button
+          <NextLink
             key={f.key}
-            asChild
-            size="2"
-            variant={filter === f.key ? "solid" : "soft"}
+            href={f.key === "outstanding" ? "/invoices" : `/invoices?show=${f.key}`}
+            className={lButtonClass({
+              variant: filter === f.key ? "primary" : "outline",
+              size: "sm",
+            })}
           >
-            <NextLink href={f.key === "outstanding" ? "/invoices" : `/invoices?show=${f.key}`}>
-              {f.label}
-            </NextLink>
-          </Button>
+            {f.label}
+          </NextLink>
         ))}
-      </Flex>
+      </div>
 
-      <Card size="3">
+      <LCard>
         {firstError ? (
-          <Callout.Root color="red">
-            <Callout.Icon>
-              <ExclamationTriangleIcon />
-            </Callout.Icon>
-            <Callout.Text>{friendlyDbError(firstError, "invoices.select")}</Callout.Text>
-          </Callout.Root>
+          <LAlert tone="crit" className="flex items-start gap-2">
+            <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+            <span>{friendlyDbError(firstError, "invoices.select")}</span>
+          </LAlert>
         ) : visible.length === 0 ? (
           // "No invoices yet" is only true when there are none at all.
           // Saying it while a filter is hiding forty of them is the same
           // class of lie the trips screens used to tell.
           invoices.length === 0 ? (
-            <EmptyState
+            <LEmpty
               title="No invoices yet"
               action={
-                <Button asChild>
-                  <NextLink href="/invoices/new">Draft your first invoice</NextLink>
-                </Button>
+                <NextLink href="/invoices/new" className={lButtonClass({ variant: "primary" })}>
+                  Draft your first invoice
+                </NextLink>
               }
             >
               Draft one from a client and the trips you&rsquo;ve already flown for
               them: the flight days, travel days, and rebilled expenses fill
               themselves in.
-            </EmptyState>
+            </LEmpty>
           ) : (
             // Same primitive, different case: the filtered state. Keeping
             // both on one component is what stops the two from drifting
             // apart visually and reading as two different screens.
-            <EmptyState
+            <LEmpty
               title={
                 filter === "outstanding"
                   ? "Nothing outstanding"
@@ -410,107 +418,145 @@ export default async function InvoicesPage({
                     : "Nothing here"
               }
               action={
-                <Button asChild variant="soft">
-                  <NextLink href="/invoices?show=all">Show all invoices</NextLink>
-                </Button>
+                <NextLink
+                  href="/invoices?show=all"
+                  className={lButtonClass({ variant: "outline" })}
+                >
+                  Show all invoices
+                </NextLink>
               }
             >
               {filter === "outstanding"
                 ? `Every invoice you've sent has been paid. You have ${invoices.length} in total.`
                 : `None of your ${invoices.length} invoices match this filter.`}
-            </EmptyState>
+            </LEmpty>
           )
         ) : (
-          <Table.Root variant="ghost">
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Number</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Issued</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Due</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell justify="end">Late</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Status</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell justify="end">Total</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell justify="end">Balance due</Table.ColumnHeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
+          <LTable>
+            <caption>
+              <span className="sr-only">Invoices</span>
+            </caption>
+            <thead>
+              <tr>
+                <LTh>Number</LTh>
+                <LTh>Client</LTh>
+                <LTh>Issued</LTh>
+                <LTh>Due</LTh>
+                <LTh numeric>Late</LTh>
+                <LTh>Status</LTh>
+                <LTh numeric>Total</LTh>
+                <LTh numeric>Balance due</LTh>
+              </tr>
+            </thead>
+            <tbody>
               {visible.map((invoice) => {
                 const badge = STATUS_BADGE[invoice.status] ?? STATUS_FALLBACK;
                 const totals = totalsByInvoice.get(invoice.id);
                 const overdue = overdueIds.has(invoice.id);
                 return (
-                  <Table.Row key={invoice.id}>
-                    <Table.RowHeaderCell>
-                      <RadixLink asChild weight="medium">
-                        <NextLink href={`/invoices/${invoice.id}`}>
-                          {invoice.invoice_number ?? "Draft"}
-                        </NextLink>
-                      </RadixLink>
-                    </Table.RowHeaderCell>
-                    <Table.Cell>
-                      <Text color="gray">{billToListLabel(invoice, clientNames)}</Text>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Text color="gray">{formatDate(invoice.issued_on)}</Text>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Text color={overdue ? "red" : "gray"} weight={overdue ? "medium" : "regular"}>
+                  <tr key={invoice.id}>
+                    {/* scope="row": the accessible-name row header Radix's
+                        Table.RowHeaderCell gave this cell, restated as a
+                        plain <th> since LTd has no row-header variant. */}
+                    <th
+                      scope="row"
+                      className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                    >
+                      <NextLink
+                        href={`/invoices/${invoice.id}`}
+                        className="text-accent hover:underline"
+                      >
+                        {invoice.invoice_number ?? "Draft"}
+                      </NextLink>
+                    </th>
+                    <LTd>
+                      <span className="text-ink-2">{billToListLabel(invoice, clientNames)}</span>
+                    </LTd>
+                    <LTd>
+                      <span className="text-ink-2">{formatDate(invoice.issued_on)}</span>
+                    </LTd>
+                    <LTd>
+                      <span className={overdue ? "font-medium text-crit" : "text-ink-2"}>
                         {formatDate(invoice.due_on)}
-                      </Text>
-                    </Table.Cell>
-                    <Table.Cell justify="end">
+                      </span>
+                    </LTd>
+                    <LTd numeric>
                       {/* The number a pilot actually quotes when they
                           chase: "that one's 74 days out". The word
                           "overdue" used to sit next to the due date and
                           said less. */}
                       {overdue ? (
-                        <Text color="red" weight="medium" className="tnum">
+                        <span className="font-medium text-crit">
                           {`${daysOverdueById.get(invoice.id) ?? 0}d`}
-                        </Text>
+                        </span>
                       ) : (
-                        <Text color="gray">N/A</Text>
+                        <span className="text-ink-3">N/A</span>
                       )}
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Flex align="center" gap="2" wrap="wrap">
+                    </LTd>
+                    <LTd>
+                      <div className="flex flex-wrap items-center gap-2">
                         {overdue ? (
-                          <Badge color="red">Overdue</Badge>
+                          <LPill tone="crit">Overdue</LPill>
                         ) : (
-                          <Badge color={badge.color}>{badge.label}</Badge>
+                          <LPill tone={statusToPillTone(badge.color)}>{badge.label}</LPill>
                         )}
                         {/* Beside the status, not instead of it: a Stripe
                             payment arrived for this invoice and was not
-                            recorded. Amber, because nothing is broken and
+                            recorded. Warn, because nothing is broken and
                             no money was lost — but the sentence explaining
                             it lives on the invoice, so this is only a
                             pointer to it. */}
                         {noticeInvoiceIds.has(invoice.id) ? (
-                          <Badge color="amber">Check payment</Badge>
+                          <LPill tone="warn">Check payment</LPill>
                         ) : null}
-                      </Flex>
-                    </Table.Cell>
-                    <Table.Cell justify="end">
-                      <Text weight="medium" className="tnum">
-                        {formatCents(totals?.total_cents ?? 0)}
-                      </Text>
-                    </Table.Cell>
-                    <Table.Cell justify="end">
-                      <Text
-                        weight="medium"
-                        color={(totals?.balance_due_cents ?? 0) > 0 ? "amber" : "gray"}
-                        className="tnum"
+                      </div>
+                    </LTd>
+                    <LTd numeric>
+                      <span className="font-medium">{formatCents(totals?.total_cents ?? 0)}</span>
+                    </LTd>
+                    <LTd numeric>
+                      <span
+                        className={cn(
+                          "font-medium",
+                          (totals?.balance_due_cents ?? 0) > 0 ? "text-warn" : "text-ink-2"
+                        )}
                       >
                         {formatCents(totals?.balance_due_cents ?? 0)}
-                      </Text>
-                    </Table.Cell>
-                  </Table.Row>
+                      </span>
+                    </LTd>
+                  </tr>
                 );
               })}
-            </Table.Body>
-          </Table.Root>
+            </tbody>
+          </LTable>
         )}
-      </Card>
-    </PageShell>
+      </LCard>
+    </LPageShell>
+  );
+}
+
+/* ── Inline icon ───────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. Defined once here, aria-hidden, stroke="currentColor" so it
+ * inherits its caller's tone utility (text-warn, text-crit). Same shape as
+ * overview/page.tsx's own WarningIcon. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

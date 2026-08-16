@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
-import { Badge, Callout, Card, Flex, Grid, Separator, Text } from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { LAlert, LCard, LPill, LSeparator } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
+import { cn } from "@/lib/ledger/cn";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
@@ -12,7 +13,6 @@ import { emailIsConfigured, looksLikeEmail } from "@/lib/email/send";
 import { billToEmail } from "@/lib/invoice-bill-to";
 import { loadPreferences } from "@/lib/preferences";
 import { loadOptionLabels } from "@/lib/custom-options-read";
-import PageShell from "../../page-shell";
 import HeaderForm, { type ClientOption } from "./header-form";
 import LinesEditor, { type LineRow, type RebillableExpense } from "./lines-editor";
 import PdfDownload from "./pdf-download";
@@ -85,14 +85,18 @@ type TotalsRow = {
   balance_due_cents: number;
 };
 
-type Badge = { color: "gray" | "blue" | "amber" | "green" | "red"; label: string };
-const STATUS_FALLBACK: Badge = { color: "gray", label: "Draft" };
-const STATUS_BADGE: Record<string, Badge> = {
+// Ledger's LPill vocabulary (neutral/accent/good/warn/crit) replaces
+// Radix Badge's gray/blue/amber/green/red one-for-one — see
+// overview/page.tsx's own ladderToPillTone for the same kind of straight,
+// restrained dictionary applied to a different vocabulary.
+type StatusBadge = { tone: "neutral" | "accent" | "good" | "warn" | "crit"; label: string };
+const STATUS_FALLBACK: StatusBadge = { tone: "neutral", label: "Draft" };
+const STATUS_BADGE: Record<string, StatusBadge> = {
   draft: STATUS_FALLBACK,
-  sent: { color: "blue", label: "Sent" },
-  partial: { color: "amber", label: "Partially paid" },
-  paid: { color: "green", label: "Paid" },
-  void: { color: "gray", label: "Void" },
+  sent: { tone: "accent", label: "Sent" },
+  partial: { tone: "warn", label: "Partially paid" },
+  paid: { tone: "good", label: "Paid" },
+  void: { tone: "neutral", label: "Void" },
 };
 
 // invoice PDF route is owned elsewhere; this screen only links to it.
@@ -635,57 +639,49 @@ export default async function InvoicePage({
   const badge = STATUS_BADGE[invoice.status] ?? STATUS_FALLBACK;
 
   return (
-    <PageShell
+    <LPageShell
       title={invoice.invoice_number ?? "Draft invoice"}
       subtitle={
-        <Flex align="center" gap="2" mt="1">
-          <Badge color={badge.color}>{badge.label}</Badge>
-          <Text color={overdue ? "red" : "gray"}>
+        <span className="mt-1 flex flex-wrap items-center gap-2">
+          <LPill tone={badge.tone}>{badge.label}</LPill>
+          <span className={overdue ? "text-crit" : "text-ink-3"}>
             {invoice.issued_on ? `Issued ${formatDate(invoice.issued_on)}` : "Not yet issued"}
             {invoice.due_on ? ` · Due ${formatDate(invoice.due_on)}${overdue ? " (overdue)" : ""}` : ""}
-          </Text>
-        </Flex>
+          </span>
+        </span>
       }
       action={<PdfDownload invoiceId={invoice.id} draft={draft} receiptCount={receiptCount} />}
     >
       {warning ? (
-        <Callout.Root color="amber" mb="4">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>{warning}</Callout.Text>
-        </Callout.Root>
+        <LAlert tone="warn" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+          <span>{warning}</span>
+        </LAlert>
       ) : null}
 
       {moneyError ? (
-        <Callout.Root color="red" mb="4">
-          <Callout.Icon>
-            <ExclamationTriangleIcon />
-          </Callout.Icon>
-          <Callout.Text>{friendlyDbError(moneyError, "invoices.detail")}</Callout.Text>
-        </Callout.Root>
+        <LAlert tone="crit" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+          <span>{friendlyDbError(moneyError, "invoices.detail")}</span>
+        </LAlert>
       ) : null}
 
-      <Grid columns={{ initial: "1", lg: "12" }} gap="4">
-        <Flex direction="column" gap="4" gridColumn={{ lg: "span 7" }}>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+        <div className="flex flex-col gap-4 lg:col-span-7">
           <HeaderForm invoice={invoice} clients={clients} locked={!draft} />
 
-          <Card size="3">
-            <Text as="div" size="4" weight="bold" mb="3">
-              Lines
-            </Text>
+          <LCard>
+            <div className="mb-3 text-h3 font-semibold">Lines</div>
             {rebillableError ? (
-              <Callout.Root color="amber" mb="3">
-                <Callout.Icon>
-                  <ExclamationTriangleIcon />
-                </Callout.Icon>
-                <Callout.Text>
+              <LAlert tone="warn" className="mb-3 flex items-start gap-2">
+                <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+                <span>
                   {friendlyDbError(rebillableError, "invoice.rebillable")} Rebillable
                   expenses couldn&rsquo;t be loaded for this client. Nothing is
                   offered to attach below. Reload before issuing this invoice, or
                   the receipts tagged rebill for it will go unbilled.
-                </Callout.Text>
-              </Callout.Root>
+                </span>
+              </LAlert>
             ) : null}
             <LinesEditor
               invoiceId={invoice.id}
@@ -695,12 +691,12 @@ export default async function InvoicePage({
               categoryLabels={categoryLabels}
             />
 
-            <Separator size="4" my="4" />
+            <LSeparator className="my-4" />
 
             {totalsError ? (
-              <Text color="red">{friendlyDbError(totalsError, "invoice_totals.select")}</Text>
+              <p className="text-crit">{friendlyDbError(totalsError, "invoice_totals.select")}</p>
             ) : (
-              <Flex direction="column" gap="1" align="end">
+              <div className="flex flex-col items-end gap-1">
                 <TotalsLine label="Subtotal" value={totals?.subtotal_cents ?? 0} />
                 <TotalsLine label="Tax" value={totals?.tax_cents ?? 0} />
                 <TotalsLine label="Total" value={totals?.total_cents ?? 0} emphasize />
@@ -710,12 +706,12 @@ export default async function InvoicePage({
                   value={totals?.balance_due_cents ?? 0}
                   emphasize
                 />
-              </Flex>
+              </div>
             )}
-          </Card>
-        </Flex>
+          </LCard>
+        </div>
 
-        <Flex direction="column" gap="4" gridColumn={{ lg: "span 5" }}>
+        <div className="flex flex-col gap-4 lg:col-span-5">
           <StatusActions
             invoice={invoice}
             hasLines={lines.length > 0}
@@ -802,9 +798,9 @@ export default async function InvoicePage({
             connectNotices={connectNotices}
             defaultPaymentMethods={preferences.payments.methods}
           />
-        </Flex>
-      </Grid>
-    </PageShell>
+        </div>
+      </div>
+    </LPageShell>
   );
 }
 
@@ -818,13 +814,35 @@ function TotalsLine({
   emphasize?: boolean;
 }) {
   return (
-    <Flex gap="4" minWidth="220px" justify="between">
-      <Text color="gray" weight={emphasize ? "bold" : "regular"}>
-        {label}
-      </Text>
-      <Text weight={emphasize ? "bold" : "regular"} className="tnum">
-        {formatCents(value)}
-      </Text>
-    </Flex>
+    <div className="flex min-w-56 justify-between gap-4">
+      <span className={cn("text-ink-3", emphasize && "font-bold text-ink")}>{label}</span>
+      <span className={cn("tnum-l", emphasize && "font-bold")}>{formatCents(value)}</span>
+    </div>
+  );
+}
+
+/* ── Inline icon ───────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. Same shape as overview/page.tsx's own WarningIcon, defined
+ * once here rather than imported from a Radix package this subtree never
+ * loads. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui";
+import { lButtonClass } from "@/components/ledger";
 
 /**
  * The Preview/Download PDF button — mirrors
@@ -16,10 +16,13 @@ export default function EstimatePdfDownload({
 }) {
   const label = draft ? "Preview PDF" : "Download PDF";
   return (
-    <Button asChild variant="outline">
-      <a href={`/estimates/${estimateId}/pdf`} target="_blank" rel="noopener noreferrer">
-        {label}
-      </a>
-    </Button>
+    <a
+      href={`/estimates/${estimateId}/pdf`}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={lButtonClass({ variant: "outline" })}
+    >
+      {label}
+    </a>
   );
 }

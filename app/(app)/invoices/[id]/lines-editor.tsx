@@ -1,17 +1,9 @@
 "use client";
 
 import { useActionState, useEffect, useState, useTransition } from "react";
-import {
-  AlertDialog,
-  Box,
-  Button,
-  Checkbox,
-  Flex,
-  Table,
-  Text,
-  TextField,
-  Select,
-} from "@/components/ui";
+import { LButton, LTable, LTd, LTh } from "@/components/ledger";
+import { LConfirmDialog } from "@/components/ledger/dialog";
+import { LCheckbox, LField, LInput, LSelect } from "@/components/ledger/forms";
 import { formatCents, centsToInput, formatDate } from "@/lib/format";
 import {
   addInvoiceLine,
@@ -85,24 +77,26 @@ export default function LinesEditor({
   categoryLabels: Record<string, string>;
 }) {
   if (lines.length === 0 && !editable) {
-    return <Text color="gray">No line items.</Text>;
+    return <p className="text-ink-3">No line items.</p>;
   }
 
   return (
-    <Box>
-      <Table.Root variant="ghost">
-        <Table.Header>
-          <Table.Row>
-            <Table.ColumnHeaderCell>Type</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell>Description</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell justify="end">Qty</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell justify="end">Unit</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell justify="end">Amount</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell>Taxable</Table.ColumnHeaderCell>
-            <Table.ColumnHeaderCell />
-          </Table.Row>
-        </Table.Header>
-        <Table.Body>
+    <div>
+      <LTable>
+        <thead>
+          <tr>
+            <LTh>Type</LTh>
+            <LTh>Description</LTh>
+            <LTh numeric>Qty</LTh>
+            <LTh numeric>Unit</LTh>
+            <LTh numeric>Amount</LTh>
+            <LTh>Taxable</LTh>
+            <LTh>
+              <span className="sr-only">Actions</span>
+            </LTh>
+          </tr>
+        </thead>
+        <tbody>
           {lines.map((line) =>
             editable ? (
               <EditableRow key={line.id} invoiceId={invoiceId} line={line} />
@@ -110,15 +104,15 @@ export default function LinesEditor({
               <ReadOnlyRow key={line.id} line={line} />
             )
           )}
-        </Table.Body>
-      </Table.Root>
+        </tbody>
+      </LTable>
 
       {editable ? (
         <>
           {rebillable.length > 0 ? (
-            <Box mt="5">
-              <Text weight="bold">Rebillable expenses</Text>
-              <Flex direction="column" gap="2" mt="2">
+            <div className="mt-5">
+              <p className="font-bold">Rebillable expenses</p>
+              <div className="mt-2 flex flex-col gap-2">
                 {rebillable.map((expense) => (
                   <RebillRow
                     key={expense.id}
@@ -127,45 +121,37 @@ export default function LinesEditor({
                     categoryLabels={categoryLabels}
                   />
                 ))}
-              </Flex>
-            </Box>
+              </div>
+            </div>
           ) : null}
 
-          <Box mt="5">
-            <Text weight="bold">Add a line</Text>
+          <div className="mt-5">
+            <p className="font-bold">Add a line</p>
             <AddLineForm invoiceId={invoiceId} />
-          </Box>
+          </div>
         </>
       ) : null}
-    </Box>
+    </div>
   );
 }
 
 function ReadOnlyRow({ line }: { line: LineRow }) {
   return (
-    <Table.Row>
-      <Table.Cell>
-        <Text color="gray">{LINE_TYPE_LABEL[line.line_type]}</Text>
-      </Table.Cell>
-      <Table.Cell>
-        <Text>{line.description}</Text>
-      </Table.Cell>
-      <Table.Cell justify="end">
-        <Text className="tnum">{line.quantity}</Text>
-      </Table.Cell>
-      <Table.Cell justify="end">
-        <Text className="tnum">{formatCents(line.unit_amount_cents)}</Text>
-      </Table.Cell>
-      <Table.Cell justify="end">
-        <Text weight="medium" className="tnum">
-          {formatCents(line.amount_cents)}
-        </Text>
-      </Table.Cell>
-      <Table.Cell>
-        <Text color="gray">{line.taxable ? "Yes" : "No"}</Text>
-      </Table.Cell>
-      <Table.Cell />
-    </Table.Row>
+    <tr>
+      <LTd>
+        <span className="text-ink-3">{LINE_TYPE_LABEL[line.line_type]}</span>
+      </LTd>
+      <LTd>{line.description}</LTd>
+      <LTd numeric>{line.quantity}</LTd>
+      <LTd numeric>{formatCents(line.unit_amount_cents)}</LTd>
+      <LTd numeric>
+        <span className="font-medium">{formatCents(line.amount_cents)}</span>
+      </LTd>
+      <LTd>
+        <span className="text-ink-3">{line.taxable ? "Yes" : "No"}</span>
+      </LTd>
+      <LTd />
+    </tr>
   );
 }
 
@@ -174,88 +160,77 @@ function EditableRow({ invoiceId, line }: { invoiceId: string; line: LineRow }) 
   const [state, formAction, pending] = useActionState(updateInvoiceLine, initialLineState);
   const [deletePending, startDelete] = useTransition();
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const removeDialog = (
+    <LConfirmDialog
+      open={confirmOpen}
+      onOpenChange={setConfirmOpen}
+      title="Remove this line?"
+      description="This removes the line from the invoice. This can’t be undone."
+      confirmLabel="Remove"
+      confirmVariant="danger"
+      pending={deletePending}
+      onConfirm={() => {
+        // Closes the instant it's pressed, exactly as Radix's
+        // AlertDialog.Action always did — not gated on the async result.
+        // deleteError renders below the Remove button, after the dialog
+        // is already gone.
+        setConfirmOpen(false);
+        startDelete(async () => {
+          const result = await deleteInvoiceLine(line.id, invoiceId);
+          setDeleteError(result?.error ?? null);
+        });
+      }}
+    />
+  );
 
   if (!editing) {
     return (
-      <Table.Row>
-        <Table.Cell>
-          <Text color="gray">{LINE_TYPE_LABEL[line.line_type]}</Text>
-        </Table.Cell>
-        <Table.Cell>
-          <Text>{line.description}</Text>
-        </Table.Cell>
-        <Table.Cell justify="end">
-          <Text className="tnum">{line.quantity}</Text>
-        </Table.Cell>
-        <Table.Cell justify="end">
-          <Text className="tnum">{formatCents(line.unit_amount_cents)}</Text>
-        </Table.Cell>
-        <Table.Cell justify="end">
-          <Text weight="medium" className="tnum">
-            {formatCents(line.amount_cents)}
-          </Text>
-        </Table.Cell>
-        <Table.Cell>
-          <Text color="gray">{line.taxable ? "Yes" : "No"}</Text>
-        </Table.Cell>
-        <Table.Cell justify="end">
-          <Flex gap="3" justify="end">
-            <Button
-              variant="ghost"
-              size="1"
+      <tr>
+        <LTd>
+          <span className="text-ink-3">{LINE_TYPE_LABEL[line.line_type]}</span>
+        </LTd>
+        <LTd>{line.description}</LTd>
+        <LTd numeric>{line.quantity}</LTd>
+        <LTd numeric>{formatCents(line.unit_amount_cents)}</LTd>
+        <LTd numeric>
+          <span className="font-medium">{formatCents(line.amount_cents)}</span>
+        </LTd>
+        <LTd>
+          <span className="text-ink-3">{line.taxable ? "Yes" : "No"}</span>
+        </LTd>
+        <LTd className="text-right">
+          <div className="flex justify-end gap-3">
+            <LButton
+              type="button"
+              variant="quiet"
+              size="sm"
               aria-label={`Edit: ${line.description}`}
               onClick={() => setEditing(true)}
             >
               Edit
-            </Button>
-            <AlertDialog.Root>
-              <AlertDialog.Trigger>
-                <Button
-                  variant="ghost"
-                  color="red"
-                  size="1"
-                  disabled={deletePending}
-                  aria-label={`Remove: ${line.description}`}
-                >
-                  {deletePending ? "Removing…" : "Remove"}
-                </Button>
-              </AlertDialog.Trigger>
-              <AlertDialog.Content maxWidth="420px">
-                <AlertDialog.Title>Remove this line?</AlertDialog.Title>
-                <AlertDialog.Description size="2">
-                  This removes the line from the invoice. This can&rsquo;t be undone.
-                </AlertDialog.Description>
-                <Flex gap="3" mt="4" justify="end">
-                  <AlertDialog.Cancel>
-                    <Button variant="soft" color="gray">
-                      Cancel
-                    </Button>
-                  </AlertDialog.Cancel>
-                  <AlertDialog.Action>
-                    <Button
-                      variant="solid"
-                      color="red"
-                      onClick={() => {
-                        startDelete(async () => {
-                          const result = await deleteInvoiceLine(line.id, invoiceId);
-                          setDeleteError(result?.error ?? null);
-                        });
-                      }}
-                    >
-                      Remove
-                    </Button>
-                  </AlertDialog.Action>
-                </Flex>
-              </AlertDialog.Content>
-            </AlertDialog.Root>
-          </Flex>
+            </LButton>
+            <LButton
+              type="button"
+              variant="quiet"
+              size="sm"
+              className="text-crit hover:text-crit"
+              disabled={deletePending}
+              aria-label={`Remove: ${line.description}`}
+              onClick={() => setConfirmOpen(true)}
+            >
+              {deletePending ? "Removing…" : "Remove"}
+            </LButton>
+            {removeDialog}
+          </div>
           {deleteError ? (
-            <Text as="div" size="1" color="red" role="alert">
+            <p className="mt-1 text-caption text-crit" role="alert">
               {deleteError}
-            </Text>
+            </p>
           ) : null}
-        </Table.Cell>
-      </Table.Row>
+        </LTd>
+      </tr>
     );
   }
 
@@ -284,18 +259,18 @@ function EditableRow({ invoiceId, line }: { invoiceId: string; line: LineRow }) 
   // present + no "taxable" key -> unchecked; absent -> nothing submitted
   // yet, fall back to the stored row.
   const taxableChecked = submitted ? submitted.taxable === "on" : line.taxable;
-  // `defaultChecked` cannot deliver a resubmit-safe echo here: Radix's
-  // Checkbox captures its FIRST-MOUNT `checked` value in a ref
-  // (initialCheckedStateRef in @radix-ui/react-checkbox) and restores
-  // exactly that on the native <form> "reset" event React 19 fires after
-  // every action dispatch — including a rejected one. `defaultChecked`
-  // changing on re-render does not update that ref, so a pilot who
-  // unticks Taxable, then trips validation on another field, watches this
-  // box silently re-check itself on the error render. Making the box
-  // CONTROLLED (checked + onCheckedChange) sidesteps the ref entirely, and
-  // a hidden input posts the real value since a controlled Radix Checkbox
-  // doesn't reliably participate in native form submission on its own.
-  // Same pattern as trips/day-grid.tsx's `away` flag.
+  // `defaultChecked` cannot deliver a resubmit-safe echo here: the native
+  // `<form>` "reset" event React 19 fires after every action dispatch —
+  // including a rejected one — restores a checkbox to whatever its
+  // `checked` attribute was at mount, not to this component's live state,
+  // and a re-render doesn't correct it until the checked PROP actually
+  // changes. A pilot who unticks Taxable, then trips validation on another
+  // field, would watch this box silently re-check itself on the error
+  // render. Making the box CONTROLLED (checked + onChange) sidesteps that
+  // by re-syncing the checked property from state on every render, and a
+  // hidden input posts the real value since a controlled checkbox doesn't
+  // reliably participate in native form submission on its own. Same
+  // pattern as trips/day-grid.tsx's `away` flag.
   const [taxable, setTaxable] = useState(taxableChecked);
   useEffect(() => {
     setTaxable(taxableChecked);
@@ -303,81 +278,72 @@ function EditableRow({ invoiceId, line }: { invoiceId: string; line: LineRow }) 
   }, [submitted]);
 
   return (
-    <Table.Row>
-      <Table.Cell colSpan={7}>
+    <tr>
+      <LTd colSpan={7}>
         <form action={formAction}>
-          <Flex gap="3" align="start" wrap="wrap">
+          <div className="flex flex-wrap items-start gap-3">
             <input type="hidden" name="id" value={line.id} />
             <input type="hidden" name="invoice_id" value={invoiceId} />
-            <Box style={{ flex: "1 1 220px" }}>
-              <Text as="label" size="1" color="gray" htmlFor={`description-${line.id}`}>
-                Description
-              </Text>
-              <TextField.Root
-                id={`description-${line.id}`}
-                name="description"
-                placeholder="Description"
-                defaultValue={echoed("description", line.description)}
-                size="2"
-              />
-            </Box>
-            <Box style={{ width: "90px" }}>
-              <Text as="label" size="1" color="gray" htmlFor={`quantity-${line.id}`}>
-                Qty
-              </Text>
-              <TextField.Root
-                id={`quantity-${line.id}`}
-                name="quantity"
-                placeholder="Qty"
-                defaultValue={echoed("quantity", String(line.quantity))}
-                size="2"
-              />
-            </Box>
-            <Box style={{ width: "120px" }}>
-              <Text as="label" size="1" color="gray" htmlFor={`unit_amount-${line.id}`}>
-                Unit (USD)
-              </Text>
-              <TextField.Root
-                id={`unit_amount-${line.id}`}
-                name="unit_amount"
-                placeholder="Unit (USD)"
-                defaultValue={echoed("unit_amount", centsToInput(line.unit_amount_cents))}
-                size="2"
-              />
-            </Box>
-            <Flex align="center" gap="2" asChild>
-              <label>
-                <input type="hidden" name="taxable" value={taxable ? "on" : "off"} />
-                <Checkbox
-                  checked={taxable}
-                  onCheckedChange={(checked) => setTaxable(checked === true)}
+            <div className="flex-1 basis-56">
+              <LField label="Description" htmlFor={`description-${line.id}`}>
+                <LInput
+                  id={`description-${line.id}`}
+                  name="description"
+                  placeholder="Description"
+                  defaultValue={echoed("description", line.description)}
                 />
-                <Text size="1">Taxable</Text>
-              </label>
-            </Flex>
-            <Flex gap="2">
-              <Button type="submit" size="2" disabled={pending}>
+              </LField>
+            </div>
+            <div className="w-20">
+              <LField label="Qty" htmlFor={`quantity-${line.id}`}>
+                <LInput
+                  id={`quantity-${line.id}`}
+                  name="quantity"
+                  placeholder="Qty"
+                  defaultValue={echoed("quantity", String(line.quantity))}
+                />
+              </LField>
+            </div>
+            <div className="w-28">
+              <LField label="Unit (USD)" htmlFor={`unit_amount-${line.id}`}>
+                <LInput
+                  id={`unit_amount-${line.id}`}
+                  name="unit_amount"
+                  placeholder="Unit (USD)"
+                  defaultValue={echoed("unit_amount", centsToInput(line.unit_amount_cents))}
+                />
+              </LField>
+            </div>
+            <label className="flex items-center gap-2 self-center pt-5">
+              <input type="hidden" name="taxable" value={taxable ? "on" : "off"} />
+              <LCheckbox
+                checked={taxable}
+                onChange={(e) => setTaxable(e.target.checked)}
+              />
+              <span className="text-body-s">Taxable</span>
+            </label>
+            <div className="flex gap-2 self-center pt-5">
+              <LButton type="submit" variant="outline" size="sm" disabled={pending}>
                 {pending ? "Saving…" : "Save"}
-              </Button>
-              <Button
+              </LButton>
+              <LButton
                 type="button"
                 variant="outline"
-                color="gray"
-                size="2"
+                size="sm"
                 onClick={() => setEditing(false)}
               >
                 Cancel
-              </Button>
-            </Flex>
+              </LButton>
+            </div>
             {state.error ? (
-              <Text size="1" color="red" style={{ width: "100%" }} role="alert">
+              <p className="w-full text-caption font-medium text-crit" role="alert">
                 {state.error}
-              </Text>
+              </p>
             ) : null}
-          </Flex>
+          </div>
         </form>
-      </Table.Cell>
-    </Table.Row>
+      </LTd>
+    </tr>
   );
 }
 
@@ -392,18 +358,23 @@ function AddLineForm({ invoiceId }: { invoiceId: string }) {
   // default (true) or an unchecked box silently re-checks itself on a
   // rejected add.
   const taxableChecked = submitted ? submitted.taxable === "on" : true;
-  // Same defaultChecked/mount-time-ref problem as EditableRow's taxable
+  // Same defaultChecked/native-reset problem as EditableRow's taxable
   // checkbox (see its comment): make it controlled and post the real value
-  // through a hidden input, rather than trust Radix's own form
+  // through a hidden input, rather than trust the checkbox's own form
   // participation to survive React 19's post-action reset.
   const [taxable, setTaxable] = useState(taxableChecked);
   useEffect(() => {
     setTaxable(taxableChecked);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitted]);
-  // Same Select.Root uncontrolled-bubble-input issue as elsewhere: `name`
-  // dropped, real value posted from a controlled hidden input so a
-  // rejected add doesn't silently revert the line type to "Other".
+  // Same controlled-plus-hidden-input pattern as the checkbox above: `name`
+  // dropped from the visible select, the real value posted from a
+  // controlled hidden input instead — the native `<select>` still
+  // participates directly in the browser's native form "reset" event React
+  // 19 fires after every action dispatch (including a rejected one), which
+  // restores whichever `<option>` was marked selected at mount rather than
+  // this control's live state, and a rejected add must not silently revert
+  // the line type to "Other".
   const [lineType, setLineType] = useState(() =>
     submitted?.line_type !== undefined ? String(submitted.line_type) : "other"
   );
@@ -414,79 +385,70 @@ function AddLineForm({ invoiceId }: { invoiceId: string }) {
 
   return (
     <form action={formAction}>
-      <Flex mt="2" gap="3" align="start" wrap="wrap">
+      <div className="mt-2 flex flex-wrap items-start gap-3">
         <input type="hidden" name="invoice_id" value={invoiceId} />
-        <Box style={{ width: "160px" }}>
-          <Text as="label" size="1" color="gray" id="add-line-type-label">
-            Type
-          </Text>
-          <Select.Root value={lineType} onValueChange={setLineType}>
-            <Select.Trigger aria-labelledby="add-line-type-label" />
-            <Select.Content>
+        <div className="w-40">
+          <LField label="Type" htmlFor="add-line-type">
+            <LSelect
+              id="add-line-type"
+              value={lineType}
+              onChange={(e) => setLineType(e.target.value)}
+            >
               {MANUAL_LINE_TYPES.map((option) => (
-                <Select.Item key={option.value} value={option.value}>
+                <option key={option.value} value={option.value}>
                   {option.label}
-                </Select.Item>
+                </option>
               ))}
-            </Select.Content>
-          </Select.Root>
+            </LSelect>
+          </LField>
           <input type="hidden" name="line_type" value={lineType} />
-        </Box>
-        <Box style={{ flex: "1 1 220px" }}>
-          <Text as="label" size="1" color="gray" htmlFor="add-line-description">
-            Description
-          </Text>
-          <TextField.Root
-            id="add-line-description"
-            name="description"
-            placeholder="Description"
-            defaultValue={submitted?.description !== undefined ? String(submitted.description) : ""}
-            size="2"
-          />
-        </Box>
-        <Box style={{ width: "90px" }}>
-          <Text as="label" size="1" color="gray" htmlFor="add-line-quantity">
-            Qty
-          </Text>
-          <TextField.Root
-            id="add-line-quantity"
-            name="quantity"
-            placeholder="Qty"
-            defaultValue={submitted?.quantity !== undefined ? String(submitted.quantity) : "1"}
-            size="2"
-          />
-        </Box>
-        <Box style={{ width: "120px" }}>
-          <Text as="label" size="1" color="gray" htmlFor="add-line-unit-amount">
-            Unit (USD)
-          </Text>
-          <TextField.Root
-            id="add-line-unit-amount"
-            name="unit_amount"
-            placeholder="Unit (USD)"
-            defaultValue={submitted?.unit_amount !== undefined ? String(submitted.unit_amount) : ""}
-            size="2"
-          />
-        </Box>
-        <Flex align="center" gap="2" asChild>
-          <label>
-            <input type="hidden" name="taxable" value={taxable ? "on" : "off"} />
-            <Checkbox
-              checked={taxable}
-              onCheckedChange={(checked) => setTaxable(checked === true)}
+        </div>
+        <div className="flex-1 basis-56">
+          <LField label="Description" htmlFor="add-line-description">
+            <LInput
+              id="add-line-description"
+              name="description"
+              placeholder="Description"
+              defaultValue={submitted?.description !== undefined ? String(submitted.description) : ""}
             />
-            <Text size="1">Taxable</Text>
-          </label>
-        </Flex>
-        <Button type="submit" size="2" disabled={pending}>
-          {pending ? "Adding…" : "Add line"}
-        </Button>
+          </LField>
+        </div>
+        <div className="w-20">
+          <LField label="Qty" htmlFor="add-line-quantity">
+            <LInput
+              id="add-line-quantity"
+              name="quantity"
+              placeholder="Qty"
+              defaultValue={submitted?.quantity !== undefined ? String(submitted.quantity) : "1"}
+            />
+          </LField>
+        </div>
+        <div className="w-28">
+          <LField label="Unit (USD)" htmlFor="add-line-unit-amount">
+            <LInput
+              id="add-line-unit-amount"
+              name="unit_amount"
+              placeholder="Unit (USD)"
+              defaultValue={submitted?.unit_amount !== undefined ? String(submitted.unit_amount) : ""}
+            />
+          </LField>
+        </div>
+        <label className="flex items-center gap-2 self-center pt-5">
+          <input type="hidden" name="taxable" value={taxable ? "on" : "off"} />
+          <LCheckbox checked={taxable} onChange={(e) => setTaxable(e.target.checked)} />
+          <span className="text-body-s">Taxable</span>
+        </label>
+        <div className="self-center pt-5">
+          <LButton type="submit" variant="outline" size="sm" disabled={pending}>
+            {pending ? "Adding…" : "Add line"}
+          </LButton>
+        </div>
         {state.error ? (
-          <Text size="1" color="red" style={{ width: "100%" }} role="alert">
+          <p className="w-full text-caption font-medium text-crit" role="alert">
             {state.error}
-          </Text>
+          </p>
         ) : null}
-      </Flex>
+      </div>
     </form>
   );
 }
@@ -506,15 +468,14 @@ function RebillRow({
   const label = categoryLabels[expense.category] ?? categoryLabel(expense.category);
 
   return (
-    <Flex align="center" gap="4">
-      <Text color="gray" style={{ flex: 1 }}>
+    <div className="flex items-center gap-4">
+      <p className="flex-1 text-ink-3">
         {label} {expense.vendor ? `· ${expense.vendor}` : ""} (
-        {formatDate(expense.incurred_on)}) ·{" "}
-        <span className="tnum">{formatCents(expense.amount_cents)}</span>
-      </Text>
-      <Button
+        {formatDate(expense.incurred_on)}) · <span className="tnum-l">{formatCents(expense.amount_cents)}</span>
+      </p>
+      <LButton
+        type="button"
         variant="outline"
-        size="2"
         disabled={pending || added}
         aria-label={`Add to invoice: ${label}${
           expense.vendor ? `, ${expense.vendor}` : ""
@@ -528,12 +489,12 @@ function RebillRow({
         }}
       >
         {added ? "Added" : pending ? "Adding…" : "Add to invoice"}
-      </Button>
+      </LButton>
       {error ? (
-        <Text size="1" color="red" role="alert">
+        <p className="text-caption text-crit" role="alert">
           {error}
-        </Text>
+        </p>
       ) : null}
-    </Flex>
+    </div>
   );
 }
