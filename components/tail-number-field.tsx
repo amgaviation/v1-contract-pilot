@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import { TextField } from "@/components/ui";
+import { LInput } from "@/components/ledger/forms";
 import type { FleetOption } from "@/lib/fleet";
 
 /**
@@ -62,7 +62,7 @@ export default function TailNumberField({
 
   return (
     <>
-      <TextField.Root
+      <LInput
         id={id}
         name={name}
         list={fleet.length > 0 ? listId : undefined}

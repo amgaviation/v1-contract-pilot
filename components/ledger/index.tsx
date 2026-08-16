@@ -392,10 +392,17 @@ export function LSpinner({
  * empty boxes read out row by row. See app/(app)/loading-panel.tsx's own
  * header for the INSTRUMENT-side version of the same split.
  */
-export function LSkeleton({ className }: { className?: string }) {
+export function LSkeleton({
+  className,
+  style,
+}: {
+  className?: string;
+  style?: React.CSSProperties;
+}) {
   return (
     <div
       aria-hidden="true"
+      style={style}
       className={cn(
         "animate-pulse rounded-control bg-sunk motion-reduce:animate-none",
         className
