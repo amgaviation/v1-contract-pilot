@@ -47,7 +47,12 @@
   /* Ink */
   --ledger-ink: #191d1b;
   --ledger-ink-2: #545a56;
-  --ledger-ink-3: #737a75;
+  /* ink-3 was #737a75, which measured 3.9–4.4:1 on the three grounds —
+     under the 4.5:1 WCAG AA floor for the caption/label/table-header text
+     that uses it. Darkened just enough to clear AA everywhere (sunk, the
+     darkest ground, is the binding case at 4.52) while staying visibly the
+     quietest of the three inks. */
+  --ledger-ink-3: #6a706c;
 
   /* Lines */
   --ledger-hair: #e5e6e3;
@@ -65,6 +70,15 @@
   --ledger-warn-soft: #f6ecd9;
   --ledger-crit: #b03434;
   --ledger-crit-soft: #f7e4e4;
+  /* The FILLED danger button's ground, distinct from --ledger-crit on
+     purpose. `crit` is tuned for crit-AS-TEXT (overdue pills, crit figures)
+     — it must stay light enough to read on the dark crit-soft pill in night
+     mode. A filled button is the opposite problem: WHITE text needs the
+     ground dark enough. One value cannot satisfy both (a night `crit` dark
+     enough for white text drops crit-on-crit-soft to ~3.3:1). In day the
+     two coincide — white on #b03434 is already 6.2:1 — so crit-fill only
+     diverges from crit in the night block below. */
+  --ledger-crit-fill: #b03434;
 
   --ledger-shadow-card: 0 1px 2px rgba(20, 24, 22, 0.04);
   --ledger-shadow-raised: 0 1px 3px rgba(20, 24, 22, 0.07), 0 4px 12px rgba(20, 24, 22, 0.05);
@@ -92,6 +106,11 @@
   --ledger-warn-soft: #332a1a;
   --ledger-crit: #e0716b;
   --ledger-crit-soft: #362022;
+  /* Darker than night `crit` so WHITE button text clears AA (4.65:1 vs the
+     3.11:1 that white-on-#e0716b would give). Kept separate from `crit` on
+     purpose — see the day block: `crit` stays #e0716b so overdue pills and
+     figures read on the dark crit-soft ground. */
+  --ledger-crit-fill: #b35a56;
 
   --ledger-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
   --ledger-shadow-raised: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
@@ -124,6 +143,7 @@
   --color-warn-soft: var(--ledger-warn-soft);
   --color-crit: var(--ledger-crit);
   --color-crit-soft: var(--ledger-crit-soft);
+  --color-crit-fill: var(--ledger-crit-fill);
 
   --color-white: #ffffff;
   --color-transparent: transparent;

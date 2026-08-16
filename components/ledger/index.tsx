@@ -39,7 +39,11 @@ const buttonVariants = cva(
         primary: "bg-accent text-accent-ink hover:opacity-92",
         outline: "border border-hair-strong bg-card text-ink hover:bg-sunk",
         quiet: "text-ink-2 hover:bg-sunk hover:text-ink",
-        danger: "bg-crit text-white hover:opacity-92",
+        /* bg-crit-FILL, not bg-crit: the filled danger ground is a token of
+           its own so white text clears AA in night mode without dragging the
+           crit-as-text hue (overdue pills, figures) dark with it. See the
+           --ledger-crit-fill note in app/design/ledger.css. */
+        danger: "bg-crit-fill text-white hover:opacity-92",
       },
       size: {
         sm: "h-8 px-3 text-body-s",
