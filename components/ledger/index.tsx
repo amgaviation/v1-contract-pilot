@@ -27,7 +27,10 @@ import { cn } from "@/lib/ledger/cn";
 
 const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 rounded-control font-ledger font-medium " +
-    "transition-colors duration-100 select-none " +
+    // `transition` (not `transition-colors`) so the press scale below rides
+    // the same 100ms as the color change — feedback belongs on pointer-down,
+    // not click, so it has to be there the instant `:active` engages.
+    "transition duration-100 active:scale-[0.98] select-none " +
     "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent " +
     "disabled:pointer-events-none disabled:opacity-50",
   {

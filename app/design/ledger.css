@@ -157,22 +157,34 @@
      focus-zoom threshold at the browser's default zoom on the sizes the
      app actually uses for inputs (size adjustments happen per-control,
      deliberately, in the component layer). */
+  /* Tracking is size-specific, never one value for every size: small text
+     (caption) gets a touch of positive tracking for legibility, body sizes
+     sit at 0, and tracking tightens progressively as size climbs into the
+     headings — letters that read fine at 15px read too far apart at 30px. */
   --text-caption: 0.75rem;
   --text-caption--line-height: 1rem;
+  --text-caption--letter-spacing: 0.01em;
   --text-body-s: 0.84375rem;
   --text-body-s--line-height: 1.25rem;
+  --text-body-s--letter-spacing: 0em;
   --text-body: 0.9375rem;
   --text-body--line-height: 1.375rem;
+  --text-body--letter-spacing: 0em;
   --text-lead: 1.0625rem;
   --text-lead--line-height: 1.5rem;
+  --text-lead--letter-spacing: -0.005em;
   --text-h3: 1.25rem;
   --text-h3--line-height: 1.625rem;
+  --text-h3--letter-spacing: -0.01em;
   --text-h2: 1.5rem;
   --text-h2--line-height: 1.875rem;
+  --text-h2--letter-spacing: -0.015em;
   --text-h1: 1.875rem;
   --text-h1--line-height: 2.25rem;
+  --text-h1--letter-spacing: -0.02em;
   --text-figure: 1.75rem;
   --text-figure--line-height: 2rem;
+  --text-figure--letter-spacing: -0.01em;
 
   --radius-control: 0.5rem;
   --radius-card: 0.75rem;
@@ -187,5 +199,75 @@
      policing the old system without a collision. */
   .tnum-l {
     font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ── Dialog motion ─────────────────────────────────────────────────────
+ * components/ledger/dialog.tsx's header explains why LDialogShell stays on
+ * the native <dialog>/showModal() rather than a library — this gives that
+ * element an entry/exit animation without breaking that decision: no
+ * animation library, CSS only. `transition-behavior: allow-discrete` (the
+ * `allow-discrete` keyword below) is what makes the exit half work at
+ * all — it keeps <dialog> in the top layer for the duration of the
+ * transition after .close() flips `open` off, the same mechanism
+ * `@starting-style` uses for the entry half. Browsers without support
+ * (pre-2024 engines) just snap open/closed, same as before this rule
+ * existed — a plain progressive enhancement, nothing to gate behind
+ * feature detection.
+ */
+dialog.l-dialog {
+  opacity: 0;
+  transform: translateY(4px) scale(0.98);
+  transition:
+    opacity 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    display 180ms allow-discrete,
+    overlay 180ms allow-discrete;
+}
+dialog.l-dialog[open] {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+@starting-style {
+  dialog.l-dialog[open] {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+/* The ::backdrop fades independently of the card — a scrim materializing
+   at a different rate than the card it's behind is what makes the two read
+   as separate layers rather than one flat cut. */
+dialog.l-dialog::backdrop {
+  opacity: 0;
+  transition:
+    opacity 180ms ease-out,
+    display 180ms allow-discrete,
+    overlay 180ms allow-discrete;
+}
+dialog.l-dialog[open]::backdrop {
+  opacity: 1;
+}
+@starting-style {
+  dialog.l-dialog[open]::backdrop {
+    opacity: 0;
+  }
+}
+
+/* Reduced motion keeps the causal feedback (something opened/closed) and
+   drops the spatial part (the slide + scale) — a same-duration crossfade,
+   not just a faster version of the full motion. */
+@media (prefers-reduced-motion: reduce) {
+  dialog.l-dialog {
+    transform: none;
+    transition:
+      opacity 120ms ease-out,
+      display 120ms allow-discrete,
+      overlay 120ms allow-discrete;
+  }
+  @starting-style {
+    dialog.l-dialog[open] {
+      opacity: 0;
+    }
   }
 }
