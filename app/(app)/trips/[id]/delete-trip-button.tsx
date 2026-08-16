@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { AlertDialog, Box, Button, Flex, Text } from "@/components/ui";
+import { LButton } from "@/components/ledger";
+import { LConfirmDialog } from "@/components/ledger/dialog";
 import { deleteTrip } from "../actions";
 
 /**
@@ -37,45 +38,37 @@ export default function DeleteTripButton({
   }
 
   return (
-    <Flex direction="column" align="end">
-      <AlertDialog.Root open={open} onOpenChange={setOpen}>
-        <AlertDialog.Trigger>
-          <Button
-            variant="outline"
-            color="red"
-            disabled={disabled}
-            title={disabled ? "This trip has been invoiced and can't be deleted." : undefined}
-          >
-            Delete trip
-          </Button>
-        </AlertDialog.Trigger>
-        <AlertDialog.Content maxWidth="420px">
-          <AlertDialog.Title>Delete this trip?</AlertDialog.Title>
-          <AlertDialog.Description size="2">
+    <div className="flex flex-col items-end">
+      <LButton
+        type="button"
+        variant="outline"
+        disabled={disabled}
+        title={disabled ? "This trip has been invoiced and can't be deleted." : undefined}
+        onClick={() => setOpen(true)}
+      >
+        Delete trip
+      </LButton>
+      <LConfirmDialog
+        open={open}
+        onOpenChange={setOpen}
+        title="Delete this trip?"
+        description={
+          <>
             This deletes the trip, its legs, and its day grid. The billing
             record goes with it. Expenses filed against it stay in your
             expense list but lose their trip link. This can&rsquo;t be
             undone.
-          </AlertDialog.Description>
-          {error ? (
-            <Box mt="2">
-              <Text size="1" color="red" role="alert">
+            {error ? (
+              <p className="mt-2 text-caption font-medium text-crit" role="alert">
                 {error}
-              </Text>
-            </Box>
-          ) : null}
-          <Flex gap="3" mt="4" justify="end">
-            <AlertDialog.Cancel>
-              <Button variant="soft" color="gray" disabled={pending}>
-                Cancel
-              </Button>
-            </AlertDialog.Cancel>
-            <Button variant="solid" color="red" disabled={pending} onClick={handleDelete}>
-              {pending ? "Deleting…" : "Delete trip"}
-            </Button>
-          </Flex>
-        </AlertDialog.Content>
-      </AlertDialog.Root>
-    </Flex>
+              </p>
+            ) : null}
+          </>
+        }
+        confirmLabel="Delete trip"
+        onConfirm={handleDelete}
+        pending={pending}
+      />
+    </div>
   );
 }

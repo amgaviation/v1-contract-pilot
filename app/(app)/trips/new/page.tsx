@@ -2,7 +2,7 @@ import { requireAccount } from "@/lib/supabase/account";
 import { createClient } from "@/lib/supabase/server";
 import { loadFleetOptions } from "@/lib/fleet";
 import { loadOptionChoices } from "@/lib/custom-options-read";
-import PageShell from "../../page-shell";
+import { LPageShell } from "@/components/ledger/page-shell";
 import TripForm, { type ClientOption, type TripFormValues } from "../trip-form";
 import { createTrip } from "../actions";
 
@@ -88,7 +88,7 @@ export default async function NewTripPage({
   }
 
   return (
-    <PageShell
+    <LPageShell
       title={cloneValues ? "New trip (duplicated)" : "New trip"}
       subtitle={
         cloneValues
@@ -116,6 +116,6 @@ export default async function NewTripPage({
           travel_day_rate_cents: account.default_travel_day_rate_cents,
         }}
       />
-    </PageShell>
+    </LPageShell>
   );
 }

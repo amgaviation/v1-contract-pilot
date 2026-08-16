@@ -1,20 +1,8 @@
 "use client";
 
 import { Fragment, useActionState, useEffect, useMemo, useState } from "react";
-import {
-  Box,
-  Button,
-  Callout,
-  Card,
-  Checkbox,
-  Flex,
-  Grid,
-  Heading,
-  Select,
-  Table,
-  Text,
-  TextField,
-} from "@/components/ui";
+import { LAlert, LButton, LCard, LTable, LTd, LTh } from "@/components/ledger";
+import { LCheckbox, LField, LInput, LSelect } from "@/components/ledger/forms";
 import { formatDateWithWeekday, formatCents, centsToInput, parseDollarsToCents } from "@/lib/format";
 import { tripValueCents, type TripDayValueRow, type TripValueScalar } from "@/lib/trip-value";
 import { saveTripDays, type TripDaysFormState } from "./actions";
@@ -68,11 +56,13 @@ export type ClientRateOption = {
   rate_cents: number;
 };
 
-/** Radix forbids an empty-string Select.Item value. "— not counted —" is a
- * real, postable choice (day_type_id is optional per row), so it gets a
- * sentinel that never leaves this component — a hidden input per row
- * always posts the real day_type_id, translating the sentinel back to ""
- * before it reaches the field name the server action reads. */
+/** A native <select> takes an empty-string option value without complaint,
+ * unlike the Radix Select this component used before the Ledger migration —
+ * but "— not counted —" is still translated through a sentinel rather than
+ * posted directly, so the mechanics below (formGen remount included) stay
+ * byte-for-byte what they were: a hidden input per row always posts the
+ * real day_type_id, translating the sentinel back to "" before it reaches
+ * the field name the server action reads. */
 const NOT_COUNTED = "__none__";
 
 /** Full day / Half day cover the common cases; a stored value that isn't
@@ -155,22 +145,30 @@ export default function DayGrid({
 }) {
   const [state, formAction, pending] = useActionState(saveTripDays, initialState);
 
-  // Radix's Select.Root always renders its posting <select> with
-  // `defaultValue`, never `value` (see @radix-ui/react-select's
-  // SelectBubbleInput) — so it is uncontrolled from React's point of view
-  // no matter what we pass to Select.Root. React 19's post-action
-  // form.reset() restores that <select> to its mount-time option, which
-  // fires a change event Radix forwards straight into onValueChange —
-  // calling handleDayTypeChange with the STALE, mount-time day type and
-  // silently overwriting whatever rate the pilot had typed since.
+  // WHY formGen EXISTS, PRESERVED FROM THE PRE-LEDGER RADIX VERSION OF
+  // THIS FILE RATHER THAN RE-DERIVED: Radix's Select.Root always rendered
+  // its posting <select> with `defaultValue`, never `value`, so it was
+  // uncontrolled from React's point of view no matter what was passed to
+  // Select.Root, and React 19's post-action form.reset() restored that
+  // <select> to its mount-time option — firing a change event Radix
+  // forwarded straight into onValueChange with the STALE, mount-time day
+  // type, silently overwriting whatever the pilot had typed since.
   //
-  // Rather than try to detect and ignore that spurious callback, we make
-  // the stale defaultValue impossible: every dispatch (success or reject)
-  // remounts every row's Selects via a generation-keyed `key`. The remount
-  // happens during the same commit's DOM-mutation phase, before React's
-  // effect-scheduled form.reset() runs — so by the time the browser resets
-  // the (now-replaced) <select>, its fresh defaultValue already reflects
-  // the pilot's latest state, and the reset is a no-op.
+  // The fix was to make the stale defaultValue impossible: every dispatch
+  // (success or reject) remounts every row's selects via a
+  // generation-keyed `key`. The remount happens during the same commit's
+  // DOM-mutation phase, before React's effect-scheduled form.reset() runs
+  // — so by the time the browser resets the (now-replaced) <select>, its
+  // fresh defaultValue already reflects the pilot's latest state, and the
+  // reset is a no-op.
+  //
+  // Every select below is now a real, controlled native <select
+  // value={...}>, which React's own controlled-input value tracker keeps
+  // in sync after an external DOM mutation like form.reset() even without
+  // this mechanism — but the migration brief for this file calls for
+  // reskinning the JSX only, preserving the pattern and its mechanics
+  // exactly, so formGen and every one of its remount keys stay exactly as
+  // they were.
   const [formGen, setFormGen] = useState(0);
   useEffect(() => {
     setFormGen((g) => g + 1);
@@ -300,8 +298,8 @@ export default function DayGrid({
       return activeDayTypes;
     }
     // The row's saved choice has since been archived. It still has to
-    // appear as a selectable option, or the Select would carry a value
-    // with no matching Item and the pilot's already-captured day type
+    // appear as a selectable option, or the select would carry a value
+    // with no matching option and the pilot's already-captured day type
     // silently disappears from view.
     const archived = dayTypeById.get(dayTypeId);
     return archived
@@ -323,7 +321,7 @@ export default function DayGrid({
    * Resolves rate/units/away for a NEWLY CHOSEN day type. Split out from
    * handleDayTypeChange (which is now a one-line call to it) so the bulk
    * "Apply to all days" action below can set every date's day type through the
-   * exact same resolution a single row's Select uses — rate/units/away
+   * exact same resolution a single row's select uses — rate/units/away
    * re-resolve per date exactly as they would if the pilot had picked this
    * day type on that row by hand, so a bulk apply can never leave a row
    * disagreeing with what picking that type one-by-one would have set.
@@ -352,7 +350,7 @@ export default function DayGrid({
   // dayTypeById is typed to SeedDayType (day-utils.ts's own minimal
   // shape, used for rate/units/away resolution) and carries no `label` —
   // activeDayTypes is the DayTypeOption[] that does, and it's also the
-  // exact list the bulk day-type Select itself offers, so a bulk-selected
+  // exact list the bulk day-type select itself offers, so a bulk-selected
   // id can never fail to resolve a label here.
   function labelForDayType(dayTypeId: string): string | undefined {
     return activeDayTypes.find((t) => t.id === dayTypeId)?.label;
@@ -361,7 +359,7 @@ export default function DayGrid({
   // Every date at once, via resolveDayTypeFields above — never a
   // second, hand-rolled resolution. One setRows call rather than N per-date
   // setRow calls, so a 31-day trip's bulk apply is one re-render, not 31.
-  // quantity/notes are left alone, same as a single row's own Select only
+  // quantity/notes are left alone, same as a single row's own select only
   // ever touches dayTypeId/rate/units/away.
   function applyDayTypeToAll() {
     if (!bulkDayTypeId) return;
@@ -408,16 +406,16 @@ export default function DayGrid({
 
   if (locked) {
     return (
-      <Box>
-        <Box mb="3">
-          <Text size="1" color="gray">
+      <div>
+        <div className="mb-3">
+          <p className="text-caption text-ink-3">
             {billedOn
               ? `This trip is billed on ${billedOn}. Its day rows are frozen here. Correcting them would leave the trip and that invoice disagreeing about what was flown. Remove it from the invoice first.`
               : "This trip is on an invoice. Its day rows are frozen here. Correcting them would leave the trip and the invoice that has already gone out disagreeing about what was flown."}
-          </Text>
-        </Box>
+          </p>
+        </div>
         <ReadOnlyGrid dates={dates} existingByDate={existingByDate} dayTypeById={dayTypeById} allDayTypes={dayTypes} />
-      </Box>
+      </div>
     );
   }
 
@@ -436,8 +434,8 @@ export default function DayGrid({
     : 0;
 
   // One array of per-date data, walked ONCE, that produces BOTH
-  // shapes — a <Table.Row> (+ its optional error row) for the md-and-up
-  // table, and a <Card> for the below-md stack. Building both from the
+  // shapes — a <tr> (+ its optional error row) for the md-and-up
+  // table, and a card for the below-md stack. Building both from the
   // same iteration is what keeps `row`/`selectedType`/`nonBillable`/
   // `fieldError`/every control id computed exactly once and identically
   // for both shapes, rather than risking the two drifting if they were
@@ -467,148 +465,111 @@ export default function DayGrid({
 
     const tableRow = (
       <Fragment key={date}>
-        <Table.Row>
-          <Table.Cell style={{ whiteSpace: "nowrap" }}>
-            <Text size="2">{weekday}</Text>
-          </Table.Cell>
-          <Table.Cell minWidth="180px">
+        <tr>
+          <LTd className="whitespace-nowrap">{weekday}</LTd>
+          <LTd className="min-w-[180px]">
             {/* The real day_type_id, always in sync with row.dayTypeId
-                — see NOT_COUNTED above for why the Select itself
+                — see NOT_COUNTED above for why the select itself
                 can't post this directly. */}
             <input type="hidden" name={dayTypeFieldName(date)} value={row.dayTypeId} />
-            <Select.Root
+            <LSelect
               key={`day-type-${date}-${formGen}`}
-              size="1"
+              id={dayTypeCtlId}
               value={row.dayTypeId === "" ? NOT_COUNTED : row.dayTypeId}
-              onValueChange={(next) =>
-                handleDayTypeChange(date, next === NOT_COUNTED ? "" : next)
+              onChange={(e) =>
+                handleDayTypeChange(date, e.target.value === NOT_COUNTED ? "" : e.target.value)
               }
+              aria-label={`Day type for ${weekday}`}
+              aria-invalid={fieldError ? true : undefined}
+              aria-describedby={fieldError ? errorId : undefined}
             >
-              <Select.Trigger
-                id={dayTypeCtlId}
-                aria-label={`Day type for ${weekday}`}
-                aria-invalid={fieldError ? true : undefined}
-                aria-describedby={fieldError ? errorId : undefined}
-                style={{ width: "100%" }}
-              />
-              <Select.Content>
-                <Select.Item value={NOT_COUNTED}>(not counted)</Select.Item>
-                {options.map((t) => (
-                  <Select.Item key={t.id} value={t.id}>
-                    {t.archived_at ? `${t.label} (archived)` : t.label}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-          </Table.Cell>
-          <Table.Cell minWidth="130px">
+              <option value={NOT_COUNTED}>(not counted)</option>
+              {options.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.archived_at ? `${t.label} (archived)` : t.label}
+                </option>
+              ))}
+            </LSelect>
+          </LTd>
+          <LTd className="min-w-[130px]">
             {/* Quantity is never blank, so the field name can go
-                directly on the Select — no sentinel needed. */}
+                directly on the select — no sentinel needed. */}
             <input type="hidden" name={quantityFieldName(date)} value={row.quantity} />
-            <Select.Root
+            <LSelect
               key={`quantity-${date}-${formGen}`}
-              size="1"
+              id={quantityCtlId}
               value={row.quantity}
               disabled={!row.dayTypeId}
-              onValueChange={(next) => setRow(date, { quantity: next })}
+              onChange={(e) => setRow(date, { quantity: e.target.value })}
+              aria-label={`Quantity for ${weekday}`}
+              aria-invalid={fieldError ? true : undefined}
+              aria-describedby={fieldError ? errorId : undefined}
             >
-              <Select.Trigger
-                id={quantityCtlId}
-                aria-label={`Quantity for ${weekday}`}
-                aria-invalid={fieldError ? true : undefined}
-                aria-describedby={fieldError ? errorId : undefined}
-                style={{ width: "100%" }}
-              />
-              <Select.Content>
-                {quantityOptionsFor(row.quantity).map((o) => (
-                  <Select.Item key={o.value} value={o.value}>
-                    {o.label}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-          </Table.Cell>
-          <Table.Cell justify="end" minWidth="140px">
+              {quantityOptionsFor(row.quantity).map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </LSelect>
+          </LTd>
+          <LTd numeric className="min-w-[140px]">
             {row.dayTypeId && nonBillable ? (
               <>
                 <input type="hidden" name={rateFieldName(date)} value="0" />
-                <Text size="1" color="gray">
-                  Doesn&apos;t bill
-                </Text>
+                <span className="text-caption text-ink-3">Doesn&apos;t bill</span>
               </>
             ) : (
-              <>
-                <Text as="label" htmlFor={rateCtlId} style={{ display: "none" }}>
-                  {`Rate for ${weekday}`}
-                </Text>
-                <TextField.Root
-                  id={rateCtlId}
-                  size="1"
-                  inputMode="decimal"
-                  name={rateFieldName(date)}
-                  value={row.rate}
-                  disabled={!row.dayTypeId}
-                  aria-label={`Rate for ${weekday}`}
-                  aria-invalid={fieldError ? true : undefined}
-                  aria-describedby={fieldError ? errorId : undefined}
-                  onChange={(event) => setRow(date, { rate: event.target.value })}
-                />
-              </>
+              <LInput
+                id={rateCtlId}
+                inputMode="decimal"
+                name={rateFieldName(date)}
+                value={row.rate}
+                disabled={!row.dayTypeId}
+                aria-label={`Rate for ${weekday}`}
+                aria-invalid={fieldError ? true : undefined}
+                aria-describedby={fieldError ? errorId : undefined}
+                onChange={(event) => setRow(date, { rate: event.target.value })}
+              />
             )}
-          </Table.Cell>
-          <Table.Cell minWidth="130px">
+          </LTd>
+          <LTd className="min-w-[130px]">
             {/* Rate fraction is never blank, same as Quantity —
-                no sentinel needed on the Select. Shown even for
+                no sentinel needed on the select. Shown even for
                 a non-billable day type: it stores a value
                 regardless (harmless, since rate_cents is forced
                 to 0 for those rows), and hiding it would be one
                 more special case for no benefit. */}
             <input type="hidden" name={unitsFieldName(date)} value={row.units} />
-            <Select.Root
+            <LSelect
               key={`units-${date}-${formGen}`}
-              size="1"
+              id={unitsCtlId}
               value={row.units}
               disabled={!row.dayTypeId}
-              onValueChange={(next) => setRow(date, { units: next })}
+              onChange={(e) => setRow(date, { units: e.target.value })}
+              aria-label={`Rate fraction for ${weekday}`}
+              aria-invalid={fieldError ? true : undefined}
+              aria-describedby={fieldError ? errorId : undefined}
             >
-              <Select.Trigger
-                id={unitsCtlId}
-                aria-label={`Rate fraction for ${weekday}`}
-                aria-invalid={fieldError ? true : undefined}
-                aria-describedby={fieldError ? errorId : undefined}
-                style={{ width: "100%" }}
-              />
-              <Select.Content>
-                {unitsOptionsFor(row.units).map((o) => (
-                  <Select.Item key={o.value} value={o.value}>
-                    {o.label}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-          </Table.Cell>
-          <Table.Cell>
-            <Text as="label" size="2" htmlFor={awayCtlId}>
-              <input
-                type="hidden"
-                name={awayFieldName(date)}
-                value={row.away ? "on" : "off"}
-              />
-              <Checkbox
-                id={awayCtlId}
-                checked={row.away}
-                disabled={!row.dayTypeId}
-                aria-label={`Away from home base on ${weekday}`}
-                onCheckedChange={(checked) =>
-                  setRow(date, { away: checked === true })
-                }
-              />
-            </Text>
-          </Table.Cell>
-          <Table.Cell minWidth="180px">
-            <TextField.Root
+              {unitsOptionsFor(row.units).map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </LSelect>
+          </LTd>
+          <LTd>
+            <input type="hidden" name={awayFieldName(date)} value={row.away ? "on" : "off"} />
+            <LCheckbox
+              id={awayCtlId}
+              checked={row.away}
+              disabled={!row.dayTypeId}
+              aria-label={`Away from home base on ${weekday}`}
+              onChange={(e) => setRow(date, { away: e.target.checked })}
+            />
+          </LTd>
+          <LTd className="min-w-[180px]">
+            <LInput
               id={notesCtlId}
-              size="1"
               name={notesFieldName(date)}
               value={row.notes}
               aria-label={`Notes for ${weekday}`}
@@ -616,16 +577,16 @@ export default function DayGrid({
               aria-describedby={fieldError ? errorId : undefined}
               onChange={(event) => setRow(date, { notes: event.target.value })}
             />
-          </Table.Cell>
-        </Table.Row>
+          </LTd>
+        </tr>
         {fieldError ? (
-          <Table.Row>
-            <Table.Cell colSpan={7} pt="0">
-              <Text id={errorId} size="1" color="red">
+          <tr>
+            <td colSpan={7} className="pt-0 pb-2.5 px-3">
+              <p id={errorId} className="text-caption font-medium text-crit">
                 {fieldError}
-              </Text>
-            </Table.Cell>
-          </Table.Row>
+              </p>
+            </td>
+          </tr>
         ) : null}
       </Fragment>
     );
@@ -636,166 +597,120 @@ export default function DayGrid({
     // control gets its OWN visible label (a card has no column header to
     // borrow one from, unlike the table) and its own `-m` id suffix so
     // ids stay unique across both always-mounted shapes; the formGen key
-    // below is the same remount trick the table's Selects use, for the
+    // below is the same remount trick the table's selects use, for the
     // same reason — see this component's own formGen comment, near its
     // top (the useState/useEffect pair that defines it).
     const card = (
-      <Card key={date}>
-        <Flex direction="column" gap="3">
-          <Heading as="h3" size="2">
-            {weekday}
-          </Heading>
+      <LCard key={date}>
+        <div className="flex flex-col gap-3">
+          <h3 className="text-h3 font-semibold">{weekday}</h3>
 
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor={`${dayTypeCtlId}-m`}>
-              Day type
-            </Text>
-            <Select.Root
+          <LField label="Day type" htmlFor={`${dayTypeCtlId}-m`}>
+            <LSelect
               key={`day-type-${date}-${formGen}-m`}
-              size="1"
+              id={`${dayTypeCtlId}-m`}
               value={row.dayTypeId === "" ? NOT_COUNTED : row.dayTypeId}
-              onValueChange={(next) =>
-                handleDayTypeChange(date, next === NOT_COUNTED ? "" : next)
+              onChange={(e) =>
+                handleDayTypeChange(date, e.target.value === NOT_COUNTED ? "" : e.target.value)
               }
+              aria-invalid={fieldError ? true : undefined}
+              aria-describedby={fieldError ? `${errorId}-m` : undefined}
             >
-              <Select.Trigger
-                id={`${dayTypeCtlId}-m`}
-                aria-label={`Day type for ${weekday}`}
-                aria-invalid={fieldError ? true : undefined}
-                aria-describedby={fieldError ? `${errorId}-m` : undefined}
-                style={{ width: "100%" }}
-              />
-              <Select.Content>
-                <Select.Item value={NOT_COUNTED}>(not counted)</Select.Item>
-                {options.map((t) => (
-                  <Select.Item key={t.id} value={t.id}>
-                    {t.archived_at ? `${t.label} (archived)` : t.label}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-          </Flex>
+              <option value={NOT_COUNTED}>(not counted)</option>
+              {options.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.archived_at ? `${t.label} (archived)` : t.label}
+                </option>
+              ))}
+            </LSelect>
+          </LField>
 
-          <Grid columns="2" gap="3">
-            <Flex direction="column" gap="1">
-              <Text as="label" size="2" weight="medium" htmlFor={`${quantityCtlId}-m`}>
-                Quantity
-              </Text>
-              <Select.Root
+          <div className="grid grid-cols-2 gap-3">
+            <LField label="Quantity" htmlFor={`${quantityCtlId}-m`}>
+              <LSelect
                 key={`quantity-${date}-${formGen}-m`}
-                size="1"
+                id={`${quantityCtlId}-m`}
                 value={row.quantity}
                 disabled={!row.dayTypeId}
-                onValueChange={(next) => setRow(date, { quantity: next })}
+                onChange={(e) => setRow(date, { quantity: e.target.value })}
+                aria-invalid={fieldError ? true : undefined}
+                aria-describedby={fieldError ? `${errorId}-m` : undefined}
               >
-                <Select.Trigger
-                  id={`${quantityCtlId}-m`}
-                  aria-label={`Quantity for ${weekday}`}
-                  aria-invalid={fieldError ? true : undefined}
-                  aria-describedby={fieldError ? `${errorId}-m` : undefined}
-                  style={{ width: "100%" }}
-                />
-                <Select.Content>
-                  {quantityOptionsFor(row.quantity).map((o) => (
-                    <Select.Item key={o.value} value={o.value}>
-                      {o.label}
-                    </Select.Item>
-                  ))}
-                </Select.Content>
-              </Select.Root>
-            </Flex>
+                {quantityOptionsFor(row.quantity).map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </LSelect>
+            </LField>
 
-            <Flex direction="column" gap="1">
-              <Text as="label" size="2" weight="medium" htmlFor={`${unitsCtlId}-m`}>
-                Rate fraction
-              </Text>
-              <Select.Root
+            <LField label="Rate fraction" htmlFor={`${unitsCtlId}-m`}>
+              <LSelect
                 key={`units-${date}-${formGen}-m`}
-                size="1"
+                id={`${unitsCtlId}-m`}
                 value={row.units}
                 disabled={!row.dayTypeId}
-                onValueChange={(next) => setRow(date, { units: next })}
+                onChange={(e) => setRow(date, { units: e.target.value })}
+                aria-invalid={fieldError ? true : undefined}
+                aria-describedby={fieldError ? `${errorId}-m` : undefined}
               >
-                <Select.Trigger
-                  id={`${unitsCtlId}-m`}
-                  aria-label={`Rate fraction for ${weekday}`}
-                  aria-invalid={fieldError ? true : undefined}
-                  aria-describedby={fieldError ? `${errorId}-m` : undefined}
-                  style={{ width: "100%" }}
-                />
-                <Select.Content>
-                  {unitsOptionsFor(row.units).map((o) => (
-                    <Select.Item key={o.value} value={o.value}>
-                      {o.label}
-                    </Select.Item>
-                  ))}
-                </Select.Content>
-              </Select.Root>
-            </Flex>
-          </Grid>
+                {unitsOptionsFor(row.units).map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </LSelect>
+            </LField>
+          </div>
 
           {row.dayTypeId && nonBillable ? (
-            <Text size="1" color="gray">
-              Doesn&apos;t bill
-            </Text>
+            <span className="text-caption text-ink-3">Doesn&apos;t bill</span>
           ) : (
-            <Flex direction="column" gap="1">
-              <Text as="label" size="2" weight="medium" htmlFor={`${rateCtlId}-m`}>
-                Rate (USD)
-              </Text>
-              <TextField.Root
+            <LField label="Rate (USD)" htmlFor={`${rateCtlId}-m`}>
+              <LInput
                 id={`${rateCtlId}-m`}
-                size="1"
                 inputMode="decimal"
                 value={row.rate}
                 disabled={!row.dayTypeId}
-                aria-label={`Rate for ${weekday}`}
                 aria-invalid={fieldError ? true : undefined}
                 aria-describedby={fieldError ? `${errorId}-m` : undefined}
                 onChange={(event) => setRow(date, { rate: event.target.value })}
               />
-            </Flex>
+            </LField>
           )}
 
           {/* Visible label — on the table, "Away" is a column header and
               the checkbox itself carries only an aria-label; a card has
               no header row to borrow that context from, so the label has
               to be here, in sight, not just in the accessibility tree. */}
-          <Text as="label" size="2" htmlFor={`${awayCtlId}-m`}>
-            <Flex align="center" gap="2">
-              <Checkbox
-                id={`${awayCtlId}-m`}
-                checked={row.away}
-                disabled={!row.dayTypeId}
-                aria-label={`Away from home base on ${weekday}`}
-                onCheckedChange={(checked) => setRow(date, { away: checked === true })}
-              />
-              Away from home base
-            </Flex>
-          </Text>
+          <label htmlFor={`${awayCtlId}-m`} className="flex items-center gap-2 text-body-s text-ink">
+            <LCheckbox
+              id={`${awayCtlId}-m`}
+              checked={row.away}
+              disabled={!row.dayTypeId}
+              aria-label={`Away from home base on ${weekday}`}
+              onChange={(e) => setRow(date, { away: e.target.checked })}
+            />
+            Away from home base
+          </label>
 
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor={`${notesCtlId}-m`}>
-              Notes
-            </Text>
-            <TextField.Root
+          <LField label="Notes" htmlFor={`${notesCtlId}-m`}>
+            <LInput
               id={`${notesCtlId}-m`}
-              size="1"
               value={row.notes}
-              aria-label={`Notes for ${weekday}`}
               aria-invalid={fieldError ? true : undefined}
               aria-describedby={fieldError ? `${errorId}-m` : undefined}
               onChange={(event) => setRow(date, { notes: event.target.value })}
             />
-          </Flex>
+          </LField>
 
           {fieldError ? (
-            <Text id={`${errorId}-m`} size="1" color="red">
+            <p id={`${errorId}-m`} className="text-caption font-medium text-crit">
               {fieldError}
-            </Text>
+            </p>
           ) : null}
-        </Flex>
-      </Card>
+        </div>
+      </LCard>
     );
 
     return { date, tableRow, card };
@@ -806,8 +721,8 @@ export default function DayGrid({
       <input type="hidden" name="trip_id" value={tripId} />
 
       {existingDays.length === 0 && seed.seeded ? (
-        <Box mb="3">
-          <Text size="1" color="gray">
+        <div className="mb-3">
+          <p className="text-caption text-ink-3">
             Seeded from this trip&apos;s day counts. Check it before saving.
             Which dates are travel versus flight days (travel first and
             last, flight in between), and where a half day lands, is a
@@ -816,80 +731,68 @@ export default function DayGrid({
             {seed.approximate
               ? " Some days didn't fit the trip's dates and were left blank."
               : ""}
-          </Text>
-        </Box>
+          </p>
+        </div>
       ) : null}
 
       {/* Bulk apply, above the editor (both shapes below it) — see
           applyDayTypeToAll/applyRateToMatching above for the mechanism.
-          A Card, not a Box, so it reads as one distinct tool rather than
-          floating unbounded above the grid. */}
-      <Card mb="4">
-        <Text as="div" size="2" weight="medium" mb="2">
-          Set many days at once
-        </Text>
-        <Flex gap="3" wrap="wrap" align="end">
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="bulk-day-type">
-              Day type
-            </Text>
-            {/* Same generation-keyed remount as every other Select in this
+          An LCard, so it reads as one distinct tool rather than floating
+          unbounded above the grid. */}
+      <LCard className="mb-4">
+        <div className="mb-2 text-body-s font-medium text-ink">Set many days at once</div>
+        <div className="flex flex-wrap items-end gap-3">
+          <LField label="Day type" htmlFor="bulk-day-type">
+            {/* Same generation-keyed remount as every other select in this
                 form — see the formGen comment near the top of this
                 component. This select has no `name`, but form.reset()
                 resets every listed element in the form regardless of
-                `name`, so it is exposed to the same stale-defaultValue
-                hazard as a posting one. */}
-            <Select.Root
+                `name`, so it is kept in step with the same remount as a
+                posting one. */}
+            <LSelect
               key={`bulk-day-type-${formGen}`}
-              size="2"
+              id="bulk-day-type"
+              className="min-w-[200px]"
               value={bulkDayTypeId}
-              onValueChange={setBulkDayTypeId}
+              onChange={(e) => setBulkDayTypeId(e.target.value)}
             >
-              <Select.Trigger
-                id="bulk-day-type"
-                placeholder="Choose a day type…"
-                style={{ minWidth: "200px" }}
-              />
-              <Select.Content>
-                {activeDayTypes.map((t) => (
-                  <Select.Item key={t.id} value={t.id}>
-                    {t.label}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-          </Flex>
-          <Button
+              <option value="" disabled>
+                Choose a day type…
+              </option>
+              {activeDayTypes.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </LSelect>
+          </LField>
+          <LButton
             type="button"
-            variant="soft"
+            variant="outline"
             disabled={pending || !bulkDayTypeId}
             onClick={applyDayTypeToAll}
           >
             Apply to all days
-          </Button>
+          </LButton>
 
-          <Flex direction="column" gap="1">
-            <Text as="label" size="2" weight="medium" htmlFor="bulk-rate">
-              Rate (USD)
-            </Text>
-            <TextField.Root
+          <LField label="Rate (USD)" htmlFor="bulk-rate">
+            <LInput
               id="bulk-rate"
-              size="2"
               inputMode="decimal"
               value={bulkRate}
-              style={{ width: "110px" }}
+              className="w-[110px]"
               onChange={(event) => setBulkRate(event.target.value)}
             />
-          </Flex>
-          <Button
+          </LField>
+          <LButton
             type="button"
-            variant="soft"
+            variant="outline"
             disabled={pending || !bulkDayTypeId || !bulkRateValid || matchingCount === 0}
             onClick={applyRateToMatching}
           >
             {bulkTypeLabel ? `Apply to all ${bulkTypeLabel} days` : "Apply to all matching days"}
-          </Button>
-        </Flex>
+          </LButton>
+        </div>
 
         {/* One-shot announcement, same pattern as settings/category-row.tsx's
             moveNotice — separate from the role="alert" region below (which is
@@ -897,13 +800,9 @@ export default function DayGrid({
             nothing on the server and would otherwise say nothing at all to a
             screen reader. */}
         <div aria-live="polite" role="status">
-          {bulkNotice ? (
-            <Text as="div" size="1" color="gray" mt="2">
-              {bulkNotice}
-            </Text>
-          ) : null}
+          {bulkNotice ? <p className="mt-2 text-caption text-ink-3">{bulkNotice}</p> : null}
         </div>
-      </Card>
+      </LCard>
 
       {/* Two shapes of the SAME editor, both always in the DOM —
           only `display` toggles across the `md` breakpoint, the same
@@ -912,66 +811,59 @@ export default function DayGrid({
           mount logic (and could desync from `rows`) every time a window
           crosses the breakpoint, which is exactly what this idiom exists
           to avoid. */}
-      <Box display={{ initial: "none", md: "block" }}>
-        <Box overflowX="auto">
-          <Table.Root size="1">
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Day type</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell minWidth="130px">Quantity</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell justify="end">Rate (USD)</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell minWidth="130px">Rate fraction</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Away</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Notes</Table.ColumnHeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>{dayRows.map((r) => r.tableRow)}</Table.Body>
-          </Table.Root>
-        </Box>
-      </Box>
+      <div className="hidden md:block">
+        <LTable>
+          <caption>
+            <span className="sr-only">Day grid</span>
+          </caption>
+          <thead>
+            <tr>
+              <LTh>Date</LTh>
+              <LTh>Day type</LTh>
+              <LTh className="min-w-[130px]">Quantity</LTh>
+              <LTh numeric>Rate (USD)</LTh>
+              <LTh className="min-w-[130px]">Rate fraction</LTh>
+              <LTh>Away</LTh>
+              <LTh>Notes</LTh>
+            </tr>
+          </thead>
+          <tbody>{dayRows.map((r) => r.tableRow)}</tbody>
+        </LTable>
+      </div>
 
-      <Box display={{ initial: "block", md: "none" }}>
-        <Flex direction="column" gap="3">
-          {dayRows.map((r) => r.card)}
-        </Flex>
-      </Box>
+      <div className="block md:hidden">
+        <div className="flex flex-col gap-3">{dayRows.map((r) => r.card)}</div>
+      </div>
 
-      <Box mt="3">
-        <Text size="2" weight="medium" className="tnum">
+      <div className="mt-3">
+        <p className="tnum-l text-body-s font-medium text-ink">
           Running total: {formatCents(liveTotalCents)}
-        </Text>
-        <Text as="div" size="1" color="gray">
+        </p>
+        <p className="text-caption text-ink-3">
           Updates as you edit below, before you save. Day rows only.
           Per diem, the contract minimum and rebilled expenses aren&rsquo;t
           included, so this won&rsquo;t match the invoice total.
-        </Text>
-      </Box>
+        </p>
+      </div>
 
-      <Box mt="3" role="alert" aria-live="polite">
+      <div className="mt-3" role="alert" aria-live="polite">
         {state.error ? (
-          <Callout.Root color="red" size="1">
-            <Callout.Text>{state.error}</Callout.Text>
-          </Callout.Root>
+          <LAlert tone="crit">{state.error}</LAlert>
         ) : failingDates.length > 0 ? (
-          <Callout.Root color="red" size="1">
-            <Callout.Text>
-              Fix {failingDates.length === 1 ? "this date" : "these dates"} before saving:{" "}
-              {failingDates.map((d) => formatDateWithWeekday(d)).join(", ")}.
-            </Callout.Text>
-          </Callout.Root>
+          <LAlert tone="crit">
+            Fix {failingDates.length === 1 ? "this date" : "these dates"} before saving:{" "}
+            {failingDates.map((d) => formatDateWithWeekday(d)).join(", ")}.
+          </LAlert>
         ) : state.saved ? (
-          <Callout.Root color="green" size="1">
-            <Callout.Text>Day grid saved.</Callout.Text>
-          </Callout.Root>
+          <LAlert tone="good">Day grid saved.</LAlert>
         ) : null}
-      </Box>
+      </div>
 
-      <Box mt="4">
-        <Button type="submit" disabled={pending}>
+      <div className="mt-4">
+        <LButton type="submit" variant="outline" disabled={pending}>
           {pending ? "Saving…" : "Save day grid"}
-        </Button>
-      </Box>
+        </LButton>
+      </div>
     </form>
   );
 }
@@ -1012,76 +904,65 @@ function ReadOnlyGrid({
   });
 
   return (
-    <Box>
+    <div>
       {/* The locked view gets the same always-mounted,
           display-toggled table/card pair as the editable grid — nothing
           here posts, so there is no name/hidden-input concern, only the
           same layout swap. */}
-      <Box display={{ initial: "none", md: "block" }}>
-        <Box overflowX="auto">
-          <Table.Root size="1">
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Date</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Day type</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Quantity</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell justify="end">Rate</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Rate fraction</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Away</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Notes</Table.ColumnHeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {rows.map(({ date, existing, label }) => (
-                <Table.Row key={date}>
-                  <Table.Cell style={{ whiteSpace: "nowrap" }}>
-                    <Text size="2">{formatDateWithWeekday(date)}</Text>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <Text size="2" color="gray">
-                      {label}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <Text size="2" color="gray" className="tnum">
-                      {existing ? quantityToInput(existing.quantity) : "—"}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell justify="end">
-                    <Text size="2" className="tnum">
-                      {existing ? formatCents(existing.rate_cents) : "—"}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <Text size="2" color="gray" className="tnum">
-                      {existing ? unitsToInput(existing.units) : "—"}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <Text size="2" color="gray">
-                      {existing ? (existing.away ? "Away" : "Home base") : "—"}
-                    </Text>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <Text size="2" color="gray">
-                      {existing?.notes ?? ""}
-                    </Text>
-                  </Table.Cell>
-                </Table.Row>
-              ))}
-            </Table.Body>
-          </Table.Root>
-        </Box>
-      </Box>
+      <div className="hidden md:block">
+        <LTable>
+          <caption>
+            <span className="sr-only">Day grid (locked)</span>
+          </caption>
+          <thead>
+            <tr>
+              <LTh>Date</LTh>
+              <LTh>Day type</LTh>
+              <LTh>Quantity</LTh>
+              <LTh numeric>Rate</LTh>
+              <LTh>Rate fraction</LTh>
+              <LTh>Away</LTh>
+              <LTh>Notes</LTh>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ date, existing, label }) => (
+              <tr key={date}>
+                <LTd className="whitespace-nowrap">{formatDateWithWeekday(date)}</LTd>
+                <LTd>
+                  <span className="text-ink-2">{label}</span>
+                </LTd>
+                <LTd>
+                  <span className="tnum-l text-ink-2">
+                    {existing ? quantityToInput(existing.quantity) : "—"}
+                  </span>
+                </LTd>
+                <LTd numeric>{existing ? formatCents(existing.rate_cents) : "—"}</LTd>
+                <LTd>
+                  <span className="tnum-l text-ink-2">
+                    {existing ? unitsToInput(existing.units) : "—"}
+                  </span>
+                </LTd>
+                <LTd>
+                  <span className="text-ink-2">
+                    {existing ? (existing.away ? "Away" : "Home base") : "—"}
+                  </span>
+                </LTd>
+                <LTd>
+                  <span className="text-ink-2">{existing?.notes ?? ""}</span>
+                </LTd>
+              </tr>
+            ))}
+          </tbody>
+        </LTable>
+      </div>
 
-      <Box display={{ initial: "block", md: "none" }}>
-        <Flex direction="column" gap="3">
+      <div className="block md:hidden">
+        <div className="flex flex-col gap-3">
           {rows.map(({ date, existing, label }) => (
-            <Card key={date}>
-              <Flex direction="column" gap="2">
-                <Heading as="h3" size="2">
-                  {formatDateWithWeekday(date)}
-                </Heading>
+            <LCard key={date}>
+              <div className="flex flex-col gap-2">
+                <h3 className="text-h3 font-semibold">{formatDateWithWeekday(date)}</h3>
                 <ReadOnlyField label="Day type" value={label} />
                 <ReadOnlyField
                   label="Quantity"
@@ -1103,12 +984,12 @@ function ReadOnlyGrid({
                   value={existing ? (existing.away ? "Away" : "Home base") : "—"}
                 />
                 <ReadOnlyField label="Notes" value={existing?.notes ?? ""} />
-              </Flex>
-            </Card>
+              </div>
+            </LCard>
           ))}
-        </Flex>
-      </Box>
-    </Box>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1126,13 +1007,11 @@ function ReadOnlyField({
   numeric?: boolean;
 }) {
   return (
-    <Box>
-      <Text as="div" size="1" color="gray">
-        {label}
-      </Text>
-      <Text as="div" size="2" color="gray" className={numeric ? "tnum" : undefined}>
+    <div>
+      <div className="text-caption text-ink-3">{label}</div>
+      <div className={numeric ? "tnum-l text-body-s text-ink-2" : "text-body-s text-ink-2"}>
         {value}
-      </Text>
-    </Box>
+      </div>
+    </div>
   );
 }
