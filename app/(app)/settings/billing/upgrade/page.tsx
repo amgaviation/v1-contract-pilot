@@ -1,6 +1,7 @@
 import NextLink from "next/link";
 import { redirect } from "next/navigation";
-import { Badge, Button, Card, Flex, Text } from "@/components/ui";
+import { LCard, LPill, lButtonClass } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 import { requireAccount } from "@/lib/supabase/account";
 import {
   FEATURES,
@@ -12,7 +13,6 @@ import {
 import { isCurrencyEngineEnabled } from "@/lib/currency/gate";
 import { safeNextPath } from "@/lib/safe-next";
 import { DASHBOARD_PATH } from "@/lib/nav";
-import PageShell from "../../../page-shell";
 import { visibleDowngradeNote } from "../downgrade-note";
 
 export const metadata = { title: "Upgrade" };
@@ -57,45 +57,37 @@ export default async function UpgradePage({
   );
 
   return (
-    <PageShell
+    <LPageShell
       title={feature ? `${FEATURES[feature].label} is a ${tierName} feature` : "Upgrade your plan"}
       subtitle={`You're on the ${TIER_DISPLAY[account.plan_tier].name} plan.`}
     >
-      <Card>
-        <Flex direction="column" gap="3" p="1">
-          <Flex align="center" gap="2">
-            <Text weight="bold" size="4">
-              {tierName}
-            </Text>
-            <Badge color="blue">Includes this</Badge>
-          </Flex>
-          <Text size="2" color="gray">
-            {TIER_DISPLAY[requiredTier].blurb}
-          </Text>
-          <Flex direction="column" gap="1">
-            <Text size="1" weight="bold" color="gray">
-              {tierName} adds:
-            </Text>
+      <LCard>
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-lead font-bold">{tierName}</span>
+            <LPill tone="accent">Includes this</LPill>
+          </div>
+          <p className="text-body-s text-ink-2">{TIER_DISPLAY[requiredTier].blurb}</p>
+          <div className="flex flex-col gap-1">
+            <p className="text-caption font-semibold text-ink-3">{tierName} adds:</p>
             {added.map((id) => (
-              <Text size="1" color="gray" key={id}>
+              <p className="text-caption text-ink-3" key={id}>
                 &bull; {FEATURES[id].label}
                 {FEATURES[id].comingSoon ? " (coming soon)" : ""}
-              </Text>
+              </p>
             ))}
-          </Flex>
-          <Text size="2" color="gray">
-            {visibleDowngradeNote()}
-          </Text>
-          <Flex gap="2" mt="1">
-            <Button asChild>
-              <NextLink href="/settings/billing">See plans &amp; upgrade</NextLink>
-            </Button>
-            <Button asChild variant="soft" color="gray">
-              <NextLink href={DASHBOARD_PATH}>Back to Overview</NextLink>
-            </Button>
-          </Flex>
-        </Flex>
-      </Card>
-    </PageShell>
+          </div>
+          <p className="text-body-s text-ink-2">{visibleDowngradeNote()}</p>
+          <div className="mt-1 flex gap-2">
+            <NextLink href="/settings/billing" className={lButtonClass({ variant: "primary" })}>
+              See plans &amp; upgrade
+            </NextLink>
+            <NextLink href={DASHBOARD_PATH} className={lButtonClass({ variant: "outline" })}>
+              Back to Overview
+            </NextLink>
+          </div>
+        </div>
+      </LCard>
+    </LPageShell>
   );
 }

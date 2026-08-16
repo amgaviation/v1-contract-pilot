@@ -1,14 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import {
-  Button,
-  Card,
-  Flex,
-  Heading,
-  Switch,
-  Text,
-} from "@/components/ui";
+import { LButton, LCard, LSwitch } from "@/components/ledger";
 import { type NavItem, type NavLayout } from "@/lib/nav";
 import {
   saveNavArrangement,
@@ -39,11 +32,6 @@ const initialState: CustomizationFormState = { error: null };
  * position is announced in a polite region, because a purely visual
  * reorder tells a screen-reader user nothing — and this list's changes
  * are local state, so there is not even an error to hear.
- *
- * The reorder controls are size="2", not size="1": the root Theme pins
- * scaling="90%", which renders a size-1 button 21.6px tall — under the
- * WCAG 2.2 AA 24×24 target minimum, and this file's own argument for
- * buttons over drag is that they need no pointer precision.
  *
  * SETTINGS IS NOT IN THIS LIST. It is where a pilot comes to undo this
  * setting, so it is neither offered nor hideable — normalizeNavLayout
@@ -100,16 +88,14 @@ export default function LayoutPanel({
   }
 
   return (
-    <Flex direction="column" gap="4">
-      <Flex direction="column" gap="1">
-        <Heading as="h3" size="4">
-          Navigation
-        </Heading>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1">
+        <h3 className="text-h3 font-semibold">Navigation</h3>
         {/* Said here rather than discovered in the rail. The group
             headings only survive while each group is still one unbroken
             run — see navGroupsAreContiguous in lib/nav.ts and the rail's
             own note. */}
-        <Text size="1" color="gray">
+        <p className="text-caption text-ink-3">
           The rail groups these under headings ({[
             ...new Set(
               sections
@@ -119,12 +105,12 @@ export default function LayoutPanel({
           ].join(", ")}). Move a section past one from another group and the headings
           stop matching the order, so the rail drops them and shows one plain list —
           your order, exactly as you set it.
-        </Text>
-      </Flex>
+        </p>
+      </div>
 
-      <Card>
+      <LCard>
         <form action={formAction}>
-          <Flex direction="column" gap="3" p="1">
+          <div className="flex flex-col gap-3">
             {/* The whole arrangement posts as one field plus one checkbox
                 per hidden section. Newline-separated rather than JSON: the
                 server puts it through normalizeNavLayout anyway, which
@@ -140,65 +126,54 @@ export default function LayoutPanel({
               if (!item) return null;
               const visible = !hidden.has(href);
               return (
-                <Flex
+                <div
                   key={href}
-                  align="center"
-                  justify="between"
-                  gap="3"
-                  wrap="wrap"
-                  py="1"
-                  style={{ borderBottom: "1px solid var(--hair)" }}
+                  className="flex flex-wrap items-center justify-between gap-3 border-b border-hair py-1 last:border-b-0"
                 >
-                  <Flex direction="column" gap="1">
-                    <Text size="2" weight="medium">
-                      {item.label}
-                    </Text>
-                    <Text size="1" color="gray">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-body-s font-medium">{item.label}</span>
+                    <span className="text-caption text-ink-3">
                       {item.group ?? "—"} · {item.href}
-                    </Text>
-                  </Flex>
+                    </span>
+                  </div>
 
-                  <Flex align="center" gap="3">
-                    <Text as="label" size="1" color="gray">
-                      <Flex align="center" gap="2">
-                        <Switch
-                          checked={visible}
-                          disabled={!canEdit}
-                          onCheckedChange={(checked) => toggle(href, checked === true)}
-                          aria-label={`Show ${item.label} in the rail`}
-                        />
-                        Show
-                      </Flex>
-                    </Text>
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 text-caption text-ink-3">
+                      <LSwitch
+                        checked={visible}
+                        disabled={!canEdit}
+                        onCheckedChange={(checked) => toggle(href, checked === true)}
+                        aria-label={`Show ${item.label} in the rail`}
+                      />
+                      Show
+                    </label>
                     {/* aria-disabled at the ends, `disabled` only for a
                         non-owner: see this file's header. A pilot who may
                         not edit at all never had focus to lose. */}
-                    <Button
+                    <LButton
                       type="button"
-                      size="2"
-                      variant="soft"
-                      color="gray"
+                      size="sm"
+                      variant="outline"
                       disabled={!canEdit}
                       aria-disabled={index === 0}
                       onClick={() => move(index, -1)}
                       aria-label={`Move ${item.label} up`}
                     >
                       Up
-                    </Button>
-                    <Button
+                    </LButton>
+                    <LButton
                       type="button"
-                      size="2"
-                      variant="soft"
-                      color="gray"
+                      size="sm"
+                      variant="outline"
                       disabled={!canEdit}
                       aria-disabled={index === order.length - 1}
                       onClick={() => move(index, 1)}
                       aria-label={`Move ${item.label} down`}
                     >
                       Down
-                    </Button>
-                  </Flex>
-                </Flex>
+                    </LButton>
+                  </div>
+                </div>
               );
             })}
 
@@ -208,38 +183,32 @@ export default function LayoutPanel({
                 gets no confirmation that anything happened. */}
             <div aria-live="polite" role="status">
               {moveNotice ? (
-                <Text size="1" color="gray">
-                  {moveNotice}
-                </Text>
+                <p className="text-caption text-ink-3">{moveNotice}</p>
               ) : null}
             </div>
 
             <div role="alert" aria-live="polite">
               {state.error ? (
-                <Text size="1" color="red">
-                  {state.error}
-                </Text>
+                <p className="text-caption font-medium text-crit">{state.error}</p>
               ) : state.saved ? (
-                <Text size="1" color="green">
-                  Saved.
-                </Text>
+                <p className="text-caption font-medium text-good">Saved.</p>
               ) : null}
             </div>
 
             {canEdit ? (
-              <Flex>
-                <Button type="submit" disabled={pending}>
+              <div>
+                <LButton type="submit" disabled={pending}>
                   {pending ? "Saving…" : "Save navigation"}
-                </Button>
-              </Flex>
+                </LButton>
+              </div>
             ) : (
-              <Text size="1" color="gray">
+              <p className="text-caption text-ink-3">
                 Only the account owner can change the navigation.
-              </Text>
+              </p>
             )}
-          </Flex>
+          </div>
         </form>
-      </Card>
-    </Flex>
+      </LCard>
+    </div>
   );
 }

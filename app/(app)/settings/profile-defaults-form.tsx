@@ -1,17 +1,8 @@
 "use client";
 
 import { useActionState, useId, useState } from "react";
-import {
-  Box,
-  Button,
-  Card,
-  Flex,
-  Grid,
-  Heading,
-  Select,
-  Text,
-  TextField,
-} from "@/components/ui";
+import { LButton, LCard } from "@/components/ledger";
+import { LField, LInput, LSelect } from "@/components/ledger/forms";
 import { CERTIFICATE_OPTIONS, NO_CERTIFICATE } from "@/lib/airman";
 import { updateProfileDefaults, type SettingsFormState } from "./actions";
 
@@ -65,219 +56,202 @@ export default function ProfileDefaultsForm({
     return values[key];
   };
 
-  // The wizard's hidden-input pattern for Radix Select (onboarding-
-  // wizard.tsx): Select.Root is not a native form control, so a hidden
-  // input synced to React state carries the value, with NO_CERTIFICATE as
-  // the UI-only "prefer not to say" that posts as "". React state survives
-  // the React-19 form reset on its own, so no echo wiring is needed here —
-  // the hidden input always tracks live state.
+  // LSelect (components/ledger/forms.tsx) is a native <select>, but this
+  // field still needs the hidden-input translation the Radix-based wizard
+  // established: NO_CERTIFICATE is a UI-only "prefer not to say" sentinel
+  // that has to post as "" (→ NULL) rather than as its own literal value,
+  // and this control has to survive React 19's per-dispatch uncontrolled
+  // form reset the same way every other field on this form does. So the
+  // visible LSelect carries no `name` at all — only the hidden input does,
+  // same pattern as invoices/bill-to-fields.tsx's own picker.
   const [certType, setCertType] = useState(
     values.certificate_type === "" ? NO_CERTIFICATE : values.certificate_type
   );
   const certTypeId = useId();
 
   return (
-    <Card>
+    <LCard>
       <form action={formAction}>
-        <Flex direction="column" gap="4" p="2">
-          <Flex direction="column" gap="1">
-            <Heading as="h2" size="4">Profile &amp; billing defaults</Heading>
-          </Flex>
+        <div className="flex flex-col gap-4">
+          <h2 className="text-h3 font-semibold">Profile &amp; billing defaults</h2>
 
-          <Grid columns={{ initial: "1", md: "12" }} gap="3">
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 6" }}>
-              <Text as="label" size="1" weight="medium" htmlFor="dba_name">
-                Doing business as
-              </Text>
-              <TextField.Root
-                id="dba_name"
-                name="dba_name"
-                disabled={!canEdit}
-                defaultValue={initial("dba_name")}
-              />
-              <Text size="1" color="gray" style={{ fontStyle: "italic" }}>
-                Only if it differs from your business name
-              </Text>
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
-              <Text as="label" size="1" weight="medium" htmlFor="phone">
-                Phone
-              </Text>
-              <TextField.Root
-                id="phone"
-                name="phone"
-                type="tel"
-                autoComplete="tel"
-                disabled={!canEdit}
-                defaultValue={initial("phone")}
-              />
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
-              <Text as="label" size="1" weight="medium" htmlFor="home_base">
-                Based airport
-              </Text>
-              <TextField.Root
-                id="home_base"
-                name="home_base"
-                placeholder="e.g. KTEB"
-                disabled={!canEdit}
-                defaultValue={initial("home_base")}
-              />
-            </Flex>
-
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 6" }}>
-              <Text as="label" size="1" weight="medium" id={`${certTypeId}-label`}>
-                Certificate held
-              </Text>
-              <input
-                type="hidden"
-                name="certificate_type"
-                value={certType === NO_CERTIFICATE ? "" : certType}
-              />
-              <Select.Root
-                value={certType}
-                onValueChange={setCertType}
-                disabled={!canEdit}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+            <div className="md:col-span-6">
+              <LField
+                label="Doing business as"
+                htmlFor="dba_name"
+                hint="Only if it differs from your business name"
               >
-                <Select.Trigger id={certTypeId} aria-labelledby={`${certTypeId}-label`} />
-                <Select.Content>
+                <LInput
+                  id="dba_name"
+                  name="dba_name"
+                  disabled={!canEdit}
+                  defaultValue={initial("dba_name")}
+                />
+              </LField>
+            </div>
+            <div className="md:col-span-3">
+              <LField label="Phone" htmlFor="phone">
+                <LInput
+                  id="phone"
+                  name="phone"
+                  type="tel"
+                  autoComplete="tel"
+                  disabled={!canEdit}
+                  defaultValue={initial("phone")}
+                />
+              </LField>
+            </div>
+            <div className="md:col-span-3">
+              <LField label="Based airport" htmlFor="home_base">
+                <LInput
+                  id="home_base"
+                  name="home_base"
+                  placeholder="e.g. KTEB"
+                  disabled={!canEdit}
+                  defaultValue={initial("home_base")}
+                />
+              </LField>
+            </div>
+
+            <div className="md:col-span-6">
+              <LField label="Certificate held" htmlFor={certTypeId}>
+                <input
+                  type="hidden"
+                  name="certificate_type"
+                  value={certType === NO_CERTIFICATE ? "" : certType}
+                />
+                <LSelect
+                  id={certTypeId}
+                  value={certType}
+                  onChange={(e) => setCertType(e.target.value)}
+                  disabled={!canEdit}
+                >
                   {CERTIFICATE_OPTIONS.map((c) => (
-                    <Select.Item key={c.value} value={c.value}>
+                    <option key={c.value} value={c.value}>
                       {c.label}
-                    </Select.Item>
+                    </option>
                   ))}
-                </Select.Content>
-              </Select.Root>
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 6" }}>
-              <Text as="label" size="1" weight="medium" htmlFor="certificate_number">
-                Certificate number
-              </Text>
-              <TextField.Root
-                id="certificate_number"
-                name="certificate_number"
-                disabled={!canEdit}
-                defaultValue={initial("certificate_number")}
-              />
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 12" }}>
-              <Text as="label" size="1" weight="medium" htmlFor="ratings">
-                Ratings &amp; type ratings
-              </Text>
-              <TextField.Root
-                id="ratings"
-                name="ratings"
-                disabled={!canEdit}
-                defaultValue={initial("ratings")}
-              />
-              <Text size="1" color="gray" style={{ fontStyle: "italic" }}>
-                As written on your certificate, e.g. AMEL, Instrument
-                Airplane, CE-525S
-              </Text>
-            </Flex>
+                </LSelect>
+              </LField>
+            </div>
+            <div className="md:col-span-6">
+              <LField label="Certificate number" htmlFor="certificate_number">
+                <LInput
+                  id="certificate_number"
+                  name="certificate_number"
+                  disabled={!canEdit}
+                  defaultValue={initial("certificate_number")}
+                />
+              </LField>
+            </div>
+            <div className="md:col-span-12">
+              <LField
+                label="Ratings & type ratings"
+                htmlFor="ratings"
+                hint="As written on your certificate, e.g. AMEL, Instrument Airplane, CE-525S"
+              >
+                <LInput
+                  id="ratings"
+                  name="ratings"
+                  disabled={!canEdit}
+                  defaultValue={initial("ratings")}
+                />
+              </LField>
+            </div>
 
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
-              <Text as="label" size="1" weight="medium" htmlFor="default_day_rate">
-                Default day rate
-              </Text>
-              <TextField.Root
-                id="default_day_rate"
-                name="default_day_rate"
-                inputMode="decimal"
-                disabled={!canEdit}
-                defaultValue={initial("default_day_rate")}
+            <div className="md:col-span-3">
+              <LField
+                label="Default day rate"
+                htmlFor="default_day_rate"
+                hint="Per duty day flown"
               >
-                <TextField.Slot>$</TextField.Slot>
-              </TextField.Root>
-              <Text size="1" color="gray" style={{ fontStyle: "italic" }}>
-                Per duty day flown
-              </Text>
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
-              <Text as="label" size="1" weight="medium" htmlFor="default_travel_day_rate">
-                Travel day rate
-              </Text>
-              <TextField.Root
-                id="default_travel_day_rate"
-                name="default_travel_day_rate"
-                inputMode="decimal"
-                disabled={!canEdit}
-                defaultValue={initial("default_travel_day_rate")}
+                <LInput
+                  id="default_day_rate"
+                  name="default_day_rate"
+                  inputMode="decimal"
+                  className="tnum-l"
+                  disabled={!canEdit}
+                  defaultValue={initial("default_day_rate")}
+                />
+              </LField>
+            </div>
+            <div className="md:col-span-3">
+              <LField
+                label="Travel day rate"
+                htmlFor="default_travel_day_rate"
+                hint="Often half to full day rate, your call"
               >
-                <TextField.Slot>$</TextField.Slot>
-              </TextField.Root>
-              <Text size="1" color="gray" style={{ fontStyle: "italic" }}>
-                Often half to full day rate, your call
-              </Text>
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
-              <Text as="label" size="1" weight="medium" htmlFor="default_per_diem">
-                Per diem
-              </Text>
-              <TextField.Root
-                id="default_per_diem"
-                name="default_per_diem"
-                inputMode="decimal"
-                disabled={!canEdit}
-                defaultValue={initial("default_per_diem")}
+                <LInput
+                  id="default_travel_day_rate"
+                  name="default_travel_day_rate"
+                  inputMode="decimal"
+                  className="tnum-l"
+                  disabled={!canEdit}
+                  defaultValue={initial("default_travel_day_rate")}
+                />
+              </LField>
+            </div>
+            <div className="md:col-span-3">
+              <LField
+                label="Per diem"
+                htmlFor="default_per_diem"
+                hint="Daily, when you bill per diem instead of receipts"
               >
-                <TextField.Slot>$</TextField.Slot>
-              </TextField.Root>
-              <Text size="1" color="gray" style={{ fontStyle: "italic" }}>
-                Daily, when you bill per diem instead of receipts
-              </Text>
-            </Flex>
-            <Flex direction="column" gap="1" gridColumn={{ md: "span 3" }}>
-              <Text as="label" size="1" weight="medium" htmlFor="default_payment_terms_days">
-                Payment terms
-              </Text>
-              <TextField.Root
-                id="default_payment_terms_days"
-                name="default_payment_terms_days"
-                inputMode="numeric"
-                disabled={!canEdit}
-                defaultValue={initial("default_payment_terms_days")}
+                <LInput
+                  id="default_per_diem"
+                  name="default_per_diem"
+                  inputMode="decimal"
+                  className="tnum-l"
+                  disabled={!canEdit}
+                  defaultValue={initial("default_per_diem")}
+                />
+              </LField>
+            </div>
+            <div className="md:col-span-3">
+              <LField
+                label="Payment terms (days)"
+                htmlFor="default_payment_terms_days"
+                hint="Net days on new clients"
               >
-                <TextField.Slot side="right">days</TextField.Slot>
-              </TextField.Root>
-              <Text size="1" color="gray" style={{ fontStyle: "italic" }}>
-                Net days on new clients
-              </Text>
-            </Flex>
-          </Grid>
+                <LInput
+                  id="default_payment_terms_days"
+                  name="default_payment_terms_days"
+                  inputMode="numeric"
+                  className="tnum-l"
+                  disabled={!canEdit}
+                  defaultValue={initial("default_payment_terms_days")}
+                />
+              </LField>
+            </div>
+          </div>
 
-          <Box>
-            <Text size="1" color="gray">
-              These seed new clients and new trips. Records you&rsquo;ve
-              already created keep the rates they were saved with.
-            </Text>
-          </Box>
+          <p className="text-caption text-ink-3">
+            These seed new clients and new trips. Records you&rsquo;ve already
+            created keep the rates they were saved with.
+          </p>
 
           <div role="alert" aria-live="polite">
             {state.error ? (
-              <Text size="1" color="red">
-                {state.error}
-              </Text>
+              <p className="text-caption font-medium text-crit">{state.error}</p>
             ) : state.saved ? (
-              <Text size="1" color="green">
-                Saved.
-              </Text>
+              <p className="text-caption font-medium text-good">Saved.</p>
             ) : null}
           </div>
 
           {canEdit ? (
-            <Flex>
-              <Button type="submit" disabled={pending}>
+            <div>
+              <LButton type="submit" disabled={pending}>
                 {pending ? "Saving…" : "Save changes"}
-              </Button>
-            </Flex>
+              </LButton>
+            </div>
           ) : (
-            <Text size="1" color="gray">
+            <p className="text-caption text-ink-3">
               Only the account owner can change these.
-            </Text>
+            </p>
           )}
-        </Flex>
+        </div>
       </form>
-    </Card>
+    </LCard>
   );
 }

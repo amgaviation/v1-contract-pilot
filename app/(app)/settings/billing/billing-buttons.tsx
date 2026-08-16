@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { Button, Flex, Text } from "@/components/ui";
+import { LButton } from "@/components/ledger";
 import type { PlanTier } from "@/lib/entitlements";
 import {
   changePlan,
@@ -38,47 +38,39 @@ export function ChangePlanButtons({
   const [state, formAction, pending] = useActionState(changePlan, initialState);
 
   if (monthlyLabel === null && annualLabel === null) {
-    return (
-      <Text size="1" color="gray">
-        Not available yet.
-      </Text>
-    );
+    return <p className="text-caption text-ink-3">Not available yet.</p>;
   }
 
   return (
     <form action={formAction}>
       <input type="hidden" name="tier" value={tier} />
-      <Flex direction="column" gap="2">
+      <div className="flex flex-col gap-2">
         {monthlyLabel !== null ? (
-          <Button
+          <LButton
             type="submit"
             name="interval"
             value="monthly"
             disabled={disabled || pending}
-            variant={direction === "Upgrade" ? "solid" : "soft"}
-            color={direction === "Upgrade" ? undefined : "gray"}
+            variant={direction === "Upgrade" ? "primary" : "outline"}
           >
             {pending ? "Confirming with Stripe…" : `${direction}: ${monthlyLabel}`}
-          </Button>
+          </LButton>
         ) : null}
         {annualLabel !== null ? (
-          <Button
+          <LButton
             type="submit"
             name="interval"
             value="annual"
             disabled={disabled || pending}
-            variant="soft"
-            color={direction === "Upgrade" ? undefined : "gray"}
+            variant="outline"
           >
             {pending ? "Confirming with Stripe…" : `${direction}: ${annualLabel}`}
-          </Button>
+          </LButton>
         ) : null}
         {state.error ? (
-          <Text size="1" color="red">
-            {state.error}
-          </Text>
+          <p className="text-caption font-medium text-crit">{state.error}</p>
         ) : null}
-      </Flex>
+      </div>
     </form>
   );
 }
@@ -105,45 +97,39 @@ export function ResubscribeButtons({
   const [state, formAction, pending] = useActionState(resubscribe, initialState);
 
   if (monthlyLabel === null && annualLabel === null) {
-    return (
-      <Text size="1" color="gray">
-        Not available yet.
-      </Text>
-    );
+    return <p className="text-caption text-ink-3">Not available yet.</p>;
   }
 
   return (
     <form action={formAction}>
       <input type="hidden" name="tier" value={tier} />
-      <Flex direction="column" gap="2">
+      <div className="flex flex-col gap-2">
         {monthlyLabel !== null ? (
-          <Button
+          <LButton
             type="submit"
             name="interval"
             value="monthly"
             disabled={disabled || pending}
-            variant="solid"
+            variant="primary"
           >
             {pending ? "Starting checkout…" : `Resubscribe: ${monthlyLabel}`}
-          </Button>
+          </LButton>
         ) : null}
         {annualLabel !== null ? (
-          <Button
+          <LButton
             type="submit"
             name="interval"
             value="annual"
             disabled={disabled || pending}
-            variant="soft"
+            variant="outline"
           >
             {pending ? "Starting checkout…" : `Resubscribe: ${annualLabel}`}
-          </Button>
+          </LButton>
         ) : null}
         {state.error ? (
-          <Text size="1" color="red">
-            {state.error}
-          </Text>
+          <p className="text-caption font-medium text-crit">{state.error}</p>
         ) : null}
-      </Flex>
+      </div>
     </form>
   );
 }
@@ -166,16 +152,14 @@ export function SwitchIntervalButton({
     <form action={formAction}>
       <input type="hidden" name="tier" value={tier} />
       <input type="hidden" name="interval" value={targetInterval} />
-      <Flex direction="column" gap="1">
-        <Button type="submit" variant="soft" size="1" disabled={disabled || pending}>
+      <div className="flex flex-col gap-1">
+        <LButton type="submit" variant="outline" size="sm" disabled={disabled || pending}>
           {pending ? "Confirming with Stripe…" : label}
-        </Button>
+        </LButton>
         {state.error ? (
-          <Text size="1" color="red">
-            {state.error}
-          </Text>
+          <p className="text-caption font-medium text-crit">{state.error}</p>
         ) : null}
-      </Flex>
+      </div>
     </form>
   );
 }
@@ -186,11 +170,12 @@ export function SwitchIntervalButton({
  * rendering them as separate controls would invite the state where both
  * are on screen at once.
  *
- * The destructive direction is `variant="outline" color="red"` rather than
- * a solid red button: it is a scheduled, fully reversible flag flip, not a
- * delete, and dressing it as a delete would misstate what it does. The
- * copy under it — supplied by the caller, which knows the period end —
- * carries the actual consequence.
+ * The destructive direction is the `danger` variant rather than a
+ * neutral outline: it is a scheduled, fully reversible flag flip, not a
+ * delete, but it still needs to read as the one action on this card that
+ * changes what happens to the subscription. The copy under it — supplied
+ * by the caller, which knows the period end — carries the actual
+ * consequence.
  */
 export function CancelResumeButton({
   cancelling,
@@ -207,14 +192,12 @@ export function CancelResumeButton({
 
   return (
     <form action={formAction}>
-      <Flex direction="column" gap="1" align="start">
-        <Button
+      <div className="flex flex-col items-start gap-1">
+        <LButton
           type="submit"
           name="intent"
           value={cancelling ? "resume" : "cancel"}
-          variant={cancelling ? "solid" : "outline"}
-          color={cancelling ? undefined : "red"}
-          size="2"
+          variant={cancelling ? "primary" : "danger"}
           disabled={disabled || pending}
         >
           {pending
@@ -222,13 +205,11 @@ export function CancelResumeButton({
             : cancelling
               ? "Resume my subscription"
               : "Cancel at period end"}
-        </Button>
+        </LButton>
         {state.error ? (
-          <Text size="1" color="red">
-            {state.error}
-          </Text>
+          <p className="text-caption font-medium text-crit">{state.error}</p>
         ) : null}
-      </Flex>
+      </div>
     </form>
   );
 }
@@ -246,16 +227,14 @@ export function BillingPortalButton({ disabled }: { disabled?: boolean }) {
 
   return (
     <form action={formAction}>
-      <Flex direction="column" gap="1">
-        <Button type="submit" variant="outline" disabled={disabled || pending}>
+      <div className="flex flex-col gap-1">
+        <LButton type="submit" variant="outline" disabled={disabled || pending}>
           {pending ? "Opening…" : "Manage billing in Stripe"}
-        </Button>
+        </LButton>
         {state.error ? (
-          <Text size="1" color="red">
-            {state.error}
-          </Text>
+          <p className="text-caption font-medium text-crit">{state.error}</p>
         ) : null}
-      </Flex>
+      </div>
     </form>
   );
 }
