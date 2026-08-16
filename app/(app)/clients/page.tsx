@@ -1,16 +1,6 @@
 import NextLink from "next/link";
-import {
-  Badge,
-  Box,
-  Button,
-  Callout,
-  Card,
-  Link as RadixLink,
-  Table,
-  Text,
-  VisuallyHidden,
-} from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { LAlert, LCard, LEmpty, LPill, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
+import { LPageShell } from "@/components/ledger/page-shell";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
@@ -18,8 +8,6 @@ import { formatCents } from "@/lib/format";
 import { COUNTERPARTY_COPY, isInvoicedCounterparty } from "@/lib/counterparty";
 import type { Database } from "@/lib/supabase/database.types";
 import { friendlyDbError } from "@/lib/db-errors";
-import EmptyState from "@/components/ui/empty-state";
-import PageShell from "../page-shell";
 
 type ClientRow = Database["pilot"]["Tables"]["clients"]["Row"];
 
@@ -33,16 +21,18 @@ export const metadata = { title: "Clients" };
 const CLIENTS_LIMIT = 1000;
 
 /**
- * W-9 status → badge colour. A missing W-9 is what the Overview "needs
+ * W-9 status → pill tone. A missing W-9 is what the Overview "needs
  * attention" queue nags about, so it reads as a warning here rather than
- * as neutral information.
+ * as neutral information. Same crit/warn/good/neutral vocabulary as every
+ * other migrated screen's own dictionary (invoices/page.tsx's
+ * statusToPillTone).
  */
-type BadgeInfo = { color: "gray" | "green" | "amber" | "red"; label: string };
+type W9Info = { tone: "neutral" | "good" | "warn" | "crit"; label: string };
 
-const W9_BADGE_FALLBACK: BadgeInfo = { color: "red", label: "No W-9" };
-const W9_BADGE: Record<string, BadgeInfo> = {
-  on_file: { color: "green", label: "W-9 on file" },
-  requested: { color: "amber", label: "W-9 requested" },
+const W9_BADGE_FALLBACK: W9Info = { tone: "crit", label: "No W-9" };
+const W9_BADGE: Record<string, W9Info> = {
+  on_file: { tone: "good", label: "W-9 on file" },
+  requested: { tone: "warn", label: "W-9 requested" },
   not_requested: W9_BADGE_FALLBACK,
 };
 
@@ -65,7 +55,7 @@ export default async function ClientsPage() {
   const archived = clients.filter((c) => c.archived_at);
 
   return (
-    <PageShell
+    <LPageShell
       title="Clients"
       subtitle={
         error
@@ -73,93 +63,86 @@ export default async function ClientsPage() {
           : `${active.length} active${archived.length ? `, ${archived.length} archived` : ""}`
       }
       action={
-        <Button asChild>
-          <NextLink href="/clients/new">New client</NextLink>
-        </Button>
+        <NextLink href="/clients/new" className={lButtonClass({ variant: "primary" })}>
+          New client
+        </NextLink>
       }
     >
       {truncatedClients ? (
-        <Box mb="4">
-          <Callout.Root color="amber">
-            <Callout.Icon>
-              <ExclamationTriangleIcon />
-            </Callout.Icon>
-            <Callout.Text>
-              {`This list may be partial. There are more than ${CLIENTS_LIMIT} clients and only the first ${CLIENTS_LIMIT} are shown.`}
-            </Callout.Text>
-          </Callout.Root>
-        </Box>
+        <LAlert tone="warn" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+          <span>
+            {`This list may be partial. There are more than ${CLIENTS_LIMIT} clients and only the first ${CLIENTS_LIMIT} are shown.`}
+          </span>
+        </LAlert>
       ) : null}
 
-      <Card>
+      <LCard>
         {error ? (
-          <Callout.Root color="red" m="3">
-            <Callout.Text>{friendlyDbError(error, "clients.select")}</Callout.Text>
-          </Callout.Root>
+          <LAlert tone="crit" className="flex items-start gap-2">
+            <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+            <span>{friendlyDbError(error, "clients.select")}</span>
+          </LAlert>
         ) : clients.length === 0 ? (
-          <EmptyState
+          <LEmpty
             title="No clients yet"
             action={
-              <Button asChild>
-                <NextLink href="/clients/new">Add your first client</NextLink>
-              </Button>
+              <NextLink href="/clients/new" className={lButtonClass({ variant: "primary" })}>
+                Add your first client
+              </NextLink>
             }
           >
             Add the owner, operator, or management company you fly for. Trips
             and invoices both hang off a client.
-          </EmptyState>
+          </LEmpty>
         ) : (
-          <Table.Root>
-            <Table.Header>
-              <Table.Row>
-                <Table.ColumnHeaderCell>Client</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>Contact</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell justify="end">Day rate</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell justify="end">Terms</Table.ColumnHeaderCell>
-                <Table.ColumnHeaderCell>W-9</Table.ColumnHeaderCell>
+          <LTable>
+            <caption>
+              <span className="sr-only">Clients</span>
+            </caption>
+            <thead>
+              <tr>
+                <LTh>Client</LTh>
+                <LTh>Contact</LTh>
+                <LTh numeric>Day rate</LTh>
+                <LTh numeric>Terms</LTh>
+                <LTh>W-9</LTh>
                 {/* Hidden visually but must still have an accessible name,
                     or the Edit-link column is unnamed to a screen reader. */}
-                <Table.ColumnHeaderCell>
-                  <VisuallyHidden>Actions</VisuallyHidden>
-                </Table.ColumnHeaderCell>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
+                <LTh>
+                  <span className="sr-only">Actions</span>
+                </LTh>
+              </tr>
+            </thead>
+            <tbody>
               {clients.map((client) => {
                 const w9 = W9_BADGE[client.w9_status] ?? W9_BADGE_FALLBACK;
                 return (
-                  <Table.Row key={client.id}>
-                    <Table.RowHeaderCell>
-                      <RadixLink asChild weight="medium">
-                        <NextLink href={`/clients/${client.id}`}>{client.name}</NextLink>
-                      </RadixLink>
+                  <tr key={client.id}>
+                    <th
+                      scope="row"
+                      className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                    >
+                      <NextLink href={`/clients/${client.id}`} className="text-accent hover:underline">
+                        {client.name}
+                      </NextLink>
                       {client.archived_at ? (
-                        <Text as="div" size="1" color="gray">
-                          Archived
-                        </Text>
+                        <div className="text-caption text-ink-3">Archived</div>
                       ) : null}
-                    </Table.RowHeaderCell>
-                    <Table.Cell>
-                      <Text as="div" size="2">
-                        {client.contact_name ?? "—"}
-                      </Text>
-                      <Text as="div" size="1" color="gray">
-                        {client.contact_email ?? ""}
-                      </Text>
-                    </Table.Cell>
-                    <Table.Cell justify="end">
-                      <Text size="2" weight="medium" className="tnum">
-                        {formatCents(client.default_day_rate_cents)}
-                      </Text>
-                    </Table.Cell>
-                    <Table.Cell justify="end">
-                      <Text size="2" color="gray" className="tnum">
-                        {client.payment_terms_days === null
-                          ? "—"
-                          : `Net ${client.payment_terms_days}`}
-                      </Text>
-                    </Table.Cell>
-                    <Table.Cell>
+                    </th>
+                    <LTd>
+                      <div className="text-ink">{client.contact_name ?? "—"}</div>
+                      <div className="text-caption text-ink-3">{client.contact_email ?? ""}</div>
+                    </LTd>
+                    <LTd numeric>
+                      <span className="font-medium">{formatCents(client.default_day_rate_cents)}</span>
+                    </LTd>
+                    <LTd numeric>
+                      <span className="text-ink-2">
+                        {client.payment_terms_days === null ? "—" : `Net ${client.payment_terms_days}`}
+                      </span>
+                    </LTd>
+                    <LTd>
                       {/* A W-9 is what a client needs from the pilot in
                           order to 1099 them for money paid. A client you
                           do not invoice is never paying you, so "No W-9"
@@ -168,25 +151,51 @@ export default async function ClientsPage() {
                           The billing relationship is the fact worth
                           stating in this column instead. */}
                       {isInvoicedCounterparty(client) ? (
-                        <Badge color={w9.color}>{w9.label}</Badge>
+                        <LPill tone={w9.tone}>{w9.label}</LPill>
                       ) : (
-                        <Badge color="gray">{COUNTERPARTY_COPY.badge}</Badge>
+                        <LPill tone="neutral">{COUNTERPARTY_COPY.badge}</LPill>
                       )}
-                    </Table.Cell>
-                    <Table.Cell justify="end">
-                      <Button asChild variant="outline" size="1">
-                        <NextLink href={`/clients/${client.id}`} aria-label={`Edit ${client.name}`}>
-                          Edit
-                        </NextLink>
-                      </Button>
-                    </Table.Cell>
-                  </Table.Row>
+                    </LTd>
+                    <LTd numeric>
+                      <NextLink
+                        href={`/clients/${client.id}`}
+                        aria-label={`Edit ${client.name}`}
+                        className={lButtonClass({ variant: "outline", size: "sm" })}
+                      >
+                        Edit
+                      </NextLink>
+                    </LTd>
+                  </tr>
                 );
               })}
-            </Table.Body>
-          </Table.Root>
+            </tbody>
+          </LTable>
         )}
-      </Card>
-    </PageShell>
+      </LCard>
+    </LPageShell>
+  );
+}
+
+/* ── Inline icon ───────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. Same shape as invoices/page.tsx's own WarningIcon. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useState, useTransition } from "react";
-import { Badge, Box, Button, Flex, Select, Text, TextField } from "@/components/ui";
+import { LPill, lButtonClass } from "@/components/ledger";
+import { LInput, LSelect } from "@/components/ledger/forms";
 import { formatDate } from "@/lib/format";
 import type { Database } from "@/lib/supabase/database.types";
 import {
@@ -183,164 +184,136 @@ export default function OperatorQualificationRow({
   }, [state.saved]);
 
   return (
-    <Flex asChild direction="column" gap="2" py="3">
-      <form action={formAction}>
-        <input type="hidden" name="client_id" value={clientId} />
-        <input type="hidden" name="requirement" value={requirement} />
-        <input
-          type="hidden"
-          name="type_designator"
-          value={allowTypeEdit ? typeInput : typeDesignator}
-        />
-        <input type="hidden" name="status" value={statusValue} />
+    <form action={formAction} className="flex flex-col gap-2 py-3">
+      <input type="hidden" name="client_id" value={clientId} />
+      <input type="hidden" name="requirement" value={requirement} />
+      <input
+        type="hidden"
+        name="type_designator"
+        value={allowTypeEdit ? typeInput : typeDesignator}
+      />
+      <input type="hidden" name="status" value={statusValue} />
 
-        <Flex justify="between" align="start" wrap="wrap" gap="3">
-          <Box style={{ flex: "1 1 220px" }}>
-            <Text as="div" size="2" weight="medium">
-              {label}
-              {typeDesignator ? `, ${typeDesignator}` : null}
-            </Text>
-            {regCite ? (
-              <Text as="div" size="1" color="gray">
-                {regCite}
-              </Text>
-            ) : null}
-          </Box>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div style={{ flex: "1 1 220px" }}>
+          <div className="text-body-s font-medium text-ink">
+            {label}
+            {typeDesignator ? `, ${typeDesignator}` : null}
+          </div>
+          {regCite ? <div className="text-caption text-ink-3">{regCite}</div> : null}
+        </div>
 
-          {allowTypeEdit ? (
-            <Flex direction="column" gap="1" style={{ flex: "1 1 140px" }}>
-              <Text size="1" color="gray">
-                Aircraft type
-              </Text>
-              <TextField.Root
-                placeholder="CE-560XL"
-                value={typeInput}
-                onChange={(e) => setTypeInput(e.target.value)}
-              />
-            </Flex>
-          ) : null}
-
-          <Flex direction="column" gap="1" style={{ flex: "1 1 160px" }}>
-            <Text size="1" color="gray">
-              Completed on
-            </Text>
-            <TextField.Root type="date" name="completed_on" defaultValue={completedValue} />
-          </Flex>
-
-          <Flex direction="column" gap="1" style={{ flex: "1 1 170px" }}>
-            <Text size="1" color="gray">
-              Status
-            </Text>
-            <Select.Root value={statusValue} onValueChange={setStatusValue}>
-              <Select.Trigger />
-              <Select.Content>
-                {STATUS_OPTIONS.map((opt) => (
-                  <Select.Item key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </Select.Item>
-                ))}
-              </Select.Content>
-            </Select.Root>
-          </Flex>
-
-          <Flex direction="column" gap="1" style={{ flex: "1 1 170px" }}>
-            <Text size="1" color="gray">
-              {derived ? "Valid through (computed)" : "Valid through"}
-            </Text>
-            {derived ? (
-              existing?.expires_on ? (
-                <>
-                  <Badge
-                    color={
-                      mounted && rotationCurrent && isPastLocalDate(existing.expires_on)
-                        ? "red"
-                        : "gray"
-                    }
-                  >
-                    {formatDate(existing.expires_on)}
-                  </Badge>
-                  <Text size="1" color="gray">
-                    {rotationCurrent
-                      ? "Planning aid, not a determination of regulatory compliance."
-                      : ROTATION_HISTORY_COPY[requirement] ??
-                        // Defensive fallback, not expected to render today:
-                        // rotationCurrent is only ever false for a
-                        // TYPE_SPECIFIC_REQUIREMENTS row with a rotation
-                        // clause, and every such requirement has its own
-                        // entry in ROTATION_HISTORY_COPY (see that map's
-                        // comment). Generic on purpose — it must never
-                        // guess a citation for a requirement it wasn't
-                        // written for.
-                        "Rotation history. This row is not currently judged against the expiry " +
-                          "ladder. Planning aid, not a determination of regulatory compliance."}
-                  </Text>
-                </>
-              ) : (
-                <Text size="2" color="gray">
-                  Set once completed
-                </Text>
-              )
-            ) : (
-              <TextField.Root type="date" name="expires_on" defaultValue={expiresValue} />
-            )}
-          </Flex>
-
-          <Flex direction="column" gap="1" pt="4">
-            <Button type="submit" variant="outline" size="1" disabled={pending}>
-              {pending ? "Saving…" : "Save"}
-            </Button>
-          </Flex>
-        </Flex>
-
-        <Flex direction="column" gap="1" style={{ maxWidth: "480px" }}>
-          <Text size="1" color="gray">
-            Notes
-          </Text>
-          <TextField.Root
-            name="notes"
-            placeholder="Optional"
-            defaultValue={state.values?.notes ?? existing?.notes ?? ""}
-          />
-        </Flex>
-
-        <Box role="alert" aria-live="polite">
-          {state.error ? (
-            <Text size="1" color="red">
-              {state.error}
-            </Text>
-          ) : state.saved ? (
-            <Text size="1" color="green">
-              Saved.
-            </Text>
-          ) : null}
-          {rowError ? (
-            <Text as="div" size="1" color="red">
-              {rowError}
-            </Text>
-          ) : null}
-        </Box>
-
-        {allowDelete && existing ? (
-          <Flex>
-            <Button
-              type="button"
-              variant="ghost"
-              color="red"
-              size="1"
-              disabled={deleting}
-              onClick={() =>
-                startDelete(async () => {
-                  setRowError(null);
-                  const result = await deleteOperatorQualification(existing.id, clientId);
-                  if (result.error) setRowError(result.error);
-                })
-              }
-            >
-              {deleting ? "Removing…" : "Remove"}
-            </Button>
-          </Flex>
+        {allowTypeEdit ? (
+          <div className="flex flex-col gap-1" style={{ flex: "1 1 140px" }}>
+            <span className="text-caption text-ink-3">Aircraft type</span>
+            <LInput
+              placeholder="CE-560XL"
+              value={typeInput}
+              onChange={(e) => setTypeInput(e.target.value)}
+            />
+          </div>
         ) : null}
-      </form>
-    </Flex>
+
+        <div className="flex flex-col gap-1" style={{ flex: "1 1 160px" }}>
+          <span className="text-caption text-ink-3">Completed on</span>
+          <LInput type="date" name="completed_on" defaultValue={completedValue} />
+        </div>
+
+        <div className="flex flex-col gap-1" style={{ flex: "1 1 170px" }}>
+          <span className="text-caption text-ink-3">Status</span>
+          <LSelect value={statusValue} onChange={(e) => setStatusValue(e.target.value)}>
+            {STATUS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </LSelect>
+        </div>
+
+        <div className="flex flex-col gap-1" style={{ flex: "1 1 170px" }}>
+          <span className="text-caption text-ink-3">
+            {derived ? "Valid through (computed)" : "Valid through"}
+          </span>
+          {derived ? (
+            existing?.expires_on ? (
+              <>
+                <LPill
+                  tone={
+                    mounted && rotationCurrent && isPastLocalDate(existing.expires_on)
+                      ? "crit"
+                      : "neutral"
+                  }
+                  className="w-fit"
+                >
+                  {formatDate(existing.expires_on)}
+                </LPill>
+                <span className="text-caption text-ink-3">
+                  {rotationCurrent
+                    ? "Planning aid, not a determination of regulatory compliance."
+                    : ROTATION_HISTORY_COPY[requirement] ??
+                      // Defensive fallback, not expected to render today:
+                      // rotationCurrent is only ever false for a
+                      // TYPE_SPECIFIC_REQUIREMENTS row with a rotation
+                      // clause, and every such requirement has its own
+                      // entry in ROTATION_HISTORY_COPY (see that map's
+                      // comment). Generic on purpose — it must never
+                      // guess a citation for a requirement it wasn't
+                      // written for.
+                      "Rotation history. This row is not currently judged against the expiry " +
+                        "ladder. Planning aid, not a determination of regulatory compliance."}
+                </span>
+              </>
+            ) : (
+              <span className="text-body-s text-ink-3">Set once completed</span>
+            )
+          ) : (
+            <LInput type="date" name="expires_on" defaultValue={expiresValue} />
+          )}
+        </div>
+
+        <div className="flex flex-col gap-1 pt-4">
+          <button type="submit" disabled={pending} className={lButtonClass({ variant: "outline", size: "sm" })}>
+            {pending ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-1" style={{ maxWidth: "480px" }}>
+        <span className="text-caption text-ink-3">Notes</span>
+        <LInput
+          name="notes"
+          placeholder="Optional"
+          defaultValue={state.values?.notes ?? existing?.notes ?? ""}
+        />
+      </div>
+
+      <div role="alert" aria-live="polite">
+        {state.error ? (
+          <p className="text-caption font-medium text-crit">{state.error}</p>
+        ) : state.saved ? (
+          <p className="text-caption font-medium text-good">Saved.</p>
+        ) : null}
+        {rowError ? <p className="text-caption font-medium text-crit">{rowError}</p> : null}
+      </div>
+
+      {allowDelete && existing ? (
+        <div>
+          <button
+            type="button"
+            disabled={deleting}
+            className={lButtonClass({ variant: "quiet", size: "sm", className: "text-crit" })}
+            onClick={() =>
+              startDelete(async () => {
+                setRowError(null);
+                const result = await deleteOperatorQualification(existing.id, clientId);
+                if (result.error) setRowError(result.error);
+              })
+            }
+          >
+            {deleting ? "Removing…" : "Remove"}
+          </button>
+        </div>
+      ) : null}
+    </form>
   );
 }

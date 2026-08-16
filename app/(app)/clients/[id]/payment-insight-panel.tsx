@@ -1,5 +1,4 @@
-import { Callout, Card, Flex, Table, Text } from "@/components/ui";
-import { ExclamationTriangleIcon } from "@radix-ui/react-icons";
+import { LAlert, LCard, LTable, LTd, LTh } from "@/components/ledger";
 
 import { createClient } from "@/lib/supabase/server";
 import { rowsOf } from "@/lib/supabase/rows";
@@ -37,15 +36,13 @@ const MAX_LEDGER_PAGES = 5;
 
 function FailedState() {
   return (
-    <Callout.Root color="red">
-      <Callout.Icon>
-        <ExclamationTriangleIcon />
-      </Callout.Icon>
-      <Callout.Text>
+    <LAlert tone="crit" className="flex items-start gap-2">
+      <WarningIcon className="mt-0.5 shrink-0 text-crit" />
+      <span>
         Couldn&rsquo;t load this client&rsquo;s payment history. The figures
         are unavailable rather than zero. Try reloading the page.
-      </Callout.Text>
-    </Callout.Root>
+      </span>
+    </LAlert>
   );
 }
 
@@ -59,17 +56,15 @@ export default async function PaymentInsightPanel({
   const supabase = await createClient();
 
   const shell = (body: React.ReactNode) => (
-    <Card>
-      <Text as="div" size="4" weight="bold" mb="1">
-        Payment behavior
-      </Text>
-      <Text as="div" size="2" color="gray" mb="3">
+    <LCard>
+      <div className="mb-1 text-h3 font-semibold">Payment behavior</div>
+      <p className="mb-3 text-body-s text-ink-3">
         How fast this client has paid, and how the current balance ages,
         from your own ledger. Computed from your records only; nothing
         here comes from, or is shared with, anyone else.
-      </Text>
+      </p>
       {body}
-    </Card>
+    </LCard>
   );
 
   // Issued invoices only: a draft was never sent, so it has no
@@ -94,10 +89,10 @@ export default async function PaymentInsightPanel({
 
   if (invoicesResult.rows.length === 0) {
     return shell(
-      <Text size="2" color="gray">
+      <p className="text-body-s text-ink-3">
         No issued invoices yet. Payment history appears once this client
         has been billed.
-      </Text>
+      </p>
     );
   }
   if (invoicesResult.rows.length === INSIGHT_LIMIT) {
@@ -105,16 +100,14 @@ export default async function PaymentInsightPanel({
     // subset would be presented as this client's history while silently
     // ignoring part of it. Refuse, say so.
     return shell(
-      <Callout.Root color="amber">
-        <Callout.Icon>
-          <ExclamationTriangleIcon />
-        </Callout.Icon>
-        <Callout.Text>
+      <LAlert tone="warn" className="flex items-start gap-2">
+        <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+        <span>
           This client has more invoices than this panel can read in one
           pass, so the figures aren&rsquo;t shown. A partial history would
           be presented as the whole one.
-        </Callout.Text>
-      </Callout.Root>
+        </span>
+      </LAlert>
     );
   }
 
@@ -177,74 +170,88 @@ export default async function PaymentInsightPanel({
   const insight = assembly.insight;
 
   return shell(
-    <Flex direction="column" gap="3">
-      <Flex gap="5" wrap="wrap">
-        <Flex direction="column" gap="1">
-          <Text size="1" color="gray">
-            Median days to pay
-          </Text>
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap gap-5">
+        <div className="flex flex-col gap-1">
+          <span className="text-caption text-ink-3">Median days to pay</span>
           {insight.medianDaysToPay === null ? (
-            <Text size="2" color="gray">
-              No invoice paid in full yet
-            </Text>
+            <span className="text-body-s text-ink-3">No invoice paid in full yet</span>
           ) : (
             <>
-              <Text size="4" weight="bold" className="tnum">
+              <span className="tnum-l text-h2 font-bold tracking-tight">
                 {formatMedianDays(insight.medianDaysToPay)}
-              </Text>
-              <Text size="1" color="gray">
+              </span>
+              <span className="text-caption text-ink-3">
                 issue to paid in full, over {insight.settledSampleCount}{" "}
                 {insight.settledSampleCount === 1 ? "invoice" : "invoices"}
-              </Text>
+              </span>
             </>
           )}
-        </Flex>
-        <Flex direction="column" gap="1">
-          <Text size="1" color="gray">
-            Outstanding now
-          </Text>
-          <Text size="4" weight="bold" className="tnum">
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-caption text-ink-3">Outstanding now</span>
+          <span className="tnum-l text-h2 font-bold tracking-tight">
             {formatCents(insight.outstandingCents)}
-          </Text>
-          <Text size="1" color="gray">
+          </span>
+          <span className="text-caption text-ink-3">
             across {insight.openInvoiceCount} open{" "}
             {insight.openInvoiceCount === 1 ? "invoice" : "invoices"}
-          </Text>
-        </Flex>
-      </Flex>
+          </span>
+        </div>
+      </div>
 
       {insight.openInvoiceCount === 0 ? (
-        <Text size="2" color="gray">
-          Nothing outstanding right now.
-        </Text>
+        <p className="text-body-s text-ink-3">Nothing outstanding right now.</p>
       ) : (
-        <Table.Root variant="ghost" size="1">
-          <Table.Header>
-            <Table.Row>
-              <Table.ColumnHeaderCell>Aging</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell justify="end">
-                Balance
-              </Table.ColumnHeaderCell>
-            </Table.Row>
-          </Table.Header>
-          <Table.Body>
-            {AGING_BUCKETS.filter((b) => insight.agingCents[b] !== 0).map(
-              (bucket) => (
-                <Table.Row key={bucket}>
-                  <Table.RowHeaderCell>
-                    {AGING_BUCKET_LABEL[bucket]}
-                  </Table.RowHeaderCell>
-                  <Table.Cell justify="end">
-                    <Text className="tnum">
-                      {formatCents(insight.agingCents[bucket])}
-                    </Text>
-                  </Table.Cell>
-                </Table.Row>
-              )
-            )}
-          </Table.Body>
-        </Table.Root>
+        <LTable>
+          <caption>
+            <span className="sr-only">Aging</span>
+          </caption>
+          <thead>
+            <tr>
+              <LTh>Aging</LTh>
+              <LTh numeric>Balance</LTh>
+            </tr>
+          </thead>
+          <tbody>
+            {AGING_BUCKETS.filter((b) => insight.agingCents[b] !== 0).map((bucket) => (
+              <tr key={bucket}>
+                <th
+                  scope="row"
+                  className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
+                >
+                  {AGING_BUCKET_LABEL[bucket]}
+                </th>
+                <LTd numeric>{formatCents(insight.agingCents[bucket])}</LTd>
+              </tr>
+            ))}
+          </tbody>
+        </LTable>
       )}
-    </Flex>
+    </div>
+  );
+}
+
+/* ── Inline icon ───────────────────────────────────────────────────────
+ * Ledger screens carry no icon dependency — see components/ledger's own
+ * header rule. */
+function WarningIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M8 2 14.25 13H1.75Z" />
+      <path d="M8 6.25v3" />
+      <circle cx="8" cy="11.25" r="0.4" fill="currentColor" stroke="none" />
+    </svg>
   );
 }

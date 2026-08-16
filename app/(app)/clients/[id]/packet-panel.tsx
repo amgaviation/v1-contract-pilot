@@ -1,18 +1,9 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import {
-  AlertDialog,
-  Button,
-  Callout,
-  Card,
-  Checkbox,
-  Flex,
-  Heading,
-  Select,
-  Text,
-  TextField,
-} from "@/components/ui";
+import { LAlert, LCard, lButtonClass } from "@/components/ledger";
+import { LCheckbox, LInput, LSelect } from "@/components/ledger/forms";
+import { LConfirmDialog } from "@/components/ledger/dialog";
 import { createPacketShare, revokePacketShare, type PacketState } from "../packet-actions";
 
 /**
@@ -76,6 +67,7 @@ export default function PacketPanel({
   const [revokeState, revokeAction, revoking] = useActionState(revokePacketShare, initial);
   const [days, setDays] = useState("30");
   const [copied, setCopied] = useState(false);
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
 
   const pending = creating || revoking;
 
@@ -121,72 +113,63 @@ export default function PacketPanel({
   }, [token]);
 
   return (
-    <Card size="3">
-      <Heading size="4" mb="1">
-        Paperwork for {clientName}
-      </Heading>
-      <Text as="p" size="2" color="gray" mb="3">
+    <LCard>
+      <h2 className="mb-1 text-h3 font-semibold">Paperwork for {clientName}</h2>
+      <p className="mb-3 text-body-s text-ink-2">
         One link with the documents this client asked for. It expires on its
         own, and you can revoke it at any time.
-      </Text>
+      </p>
 
       {documentsLoadError ? (
-        <Callout.Root color="red" size="1">
-          <Callout.Text>
-            Couldn&rsquo;t load this client&rsquo;s documents, so nothing is
-            offered below. This is not a statement that none are on
-            file. Reload before assuming there&rsquo;s nothing to send.
-          </Callout.Text>
-        </Callout.Root>
+        <LAlert tone="crit">
+          Couldn&rsquo;t load this client&rsquo;s documents, so nothing is
+          offered below. This is not a statement that none are on
+          file. Reload before assuming there&rsquo;s nothing to send.
+        </LAlert>
       ) : documents.length === 0 ? (
-        <Text size="2" color="gray">
+        <p className="text-body-s text-ink-2">
           Nothing to send yet. Add a W-9, a certificate of insurance or your
           day-rate agreement under Documents first.
-        </Text>
+        </p>
       ) : (
         <form action={formAction}>
           <input type="hidden" name="client_id" value={clientId} />
           <input type="hidden" name="days_valid" value={days} />
 
-          <Flex direction="column" gap="2" mb="3">
+          <div className="mb-3 flex flex-col gap-2">
             {documents.map((doc) => (
-              <Text as="label" size="2" key={doc.id}>
-                <Flex gap="2" align="center">
-                  <Checkbox name={`doc:${doc.id}`} />
-                  {doc.label}
-                  <Text size="1" color="gray">
-                    {doc.expiresOn ? `expires ${doc.expiresOn}` : doc.kind}
-                  </Text>
-                </Flex>
-              </Text>
+              <label key={doc.id} className="flex items-center gap-2 text-body-s text-ink">
+                <LCheckbox name={`doc:${doc.id}`} />
+                {doc.label}
+                <span className="text-caption text-ink-3">
+                  {doc.expiresOn ? `expires ${doc.expiresOn}` : doc.kind}
+                </span>
+              </label>
             ))}
-          </Flex>
+          </div>
 
-          <Flex gap="3" align="end" wrap="wrap">
-            <Flex direction="column" gap="1">
-              <Text as="label" size="2" weight="medium" id="packet-days-label">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1">
+              <span id="packet-days-label" className="text-body-s font-medium text-ink">
                 Link works for
-              </Text>
-              <Select.Root value={days} onValueChange={setDays}>
-                <Select.Trigger aria-labelledby="packet-days-label" />
-                <Select.Content>
-                  {DAY_CHOICES.map((d) => (
-                    <Select.Item key={d} value={d}>
-                      {`${d} days`}
-                    </Select.Item>
-                  ))}
-                </Select.Content>
-              </Select.Root>
-            </Flex>
-            <Button type="submit" disabled={pending}>
+              </span>
+              <LSelect aria-labelledby="packet-days-label" value={days} onChange={(e) => setDays(e.target.value)}>
+                {DAY_CHOICES.map((d) => (
+                  <option key={d} value={d}>
+                    {`${d} days`}
+                  </option>
+                ))}
+              </LSelect>
+            </div>
+            <button type="submit" disabled={pending} className={lButtonClass({ variant: "primary" })}>
               {creating ? "Creating…" : token ? "Replace the link" : "Create the link"}
-            </Button>
-          </Flex>
+            </button>
+          </div>
 
           {state.error ? (
-            <Callout.Root color="red" mt="3" size="1">
-              <Callout.Text>{state.error}</Callout.Text>
-            </Callout.Root>
+            <LAlert tone="crit" className="mt-3">
+              {state.error}
+            </LAlert>
           ) : null}
         </form>
       )}
@@ -196,34 +179,30 @@ export default function PacketPanel({
           is talking about has actually been cleared off screen, not for
           the whole remaining lifetime of the mount. */}
       {!url && revokeState.revoked ? (
-        <Text as="p" size="1" color="gray" mt="2">
-          The previous link was revoked.
-        </Text>
+        <p className="mt-2 text-caption text-ink-3">The previous link was revoked.</p>
       ) : null}
 
       {/* Also gated on `!url`: a freshly created token this render (state.
           token) is the current truth regardless of whether the earlier
           server-side lookup failed, so this must not cover that case. */}
       {existingLoadError && !url ? (
-        <Callout.Root color="red" size="1" mt="2">
-          <Callout.Text>
-            Couldn&rsquo;t check whether a live link already exists for{" "}
-            {clientName}. This is not a statement that none is out.
-            Reload before creating a new one.
-          </Callout.Text>
-        </Callout.Root>
+        <LAlert tone="crit" className="mt-2">
+          Couldn&rsquo;t check whether a live link already exists for{" "}
+          {clientName}. This is not a statement that none is out.
+          Reload before creating a new one.
+        </LAlert>
       ) : null}
 
       {url ? (
-        <Flex direction="column" gap="2" mt="4">
-          <Text size="2" weight="medium">
+        <div className="mt-4 flex flex-col gap-2">
+          <span className="text-body-s font-medium text-ink">
             {state.token ? "Here's the link. Send it to them." : "The live link"}
-          </Text>
-          <Flex gap="2" wrap="wrap" align="center">
-            <TextField.Root value={url} readOnly aria-label="Packet link" style={undefined} />
-            <Button
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <LInput value={url} readOnly aria-label="Packet link" />
+            <button
               type="button"
-              variant="soft"
+              className={lButtonClass({ variant: "outline" })}
               onClick={() => {
                 void navigator.clipboard?.writeText(url).then(
                   () => setCopied(true),
@@ -234,54 +213,51 @@ export default function PacketPanel({
               }}
             >
               {copied ? "Copied" : "Copy"}
-            </Button>
-          </Flex>
+            </button>
+          </div>
           {existing?.expiresAt ? (
-            <Text size="1" color="gray">
+            <p className="text-caption text-ink-3">
               {`Stops working ${existing.expiresAt}. Replacing the link makes the old one dead immediately.`}
-            </Text>
+            </p>
           ) : null}
           {/* CONFIRMED, same reasoning as SharePanel's Revoke: clicking this
               breaks a link the pilot may already have emailed, and the
               client's browser tab gives no warning that it is about to
               404. An unconfirmed one-click revoke on a passport/insurance
               link is the wrong shape. */}
-          <AlertDialog.Root>
-            <AlertDialog.Trigger>
-              <Button type="button" variant="ghost" size="1" color="red" disabled={pending}>
-                {revoking ? "Revoking…" : "Revoke this link"}
-              </Button>
-            </AlertDialog.Trigger>
-            <AlertDialog.Content maxWidth="420px">
-              <AlertDialog.Title>Revoke this client link?</AlertDialog.Title>
-              <AlertDialog.Description size="2">
-                The link stops working immediately. If your client has it bookmarked or in
-                their email, it will 404 for them. Create a new one if they still need these
-                documents.
-              </AlertDialog.Description>
-              <Flex gap="3" mt="4" justify="end">
-                <AlertDialog.Cancel>
-                  <Button variant="soft" color="gray">
-                    Cancel
-                  </Button>
-                </AlertDialog.Cancel>
-                <AlertDialog.Action>
-                  <form action={revokeAction}>
-                    <input type="hidden" name="client_id" value={clientId} />
-                    {/* Echoes back exactly the token this render is
-                        showing, so revokePacketShare's returned
-                        revokedToken can be compared against a later
-                        render's own token — see the `token` derivation
-                        above and packet-actions.ts's comment on it. */}
-                    <input type="hidden" name="revoking_token" value={token ?? ""} />
-                    <Button type="submit" variant="solid" color="red" disabled={pending}>
-                      Revoke
-                    </Button>
-                  </form>
-                </AlertDialog.Action>
-              </Flex>
-            </AlertDialog.Content>
-          </AlertDialog.Root>
+          <div>
+            <button
+              type="button"
+              disabled={pending}
+              className={lButtonClass({ variant: "quiet", size: "sm", className: "text-crit" })}
+              onClick={() => setConfirmRevoke(true)}
+            >
+              {revoking ? "Revoking…" : "Revoke this link"}
+            </button>
+          </div>
+          <LConfirmDialog
+            open={confirmRevoke}
+            onOpenChange={setConfirmRevoke}
+            title="Revoke this client link?"
+            description="The link stops working immediately. If your client has it bookmarked or in their email, it will 404 for them. Create a new one if they still need these documents."
+            confirmLabel="Revoke"
+            pending={revoking}
+            onConfirm={() => {
+              // Same field values a submitted <form action={revokeAction}>
+              // would have posted (client_id, revoking_token) — dispatched
+              // directly since the confirm now lives in a dialog rather
+              // than wrapping its own <form>. Echoes back exactly the
+              // token this render is showing, so revokePacketShare's
+              // returned revokedToken can be compared against a later
+              // render's own token — see the `token` derivation above and
+              // packet-actions.ts's comment on it.
+              const formData = new FormData();
+              formData.set("client_id", clientId);
+              formData.set("revoking_token", token ?? "");
+              revokeAction(formData);
+              setConfirmRevoke(false);
+            }}
+          />
           {/* Scoped to the token this failed revoke was actually about, the
               same way the success path is scoped above — otherwise a
               revoke that failed on an old token would keep showing this
@@ -294,12 +270,10 @@ export default function PacketPanel({
               error" — the same fail-closed reasoning as the `token`
               derivation above. */}
           {revokeState.error && (revokeState.revokedToken ?? token) === token ? (
-            <Callout.Root color="red" size="1">
-              <Callout.Text>{revokeState.error}</Callout.Text>
-            </Callout.Root>
+            <LAlert tone="crit">{revokeState.error}</LAlert>
           ) : null}
-        </Flex>
+        </div>
       ) : null}
-    </Card>
+    </LCard>
   );
 }
