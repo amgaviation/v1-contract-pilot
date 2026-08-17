@@ -113,6 +113,12 @@ export type Database = {
           // applied to this account. Webhook/service-role-writable only;
           // the concurrent-event ordering guard.
           last_billing_event_at: string;
+          // Added by 20260817090000_comp_account_demo_billing.sql — a
+          // UI-only cancel/resume toggle for comped (stripe_customer_id IS
+          // NULL) demo accounts. Service-role-writable only, same as every
+          // other billing column; never read by the webhook or by
+          // accountIsReadOnly(). See app/(app)/settings/billing/demo-actions.ts.
+          demo_cancel_at_period_end: boolean;
           // Added by 20260813130000_payment_reminders_and_late_fees.sql —
           // when the due-reminder pass last completed for this account,
           // scheduled or run by hand. NULL = never run. Operational, not
@@ -175,6 +181,7 @@ export type Database = {
           connect_account_id?: string | null;
           invoice_prefix?: string;
           last_billing_event_at?: string;
+          demo_cancel_at_period_end?: boolean;
           reminders_last_run_at?: string | null;
           onboarding_complete?: boolean;
           dba_name?: string | null;
@@ -234,6 +241,7 @@ export type Database = {
           connect_account_id?: string | null;
           invoice_prefix?: string;
           last_billing_event_at?: string;
+          demo_cancel_at_period_end?: boolean;
           reminders_last_run_at?: string | null;
           onboarding_complete?: boolean;
           dba_name?: string | null;

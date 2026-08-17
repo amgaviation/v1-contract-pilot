@@ -43,6 +43,7 @@ import {
   ResubscribeButtons,
   SwitchIntervalButton,
 } from "./billing-buttons";
+import { DemoCancelResumeButton, DemoChangePlanButton } from "./demo-buttons";
 
 /**
  * PLAN MANAGEMENT — the shared body of the billing surface, rendered from
@@ -276,12 +277,15 @@ export default async function BillingPanel({ changed, state }: BillingPanelProps
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-h2 font-bold tracking-tight">{TIER_DISPLAY[tier].name}</h2>
             <LPill tone={toneToPillTone(status.tone)}>{status.label}</LPill>
+            {isComped ? <LPill tone="neutral">Demo</LPill> : null}
             {facts?.interval ? (
               <LPill tone="neutral">
                 {facts.interval === "monthly" ? "Monthly" : "Annual"} billing
               </LPill>
             ) : null}
-            {facts?.cancelAtPeriodEnd ? <LPill tone="warn">Cancels</LPill> : null}
+            {facts?.cancelAtPeriodEnd || (isComped && account.demo_cancel_at_period_end) ? (
+              <LPill tone="warn">Cancels</LPill>
+            ) : null}
           </div>
 
           <p className="text-body-s text-ink-2">{status.meaning}</p>
@@ -294,8 +298,9 @@ export default async function BillingPanel({ changed, state }: BillingPanelProps
 
           {isComped ? (
             <p className="text-body-s text-ink-2">
-              This account isn&rsquo;t billed through Stripe. Its plan is managed for
-              you, so there&rsquo;s nothing to change here.
+              This account isn&rsquo;t billed through Stripe — it&rsquo;s a demo of what a
+              real subscriber sees. Switching plans and cancelling/resuming below work
+              instantly and never touch Stripe or create a charge.
             </p>
           ) : (
             <>
@@ -388,8 +393,12 @@ export default async function BillingPanel({ changed, state }: BillingPanelProps
         </div>
       </LCard>
 
-      {!isComped ? (
-        <>
+      {/* Plan cards, the feature table and the downgrade note all render
+          for a comped/demo account too — that IS the demo. Only the
+          receipts/payment-details section below is real-Stripe-only (a
+          comped account has no invoices and no card on file, so there is
+          nothing there to show even in simulation). */}
+      <>
           {/* ------------------------------------------------ plan cards */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             {PLAN_TIERS.map((planTier) => {
@@ -453,7 +462,22 @@ export default async function BillingPanel({ changed, state }: BillingPanelProps
                       ))}
                     </div>
                     <div className="mt-2 flex flex-col gap-2">
-                      {needsResubscribe ? (
+                      {isComped ? (
+                        // DEMO PATH. No interval, no resubscribe concept —
+                        // a comped account has no Stripe subscription to be
+                        // monthly/annual about or to let lapse. One button,
+                        // writing plan_tier directly through demo-actions.ts
+                        // (service-role, re-verified stripe_customer_id IS
+                        // NULL server-side); see that file's header.
+                        isCurrent ? null : (
+                          <DemoChangePlanButton
+                            tier={planTier}
+                            direction={direction}
+                            label={`${direction} (demo)`}
+                            disabled={!canEdit}
+                          />
+                        )
+                      ) : needsResubscribe ? (
                         // No live subscription to switch or update — every
                         // card, including the one matching the tier on
                         // record, offers a fresh Checkout session instead.
@@ -557,7 +581,25 @@ export default async function BillingPanel({ changed, state }: BillingPanelProps
             </div>
           </LCard>
 
-          {/* --------------------------------------- receipts and payment */}
+          {/* ------------------------------------ cancel/resume, demo path */}
+          {isComped ? (
+            <LCard>
+              <div className="flex flex-col gap-2">
+                <h3 className="text-h3 font-semibold">
+                  {account.demo_cancel_at_period_end ? "Resume" : "Cancel"} (demo)
+                </h3>
+                <p className="text-body-s text-ink-2">
+                  {account.demo_cancel_at_period_end
+                    ? "This demo account is set to show as cancelled. Resuming clears that — no Stripe subscription exists to actually renew or lapse."
+                    : "This account isn't billed through Stripe, so nothing is actually charged or cancelled here — this flips the same \"Cancels\" state a real subscriber's cancellation shows, so the screen can be demoed end to end."}
+                </p>
+                <DemoCancelResumeButton
+                  cancelling={account.demo_cancel_at_period_end}
+                  disabled={!canEdit}
+                />
+              </div>
+            </LCard>
+          ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <LCard>
               <div className="flex flex-col gap-2">
@@ -677,6 +719,7 @@ export default async function BillingPanel({ changed, state }: BillingPanelProps
               </div>
             </LCard>
           </div>
+          )}
 
           <p className="text-caption text-ink-3">
             Changing what your own clients pay you is a different thing entirely.
@@ -686,8 +729,7 @@ export default async function BillingPanel({ changed, state }: BillingPanelProps
             </NextLink>
             , under your business details.
           </p>
-        </>
-      ) : null}
+      </>
     </>
   );
 }
