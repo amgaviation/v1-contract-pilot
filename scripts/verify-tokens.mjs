@@ -145,6 +145,14 @@ const EXEMPT_FILES = new Set([
   join(ROOT, "lib", "pilot-history-pdf.tsx"),
   join(ROOT, "lib", "estimate-pdf.tsx"),
   join(ROOT, "lib", "reimbursables-packet-pdf.tsx"),
+  // Same class of exemption as the PDF renderers above, for the same
+  // reason: this file's GET handler returns a hand-built HTML string
+  // (an interstitial that has to survive a mail-scanner GET without
+  // spending a one-time auth token — see its own header comment), not a
+  // React tree Next's page pipeline renders. A Route Handler response
+  // never reaches app/design/ledger.css's compiled, hashed stylesheet, so
+  // there is no Tailwind utility or var(--...) token for it to use.
+  join(ROOT, "app", "auth", "confirm", "route.ts"),
 ]);
 const EXEMPT_DIRS = [];
 

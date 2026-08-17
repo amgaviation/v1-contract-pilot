@@ -33,6 +33,62 @@ authorization relationship, not a financial one.
 
 ---
 
+## 0. Supabase Auth — stop confirmation/reset links from dying on arrival
+
+**Symptom:** a signup confirmation link (or its resend, or a password-reset
+link) fails immediately — often within seconds of being sent — with "that
+link has expired," no matter how fast the pilot clicks it.
+
+**Cause:** by default, Supabase's "Confirm signup" (and other auth) email
+templates build the link from `{{ .ConfirmationURL }}`, which points
+straight at `https://<project>.supabase.co/auth/v1/verify?token=...`. That
+token is single-use, and it gets spent — silently, before the pilot ever
+sees the email — the moment anything issues a plain GET against it. That
+"anything" is routine: corporate mail security scanners and some email
+clients' own "safe links" prefetchers fetch every URL in an inbound email to
+check it for malware, seconds after it arrives. The pilot's own click is
+then the *second* use of an already-spent token, and Supabase reports it the
+same way it reports a genuinely expired one. Confirmed against this
+project's own Supabase auth logs: repeated `403 "Email link is invalid or
+has expired"` responses on `/verify`, seconds after the confirmation mail
+was sent, well before a human could plausibly have clicked it. Supabase's
+own troubleshooting doc names this exact failure: "OTP Verification
+Failures: 'token has expired' or 'otp_expired' errors" → "The root cause:
+Email prefetching."
+
+`app/auth/confirm/route.ts` already does its half of the fix: it no longer
+verifies a token on GET (the request a prefetcher makes). GET only renders a
+page asking for one real click; only the POST that click sends actually
+spends the token. But that only protects a link that already points at
+**this app's own** `/auth/confirm` route — a link still built from
+`{{ .ConfirmationURL }}` points at Supabase's hosted `/verify` endpoint
+instead, and is spent there, before this app is ever reached. The
+companion step below is what makes the fix reach the actual email:
+
+1. In the Supabase dashboard, go to **Authentication → Email Templates**.
+2. For **Confirm signup** (and, if used, **Magic Link**), replace the link
+   in the template body — wherever it currently reads
+   `{{ .ConfirmationURL }}` — with one built from `{{ .RedirectTo }}` (the
+   exact `emailRedirectTo` this app already passes — e.g.
+   `https://v1.amgaviationgroup.com/auth/confirm?next=%2Fwelcome`, from
+   `signup/actions.ts`) plus `{{ .TokenHash }}`:
+
+   ```
+   {{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=signup
+   ```
+
+   (`type=magiclink` for the Magic Link template, if that one is in use.)
+   `{{ .RedirectTo }}` — not `{{ .SiteURL }}` — is what carries this app's
+   own `?next=...`, so this one substitution is what keeps a pilot landing
+   wherever `next` said (`/welcome` after signup, `/settings` after an
+   email change) instead of falling back to the project's bare Site URL.
+3. **Reset Password** needs the same substitution if it still uses
+   `{{ .ConfirmationURL }}` — check it the same way, with `type=recovery`.
+4. Save. No code change or redeploy is needed — the templates take effect
+   on the next email sent.
+
+---
+
 ## 1. Resend — sending invoices by email
 
 Two variables. Both must be set before the product offers "Email it to
