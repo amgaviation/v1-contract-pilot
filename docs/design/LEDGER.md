@@ -49,10 +49,51 @@ Contrast: every ink-on-ground pair above holds ≥ 4.5:1 in its own theme
 7.4:1; accent-ink on accent ≥ 4.5:1 both themes. Night is a designed palette
 (desaturated accent, lifted semantic hues), not an inversion.
 
-Type: **Schibsted Grotesk**, one variable family (vendored,
-`lib/font-files/schibsted-grotesk-variable.woff2`, weights 400–700), scale
-`caption 12 / body-s 13.5 / body 15 / lead 17 / h3 20 / h2 24 / h1 30 /
-figure 28`. Figures set `tracking-tight` + `tnum-l`.
+### The brand ground — signed-out surface only
+
+| Role | Value | Utility |
+|---|---|---|
+| Brand (navy) | `#0B1F33` | `bg-brand` |
+| Brand 2 (panel on navy) | `#13314F` | `bg-brand-2` |
+| Brand hairline | `#1E3A57` | `border-brand-hair` |
+| Brand ink | `#FFFFFF` | `text-brand-ink` |
+| Brand ink 2 | `#9FB3C8` | `text-brand-ink-2` (7.4:1 on brand) |
+| Brand accent | `#5B9BFF` | `text-brand-accent` (6.0:1 on brand) |
+
+The navy is not new: it is what every file in `public/brand/` is already
+drawn on, promoted from artwork to a token so the marketing and auth
+surfaces can stand on the brand. **These six do not flip in the night
+block**, deliberately — they are brand constants in the same sense as the
+logo values in `app/globals.css`, and the presentation lockup must look
+like itself whichever appearance a tenant runs. `LButton`'s `onBrand` and
+`onBrandOutline` variants exist for this ground because the indigo accent
+is a 1.6:1 smudge on it.
+
+**Nothing in `app/(app)` may use them.** The restraint rule is unchanged
+for the product; it was never an argument for a front door with no
+identity.
+
+### Type
+
+Three families, three jobs, all vendored and all SIL OFL:
+
+| Token | Family | Job |
+|---|---|---|
+| `font-ledger` | **Schibsted Grotesk** 400–700 | The interface. Every product screen, all body copy, all figures. |
+| `font-display` | **Archivo**, width pinned to 112, 400–800 | Headlines on the signed-out surface. The semi-expanded cut is what gives it the signage read. |
+| `font-mono` | **Azeret Mono** 400–700 | Identifiers: tail numbers, airport identifiers, step numbers, eyebrows. |
+
+Scale `caption 12 / body-s 13.5 / body 15 / lead 17 / h3 20 / h2 24 /
+h1 30 / figure 28`, plus two fluid display sizes for the signed-out surface
+only: `display` (34→60px) and `display-s` (26→36px). Figures set
+`tracking-tight` + `tnum-l`.
+
+**Vendored from the google/fonts repository, never the Google CDN.** The
+CDN strips OpenType features from the subsets it serves, and this product
+reaches for `tnum` on every money column — Schibsted's digits are strongly
+proportional by default (the `1` is 703 units against the `0`'s 1252), so a
+face whose `tnum` was dropped in transit would misalign every invoice table
+with nothing failing anywhere. See `lib/font-files/README.md` for the check.
 
 Shape: `rounded-control` (8px) on inputs/buttons, `rounded-card` (12px) on
 panels, full pills for status. Elevation: `shadow-card` resting,

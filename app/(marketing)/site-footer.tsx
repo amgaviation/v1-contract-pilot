@@ -1,5 +1,4 @@
 import NextLink from "next/link";
-import { LSeparator } from "@/components/ledger";
 import { BRAND } from "@/lib/brand";
 
 /**
@@ -9,18 +8,19 @@ import { BRAND } from "@/lib/brand";
  * "AMG" — not the header above, not a page body — matching the rule the
  * app layout already follows.
  *
- * LEDGER PASS: the gray-2 band the old footer sat on (lib/surface-style.ts
- * GRAY_BAND) is `bg-sunk` here — Ledger's own quiet-fill token, the same
- * one the section rhythm below uses, so the footer closes the page as one
- * more band of the canvas/sunk system rather than its own third gray.
+ * ON THE NAVY, CONTINUOUS WITH THE PAGE'S CLOSING BAND. This footer used
+ * to sit on `bg-sunk`, which made the bottom of the landing page read as
+ * navy call-to-action, then a grey strip, then nothing. It is now the same
+ * --ledger-brand ground as that band, separated by a brand hairline
+ * instead of a change of colour, so the page ends on one dark base. The
+ * mark is white.svg for the same reason the header's is: it is the kit's
+ * own inversion for a navy ground, not a recolour.
  *
  * The attribution is real rendered text sourced from lib/brand.ts, not
  * baked into an image: public/brand/expanded.svg carries the same words
  * inside its artwork, but an SVG's text isn't selectable or reachable by a
  * screen reader, and the house rule is that this string comes from the
- * constant, not from a picture of the constant. The mark next to it is
- * navy.svg (the bare V1 shape, no wordtext) on this light footer ground —
- * the same file site-header.tsx uses, for the same reason.
+ * constant, not from a picture of the constant.
  */
 const COLUMNS: { heading: string; links: { href: string; label: string }[] }[] = [
   {
@@ -48,28 +48,28 @@ const COLUMNS: { heading: string; links: { href: string; label: string }[] }[] =
 
 export default function SiteFooter() {
   return (
-    <footer className="border-t border-hair bg-sunk">
+    <footer className="border-t border-brand-hair bg-brand text-brand-ink">
       <div className="mx-auto max-w-6xl px-5 sm:px-6">
-        <div className="flex flex-col gap-5 py-6">
+        <div className="flex flex-col gap-6 py-8">
           <nav
             aria-label="Footer"
-            className="grid grid-cols-1 gap-5 sm:grid-cols-4"
+            className="grid grid-cols-1 gap-6 sm:grid-cols-4"
           >
             <div className="flex flex-col items-start gap-2">
-              <img src="/brand/navy.svg" alt="" height={16} width={28} />
-              <p className="text-caption text-ink-3">{BRAND.tagline}</p>
+              <img src="/brand/white.svg" alt="" height={16} width={28} />
+              <p className="text-caption text-brand-ink-2">{BRAND.tagline}</p>
             </div>
 
             {COLUMNS.map((column) => (
               <div key={column.heading} className="flex flex-col gap-2">
-                <span className="text-caption font-medium text-ink-3">
-                  {column.heading.toUpperCase()}
+                <span className="font-mono text-caption font-medium uppercase tracking-widest text-brand-accent">
+                  {column.heading}
                 </span>
                 {column.links.map((link) => (
                   <NextLink
                     key={link.href}
                     href={link.href}
-                    className="text-caption text-ink-3 hover:text-ink"
+                    className="text-caption text-brand-ink-2 hover:text-brand-ink"
                   >
                     {link.label}
                   </NextLink>
@@ -78,9 +78,9 @@ export default function SiteFooter() {
             ))}
           </nav>
 
-          <LSeparator className="my-0" />
+          <hr className="border-0 border-t border-brand-hair" />
 
-          <p className="text-caption text-ink-3">{BRAND.attribution}</p>
+          <p className="text-caption text-brand-ink-2">{BRAND.attribution}</p>
         </div>
       </div>
     </footer>

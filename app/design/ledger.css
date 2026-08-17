@@ -89,8 +89,38 @@
      diverges from crit in the night block below. */
   --ledger-crit-fill: #b03434;
 
+  /* ── BRAND GROUND ─────────────────────────────────────────────────────
+     The navy every file in public/brand/ is drawn on, promoted from
+     artwork-only to a real ground the signed-out surface can stand on.
+
+     These do NOT flip in the night block below, and that is the point:
+     they are brand constants in the same sense as app/globals.css's logo
+     values, not theme steps. A navy panel with the white mark on it is the
+     brand's own presentation lockup (public/brand/presentation.svg), and
+     it must look like itself whichever appearance a visitor's tenant is
+     set to. Ledger's restraint rule still governs the AUTHENTICATED
+     product — nothing in app/(app) may reach for these; they exist for the
+     marketing and auth surfaces, where having an identity is the job.
+
+     brand-2 is the panel step for a card sitting ON the navy, and
+     brand-hair the line between them. brand-ink-2 measures 7.4:1 on brand
+     and brand-accent 6.0:1, both clear of the 4.5:1 floor the rest of this
+     sheet holds itself to. brand-accent is a tint of the logo bug
+     (#036bfc, app/globals.css) lifted until it reads as text on navy —
+     the trademark value itself is never restyled, only descended from. */
+  --ledger-brand: #0b1f33;
+  --ledger-brand-2: #13314f;
+  --ledger-brand-hair: #1e3a57;
+  --ledger-brand-ink: #ffffff;
+  --ledger-brand-ink-2: #9fb3c8;
+  --ledger-brand-accent: #5b9bff;
+
   --ledger-shadow-card: 0 1px 2px rgba(20, 24, 22, 0.04);
   --ledger-shadow-raised: 0 1px 3px rgba(20, 24, 22, 0.07), 0 4px 12px rgba(20, 24, 22, 0.05);
+  /* Lift for a light card floating on the navy ground. Deeper than
+     shadow-card because it is read against a dark field, where a 4%
+     shadow is invisible. */
+  --ledger-shadow-float: 0 2px 6px rgba(4, 12, 20, 0.28), 0 18px 40px rgba(4, 12, 20, 0.32);
 }
 
 [data-appearance="dark"] {
@@ -123,8 +153,14 @@
      figures read on the dark crit-soft ground. */
   --ledger-crit-fill: #b35a56;
 
+  /* No --ledger-brand-* here on purpose. The brand ground is a constant,
+     not a theme step: it inherits from :root into night unchanged, so the
+     navy panel and its white mark render identically in both appearances,
+     exactly as the logo colours in app/globals.css do. */
+
   --ledger-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
   --ledger-shadow-raised: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+  --ledger-shadow-float: 0 2px 6px rgba(0, 0, 0, 0.45), 0 18px 40px rgba(0, 0, 0, 0.5);
 }
 
 @theme inline {
@@ -156,12 +192,32 @@
   --color-crit-soft: var(--ledger-crit-soft);
   --color-crit-fill: var(--ledger-crit-fill);
 
+  --color-brand: var(--ledger-brand);
+  --color-brand-2: var(--ledger-brand-2);
+  --color-brand-hair: var(--ledger-brand-hair);
+  --color-brand-ink: var(--ledger-brand-ink);
+  --color-brand-ink-2: var(--ledger-brand-ink-2);
+  --color-brand-accent: var(--ledger-brand-accent);
+
   --color-white: #ffffff;
   --color-transparent: transparent;
 
-  /* One family, three working weights. Figures always tabular via the
-     `tnum-l` utility below. */
+  /* THREE FAMILIES, THREE JOBS — see lib/fonts.ts for why each exists and
+     why all three are vendored from upstream rather than the Google CDN.
+
+     `ledger` is the interface: every screen in app/(app), all body text
+     everywhere, and all figures (tabular via the `tnum-l` utility below).
+     Unchanged, and it stays the default — nothing in the authenticated
+     product renders in the other two.
+
+     `display` and `mono` are the signed-out surface's, and confined to it
+     by the same reasoning as the --ledger-brand-* tokens: a marketing page
+     needs an identity, a data-entry screen needs to be quiet. */
   --font-ledger: var(--font-schibsted), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-archivo), var(--font-schibsted), ui-sans-serif,
+    system-ui, sans-serif;
+  --font-mono: var(--font-azeret-mono), ui-monospace, SFMono-Regular, Menlo,
+    monospace;
 
   /* Type scale — designed dense enough that no 90% field-scaling hack is
      needed: control text is 15px, which also clears iOS Safari's 16px
@@ -197,11 +253,40 @@
   --text-figure--line-height: 2rem;
   --text-figure--letter-spacing: -0.01em;
 
+  /* ── DISPLAY SIZES — the signed-out surface only ──────────────────────
+     The scale above stops at 30px because it was drawn for the PRODUCT,
+     where h1 is a screen title sitting above dense tables and anything
+     larger would shout at a pilot doing data entry. A landing hero has the
+     opposite job, and rendering it at the same 30px is most of why the
+     front door read as flat: the largest thing on the page was the size of
+     an ordinary panel heading, so the eye had nowhere to land.
+
+     Fluid rather than a breakpoint step, because the rest of this sheet is
+     deliberately fixed-size and adding responsive variants of one token
+     would invite them everywhere. clamp() keeps the page honest at 320px
+     (the narrowest column layout:verify tests) without a media query:
+     display resolves to 34px there and 60px past ~1180px, display-s to
+     26px and 36px. Line-height is unitless so it tracks the interpolated
+     size instead of pinning to one end of it.
+
+     Tracking is lighter than the rule the scale above follows (tighten as
+     size climbs) because these two sizes are set in --font-display, and
+     Archivo is pinned to width 112. A semi-expanded face is already
+     carrying its own width; pulling -0.028em through it closes the
+     counters and undoes the reason it was chosen. */
+  --text-display: clamp(2.125rem, 1.35rem + 3.9vw, 3.75rem);
+  --text-display--line-height: 1.05;
+  --text-display--letter-spacing: -0.018em;
+  --text-display-s: clamp(1.625rem, 1.28rem + 1.7vw, 2.25rem);
+  --text-display-s--line-height: 1.16;
+  --text-display-s--letter-spacing: -0.012em;
+
   --radius-control: 0.5rem;
   --radius-card: 0.75rem;
 
   --shadow-card: var(--ledger-shadow-card);
   --shadow-raised: var(--ledger-shadow-raised);
+  --shadow-float: var(--ledger-shadow-float);
 }
 
 @layer utilities {

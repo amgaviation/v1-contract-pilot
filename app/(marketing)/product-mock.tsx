@@ -95,6 +95,10 @@ const EXPIRATIONS: { label: string; date: string; tone: "warn" | "neutral"; badg
 export default function ProductMock() {
   return (
     <div
+      // Marks this subtree as illustrative data rather than copy, so the
+      // word-budget count docs/MARKETING.md §6 records can be taken
+      // mechanically instead of tallied by hand. Nothing styles off it.
+      data-mock="product"
       className="overflow-x-auto [overscroll-behavior-inline:contain] [-webkit-overflow-scrolling:touch]"
     >
       <div className="min-w-[42rem] max-w-full">
@@ -146,7 +150,12 @@ export default function ProductMock() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                {/* 2x2, never 4-across. The `md:grid-cols-4` this used to carry keyed
+                    off the PAGE's viewport, not this mock's container, so on a wide
+                    screen it put four cards inside the hero's 700px track and clipped
+                    the figures ("$146,900.00" lost its last digit). Two-up is the
+                    honest fit for the width this mock actually gets. */}
+                <div className="grid grid-cols-2 gap-3">
                   {KPIS.map((kpi) => (
                     <div key={kpi.label} className="rounded-card border border-hair bg-card p-3">
                       <div className="flex flex-col gap-1">
@@ -175,13 +184,14 @@ export default function ProductMock() {
                               <span className="text-caption font-medium text-ink">
                                 {trip.client}
                               </span>
-                              <span className="text-caption text-ink-3">{trip.route}</span>
+                              <span className="font-mono text-caption text-ink-3">{trip.route}</span>
                               <span className="text-caption text-ink-3">
-                                {trip.tailNumber} · {trip.days} days ·{" "}
+                                <span className="font-mono">{trip.tailNumber}</span>{" "}
+                                · {trip.days} days ·{" "}
                                 {formatDateRange(trip.startsOn, trip.endsOn)}
                               </span>
                             </div>
-                            <span className="tnum-l text-caption font-medium text-ink">
+                            <span className="font-mono tnum-l text-caption font-medium text-ink">
                               {trip.amount}
                             </span>
                           </div>

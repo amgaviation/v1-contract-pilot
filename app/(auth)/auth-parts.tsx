@@ -29,7 +29,7 @@ export function AuthHeading({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <h1 className="text-h1 font-bold text-ink">{title}</h1>
+      <h1 className="font-display text-h1 font-bold text-ink">{title}</h1>
       {children ? <p className="text-body-s text-ink-2">{children}</p> : null}
     </div>
   );

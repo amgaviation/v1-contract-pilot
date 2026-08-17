@@ -117,7 +117,7 @@ export default function PricingPage() {
       <Band>
         <div className="flex max-w-3xl flex-col items-start gap-4">
           <p className="text-caption font-semibold uppercase tracking-wide text-ink-3">Pricing</p>
-          <h1 className="text-h1 font-bold tracking-tight text-ink">Three plans. One record.</h1>
+          <h1 className="font-display text-h1 font-bold tracking-tight text-ink">Three plans. One record.</h1>
           <p className="text-lead text-ink-2">
             The higher plans add business depth. Your logbook, your
             documents and your export are in all three.
@@ -195,7 +195,7 @@ export default function PricingPage() {
       <Band tone="sunk">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <h2 className="text-h2 font-bold tracking-tight text-ink">Every feature, every plan</h2>
+            <h2 className="font-display text-h2 font-bold tracking-tight text-ink">Every feature, every plan</h2>
             <p className="text-body-s text-ink-2">
               Generated from the plan definitions the product enforces with.
               Everything unmarked is live today; anything not yet shipped
@@ -248,7 +248,7 @@ export default function PricingPage() {
       {/* FAQ — the questions a card is entered against, and nothing else. */}
       <Band narrow>
         <div className="flex flex-col gap-4">
-          <h2 className="text-h2 font-bold tracking-tight text-ink">Before you enter a card</h2>
+          <h2 className="font-display text-h2 font-bold tracking-tight text-ink">Before you enter a card</h2>
           <div>
             {buildFaq().map((item) => (
               <details key={item.q} className="border-b border-hair">
@@ -269,7 +269,7 @@ export default function PricingPage() {
       <Band>
         <div className="rounded-card border border-accent-soft bg-accent-soft p-6 sm:p-8">
           <div className="flex flex-col items-start justify-between gap-5 md:flex-row md:items-center">
-            <h2 className="text-h2 font-bold tracking-tight text-ink">Start with your next trip.</h2>
+            <h2 className="font-display text-h2 font-bold tracking-tight text-ink">Start with your next trip.</h2>
             <NextLink href="/signup" className={lButtonClass({ size: "lg", className: "shrink-0" })}>
               Start the {TRIAL_PERIOD_DAYS}-day trial
             </NextLink>

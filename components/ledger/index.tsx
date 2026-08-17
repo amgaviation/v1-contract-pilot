@@ -49,6 +49,23 @@ const buttonVariants = cva(
            crit-as-text hue (overdue pills, figures) dark with it. See the
            --ledger-crit-fill note in app/design/ledger.css. */
         danger: "bg-crit-fill text-white hover:opacity-92",
+        /* THE TWO NAVY-GROUND VARIANTS. `primary`'s indigo is a 1.6:1
+           smudge on --ledger-brand, so a navy band cannot simply reuse it;
+           these invert instead of retinting. Confined to the signed-out
+           surface by the same rule that confines the brand tokens
+           themselves (app/design/ledger.css) — nothing in app/(app) has a
+           navy ground to put them on. `onBrand` is still the ONE filled
+           action per section that LEDGER.md's marketing rule allows; it is
+           filled white rather than filled accent because on this ground
+           white IS the loud option. */
+        /* Both re-point the focus ring: the base ring is `outline-accent`,
+           and indigo on navy is the same unreadable pair the fills avoid.
+           cva emits base-then-variant and cn() is tailwind-merge, so the
+           later outline-color wins without !important. */
+        onBrand:
+          "bg-brand-ink text-brand hover:opacity-92 focus-visible:outline-brand-accent",
+        onBrandOutline:
+          "border border-brand-hair bg-transparent text-brand-ink hover:bg-brand-2 focus-visible:outline-brand-accent",
       },
       size: {
         sm: "h-8 px-3 text-body-s",
