@@ -2,12 +2,22 @@
 
 ## Skills
 
-`.claude/skills/` holds skills vendored from [Armory](https://github.com/Mathews-Tom/armory)
-via the Skills CLI. They load automatically for anyone running Claude Code in this
+`.claude/skills/` holds skills vendored from upstream repositories via the
+Skills CLI. They load automatically for anyone running Claude Code in this
 repo — no per-developer setup.
 
-Installed (a curated subset of Armory's 82 skills, chosen for this Next.js /
-TypeScript / Supabase codebase):
+**Vendor them with `--copy`.** Recent versions of the CLI default to writing
+the real files into `.agents/skills/` and leaving a symlink per tool in
+`.claude/skills/`. This repo does not use that layout: everything here is a
+real directory, committed, so a clone works with no install step and no
+symlink resolution. Running a bare `npx skills add <repo>` produces the
+symlink layout and a stray `.agents/` directory; the flags in each section
+below are the ones that match what is already committed.
+
+### Engineering — Armory
+
+From [Armory](https://github.com/Mathews-Tom/armory), a curated subset of its
+82 skills chosen for this Next.js / TypeScript / Supabase codebase:
 
 | Skill | What it does |
 | --- | --- |
@@ -24,20 +34,48 @@ TypeScript / Supabase codebase):
 | `env-validator` | Environment variable validation |
 | `ux-expert` | UX review of flows and interfaces |
 
+### Marketing — Corey Haines
+
+The full 49-skill set from
+[coreyhaines31/marketingskills](https://github.com/coreyhaines31/marketingskills),
+installed whole rather than curated: the signed-out surface is a real product
+surface with its own doc (`docs/MARKETING.md`), and the set covers it end to
+end. The ones that touch what is already written down here:
+
+| Skill | Where it applies |
+| --- | --- |
+| `cro` | The landing and pricing pages — `app/(marketing)/` |
+| `copywriting`, `copy-editing` | Any change to public copy; read `docs/MARKETING.md` §5 first |
+| `product-marketing` | Positioning and ICP — overlaps `docs/MARKETING.md` §§1–3 |
+| `pricing` | Tiers and packaging — overlaps `docs/PRICING.md` |
+| `signup`, `onboarding` | `app/(auth)/` and the post-checkout wizard |
+| `ai-seo`, `seo-audit`, `schema` | Discoverability of the four public pages |
+| `churn-prevention`, `paywalls` | Downgrade and cancel paths — see `docs/PLAN-GATES.md` |
+
+**These skills do not know this product's claim rules.** They are general
+SaaS marketing skills and will happily suggest copy that `docs/MARKETING.md`
+§5 forbids: testimonials and invented statistics (rule 8), tax-outcome
+claims (rule 10), urgency and scarcity language, or anything implying the
+product decides whether a pilot is legal to fly (rule 4). `docs/MARKETING.md`
+and the `aviation-expert` skill outrank them on every public string. Treat
+their output as a draft to be checked, not copy to be shipped.
+
 ### Updating
 
 ```bash
 npx skills update --project
 ```
 
-### Adding more Armory skills
+### Adding more skills
 
 ```bash
-npx skills add Mathews-Tom/armory -s <skill-name> -a claude-code --copy -y
+npx skills add <owner>/<repo> -s <skill-name> -a claude-code --copy -y
 ```
 
-Pass `-s` once per skill (comma-separated lists are not parsed). Browse the full
-catalogue with `npx skills add Mathews-Tom/armory --list`.
+Pass `-s` once per skill (comma-separated lists are not parsed), or omit it to
+take the whole set. `--copy -a claude-code` is not optional here — see the note
+at the top about the symlink layout the bare command produces. Browse a
+catalogue with `npx skills add <owner>/<repo> --list`.
 
 `skills-lock.json` at the repo root pins the installed set — commit it alongside
 any change here.
