@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useActionState } from "react";
 import { cn } from "@/lib/ledger/cn";
+import { LSegmented } from "@/components/ledger/segmented";
 import type { BillingInterval, PlanTier } from "@/lib/entitlements";
 import { FormError, SubmitButton } from "../auth-parts";
 import { startCheckout, type CheckoutState } from "./actions";
@@ -34,46 +35,6 @@ export type PlanOption = {
    */
   seatNote: Record<BillingInterval, string | null>;
 };
-
-/** A two-option pill toggle, in place of Radix's SegmentedControl. */
-function IntervalToggle({
-  value,
-  onChange,
-}: {
-  value: BillingInterval;
-  onChange: (value: BillingInterval) => void;
-}) {
-  const options: { value: BillingInterval; label: string }[] = [
-    { value: "monthly", label: "Monthly" },
-    { value: "annual", label: "Annual" },
-  ];
-  return (
-    <div
-      role="radiogroup"
-      aria-label="Billing interval"
-      className="inline-flex gap-1 rounded-control border border-hair-strong bg-sunk p-1"
-    >
-      {options.map((opt) => {
-        const active = opt.value === value;
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            onClick={() => onChange(opt.value)}
-            className={cn(
-              "rounded-control px-3 py-1.5 text-body-s font-medium transition-colors",
-              active ? "bg-card text-ink shadow-card" : "text-ink-2 hover:text-ink"
-            )}
-          >
-            {opt.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 /**
  * THE 2026-08 PASS OVER THIS FILE WAS VISUAL ONLY. Every branch below —
@@ -108,8 +69,13 @@ export function PlanPicker({
       {anyAnnual ? (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="text-body-s font-medium text-ink">Billing</span>
-          <IntervalToggle
+          <LSegmented
             value={interval}
+            ariaLabel="Billing interval"
+            options={[
+              { value: "monthly", label: "Monthly" },
+              { value: "annual", label: "Annual" },
+            ]}
             onChange={(value) => {
               setInterval(value);
               // Keep the selection legal: if the current tier has no

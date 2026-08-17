@@ -3,62 +3,12 @@
 import { useActionState, useState } from "react";
 import NextLink from "next/link";
 import { LCard } from "@/components/ledger";
+import { LSegmented } from "@/components/ledger/segmented";
 import { LInput } from "@/components/ledger/forms";
-import { cn } from "@/lib/ledger/cn";
 import { AuthFooter, AuthHeading, Field, FormError, SubmitButton } from "../auth-parts";
 import { signUp, type SignUpState } from "./actions";
 
 const initialState: SignUpState = { error: null };
-
-/**
- * A two-option pill toggle, styled in place of Radix's SegmentedControl.
- * `role="radiogroup"` + `role="radio"` buttons, not a native control — same
- * accessibility shape the Radix version carried, and the same reason this
- * field is named by `aria-labelledby` and described by the hint rather than
- * a `<label htmlFor>`: nothing here is a single focusable element a label
- * could point at.
- */
-function SegmentedToggle<T extends string>({
-  value,
-  onChange,
-  options,
-  labelledBy,
-  describedBy,
-}: {
-  value: T;
-  onChange: (value: T) => void;
-  options: { value: T; label: string }[];
-  labelledBy: string;
-  describedBy?: string;
-}) {
-  return (
-    <div
-      role="radiogroup"
-      aria-labelledby={labelledBy}
-      aria-describedby={describedBy}
-      className="inline-flex w-full gap-1 rounded-control border border-hair-strong bg-sunk p-1"
-    >
-      {options.map((opt) => {
-        const active = opt.value === value;
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            onClick={() => onChange(opt.value)}
-            className={cn(
-              "flex-1 rounded-control px-3 py-1.5 text-body-s font-medium transition-colors",
-              active ? "bg-card text-ink shadow-card" : "text-ink-2 hover:text-ink"
-            )}
-          >
-            {opt.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 /**
  * `trialDays` is passed down from the server page rather than imported:
@@ -147,11 +97,12 @@ export default function SignUpForm({ trialDays }: { trialDays: number }) {
               form control, so a plain <form> POST (the no-JS path) would
               not otherwise submit it. */}
           <input type="hidden" name="account_kind" value={accountKind} />
-          <SegmentedToggle
+          <LSegmented
             value={accountKind}
             onChange={setAccountKind}
             labelledBy="account-kind-label"
             describedBy="account-kind-hint"
+            fullWidth
             options={[
               { value: "solo", label: "Just me" },
               { value: "business", label: "A business" },
