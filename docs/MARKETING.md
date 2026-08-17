@@ -11,10 +11,20 @@ the page broke it.
 bind `/signup`, `/login`, `/forgot-password`, `/reset-password` and
 `/welcome` exactly as hard as they bind the landing page, and harder in
 practice: a pilot on `/signup` is one screen from a card. Nothing mechanical
-checks the auth copy, and the gap has already cost once — the signup screen
-shipped "your next trip bills itself" while the landing page it links from
-carefully said nothing of the kind. Read the auth strings against §5 by
-hand whenever they change.
+checks the auth copy, and the gap has now cost twice on the same screen.
+First `/signup` shipped "your next trip bills itself" while the landing page
+it links from carefully said nothing of the kind. The fix carried a long
+comment forbidding exactly that claim, and the replacement line under that
+comment then read "your next trip drafts its own invoice and logbook
+entries" — the same autonomy claim in a quieter voice, plus "invoice" for
+what are invoice *lines* and "entries" for what are per-leg *drafts*. It
+survived a full rewrite of the landing page because nobody re-read it.
+
+The lesson is narrower than "read the copy": **a comment guarding a line is
+not a check, and it will outlive the line it guards.** Read the auth strings
+against §5 by hand whenever they change, and re-read them whenever the
+landing page's mechanic copy changes, because that is when they fall out of
+step.
 
 ---
 
