@@ -124,12 +124,20 @@ statements. Once you've actually invoiced or quoted somebody, that switch
 can't be turned off; archive the client instead, which keeps every invoice
 already sent and takes them out of new work going forward.
 
+The same toggle handles a common arrangement: you fly for an aircraft
+owner directly, but a management company actually pays you. Add both as
+clients. Turn off **You invoice this client** on the owner, so their
+qualifications and documents are still tracked but they never show up as
+someone you bill, and send invoices to the management company instead.
+
 ---
 
 ## Trips
 
 A trip is the assignment: one or more legs, and the calendar days that
-assignment covers.
+assignment covers. Picking a client isn't required to start one: like an
+invoice, a trip can exist with no client attached yet and have one added
+later.
 
 **Legs** are the flying: departure, arrival, aircraft, block or flight
 time.
@@ -186,6 +194,11 @@ proof a human read it. Voiding an invoice releases any rebilled expenses
 attached to it, so they go back to unbilled and can be added to a
 replacement.
 
+Paid by check, wire, or cash instead of through a payment link? Record the
+payment by hand on the invoice itself. That moves its status the same way
+an online payment does, and it's what stops a scheduled reminder from
+continuing to chase an invoice that's actually settled.
+
 ### Payment reminders
 
 Reminders are follow-ups on invoices already sent. They never change the
@@ -230,8 +243,8 @@ and re-send it, and the number it was given the first time stays with it
 through every revision.
 
 Accepting an estimate lets you convert it straight to an invoice, carrying
-its lines across so the quote and the bill can't drift apart from each
-other.
+its lines across instead of making you retype them, so the quote and the
+bill match.
 
 ---
 
@@ -345,9 +358,10 @@ and unbilled work until you say otherwise.
 ### Currency
 
 A **Currency** screen exists in the navigation for tracking FAA currency
-against your logbook. On a deployment where it isn't turned on, the
-screen says so plainly rather than showing anything: no partial board, no
-placeholder numbers.
+against your logbook. It isn't a tier feature: it switches on for the
+whole product at once, and stays off for every account until it does.
+Until then, the screen says so plainly rather than showing anything: no
+partial board, no placeholder numbers.
 
 ---
 
@@ -365,8 +379,8 @@ you can see what hasn't cleared yet.
 ## Reports
 
 Every report below is generated from the same ledger the rest of the
-product posts to, so a report and your invoices and expenses can't
-disagree with each other.
+product posts to, so the numbers on a report and the numbers on your
+invoices and expenses agree by construction.
 
 - **Profit & loss**: income and expenses on a cash basis.
 - **Cash flow**: money in and out over a period.
@@ -501,21 +515,24 @@ the only place a number can't drift from what you're actually charged.
 
 The tiers don't gate safety or record-keeping. The logbook, the documents
 wallet, the currency screen, and your operator qualification records stay
-available on every tier for as long as you have an account. A working
-pilot's own recordkeeping duty shouldn't depend on a subscription level.
+available on every tier for as long as you have an account, so a working
+pilot's own recordkeeping never depends on which tier they're paying for.
 What the tiers actually separate is business depth: the core get-paid
 workflow (clients, trips, invoices, online payments, expenses) is in
 Solo; estimates, client statements, recurring invoice schedules, the
 accounting and bank-import layer, and the deeper tax reports sit above
-it. Business adds seats for a second pilot or a bookkeeper, priced per
-seat with a two-seat minimum. Inviting a seat beyond the two included
-isn't self-serve yet: if you need a third seat today, say so directly
-rather than looking for a button.
+it. Business bills per seat with a two-seat minimum, so your own login
+and one more, a co-pilot's or a bookkeeper's, are what you're paying for
+and what you get. A third seat isn't self-serve yet: if you need one
+today, say so directly rather than looking for a button.
 
-Downgrading never deletes anything. Records created on a higher tier stay
-visible and exportable; what stops is creating new ones on screens outside
-your new tier, and everything comes straight back the moment you upgrade
-again.
+Downgrading and cancelling are different things. Downgrade a tier and
+records created above your new tier stay visible and exportable; only
+creating new ones on those screens stops, and everything comes straight
+back the moment you upgrade again. Cancel outright and the account goes
+read-only rather than disappearing: every page still loads, export still
+works, and nothing already recorded, including your logbook, is ever
+deleted, but nothing new can be recorded until you reactivate.
 
 ---
 
