@@ -1316,7 +1316,7 @@ export default async function OverviewPage() {
             <div className="flex flex-col gap-1">
               <h2 className="text-h3 font-semibold">Getting started</h2>
               <p className="text-body-s text-ink-3">
-                {`${stepsDone} of ${GETTING_STARTED_STEPS.length} done. Log the trip once: its legs feed your logbook, its days feed the invoice, and its expenses file themselves against it. The figures below fill in from there.`}
+                {`${stepsDone} of ${GETTING_STARTED_STEPS.length} done. Start with a trip: its legs feed your logbook drafts, its days feed the invoice lines, and the receipts you scan attach to it. The figures below fill in from there.`}
               </p>
             </div>
             <ol className="m-0 flex list-none flex-col gap-3 p-0">

@@ -42,40 +42,37 @@ import {
  * checkout passes to Stripe (lib/stripe/server.ts), and the amounts come
  * from ./pricing-model, the one marketing source for docs/PRICING.md §3.2.
  *
- * ── THE 2026-08 REDESIGN: WHAT CHANGED AND WHY ─────────────────────────
+ * ── DESIGN, 2026-08-17 (unchanged by the angle change below) ─────────
  *
- * SEVEN SECTIONS BECAME FIVE, because two of the seven argued the same
- * point twice. "Finish the paperwork while the trip is fresh" listed the
- * three records a trip produces; "Stop rebuilding the same trip" then
- * listed the same three records as a comparison table. Same claim, same
- * order, different words, one screen apart — and the hero's own H1 ("Stop
- * entering the same trip three times") was a third pass at it. They are
- * now one section: three rows, each naming a record ONCE and showing both
- * states of it. The comparison did not get cut, it got absorbed, which is
- * why the workflow-only rule (claim rule 7) still governs the middle
- * column. The plans band, which was one line and a link, folded into the
- * closing call to action for the same reason.
+ * The page's structure is the redesign that shipped that morning: a navy
+ * hero (--ledger-brand, the kit's own ground) with the mock beside the
+ * argument, a hairline record ledger, an asymmetric spec block with a
+ * sticky heading column, a narrow FAQ, and a navy close bookending the
+ * hero. Display sizes (--text-display/-s) and the display/mono faces are
+ * that redesign's too. One section is a grid, and it earns it.
  *
- * THE PAGE STOPPED BEING THREE CARD GRIDS IN A ROW. Every section was a
- * heading over a three-column grid of bordered cards on alternating
- * canvas/sunk grounds, which is the exact shape a reader now recognises as
- * machine-assembled. The rhythm is deliberately uneven instead: a navy
- * hero, a numbered three-row ledger, an asymmetric two-column spec block
- * whose heading column sticks while the list scrolls, a narrow FAQ, and a
- * navy close that bookends the hero. One section is a grid. It earns it.
+ * ── THE ANGLE CHANGE, 2026-08-17 (same day, owner's direction) ─────────
  *
- * IT HAS A GROUND OF ITS OWN NOW. #0b1f33 is not a new colour: it is the
- * navy every file in public/brand/ is already drawn on, promoted to a real
- * token (--ledger-brand, app/design/ledger.css) so the front door can
- * stand on the brand instead of on the product's paper. Ledger's restraint
- * rule still binds app/(app) exactly as before; the argument for it there
- * (a pilot doing data entry should not be shouted at) was never an
- * argument for a marketing page with no identity.
+ * The workflow wedge is retired. The page no longer argues "log the trip
+ * once" / "stop entering the same trip three times" — the owner pulled
+ * that positioning entirely. The page now argues the MONEY POSITION:
+ * BRAND.name is the books for a flying business of one, and the hero
+ * leads with what the books hold (who owes you, what you earned, what
+ * you spent, the year-end packet) instead of with data entry saved. The
+ * trip-native mechanic did not go anywhere — it is the product — but it
+ * moved from headline to proof: section 2 frames the three records as the
+ * three money questions a trip answers. This is also the page's words
+ * finally agreeing with its own picture: the mock has always led with
+ * Unbilled work / Awaiting payment / Paid this year.
  *
- * THE HERO IS SET IN DISPLAY SIZES. Ledger's scale stops at 30px because
- * it was drawn for screen titles above dense tables. Rendering a landing
- * headline at panel-heading size is most of why this page read as flat, so
- * --text-display / --text-display-s exist for this surface alone.
+ * The old middle column ("Today: retyped into an invoicing tool…") is
+ * GONE, not reworded — it existed to serve the duplicate-entry argument.
+ * Claim rule 7 (any comparison is workflow-only, no competitor named)
+ * stays binding on whatever comparison a future edit might add.
+ *
+ * docs/MARKETING.md was rewritten the same day and is the authority for
+ * this copy; §5's claim rules carried forward UNCHANGED — they are
+ * honesty constraints, not positioning choices.
  */
 
 /** A full-bleed band with the page's one shared measure inside it. */
@@ -128,40 +125,32 @@ function Band({
 }
 
 /**
- * THE MECHANIC, in three rows. Two generated, one organised (see the file
- * header): `from` names what the trip produces, `today` is where that
- * record lives without this product, `here` is what the product does with
- * it. The middle column is the absorbed comparison and is bound by claim
- * rule 7 — workflow only, no competitor named, no claim that a tool is bad
- * at its own job. "An invoicing tool" and "a logbook app" are categories,
- * and the cost being named is the seam between them.
+ * THE THREE QUESTIONS a trip answers, in the order a business asks them.
+ * Two generated, one organised (see the file header): invoice lines are
+ * GENERATED, the logbook draft is DRAFTED per leg, receipts are FILED by
+ * the pilot — the bodies below say exactly that and nothing more. The old
+ * "Today: retyped into…" comparison column is gone with the angle that
+ * needed it; claim rule 7 (workflow only, no competitor named) binds any
+ * comparison a future edit reintroduces.
  */
-const RECORDS: {
-  step: string;
-  record: string;
-  today: string;
-  here: string;
-}[] = [
+const RECORDS: { step: string; q: string; body: string }[] = [
   {
     step: "01",
-    record: "The invoice",
-    today: "Retyped into an invoicing tool",
-    here: "Your client’s rate and billable days are already filled in. Send a numbered PDF with a payment link.",
+    q: "What am I owed?",
+    body: "Your client’s rate and billable days are already filled in. Review the lines, then send a numbered PDF invoice with a payment link.",
   },
   {
     step: "02",
-    record: "The logbook entry",
-    today: "Entered a second time in a logbook app",
+    q: "What did I fly?",
     // ONE DRAFT PER LEG, not one per trip: draftPayloadForLeg() in
     // app/(app)/logbook/db.ts is per-leg, the queue is titled "Trip drafts —
     // legs from completed trips", and one entry per flight is the only form
     // 14 CFR 61.51 recognises. "The legs … a draft entry" read as a merge.
-    here: "One draft per leg, with PIC and SIC kept separate. You review it before anything reaches your logbook.",
+    body: "One draft per leg, with PIC and SIC kept separate. You review every draft before anything reaches your logbook.",
   },
   {
     step: "03",
-    record: "The receipts",
-    today: "Loose in a camera roll until April",
+    q: "What did it cost?",
     // "deductible expense records" DESCRIBES THE SOFTWARE. It must never
     // become "lowers your taxable income" or "is deductible": `deduct` is
     // an expense treatment enum (app/(app)/expenses/actions.ts), and the
@@ -169,7 +158,7 @@ const RECORDS: {
     // drives rather than determining what is deductible. This is the one
     // signed-out surface carrying no disclaimer, so a tax outcome asserted
     // here is asserted naked. See docs/MARKETING.md §5 rule 10.
-    here: "Scanned at the FBO and attached to the trip. Mark it for client reimbursement or keep it with your deductible expense records.",
+    body: "Scan a receipt at the FBO and attach it to the trip. Mark it for client reimbursement or keep it with your deductible expense records.",
   },
 ];
 
@@ -332,19 +321,19 @@ export default async function LandingPage() {
                 a status badge ("Paid") and wrong for a phrase, which on a
                 narrow phone just runs off the edge. */}
             <p className="font-mono text-caption font-medium tracking-widest text-brand-accent uppercase">
-              Built for independent pilots
+              For independent contract pilots
             </p>
 
             {/* THE page's only h1, and the only thing on the page set in
                 --text-display. */}
             <h1 className="font-display text-display font-bold text-brand-ink">
-              Stop entering the same trip three times.
+              Flying is the job. This is the business.
             </h1>
 
             <p className="text-lead text-brand-ink-2">
-              {BRAND.name} keeps your trips, invoices, logbook, receipts, and
-              year end records together, so the business side of flying takes
-              less work.
+              {BRAND.name} keeps the books for a flying business of one: who
+              owes you, what you earned, what you spent, and the year-end
+              packet your CPA asks for. All of it comes off the trips you fly.
             </p>
 
             <div className="mt-1 flex flex-wrap gap-3">
@@ -384,15 +373,15 @@ export default async function LandingPage() {
         </div>
       </Band>
 
-      {/* ── 2. THE MECHANIC ──────────────────────────────────────────────
-          One input, three records. This section absorbed the old comparison
-          table; see RECORDS above for the claim rules that govern the
-          middle column. Anchor target for the header's "How it works". */}
+      {/* ── 2. WHAT A TRIP IS WORTH ──────────────────────────────────────
+          The mechanic as proof: three money questions, answered off the
+          trip record. Two generated, one organised still governs every
+          body below. Anchor target for the header's "How it works". */}
       <Band id="how-it-works">
         <div className="flex flex-col gap-8">
           <div className="flex max-w-2xl flex-col gap-4">
             <h2 className="font-display text-display-s font-bold text-ink">
-              Finish the paperwork while the trip is fresh
+              What a trip is worth
             </h2>
             <div className="flex items-start gap-3 border-l-2 border-accent pl-4">
               <p className="text-body text-ink-2">
@@ -400,37 +389,31 @@ export default async function LandingPage() {
                   Start with the trip.
                 </span>{" "}
                 Add the client, aircraft, legs, and your flight, travel,
-                standby, or off days. Everything below comes off that one
+                standby, or off days. The three answers below come from that
                 record.
               </p>
             </div>
           </div>
 
-          {/* Hairline-separated rows, not cards: three bordered boxes side
-              by side is the shape this page had three of. A ledger of rows
-              also lets the "today" and "in-product" states of ONE record sit
-              on one line, which is the whole argument. */}
+          {/* Hairline-separated rows, not cards: a ledger of question and
+              answer, which is the shape the product itself uses for money.
+              Three bordered boxes side by side is the template shape this
+              page deliberately does not have. */}
           <div className="divide-y divide-hair border-t border-hair">
             {RECORDS.map((row) => (
               <div
-                key={row.record}
+                key={row.q}
                 className="grid grid-cols-1 gap-x-8 gap-y-3 py-6 md:grid-cols-12 md:items-baseline"
               >
-                <div className="flex items-baseline gap-3 md:col-span-3">
+                <div className="flex items-baseline gap-3 md:col-span-4">
                   <span className="font-mono tnum-l text-body-s font-semibold text-accent">
                     {row.step}
                   </span>
                   <h3 className="font-display text-h3 font-semibold text-ink">
-                    {row.record}
+                    {row.q}
                   </h3>
                 </div>
-                <p className="text-body-s text-ink-3 md:col-span-4">
-                  <span className="mr-2 font-mono text-caption font-medium uppercase tracking-wide">
-                    Today
-                  </span>
-                  {row.today}
-                </p>
-                <p className="text-body text-ink md:col-span-5">{row.here}</p>
+                <p className="text-body text-ink md:col-span-8">{row.body}</p>
               </div>
             ))}
           </div>
@@ -447,7 +430,7 @@ export default async function LandingPage() {
           <div className="lg:col-span-4">
             <div className="lg:sticky lg:top-24">
               <h2 className="font-display text-display-s font-bold text-ink">
-                The rest of the job, in the same place
+                Everything a flying business keeps
               </h2>
               <NextLink
                 href="/pricing"
@@ -531,7 +514,7 @@ export default async function LandingPage() {
         <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
           <div className="flex max-w-xl flex-col gap-3">
             <h2 className="font-display text-display-s font-bold text-brand-ink">
-              Put your next trip in {BRAND.name}.
+              Start the books with your next trip.
             </h2>
             <p className="text-body text-brand-ink-2">
               {TIER_ORDER.map((tier) => TIER_DISPLAY[tier].name).join(", ")}{" "}

@@ -15,7 +15,7 @@ export const BRAND = {
   descriptor: "Contract Pilot",
   lockup: "V1: powered by AMG Aviation",
   attribution: "powered by AMG Aviation",
-  tagline: "Log the trip once.",
+  tagline: "The books for your flying business.",
 } as const;
 
 export type Brand = typeof BRAND;

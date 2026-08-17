@@ -33,7 +33,7 @@ export const metadata: Metadata = {
   // Kept in step with app/(marketing)/page.tsx's hero. If that copy changes,
   // change this with it.
   description:
-    "Log the trip once. Your logbook draft and your invoice lines come from it, and your receipts attach to it. A business tool for independent contract pilots.",
+    "The books for your flying business: who owes you, what you earned, what you spent, and the year-end packet your CPA asks for. Built for independent contract pilots.",
   // Kept noindex product-wide even now that the Phase 1 auth gate is in
   // place (app/(app)/layout.tsx redirects anyone without a session to
   // /login). A product whose trust story is "AMG cannot see your client

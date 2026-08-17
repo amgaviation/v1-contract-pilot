@@ -98,7 +98,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
       {
         id: "trips-to-invoice",
         title: "From a trip to an invoice",
-        summary: "Log the trip once; the invoice lines and the logbook draft come from it.",
+        summary: "Start with the trip; the invoice lines and the logbook draft come from it.",
         href: "/trips",
         body: [
           "A trip is the assignment. Inside it, legs are the flying and the day grid is what you bill: each calendar day is typed as a duty day, a travel day, standby, or off, and each type carries its own rate.",
