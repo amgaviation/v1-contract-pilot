@@ -196,21 +196,25 @@ data, not copy.
 
 | # | Section | Budget | Shipped |
 |---|---|---|---|
-| 1 | Hero (navy; mock directly under the buttons) | 58 | 55 |
-| 2 | Finish the paperwork while the trip is fresh — one input card → three numbered outputs | 100 | 90 |
-| 3 | The rest of the job, in the same place — one three-column spec block | 125 | 135 |
-| 4 | Stop rebuilding the same trip — three-row comparison table | 55 | 52 |
-| 5 | Plans — one line, one link | 30 | 23 |
+| 1 | Hero (mock directly under the buttons) | 58 | 48 |
+| 2 | Finish the paperwork while the trip is fresh — one input card → three numbered outputs | 100 | 103 |
+| 3 | The rest of the job, in the same place — one three-column spec block | 125 | 128 |
+| 4 | Stop rebuilding the same trip — three-row comparison table | 55 | 45 |
+| 5 | Plans — one line, one link | 30 | 19 |
 | 6 | Questions pilots ask us — three FAQ items | 112 | 123 |
 | 7 | Closing CTA | 12 | 12 |
-| | **Total** | **492** | **490** |
+| | **Total** | **492** | **478** |
 
-Section 6 was 131 before the cancel answer's export sentence came out — the
-spec line "Account-wide CSV export — every record type, on every plan" makes
-that promise on the same page. The remaining overruns are the sections whose
-copy is generated from `lib/entitlements.ts` (3) or carries the
-counsel-reviewed currency wording (6); trimming either would cost substance,
-so they stand and are stated.
+Shipped recounted at the 2026-08 rebuild that restored this table's shape
+to the page (the comparison section had been dropped and the plans
+one-liner had grown back into three cards; both now match the rows above).
+Section 1's "navy" note is gone with the navy itself — the Ledger pass
+retired it. Section 6 was 131 before the cancel answer's export sentence
+came out — the spec line "Account-wide CSV export — every record type, on
+every plan" makes that promise on the same page. The remaining overruns are
+the sections whose copy is generated from `lib/entitlements.ts` (3) or
+whose output cards carry the two-generated-one-organised wording in full
+(2); trimming either would cost substance, so they stand and are stated.
 
 **Rules of thumb behind the budgets**
 
