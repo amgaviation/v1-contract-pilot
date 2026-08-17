@@ -38,25 +38,23 @@ import { cn } from "@/lib/ledger/cn";
  * Architecture / Guardrails), and a shared component would have had to
  * reach into one system's classes from the other's file.
  *
- * UA DEFAULTS ARE STILL LIVE HERE — READ THIS BEFORE ADDING A UTILITY.
- * ledger.css imports Tailwind's `theme` and `utilities` layers only, never
- * `preflight` (see that file's own header), so the browser's default
- * `<dialog>` stylesheet — a border, ~1em of padding, `margin: auto`
- * centering — is exactly as present on this element as it would be with no
- * class at all. Nothing below is decorative restatement of what the
- * browser already does for free:
- *   - `border border-hair` REPLACES the UA border rather than layering on
- *     top of it. (Author-origin styles always beat user-agent-origin
- *     styles for a normal, non-`!important` declaration regardless of
- *     selector specificity, so this wins even though `dialog:modal`'s own
- *     UA rule is otherwise no less specific.)
- *   - `p-0` removes the UA's ~1em padding — the content this shell wraps
- *     supplies its own (command-palette.tsx's input row and list each
- *     carry their own padding, the same split components/ds/dialog.tsx's
- *     i-dialog-head/-body/-foot made).
- *   - `m-auto` restates the UA's own centering explicitly, so this shell's
- *     centering is a decision recorded here rather than a browser default
- *     this file happens not to disturb.
+ * THESE UTILITIES COUNTER PREFLIGHT — READ THIS BEFORE REMOVING ONE.
+ * ledger.css now imports Tailwind's `preflight` layer (added in the phase-6
+ * decommission — INSTRUMENT is gone, so the global reset is safe), and
+ * Preflight's universal rule zeroes `margin`, `padding` and `border` on
+ * every element AND `::backdrop`. So the browser's default `<dialog>`
+ * stylesheet — a border, ~1em of padding, and the `margin: auto` that
+ * centres a modal in the top layer — has already been stripped by the time
+ * these classes apply. Nothing below is decorative:
+ *   - `border border-hair` draws the border Preflight removed.
+ *   - `p-0` is redundant with Preflight but kept explicit: this shell hands
+ *     all padding to its content (command-palette.tsx's input row and list
+ *     each carry their own), and that intent should read from the class list
+ *     rather than depend on a reset in another file.
+ *   - `m-auto` is LOAD-BEARING: Preflight set `margin: 0`, which overrides
+ *     the UA `margin: auto`, so without this a modal would pin to the
+ *     top-left instead of centring. (Author-origin styles beat UA-origin
+ *     ones, so restoring it here is what re-centres the dialog.)
  *   - `overflow-hidden` clips content to the rounded corners `rounded-card`
  *     draws — with `p-0` handing padding to the content, a full-bleed child
  *     (command-palette.tsx's input row has a bottom hairline that runs

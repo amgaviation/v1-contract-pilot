@@ -39,6 +39,15 @@
 @custom-variant dark (&:where([data-appearance="dark"], [data-appearance="dark"] *));
 
 :root {
+  /* Tells the browser which way to render the controls IT owns and Ledger
+     never paints directly — form-control internals, the caret, spellcheck
+     underlines, and (on the platforms that honour it) the scrollbar. Without
+     it a night-mode tenant gets a light native scrollbar and a light date
+     picker punched into a dark page. Paired with data-appearance below, not
+     left to the OS: a pilot who chose night must get night controls even on
+     a light-themed machine. */
+  color-scheme: light;
+
   /* Ground */
   --ledger-canvas: #fbfbfa;
   --ledger-card: #ffffff;
@@ -85,6 +94,8 @@
 }
 
 [data-appearance="dark"] {
+  color-scheme: dark;
+
   --ledger-canvas: #15171a;
   --ledger-card: #1d2024;
   --ledger-sunk: #191c1f;
