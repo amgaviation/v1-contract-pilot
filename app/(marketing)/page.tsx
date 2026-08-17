@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import NextLink from "next/link";
-import { LCard, LPill, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
+import { LCard, LPill, lButtonClass } from "@/components/ledger";
 import { BRAND } from "@/lib/brand";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import { getSessionContext } from "@/lib/supabase/account";
@@ -38,10 +38,9 @@ import {
  *   counsel-gated currency board) or entitlements marks comingSoon (seats)
  *   disappears from this page mechanically. See specGroups() below.
  *
- *   ONE TAGLINE, ONCE. BRAND.tagline appears in body copy exactly once —
- *   the first comparison row — plus the footer and metadata, which read it
- *   from lib/brand.ts. It is deliberately NOT the H1: the H1 shows the
- *   mechanic instead of asserting it.
+ *   THE TAGLINE IS NOT A HEADLINE. BRAND.tagline stays in the footer and
+ *   metadata. The hero names the product and the work it handles instead of
+ *   repeating a slogan.
  *
  * Figures are interpolated, never typed: the trial is the SAME constant the
  * checkout passes to Stripe (lib/stripe/server.ts), and the amounts come
@@ -100,7 +99,7 @@ const OUTPUTS: { step: string; title: string; body: string }[] = [
   },
   {
     step: "02",
-    title: "A logbook draft",
+    title: "Review the drafts",
     // ONE DRAFT PER LEG, not one per trip: draftPayloadForLeg() in
     // app/(app)/logbook/db.ts is per-leg, the queue is titled "Trip drafts —
     // legs from completed trips", and one entry per flight is the only form
@@ -109,7 +108,7 @@ const OUTPUTS: { step: string; title: string; body: string }[] = [
   },
   {
     step: "03",
-    title: "Receipts, already filed",
+    title: "Send and file",
     // "lands in the year's deductible total" DESCRIBES THE SOFTWARE. It
     // must never become "lowers your taxable income" or "is deductible":
     // `deduct` is an expense treatment enum (app/(app)/expenses/actions.ts),
@@ -118,7 +117,7 @@ const OUTPUTS: { step: string; title: string; body: string }[] = [
     // door is the one signed-out surface with no disclaimer on it, so a tax
     // outcome asserted here is asserted naked. See docs/MARKETING.md §5
     // rule 10.
-    body: "Scan a receipt at the FBO and attach it to the trip. Mark it for client reimbursement or keep it with your deductible-expense records.",
+    body: "Scan a receipt at the FBO and attach it to the trip. Mark it for client reimbursement or keep it with your deductible expense records.",
   },
 ];
 
@@ -146,17 +145,17 @@ const SPEC: readonly SpecGroup[] = [
   {
     title: "The trip",
     items: [
-      { text: "Legs, aircraft and client on one record", features: ["trips"] },
+      { text: "Clients, aircraft, legs, and day types", features: ["trips"] },
       {
-        text: "Per-client day rates; W-9 status on every client",
+        text: "Client rate cards and W-9 status",
         features: ["clients"],
       },
       {
-        text: "Invoices: sequential numbers, a PDF with the trip's receipts attached, email delivery, view tracking",
+        text: "Numbered invoice PDFs, email delivery, and view tracking",
         features: ["invoices"],
       },
       {
-        text: "Estimates, recurring invoices, client statements",
+        text: "Estimates, recurring invoices, and client statements",
         features: ["estimates", "recurring_invoices", "client_statements"],
       },
     ],
@@ -165,7 +164,7 @@ const SPEC: readonly SpecGroup[] = [
     title: "Your records",
     items: [
       {
-        text: "Logbook: manual entry, PIC and SIC distinct, CSV import from ForeFlight or LogTen Pro, export any time",
+        text: "Logbook with separate PIC and SIC time, plus CSV import and export",
         features: ["logbook"],
       },
       {
@@ -175,15 +174,15 @@ const SPEC: readonly SpecGroup[] = [
         // ("no IRS rate on file for {year}", reports/quarterly). The product
         // ships no rate table; dropping the qualifier turned an input field
         // into an advertised capability.
-        text: "Receipt scanning in your own browser; mileage priced at the standard rate you set for each tax year",
+        text: "Receipt scanning and mileage records using the annual rate you set",
         features: ["expenses"],
       },
       {
-        text: "Certificates on file; medical, flight review, passport and insurance dates tracked, shareable with a client as a link",
+        text: "Medical, flight review, passport, and insurance dates",
         features: ["documents"],
       },
       {
-        text: "Bank and card statement import, CSV or OFX",
+        text: "CSV and OFX bank-statement imports",
         features: ["bank_import"],
       },
     ],
@@ -192,7 +191,7 @@ const SPEC: readonly SpecGroup[] = [
     title: "The year",
     items: [
       {
-        text: "Profit & loss, IRS estimated-tax-period summaries, a year-end packet for your CPA",
+        text: "Profit and loss, quarterly summaries, and a CPA-ready year-end packet",
         features: ["reports_core"],
       },
       {
@@ -200,7 +199,7 @@ const SPEC: readonly SpecGroup[] = [
         // on that row in lib/entitlements.ts. This line is the correction of
         // the old page's overstated tiering; its tag is derived, so it
         // cannot drift back.
-        text: "Account-wide CSV export: every record type, on every plan",
+        text: "Account-wide CSV export on every plan",
         features: ["account_export"],
       },
       { text: "Sales tax report", features: ["sales_tax_report"] },
@@ -238,35 +237,6 @@ function specGroups(): { title: string; items: { text: string; tag: string | nul
       }),
   }));
 }
-
-/**
- * THE COMPARISON. WORKFLOW ONLY — no competitor pricing, and no claim that
- * any of these tools is bad at its own job. A logbook app is good at
- * logbooks; the cost named here is the seam between three tools that do not
- * know about each other, which is a real and specific cost to the person
- * doing the typing. This editorial constraint predates the rewrite and
- * survives it intact.
- *
- * Row one's second cell is the ONE place BRAND.tagline appears in body copy
- * on this page.
- */
-const COMPARISON: { step: string; today: string; here: string }[] = [
-  {
-    step: "After the trip",
-    today: "Legs typed into the logbook app",
-    here: BRAND.tagline,
-  },
-  {
-    step: "When you invoice",
-    today: "Re-enter dates and calculate billable days",
-    here: "Review the trip and send",
-  },
-  {
-    step: "Tax time",
-    today: "Reconcile logbook, receipts, and books",
-    here: "Export one set of records",
-  },
-];
 
 /**
  * THREE QUESTIONS. Only the ones that remove a real barrier and are
@@ -317,7 +287,7 @@ export default async function LandingPage() {
                 sentence — a pill that cannot wrap just runs off the edge of
                 a phone. Plain eyebrow text instead, which wraps normally. */}
             <p className="text-caption font-semibold text-accent">
-              Built for independent contract pilots
+              BUSINESS SOFTWARE FOR PILOTS
             </p>
 
             {/* THE page's only h1. Ledger's type scale is fixed rather than
@@ -390,6 +360,7 @@ export default async function LandingPage() {
       <Band>
         <div className="flex flex-col gap-5">
           <h2 className="text-h2 font-bold tracking-tight text-ink">
+            What you can manage in {BRAND.name}
             The rest of the job, in the same place.
           </h2>
 
@@ -429,71 +400,44 @@ export default async function LandingPage() {
         </div>
       </Band>
 
-      {/* 4. THE SAME TRIP, THREE TIMES. Shared row labels in one table
-          instead of two cards the eye has to scan between. */}
+      {/* 4. PLANS. Prices come from the same public model as /pricing. */}
       <Band tone="sunk">
         <div className="flex flex-col gap-5">
-          <h2 className="text-h2 font-bold tracking-tight text-ink">
-            Stop rebuilding the same trip.
-          </h2>
-
-          <LCard className="p-0">
-            <LTable className="min-w-[36rem]">
-              <thead>
-                <tr>
-                  <LTh>Step</LTh>
-                  <LTh>Separate apps</LTh>
-                  <LTh>{BRAND.name}</LTh>
-                </tr>
-              </thead>
-              <tbody>
-                {COMPARISON.map((row) => (
-                  <tr key={row.step}>
-                    <LTd>
-                      <span className="font-medium text-ink">{row.step}</span>
-                    </LTd>
-                    <LTd>
-                      <span className="text-ink-2">{row.today}</span>
-                    </LTd>
-                    <LTd>{row.here}</LTd>
-                  </tr>
-                ))}
-              </tbody>
-            </LTable>
-          </LCard>
-        </div>
-      </Band>
-
-      {/* 5. PLANS. One line and a link — /pricing is one click away and
-          rebuilding it here at lower fidelity helps nobody. Amounts and
-          names render from the shared model so they cannot drift. */}
-      <Band>
-        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-          <p className="max-w-2xl text-body text-ink">
+          <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-end">
+            <div>
+              <h2 className="text-h2 font-bold tracking-tight text-ink">Simple monthly plans</h2>
+              <p className="mt-2 text-body text-ink-2">
+                Every plan includes the {TRIAL_PERIOD_DAYS}-day trial and a full account export.
+              </p>
+            </div>
+            <NextLink href="/pricing" className={lButtonClass({ variant: "outline" })}>
+              Compare all features
+            </NextLink>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             {TIER_ORDER.map((tier) => (
-              <span key={tier}>
-                {TIER_DISPLAY[tier].name} {TIER_PRICE_COPY[tier].monthly}
-                {TIER_PRICE_COPY[tier].unit === "per seat"
-                  ? ` per seat, ${TIER_PRICE_COPY[tier].seatMinimum}-seat minimum`
-                  : "/month"}
-                .{" "}
-              </span>
+              <LCard key={tier}>
+                <p className="text-body font-semibold text-ink">{TIER_DISPLAY[tier].name}</p>
+                <p className="mt-2 text-h2 font-bold text-ink">
+                  {TIER_PRICE_COPY[tier].monthly}
+                  <span className="text-body-s font-normal text-ink-2">
+                    {TIER_PRICE_COPY[tier].unit === "per seat" ? " / seat / month" : " / month"}
+                  </span>
+                </p>
+                {TIER_PRICE_COPY[tier].unit === "per seat" ? (
+                  <p className="mt-1 text-caption text-ink-3">
+                    {TIER_PRICE_COPY[tier].seatMinimum}-seat minimum
+                  </p>
+                ) : null}
+              </LCard>
             ))}
-            {TRIAL_PERIOD_DAYS}-day free trial on every plan; annual is two
-            months free.
-          </p>
-          <NextLink
-            href="/pricing"
-            className={lButtonClass({ variant: "outline", className: "shrink-0" })}
-          >
-            Compare plans →
-          </NextLink>
+          </div>
         </div>
       </Band>
 
-      {/* 6. BEFORE YOU SIGN UP. Native <details>/<summary> — works with
+      {/* 5. BEFORE YOU SIGN UP. Native <details>/<summary> — works with
           no JavaScript, keyboard- and screen-reader-correct for free. */}
-      <Band tone="sunk" narrow>
+      <Band narrow>
         <div className="flex flex-col gap-4">
           <h2 className="text-h2 font-bold tracking-tight text-ink">Questions pilots ask us</h2>
           <div>
@@ -512,7 +456,7 @@ export default async function LandingPage() {
         </div>
       </Band>
 
-      {/* 7. CLOSING CTA. One line, one filled action. Trial length, price
+      {/* 6. CLOSING CTA. One line, one filled action. Trial length, price
           and card-required were stated in the hero and again in plans; a
           fourth statement is not persuasion, it is noise. */}
       <Band>

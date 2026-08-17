@@ -66,24 +66,23 @@ Sell the mechanic. Name exactly what you type and exactly what comes out.
 
 | Rank | Beat | Where it lives |
 |---|---|---|
-| 1 | The mechanic, in four beats, zero adjectives | H1 |
-| 2 | What you type, once | Hero subhead |
-| 3 | The proof: one input → three outputs | Section 2 |
+| 1 | What the product is and who it serves | Hero |
+| 2 | The problem it removes | Hero subhead |
+| 3 | The workflow: trip → review → send | Section 2 |
 | 4 | Depth as evidence of belonging | Section 3 spec block |
-| 5 | Why not QuickBooks / Wave / a logbook app | Section 4 table |
-| 6 | Cost | Section 5, one line |
-| 7 | The three barriers left | Section 6 FAQ |
+| 5 | Cost, shown in scannable plan cards | Section 4 |
+| 6 | The three barriers left | Section 5 FAQ |
 
 **Hero copy, verbatim:**
 
-- **Eyebrow** — Built for independent contract pilots
+- **Eyebrow** — Built for independent pilots
 - **H1** — Stop entering the same trip three times.
 - **Subhead** — V1 keeps your trips, invoices, logbook, receipts, and
-  year-end records together—so the business side of flying takes less work.
+  year end records together, so the business side of flying takes less work.
 - **Fine line** — Plans start at $29/month. Card required.
 
-`BRAND.tagline` ("Log the trip once.") is **not** the H1. The H1 shows the
-mechanic; showing it once is worth more than saying it three times.
+`BRAND.tagline` ("Log the trip once.") stays in the footer and metadata. The
+H1 says what the product is for instead of asking a slogan to do that work.
 
 ---
 
@@ -177,7 +176,7 @@ These are absolute. A page that breaks one is not shippable.
 
 ## 6. Word budgets
 
-Seven sections, down from ~1,600 words across ~13 beats. The standard is
+Six sections, down from ~1,600 words across ~13 beats. The standard is
 **ten seconds on FBO wifi**: hero alone answers what it is, who it's for and
 what it costs; hero plus section 2 earns a qualified yes or no inside thirty.
 
@@ -189,8 +188,8 @@ been over it since the day it was written, so an editor comparing the two
 found them out of step with no way to tell which was authoritative.
 
 Counted the same way each time, or the column means nothing: every visible
-string the page renders — `OUTPUTS`, `SPEC`, `COMPARISON`, `FAQ`, the hero
-and CTA JSX, the derived tier badges, the table headers and the plans line —
+string the page renders — `OUTPUTS`, `SPEC`, `FAQ`, the hero and CTA JSX,
+the derived tier badges, and the plan cards —
 tokenised on whitespace, keeping any token containing a letter or digit and
 dropping bare punctuation. The product mock is excluded; it is illustrative
 data, not copy.
@@ -221,8 +220,8 @@ so they stand and are stated.
   trimmed.** The old 65-word hero paragraph restated the H1 three times.
 - **One idea, one statement.** "Log the trip once" appeared twelve times on
   the old landing page and seventeen across the signed-out surface. It now
-  appears in body copy exactly once (comparison row 1), plus
-  `BRAND.tagline` in the footer, the auth panel and metadata.
+  stays in the footer, the auth panel and metadata instead of being repeated
+  through the page body.
 - **Two aphorisms on the whole page, a full screen apart** — section 3's
   heading and the lapsed-card line. Seven clever titles in a row reads to a
   working professional as being sold to.
