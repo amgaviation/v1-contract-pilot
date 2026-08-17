@@ -110,6 +110,31 @@ the env var now would let "unset" pass for "configured" the day it lands.
 event whose `livemode` disagrees with the key's mode, so a test event can
 never mutate live data — but that guard only holds if they aren't mixed.
 
+## What the webhook endpoint subscribes to
+
+Six events, registered on the platform webhook endpoint
+([dashboard.stripe.com/webhooks](https://dashboard.stripe.com/webhooks),
+"events on your account" — the Connect endpoint is separate and documented
+in `docs/SETUP.md`):
+
+```
+checkout.session.completed
+customer.subscription.created
+customer.subscription.updated
+customer.subscription.deleted
+invoice.payment_failed
+invoice.payment_succeeded
+```
+
+The first four provision and sync the tenant. The two invoice events also
+send the pilot V1-branded mail (`lib/email/platform-mail.ts`):
+`invoice.payment_succeeded` a receipt, `invoice.payment_failed` a
+payment-failure alert pointing at `/settings/billing` (after syncing the
+subscription's authoritative status). Both sends are best-effort — a mail
+failure is logged and never fails the delivery, because a Stripe retry
+would re-run a send that has no idempotency key. Anything else delivered
+here is recorded in `pilot.stripe_events` and ignored.
+
 ## What the webhook guarantees
 
 Each of these is asserted by `npm run billing:verify`, which signs its own

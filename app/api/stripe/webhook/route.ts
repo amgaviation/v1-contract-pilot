@@ -6,6 +6,13 @@ import {
   provisionAccountFromCheckout,
   syncSubscriptionState,
 } from "@/lib/stripe/provisioning";
+import { BRAND } from "@/lib/brand";
+import { sendEmail } from "@/lib/email/send";
+import { ownerEmail } from "@/lib/email/owner-email";
+import {
+  buildSubscriptionReceipt,
+  buildSubscriptionPaymentFailed,
+} from "@/lib/email/platform-mail";
 
 /**
  * Stripe platform-billing webhook — the only tenant-creation path in the
@@ -42,6 +49,7 @@ const HANDLED = new Set([
   "customer.subscription.updated",
   "customer.subscription.deleted",
   "invoice.payment_failed",
+  "invoice.payment_succeeded",
 ]);
 
 export async function POST(request: NextRequest) {
@@ -293,31 +301,139 @@ async function handleEvent(event: Stripe.Event, objectId: string | null) {
     }
 
     case "invoice.payment_failed": {
-      // VERIFIED AGAINST THE INSTALLED SDK (stripe 22.4.0, API version
-      // 2026-07-29.dahlia — see lib/stripe/server.ts), same as
-      // billing-facts.ts's header: `Invoice.subscription` does not exist
-      // in this API version (it moved in Stripe API 2025-03-31.basil).
-      // The subscription id now lives at
-      // `invoice.parent.subscription_details.subscription`, which is
-      // `string | Stripe.Subscription | null` per
-      // node_modules/stripe/esm/resources/Invoices.d.ts. The legacy
-      // top-level field is kept as a fallback ONLY for a webhook endpoint
-      // still registered on an old API version in the Stripe dashboard,
-      // where the payload would still carry it.
-      const invoice = event.data.object as Stripe.Invoice & {
-        subscription?: string | Stripe.Subscription | null;
-      };
-      const parentSub = invoice.parent?.subscription_details?.subscription;
-      const legacySub = invoice.subscription;
-      const subRef = parentSub ?? legacySub;
-      const subId = typeof subRef === "string" ? subRef : subRef?.id;
+      const invoice = event.data.object as BillingInvoice;
+      const subId = subscriptionIdFromInvoice(invoice);
       if (!subId) return;
       // Read the authoritative status rather than inferring "past_due"
       // ourselves — Stripe's dunning settings decide what a failed payment
       // actually means for the subscription.
       const subscription = await stripe.subscriptions.retrieve(subId);
       await syncSubscriptionState(subscription, event.created);
+
+      // TELL THE PILOT. Stripe's dunning already knows the schedule; the
+      // pilot does not, and the first they would otherwise hear of a card
+      // failing is their account going past_due. Best-effort AFTER the
+      // state sync: a mail failure must not 500 this handler, because the
+      // redelivery it would buy re-runs a send with no idempotency key —
+      // the same double-send lib/email/send.ts refuses to risk.
+      await sendPlatformMailForSubscription(subId, () => {
+        return buildSubscriptionPaymentFailed({
+          amountCents: invoice.amount_due > 0 ? invoice.amount_due : null,
+          attemptedOnIso: isoDate(event.created),
+          nextAttemptIso: invoice.next_payment_attempt
+            ? isoDate(invoice.next_payment_attempt)
+            : null,
+        });
+      });
       return;
     }
+
+    case "invoice.payment_succeeded": {
+      // THE RECEIPT. Nothing here mutates state — the subscription events
+      // own provisioning and status — so the whole case is the best-effort
+      // send. Gated on the invoice actually belonging to a subscription
+      // (a one-off platform invoice has no tenant to write to) and on a
+      // positive amount (a $0 trial-cycle invoice "succeeds" too, and a
+      // receipt for $0.00 reads as a mistake).
+      const invoice = event.data.object as BillingInvoice;
+      const subId = subscriptionIdFromInvoice(invoice);
+      if (!subId) return;
+      if (!invoice.amount_paid || invoice.amount_paid <= 0) return;
+      await sendPlatformMailForSubscription(subId, () =>
+        buildSubscriptionReceipt({
+          amountCents: invoice.amount_paid,
+          stripeInvoiceNumber: invoice.number ?? null,
+          paidOnIso: isoDate(event.created),
+          hostedInvoiceUrl: invoice.hosted_invoice_url ?? null,
+        })
+      );
+      return;
+    }
+  }
+}
+
+/**
+ * The billing invoice shape this route reads. VERIFIED AGAINST THE
+ * INSTALLED SDK (stripe 22.4.0, API version 2026-07-29.dahlia — see
+ * lib/stripe/server.ts), same as billing-facts.ts's header:
+ * `Invoice.subscription` does not exist in this API version (it moved in
+ * Stripe API 2025-03-31.basil). The subscription id now lives at
+ * `invoice.parent.subscription_details.subscription`. The legacy top-level
+ * field is kept as a fallback ONLY for a webhook endpoint still registered
+ * on an old API version in the Stripe dashboard, where the payload would
+ * still carry it.
+ */
+type BillingInvoice = Stripe.Invoice & {
+  subscription?: string | Stripe.Subscription | null;
+};
+
+function subscriptionIdFromInvoice(invoice: BillingInvoice): string | undefined {
+  const parentSub = invoice.parent?.subscription_details?.subscription;
+  const subRef = parentSub ?? invoice.subscription;
+  return typeof subRef === "string" ? subRef : subRef?.id;
+}
+
+/** Unix seconds -> the YYYY-MM-DD the platform mail builders take. */
+function isoDate(unixSeconds: number): string {
+  return new Date(unixSeconds * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * Sends one V1-branded mail to the owner of the account this subscription
+ * bills. NEVER THROWS: the state sync has already happened by the time any
+ * caller reaches this, a thrown error here would 500 the delivery, and the
+ * redelivery Stripe then makes would re-run a send that has no idempotency
+ * key — turning one flaky database read into two copies of a receipt.
+ * Every failure mode logs and returns instead.
+ */
+async function sendPlatformMailForSubscription(
+  subscriptionId: string,
+  build: () => ReturnType<typeof buildSubscriptionReceipt>
+): Promise<void> {
+  try {
+    const supabase = createServiceClient();
+    const { data, error } = await supabase
+      .from("accounts")
+      .select("id")
+      .eq("stripe_subscription_id", subscriptionId)
+      .maybeSingle();
+    if (error) {
+      console.error(
+        `[billing-mail] accounts.select(${subscriptionId}): ${error.message}. Mail not sent.`
+      );
+      return;
+    }
+    const accountId = (data as { id: string } | null)?.id;
+    if (!accountId) {
+      // No tenant bills through this subscription (a dashboard-created
+      // test object, or provisioning has not landed yet). Nothing to send.
+      return;
+    }
+    const to = await ownerEmail(supabase, accountId);
+    if (!to) {
+      console.error(
+        `[billing-mail] account ${accountId} has no resolvable owner address. Mail not sent.`
+      );
+      return;
+    }
+    const mail = build();
+    const result = await sendEmail({
+      to,
+      subject: mail.subject,
+      text: mail.text,
+      html: mail.html,
+      fromName: BRAND.name,
+    });
+    if (!result.ok) {
+      console.error(
+        `[billing-mail] send to account ${accountId} failed (${result.kind}): ${result.error}`
+      );
+    }
+  } catch (err) {
+    console.error(
+      `[billing-mail] unexpected failure for subscription ${subscriptionId}: ${
+        err instanceof Error ? err.message : "unknown error"
+      }`
+    );
   }
 }

@@ -153,6 +153,12 @@ const EXEMPT_FILES = new Set([
   // never reaches app/design/ledger.css's compiled, hashed stylesheet, so
   // there is no Tailwind utility or var(--...) token for it to use.
   join(ROOT, "app", "auth", "confirm", "route.ts"),
+  // Same class again: hand-built HTML for the V1-branded platform emails
+  // (subscription receipts and payment-failure alerts). A mail client can
+  // never reach the app's compiled stylesheet — everything must be inline,
+  // exactly as supabase/templates/*.html already are; this is the same
+  // card, built server-side because Stripe's webhook is the sender.
+  join(ROOT, "lib", "email", "platform-mail.ts"),
 ]);
 const EXEMPT_DIRS = [];
 
