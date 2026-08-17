@@ -8,7 +8,7 @@ import { BRAND } from "@/lib/brand";
  * (components/logo.tsx), and the owner's brand-mark decision for the
  * signed-out surface is the newer public/brand/*.svg kit (navy.svg here,
  * on this light ground). The two marks are different geometry; using the
- * in-app one on the marketing site would put two different "V1" marks in
+ * in-app one on the marketing site would put two different brand marks in
  * front of the same visitor within one signup flow.
  *
  * LEDGER PASS: the old floating "chrome" treatment (a hand-rolled
@@ -26,7 +26,7 @@ import { BRAND } from "@/lib/brand";
 export default function SiteHeader() {
   return (
     <header className="sticky top-0 z-10 border-b border-hair bg-card/90 backdrop-blur-sm">
-      <div className="mx-auto max-w-5xl px-4">
+      <div className="mx-auto max-w-6xl px-5 sm:px-6">
         <div className="flex flex-wrap items-center justify-between gap-4 py-3">
           <NextLink
             href="/"
@@ -54,7 +54,7 @@ export default function SiteHeader() {
               Log in
             </NextLink>
             <NextLink href="/signup" className={lButtonClass({ size: "sm" })}>
-              Start free trial
+              Try {BRAND.name} free
             </NextLink>
           </div>
         </div>

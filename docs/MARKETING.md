@@ -66,25 +66,23 @@ Sell the mechanic. Name exactly what you type and exactly what comes out.
 
 | Rank | Beat | Where it lives |
 |---|---|---|
-| 1 | The mechanic, in four beats, zero adjectives | H1 |
-| 2 | What you type, once | Hero subhead |
-| 3 | The proof: one input → three outputs | Section 2 |
+| 1 | What the product is and who it serves | Hero |
+| 2 | The problem it removes | Hero subhead |
+| 3 | The workflow: trip → review → send | Section 2 |
 | 4 | Depth as evidence of belonging | Section 3 spec block |
-| 5 | Why not QuickBooks / Wave / a logbook app | Section 4 table |
-| 6 | Cost | Section 5, one line |
-| 7 | The three barriers left | Section 6 FAQ |
+| 5 | Cost, shown in scannable plan cards | Section 4 |
+| 6 | The three barriers left | Section 5 FAQ |
 
 **Hero copy, verbatim:**
 
-- **Eyebrow** — For the contract pilot — day rates, several operators,
-  one-person business
-- **H1** — One trip in. Invoice out. Logbook out. Receipts filed.
-- **Subhead** — Type the dates, the legs and the tail number once — on the
-  trip. Everything after comes off that record.
-- **Fine line** — From $29/month after the trial. Card required to start.
+- **Eyebrow** — Business software for independent contract pilots
+- **H1** — Run your contract flying business in one place.
+- **Subhead** — Log a trip once. V1 prepares the invoice and logbook drafts,
+  while keeping the receipts and records with the trip.
+- **Fine line** — Plans start at $29/month. Card required.
 
-`BRAND.tagline` ("Log the trip once.") is **not** the H1. The H1 shows the
-mechanic; showing it once is worth more than saying it three times.
+`BRAND.tagline` ("Log the trip once.") stays in the footer and metadata. The
+H1 says what the product is for instead of asking a slogan to do that work.
 
 ---
 
@@ -178,7 +176,7 @@ These are absolute. A page that breaks one is not shippable.
 
 ## 6. Word budgets
 
-Seven sections, down from ~1,600 words across ~13 beats. The standard is
+Six sections, down from ~1,600 words across ~13 beats. The standard is
 **ten seconds on FBO wifi**: hero alone answers what it is, who it's for and
 what it costs; hero plus section 2 earns a qualified yes or no inside thirty.
 
@@ -190,24 +188,23 @@ been over it since the day it was written, so an editor comparing the two
 found them out of step with no way to tell which was authoritative.
 
 Counted the same way each time, or the column means nothing: every visible
-string the page renders — `OUTPUTS`, `SPEC`, `COMPARISON`, `FAQ`, the hero
-and CTA JSX, the derived tier badges, the table headers and the plans line —
+string the page renders — `OUTPUTS`, `SPEC`, `FAQ`, the hero and CTA JSX,
+the derived tier badges, and the plan cards —
 tokenised on whitespace, keeping any token containing a letter or digit and
 dropping bare punctuation. The product mock is excluded; it is illustrative
 data, not copy.
 
 | # | Section | Budget | Shipped |
 |---|---|---|---|
-| 1 | Hero (navy; mock directly under the buttons) | 58 | 55 |
-| 2 | What one trip produces — one input card → three numbered outputs | 100 | 109 |
-| 3 | Everything the day rate doesn't cover — one three-column spec block | 125 | 135 |
-| 4 | The same trip, three times — three-row comparison table | 55 | 63 |
-| 5 | Plans — one line, one link | 30 | 23 |
-| 6 | Before you sign up — three FAQ items | 112 | 123 |
-| 7 | Closing CTA | 12 | 12 |
-| | **Total** | **492** | **520** |
+| 1 | Hero; product mock directly under the buttons | 58 | 43 |
+| 2 | From completed trip to finished paperwork | 100 | 70 |
+| 3 | What you can manage in V1 | 125 | 85 |
+| 4 | Simple monthly plans | 45 | 20 |
+| 5 | Questions pilots ask us | 112 | 117 |
+| 6 | Closing CTA | 12 | 12 |
+| | **Total** | **452** | **347** |
 
-Section 6 was 131 before the cancel answer's export sentence came out — the
+The FAQ was 131 words before the cancel answer's export sentence came out — the
 spec line "Account-wide CSV export — every record type, on every plan" makes
 that promise on the same page. The remaining overruns are the sections whose
 copy is generated from `lib/entitlements.ts` (3) or carries the
@@ -222,8 +219,8 @@ so they stand and are stated.
   trimmed.** The old 65-word hero paragraph restated the H1 three times.
 - **One idea, one statement.** "Log the trip once" appeared twelve times on
   the old landing page and seventeen across the signed-out surface. It now
-  appears in body copy exactly once (comparison row 1), plus
-  `BRAND.tagline` in the footer, the auth panel and metadata.
+  stays in the footer, the auth panel and metadata instead of being repeated
+  through the page body.
 - **Two aphorisms on the whole page, a full screen apart** — section 3's
   heading and the lapsed-card line. Seven clever titles in a row reads to a
   working professional as being sold to.

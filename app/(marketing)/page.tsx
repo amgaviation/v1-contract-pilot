@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import NextLink from "next/link";
-import { LCard, LPill, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
+import { LCard, LPill, lButtonClass } from "@/components/ledger";
 import { BRAND } from "@/lib/brand";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import { getSessionContext } from "@/lib/supabase/account";
@@ -38,10 +38,9 @@ import {
  *   counsel-gated currency board) or entitlements marks comingSoon (seats)
  *   disappears from this page mechanically. See specGroups() below.
  *
- *   ONE TAGLINE, ONCE. BRAND.tagline appears in body copy exactly once —
- *   the first comparison row — plus the footer and metadata, which read it
- *   from lib/brand.ts. It is deliberately NOT the H1: the H1 shows the
- *   mechanic instead of asserting it.
+ *   THE TAGLINE IS NOT A HEADLINE. BRAND.tagline stays in the footer and
+ *   metadata. The hero names the product and the work it handles instead of
+ *   repeating a slogan.
  *
  * Figures are interpolated, never typed: the trial is the SAME constant the
  * checkout passes to Stripe (lib/stripe/server.ts), and the amounts come
@@ -77,8 +76,8 @@ function Band({
       <div
         className={
           narrow
-            ? "mx-auto w-full max-w-2xl px-4 py-12 sm:py-16"
-            : "mx-auto w-full max-w-5xl px-4 py-12 sm:py-16"
+            ? "mx-auto w-full max-w-3xl px-5 py-14 sm:px-6 sm:py-20"
+            : "mx-auto w-full max-w-6xl px-5 py-14 sm:px-6 sm:py-20"
         }
       >
         {children}
@@ -95,21 +94,21 @@ function Band({
 const OUTPUTS: { step: string; title: string; body: string }[] = [
   {
     step: "01",
-    title: "Invoice lines",
-    body: "Billable days price themselves off that client's rate card, with anything you tagged rebill. Sequential number, PDF, email delivery, and a payment link once you connect Stripe.",
+    title: "Log the trip",
+    body: "Add the client, aircraft, legs, and each flight, travel, standby, or off day.",
   },
   {
     step: "02",
-    title: "A logbook draft",
+    title: "Review the drafts",
     // ONE DRAFT PER LEG, not one per trip: draftPayloadForLeg() in
     // app/(app)/logbook/db.ts is per-leg, the queue is titled "Trip drafts —
     // legs from completed trips", and one entry per flight is the only form
     // 14 CFR 61.51 recognises. "The legs … a draft entry" read as a merge.
-    body: "Each leg comes back as a draft entry, PIC and SIC kept distinct. Nothing saves until you confirm it.",
+    body: `${BRAND.name} prepares the invoice lines and a logbook draft for each leg. You approve both before they become records.`,
   },
   {
     step: "03",
-    title: "Receipts, already filed",
+    title: "Send and file",
     // "lands in the year's deductible total" DESCRIBES THE SOFTWARE. It
     // must never become "lowers your taxable income" or "is deductible":
     // `deduct` is an expense treatment enum (app/(app)/expenses/actions.ts),
@@ -118,7 +117,7 @@ const OUTPUTS: { step: string; title: string; body: string }[] = [
     // door is the one signed-out surface with no disclaimer on it, so a tax
     // outcome asserted here is asserted naked. See docs/MARKETING.md §5
     // rule 10.
-    body: "Scan it in the FBO, assign it to the trip. Tag it rebill and it bills the client; tag it deduct and it lands in the year's deductible total.",
+    body: "Send the invoice, confirm the logbook entries, and attach any receipts to the trip.",
   },
 ];
 
@@ -146,17 +145,17 @@ const SPEC: readonly SpecGroup[] = [
   {
     title: "The trip",
     items: [
-      { text: "Legs, aircraft and client on one record", features: ["trips"] },
+      { text: "Clients, aircraft, legs, and day types", features: ["trips"] },
       {
-        text: "Per-client day rates; W-9 status on every client",
+        text: "Client rate cards and W-9 status",
         features: ["clients"],
       },
       {
-        text: "Invoices: sequential numbers, a PDF with the trip's receipts attached, email delivery, view tracking",
+        text: "Numbered invoice PDFs, email delivery, and view tracking",
         features: ["invoices"],
       },
       {
-        text: "Estimates, recurring invoices, client statements",
+        text: "Estimates, recurring invoices, and client statements",
         features: ["estimates", "recurring_invoices", "client_statements"],
       },
     ],
@@ -165,7 +164,7 @@ const SPEC: readonly SpecGroup[] = [
     title: "Your records",
     items: [
       {
-        text: "Logbook: manual entry, PIC and SIC distinct, CSV import from ForeFlight or LogTen Pro, export any time",
+        text: "Logbook with separate PIC and SIC time, plus CSV import and export",
         features: ["logbook"],
       },
       {
@@ -175,15 +174,15 @@ const SPEC: readonly SpecGroup[] = [
         // ("no IRS rate on file for {year}", reports/quarterly). The product
         // ships no rate table; dropping the qualifier turned an input field
         // into an advertised capability.
-        text: "Receipt scanning in your own browser; mileage priced at the standard rate you set for each tax year",
+        text: "Receipt scanning and mileage records using the annual rate you set",
         features: ["expenses"],
       },
       {
-        text: "Certificates on file; medical, flight review, passport and insurance dates tracked, shareable with a client as a link",
+        text: "Medical, flight review, passport, and insurance dates",
         features: ["documents"],
       },
       {
-        text: "Bank and card statement import, CSV or OFX",
+        text: "CSV and OFX bank-statement imports",
         features: ["bank_import"],
       },
     ],
@@ -192,7 +191,7 @@ const SPEC: readonly SpecGroup[] = [
     title: "The year",
     items: [
       {
-        text: "Profit & loss, IRS estimated-tax-period summaries, a year-end packet for your CPA",
+        text: "Profit and loss, quarterly summaries, and a CPA-ready year-end packet",
         features: ["reports_core"],
       },
       {
@@ -200,7 +199,7 @@ const SPEC: readonly SpecGroup[] = [
         // on that row in lib/entitlements.ts. This line is the correction of
         // the old page's overstated tiering; its tag is derived, so it
         // cannot drift back.
-        text: "Account-wide CSV export: every record type, on every plan",
+        text: "Account-wide CSV export on every plan",
         features: ["account_export"],
       },
       { text: "Sales tax report", features: ["sales_tax_report"] },
@@ -238,35 +237,6 @@ function specGroups(): { title: string; items: { text: string; tag: string | nul
       }),
   }));
 }
-
-/**
- * THE COMPARISON. WORKFLOW ONLY — no competitor pricing, and no claim that
- * any of these tools is bad at its own job. A logbook app is good at
- * logbooks; the cost named here is the seam between three tools that do not
- * know about each other, which is a real and specific cost to the person
- * doing the typing. This editorial constraint predates the rewrite and
- * survives it intact.
- *
- * Row one's second cell is the ONE place BRAND.tagline appears in body copy
- * on this page.
- */
-const COMPARISON: { step: string; today: string; here: string }[] = [
-  {
-    step: "After the trip",
-    today: "Legs typed into the logbook app",
-    here: BRAND.tagline,
-  },
-  {
-    step: "Billing the client",
-    today: "The same dates retyped in a spreadsheet to get the day count",
-    here: "The days are already there",
-  },
-  {
-    step: "Tax time",
-    today: "Three sources that disagree, reconciled by you",
-    here: "One set of numbers, already built",
-  },
-];
 
 /**
  * THREE QUESTIONS. Only the ones that remove a real barrier and are
@@ -317,7 +287,7 @@ export default async function LandingPage() {
                 sentence — a pill that cannot wrap just runs off the edge of
                 a phone. Plain eyebrow text instead, which wraps normally. */}
             <p className="text-caption font-semibold text-accent">
-              For the contract pilot: day rates, several operators, one-person business
+              BUSINESS SOFTWARE FOR INDEPENDENT CONTRACT PILOTS
             </p>
 
             {/* THE page's only h1. Ledger's type scale is fixed rather than
@@ -326,26 +296,25 @@ export default async function LandingPage() {
                 uses for a page's one h1, rather than the old Radix
                 responsive size="{8,9}" step. */}
             <h1 className="text-h1 font-bold tracking-tight text-ink">
-              One trip in. Invoice out. Logbook out. Receipts filed.
+              Run your contract flying business in one place.
             </h1>
 
             <p className="text-lead text-ink-2">
-              Type the dates, the legs and the tail number once, on the
-              trip. Everything after comes off that record.
+              Log a trip once. {BRAND.name} prepares the invoice and logbook
+              drafts, while keeping the receipts and records with the trip.
             </p>
 
             <div className="mt-1 flex flex-wrap gap-3">
               <NextLink href="/signup" className={lButtonClass({ size: "lg" })}>
-                Start the {TRIAL_PERIOD_DAYS}-day trial
+                Try {BRAND.name} free for {TRIAL_PERIOD_DAYS} days
               </NextLink>
               <NextLink href="/pricing" className={lButtonClass({ size: "lg", variant: "outline" })}>
-                See pricing
+                View plans
               </NextLink>
             </div>
 
             <p className="text-caption text-ink-3">
-              From {TIER_PRICE_COPY.solo.monthly}/month after the trial. Card
-              required to start.
+              Plans start at {TIER_PRICE_COPY.solo.monthly}/month. Card required.
             </p>
           </div>
 
@@ -362,13 +331,13 @@ export default async function LandingPage() {
           link. */}
       <Band id="how-it-works" tone="sunk">
         <div className="flex flex-col gap-5">
-          <h2 className="text-h2 font-bold tracking-tight text-ink">What one trip produces</h2>
-
-          <div className="rounded-card border border-accent-soft bg-accent-soft p-5">
-            <p className="mb-1 text-caption font-semibold text-accent">YOU TYPE THE TRIP</p>
-            <p className="text-body text-ink">
-              The client, the aircraft, the legs, and each day as flight,
-              travel, standby or off.
+          <div className="max-w-2xl">
+            <h2 className="text-h2 font-bold tracking-tight text-ink">
+              From completed trip to finished paperwork
+            </h2>
+            <p className="mt-2 text-body text-ink-2">
+              The trip is the source record. You stay in control of what is
+              saved and sent.
             </p>
           </div>
 
@@ -391,7 +360,7 @@ export default async function LandingPage() {
       <Band>
         <div className="flex flex-col gap-5">
           <h2 className="text-h2 font-bold tracking-tight text-ink">
-            Everything the day rate doesn&rsquo;t cover.
+            What you can manage in {BRAND.name}
           </h2>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -430,73 +399,46 @@ export default async function LandingPage() {
         </div>
       </Band>
 
-      {/* 4. THE SAME TRIP, THREE TIMES. Shared row labels in one table
-          instead of two cards the eye has to scan between. */}
+      {/* 4. PLANS. Prices come from the same public model as /pricing. */}
       <Band tone="sunk">
         <div className="flex flex-col gap-5">
-          <h2 className="text-h2 font-bold tracking-tight text-ink">
-            The same trip, three times.
-          </h2>
-
-          <LCard className="p-0">
-            <LTable className="min-w-[36rem]">
-              <thead>
-                <tr>
-                  <LTh>Step</LTh>
-                  <LTh>A logbook app + a spreadsheet + accounting software</LTh>
-                  <LTh>{BRAND.name}</LTh>
-                </tr>
-              </thead>
-              <tbody>
-                {COMPARISON.map((row) => (
-                  <tr key={row.step}>
-                    <LTd>
-                      <span className="font-medium text-ink">{row.step}</span>
-                    </LTd>
-                    <LTd>
-                      <span className="text-ink-2">{row.today}</span>
-                    </LTd>
-                    <LTd>{row.here}</LTd>
-                  </tr>
-                ))}
-              </tbody>
-            </LTable>
-          </LCard>
-        </div>
-      </Band>
-
-      {/* 5. PLANS. One line and a link — /pricing is one click away and
-          rebuilding it here at lower fidelity helps nobody. Amounts and
-          names render from the shared model so they cannot drift. */}
-      <Band>
-        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-          <p className="max-w-2xl text-body text-ink">
+          <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-end">
+            <div>
+              <h2 className="text-h2 font-bold tracking-tight text-ink">Simple monthly plans</h2>
+              <p className="mt-2 text-body text-ink-2">
+                Every plan includes the {TRIAL_PERIOD_DAYS}-day trial and a full account export.
+              </p>
+            </div>
+            <NextLink href="/pricing" className={lButtonClass({ variant: "outline" })}>
+              Compare all features
+            </NextLink>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             {TIER_ORDER.map((tier) => (
-              <span key={tier}>
-                {TIER_DISPLAY[tier].name} {TIER_PRICE_COPY[tier].monthly}
-                {TIER_PRICE_COPY[tier].unit === "per seat"
-                  ? ` per seat, ${TIER_PRICE_COPY[tier].seatMinimum}-seat minimum`
-                  : "/month"}
-                .{" "}
-              </span>
+              <LCard key={tier}>
+                <p className="text-body font-semibold text-ink">{TIER_DISPLAY[tier].name}</p>
+                <p className="mt-2 text-h2 font-bold text-ink">
+                  {TIER_PRICE_COPY[tier].monthly}
+                  <span className="text-body-s font-normal text-ink-2">
+                    {TIER_PRICE_COPY[tier].unit === "per seat" ? " / seat / month" : " / month"}
+                  </span>
+                </p>
+                {TIER_PRICE_COPY[tier].unit === "per seat" ? (
+                  <p className="mt-1 text-caption text-ink-3">
+                    {TIER_PRICE_COPY[tier].seatMinimum}-seat minimum
+                  </p>
+                ) : null}
+              </LCard>
             ))}
-            {TRIAL_PERIOD_DAYS}-day free trial on every plan; annual is two
-            months free.
-          </p>
-          <NextLink
-            href="/pricing"
-            className={lButtonClass({ variant: "outline", className: "shrink-0" })}
-          >
-            Compare plans →
-          </NextLink>
+          </div>
         </div>
       </Band>
 
-      {/* 6. BEFORE YOU SIGN UP. Native <details>/<summary> — works with
+      {/* 5. BEFORE YOU SIGN UP. Native <details>/<summary> — works with
           no JavaScript, keyboard- and screen-reader-correct for free. */}
-      <Band tone="sunk" narrow>
+      <Band narrow>
         <div className="flex flex-col gap-4">
-          <h2 className="text-h2 font-bold tracking-tight text-ink">Before you sign up</h2>
+          <h2 className="text-h2 font-bold tracking-tight text-ink">Questions pilots ask us</h2>
           <div>
             {FAQ.map((item) => (
               <details key={item.q} className="border-b border-hair">
@@ -513,16 +455,16 @@ export default async function LandingPage() {
         </div>
       </Band>
 
-      {/* 7. CLOSING CTA. One line, one filled action. Trial length, price
+      {/* 6. CLOSING CTA. One line, one filled action. Trial length, price
           and card-required were stated in the hero and again in plans; a
           fourth statement is not persuasion, it is noise. */}
       <Band>
         <div className="rounded-card border border-accent-soft bg-accent-soft p-6 sm:p-8">
           <div className="flex flex-col items-start justify-between gap-5 md:flex-row md:items-center">
-            <h2 className="text-h2 font-bold tracking-tight text-ink">Try it on your next trip.</h2>
+            <h2 className="text-h2 font-bold tracking-tight text-ink">Put your next trip in {BRAND.name}.</h2>
             <div className="flex shrink-0 flex-wrap gap-3">
               <NextLink href="/signup" className={lButtonClass({ size: "lg" })}>
-                Start the {TRIAL_PERIOD_DAYS}-day trial
+                Try {BRAND.name} free for {TRIAL_PERIOD_DAYS} days
               </NextLink>
               <NextLink href="/pricing" className={lButtonClass({ size: "lg", variant: "outline" })}>
                 Compare plans
