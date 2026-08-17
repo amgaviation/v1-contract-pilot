@@ -3,6 +3,10 @@ import type Stripe from "stripe";
 import { getStripe, isLiveMode } from "@/lib/stripe/server";
 import { deactivatePaymentLink, readAutopaySetupResult } from "@/lib/stripe/connect";
 import { createServiceClient } from "@/lib/supabase/service-role";
+import { looksLikeEmail, sendEmail } from "@/lib/email/send";
+import { ownerEmail } from "@/lib/email/owner-email";
+import { buildClientReceipt } from "@/lib/email/payment-receipt";
+import { billToEmail } from "@/lib/invoice-bill-to";
 import {
   AUTOPAY_INTENT_EVENT_TYPE,
   formatCentsPlain,
@@ -312,11 +316,13 @@ export async function POST(request: NextRequest) {
     // earth could read.
     const { data: accountData, error: accountError } = await supabase
       .from("accounts")
-      .select("id, connect_account_id")
+      .select("id, connect_account_id, legal_name")
       .eq("connect_account_id", connectedAccountId)
       .maybeSingle();
     if (accountError) throw new Error(`accounts.select: ${accountError.message}`);
-    const account = (accountData ?? null) as ResolvedAccount;
+    const account = (accountData ?? null) as
+      | { id: string; connect_account_id: string | null; legal_name: string | null }
+      | null;
 
     // DEAUTHORIZATION. A pilot can revoke the platform's OAuth grant from
     // their OWN Stripe dashboard at any time, outside this product
@@ -514,11 +520,23 @@ export async function POST(request: NextRequest) {
     // happened, and log it as the attempt it was.
     const { data: invoiceData, error: invoiceError } = await supabase
       .from("invoices")
-      .select("id, account_id, status, stripe_payment_link_id")
+      // The last four columns are for the client's receipt only; the
+      // decision layer sees the same four fields it always has.
+      .select(
+        "id, account_id, status, stripe_payment_link_id, invoice_number, client_id, bill_to_email, bill_to_name, bill_to_contact_name"
+      )
       .eq("id", claim.declaredInvoiceId)
       .maybeSingle();
     if (invoiceError) throw new Error(`invoices.select: ${invoiceError.message}`);
-    const invoice = (invoiceData ?? null) as ResolvedInvoice;
+    const invoice = (invoiceData ?? null) as
+      | (NonNullable<ResolvedInvoice> & {
+          invoice_number: string | null;
+          client_id: string | null;
+          bill_to_email: string | null;
+          bill_to_name: string | null;
+          bill_to_contact_name: string | null;
+        })
+      | null;
 
     let ledger: LedgerRow[] = [];
     if (account && invoice && invoice.account_id === account.id) {
@@ -632,6 +650,22 @@ export async function POST(request: NextRequest) {
         paymentLinkId: decision.retireLinkId,
       });
       if (note) detail = `${detail} ${note}`;
+    }
+
+    // THE CLIENT'S RECEIPT — only on the run whose insert actually landed
+    // ('recorded'; a redelivery lands 'duplicate' above and sends nothing,
+    // which is the receipt's idempotency), and only for the two ONLINE
+    // sources this route records. lib/email/payment-receipt.ts's header
+    // says why manual payments are never receipted. Best-effort and after
+    // everything that matters: a mail failure must not 500 a delivery
+    // whose money is already on the ledger.
+    if (decision.kind === "record" && outcome === "recorded" && account && invoice) {
+      await sendClientReceipt({
+        supabase,
+        accountName: account.legal_name ?? "",
+        invoice,
+        insert: decision.insert,
+      });
     }
 
     // A review note OUTRANKS 'recorded'/'duplicate' as the outcome, because
@@ -1181,6 +1215,106 @@ async function handleAutopaySetup(params: {
   }
 
   return `Autopay enabled: the client saved ${saved.label} for automatic charging of recurring invoices.`;
+}
+
+/**
+ * Emails the client their receipt for a payment this delivery just
+ * recorded. The mail goes out in the PILOT'S name (fromName =
+ * accounts.legal_name, reply-to = the owner's own address) and carries no
+ * V1 branding — lib/email/payment-receipt.ts owns the copy and restates
+ * the rule.
+ *
+ * NEVER THROWS. The payment is on the ledger by the time this runs; a
+ * failed lookup or refused send is logged and the delivery finishes
+ * normally. A redelivery lands 'duplicate' before reaching this, so a
+ * receipt is attempted at most once per payment — a failed attempt is not
+ * retried, which is the right trade for mail with no idempotency key.
+ */
+async function sendClientReceipt(params: {
+  supabase: ServiceClient;
+  accountName: string;
+  invoice: {
+    id: string;
+    account_id: string;
+    invoice_number: string | null;
+    client_id: string | null;
+    bill_to_email: string | null;
+    bill_to_name: string | null;
+    bill_to_contact_name: string | null;
+  };
+  insert: PaymentInsert;
+}): Promise<void> {
+  const { supabase, invoice, insert } = params;
+  try {
+    type ReceiptClient = {
+      name: string;
+      contact_name: string | null;
+      contact_email: string | null;
+      billing_email: string | null;
+    };
+    let client: ReceiptClient | null = null;
+    if (invoice.client_id) {
+      const { data, error } = await supabase
+        .from("clients")
+        .select("name, contact_name, contact_email, billing_email")
+        .eq("id", invoice.client_id)
+        .eq("account_id", invoice.account_id)
+        .maybeSingle();
+      if (error) {
+        console.error(`[receipt] clients.select(${invoice.client_id}): ${error.message}. No receipt sent.`);
+        return;
+      }
+      client = (data ?? null) as ReceiptClient | null;
+    }
+
+    const to = billToEmail(invoice, client, looksLikeEmail);
+    if (!to) {
+      // An invoice with no reachable address gets no receipt — same as it
+      // gets no emailed copy. Not an error; nothing to log at error level.
+      return;
+    }
+
+    // The balance AFTER this payment, re-read from the one source for a
+    // balance. A failed read drops the balance line from the receipt
+    // rather than dropping the receipt.
+    const { data: totalsData } = await supabase
+      .from("invoice_totals")
+      .select("balance_due_cents")
+      .eq("invoice_id", invoice.id)
+      .maybeSingle();
+    const balanceDueCents =
+      (totalsData as { balance_due_cents: number } | null)?.balance_due_cents ?? null;
+
+    const receipt = buildClientReceipt({
+      accountName: params.accountName,
+      clientName: client?.name ?? invoice.bill_to_name ?? "",
+      contactName: client?.contact_name ?? invoice.bill_to_contact_name,
+      invoiceNumber: invoice.invoice_number,
+      amountCents: insert.amount_cents,
+      paidOnIso: insert.paid_on,
+      balanceDueCents,
+    });
+
+    const replyTo = await ownerEmail(supabase, invoice.account_id);
+    const result = await sendEmail({
+      to,
+      subject: receipt.subject,
+      text: receipt.text,
+      fromName: params.accountName || undefined,
+      replyTo,
+    });
+    if (!result.ok) {
+      console.error(
+        `[receipt] send for invoice ${invoice.id} failed (${result.kind}): ${result.error}`
+      );
+    }
+  } catch (err) {
+    console.error(
+      `[receipt] unexpected failure for invoice ${invoice.id}: ${
+        err instanceof Error ? err.message : "unknown error"
+      }`
+    );
+  }
 }
 
 /** The Checkout Session on this event, when it carries one. */

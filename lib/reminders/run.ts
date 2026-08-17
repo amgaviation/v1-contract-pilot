@@ -1,6 +1,7 @@
 import "server-only";
 import { sendInvoiceEmail } from "@/lib/email/send-invoice";
 import { emailIsConfigured, looksLikeEmail } from "@/lib/email/send";
+import { ownerEmail } from "@/lib/email/owner-email";
 import { friendlyDbError } from "@/lib/db-errors";
 import {
   consumedRungKeys,
@@ -695,40 +696,6 @@ export async function runAllDueReminders(
   }
 
   return { accounts: accounts.length, summary: combined };
-}
-
-/**
- * WHERE A CLIENT'S REPLY GOES when there is no session to ask.
- *
- * The account owner's own verified auth address, resolved through the admin
- * API — the same mailbox the interactive path uses, reached the only way a
- * job can reach it. An account with no resolvable owner address sends with no
- * reply-to rather than with the platform's: sendInvoiceEmail's header explains
- * why a reply landing in the software vendor's inbox is the one outcome that
- * must never happen.
- */
-async function ownerEmail(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  serviceClient: any,
-  accountId: string
-): Promise<string | undefined> {
-  try {
-    const { data } = await serviceClient
-      .from("account_members")
-      .select("user_id")
-      .eq("account_id", accountId)
-      .eq("role", "owner")
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    const userId = (data as { user_id: string } | null)?.user_id;
-    if (!userId) return undefined;
-    const { data: userData } = await serviceClient.auth.admin.getUserById(userId);
-    const email = userData?.user?.email;
-    return looksLikeEmail(email) ? email : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 /**
