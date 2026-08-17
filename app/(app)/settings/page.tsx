@@ -13,6 +13,7 @@ import ProfileDefaultsForm, {
 import LogoPanel from "./logo-panel";
 import SettingsTabs from "./settings-tabs";
 import DayTypesPanel from "./day-types-panel";
+import BillingPanel from "./billing/billing-panel";
 import ConnectPanel from "./connect-panel";
 import PaymentMethodsPanel from "./payment-methods-panel";
 import MileageRatesPanel from "./mileage-rates-panel";
@@ -299,11 +300,19 @@ export default async function SettingsPage({
                       blocked by the accounts_protect_billing_columns trigger,
                       so billing state changes only ever arrive through the
                       Stripe webhook. Showing an editable control here would
-                      promise something the database refuses. */}
+                      promise something the database refuses — the link
+                      below goes to the Billing tab, which changes the plan
+                      through Stripe itself, never this row directly. */}
                   <p className="text-caption text-ink-3">
                     Billing is managed through Stripe. Changes to your plan arrive here
                     automatically.
                   </p>
+                  <NextLink
+                    href="/settings?tab=billing"
+                    className="text-body-s font-medium text-accent hover:underline"
+                  >
+                    Manage your subscription
+                  </NextLink>
                 </div>
               </LCard>
               <ConnectPanel
@@ -360,6 +369,13 @@ export default async function SettingsPage({
             <MileageRatesPanel rates={mileageRates} canEdit={canEdit} />
           )
         }
+        // No `changed`/`state` props: those are billing/actions.ts's own
+        // redirect flags for the standalone `/settings/billing` route (see
+        // billing-panel.tsx's header). Landing on this tab never carries
+        // them, so the panel's confirmation banners simply stay quiet here
+        // — the plan cards, current-plan card, receipts and portal button
+        // below are otherwise byte-for-byte the same read.
+        billing={<BillingPanel />}
         // loadPreferences is total, so `templates` is always a well-formed
         // pair — {null, null} for the ordinary account that has never opened
         // this tab, which the panel renders as two empty boxes showing the

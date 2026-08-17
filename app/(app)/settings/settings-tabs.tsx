@@ -11,21 +11,22 @@ import {
 
 /**
  * The tab vocabulary, written once. It grew from three to six with Phase
- * 9's customisation layer, and to seven with the profile/security surface,
- * and a hand-written `a || b || c` predicate was exactly the shape that
- * goes stale each time — so the list IS the type and the type guard reads
- * from the list.
+ * 9's customisation layer, to seven with the profile/security surface, to
+ * nine once categories earned its own tab, and to ten with the billing
+ * surface, and a hand-written `a || b || c` predicate was exactly the
+ * shape that goes stale each time — so the list IS the type and the type
+ * guard reads from the list.
  *
- * Nine tabs is past Miller's 7±2 as a single flat row, so the strip below
+ * Ten tabs is past Miller's 7±2 as a single flat row, so the strip below
  * clusters them under three small, non-interactive group labels —
- * "Business" (business, day-types, mileage, categories), "Communication"
- * (messages, reminders) and "Appearance" (appearance, layout); see
- * TAB_GROUPS below. TAB_KEYS itself stays exactly this one flat list of
- * nine values: the grouping is a rendering concern in the JSX, not a
- * change to the type, the `?tab=` vocabulary, or the state machine —
+ * "Business" (business, day-types, mileage, categories, billing),
+ * "Communication" (messages, reminders) and "Appearance" (appearance,
+ * layout); see TAB_GROUPS below. TAB_KEYS itself stays exactly this one
+ * flat list of values: the grouping is a rendering concern in the JSX, not
+ * a change to the type, the `?tab=` vocabulary, or the state machine —
  * still ONE LTabsRoot and ONE LTabsList, so Left/Right/Home/End and the
- * roving tabindex still walk all nine triggers in a single sequence.
- * "profile" stays outside all three groups; see the comment below for why.
+ * roving tabindex still walk all triggers in a single sequence. "profile"
+ * stays outside all three groups; see the comment below for why.
  *
  * "profile" sits LAST rather than first, deliberately: this screen's
  * subject is the business, and the one tab about the human signing in is
@@ -36,6 +37,7 @@ const TAB_KEYS = [
   "business",
   "day-types",
   "mileage",
+  "billing",
   "messages",
   "reminders",
   "appearance",
@@ -58,6 +60,7 @@ const TAB_LABEL: Record<TabKey, string> = {
   business: "Your business",
   "day-types": "Day types",
   mileage: "Mileage",
+  billing: "Billing",
   messages: "Message wording",
   reminders: "Reminders",
   appearance: "Appearance",
@@ -74,7 +77,7 @@ const TAB_LABEL: Record<TabKey, string> = {
  * with no label before it.
  */
 const TAB_GROUPS: { label: string; keys: TabKey[] }[] = [
-  { label: "Business", keys: ["business", "day-types", "mileage", "categories"] },
+  { label: "Business", keys: ["business", "day-types", "mileage", "categories", "billing"] },
   { label: "Communication", keys: ["messages", "reminders"] },
   { label: "Appearance", keys: ["appearance", "layout"] },
 ];
@@ -104,13 +107,14 @@ const TAB_GROUPS: { label: string; keys: TabKey[] }[] = [
  * clusters of triggers (see TAB_GROUPS) are plain `aria-hidden` text, not
  * `LTabsTrigger`s: they sit in the list's flex flow purely for visual
  * spacing and never join the roving-tabindex sequence LTabsTrigger reads
- * straight off the DOM, so keyboard users still land on all nine real tabs
- * in order.
+ * straight off the DOM, so keyboard users still land on all real tabs in
+ * order.
  */
 export default function SettingsTabs({
   business,
   dayTypes,
   mileage,
+  billing,
   messages,
   reminders,
   appearance,
@@ -122,6 +126,7 @@ export default function SettingsTabs({
   business: ReactNode;
   dayTypes: ReactNode;
   mileage: ReactNode;
+  billing: ReactNode;
   messages: ReactNode;
   reminders: ReactNode;
   appearance: ReactNode;
@@ -147,6 +152,7 @@ export default function SettingsTabs({
     { key: "business", content: business },
     { key: "day-types", content: dayTypes },
     { key: "mileage", content: mileage },
+    { key: "billing", content: billing },
     { key: "messages", content: messages },
     { key: "reminders", content: reminders },
     { key: "appearance", content: appearance },
@@ -162,7 +168,7 @@ export default function SettingsTabs({
         fix, not a style preference.
 
         LTabsList's own default is `overflow-x-auto` on a single row — fine
-        at three tabs, not at nine: "Layout", "Categories" and "Profile &
+        at three tabs, not at ten: "Layout", "Categories" and "Profile &
         security" would sit past the right edge on a narrow phone with no
         scrollbar, no fade and no chevron, so a pilot looking for the
         password control would see four tabs, none of them about security,
