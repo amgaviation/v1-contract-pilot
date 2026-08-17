@@ -40,13 +40,14 @@ export const metadata: Metadata = {
   // list" has no reason to invite a crawler onto its authenticated
   // surface, and the login page itself carries no content worth indexing.
   robots: { index: false, follow: false },
-  // From the V1 logo kit's README, adapted to Next's metadata API (which
-  // renders these as <link> tags itself — no manual markup in the <head>
-  // below). The SVG favicon carries the mark's real geometry at any size;
-  // PNG sizes are the fallback chain for browsers that don't yet support
-  // svg favicons. There is no "dark" favicon variant: browser chrome
-  // (where a favicon renders) is outside this app's theme scope, so the
-  // kit's light-ground file is correct for every user.
+  // Rendered from the current brand mark (public/brand/navy.svg geometry)
+  // by scripts/generate-pwa-icons.mjs; Next's metadata API renders these
+  // as <link> tags itself — no manual markup in the <head> below. The SVG
+  // favicon carries the mark's real geometry at any size; PNG sizes are
+  // the fallback chain for browsers that don't yet support svg favicons.
+  // There is deliberately no "dark" variant: the mark sits on its own
+  // navy rounded square, so one file is legible on light and dark browser
+  // chrome alike.
   icons: {
     icon: [
       { url: "/brand/favicon.svg", type: "image/svg+xml" },

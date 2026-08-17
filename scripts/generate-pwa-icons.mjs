@@ -52,3 +52,27 @@ for (const size of [192, 512]) {
     .toFile(out);
   console.log(`wrote ${out}`);
 }
+
+// The browser-tab favicon set, rendered from favicon.svg (the current
+// V1 mark, white on a navy rounded square — legible on light AND dark
+// browser chrome, which a bare navy-on-transparent mark is not). Same
+// provenance rule as above: outputs are committed, nothing runs this at
+// build time.
+const faviconSource = join(root, "public", "brand", "favicon.svg");
+for (const size of [16, 32, 48]) {
+  const out = join(root, "public", "brand", `favicon-${size}.png`);
+  await sharp(faviconSource, { density: (72 * size) / 512 })
+    .resize(size, size)
+    .png()
+    .toFile(out);
+  console.log(`wrote ${out}`);
+}
+
+// The iOS home-screen icon, from the app-icon source so a bookmarked V1
+// matches the installed PWA. 180 is the one size Apple still asks for.
+const appleOut = join(root, "public", "brand", "apple-touch-icon.png");
+await sharp(source, { density: (72 * 180) / 1024 })
+  .resize(180, 180)
+  .png()
+  .toFile(appleOut);
+console.log(`wrote ${appleOut}`);
