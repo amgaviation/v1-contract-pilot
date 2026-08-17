@@ -34,7 +34,7 @@ const COLUMNS: { heading: string; links: { href: string; label: string }[] }[] =
     heading: "Account",
     links: [
       { href: "/login", label: "Log in" },
-      { href: "/signup", label: "Start free trial" },
+      { href: "/signup", label: "Get started" },
     ],
   },
   {

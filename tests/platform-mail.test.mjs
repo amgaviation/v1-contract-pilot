@@ -77,7 +77,10 @@ test("HTML is the email-safe card: inline styles, hosted PNG wordmark, no <style
   assert.ok(!mail.html.includes("<style"));
   assert.ok(mail.html.includes("https://v1.amgaviationgroup.com/brand/navy.png"));
   assert.ok(mail.html.includes('alt="V1"'));
-  assert.ok(mail.html.includes("V1 &middot; Contract Pilot"));
+  // The footer is the bare brand name: the "Contract Pilot" descriptor was
+  // retired 2026-08-17 (docs/MARKETING.md) — the brand is strictly "V1".
+  assert.ok(mail.html.includes("V1<br />"));
+  assert.ok(!mail.html.includes("Contract Pilot"));
 });
 
 test("a hostile hosted-invoice URL cannot break out of the href", () => {

@@ -1,5 +1,3 @@
-import { BRAND } from "@/lib/brand";
-
 /**
  * The post-checkout onboarding surface. Its OWN route group, deliberately
  * outside (app): the (app) layout redirects a provisioned-but-not-onboarded
@@ -35,7 +33,7 @@ export default function OnboardingLayout({
         <div className="mx-auto w-full max-w-[44rem] px-4">
           <div className="flex items-center gap-3 py-3">
             <img src="/brand/navy.svg" alt="" height={20} width={34} />
-            <span className="text-caption text-ink-3">{BRAND.descriptor} · Account setup</span>
+            <span className="text-caption text-ink-3">Account setup</span>
           </div>
         </div>
       </div>

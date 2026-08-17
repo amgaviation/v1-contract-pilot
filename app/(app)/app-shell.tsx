@@ -177,7 +177,7 @@ export function AppShell({
               <div className="flex items-center gap-2">
                 <Link
                   href={DASHBOARD_PATH}
-                  aria-label={`${BRAND.name}: ${BRAND.descriptor}`}
+                  aria-label={BRAND.name}
                 >
                   <AccountLogo logoUrl={logoUrl} />
                 </Link>
@@ -235,7 +235,7 @@ export function AppShell({
           <div className="p-4">
             <Link
               href={DASHBOARD_PATH}
-              aria-label={`${BRAND.name}: ${BRAND.descriptor}`}
+              aria-label={BRAND.name}
             >
               {/* Wordmark auto-inverts to white on a dark ground —
                   app/globals.css's `[data-appearance="dark"]` rule, keyed
@@ -246,9 +246,6 @@ export function AppShell({
                   mark — an uploaded logo renders as-is, see AccountLogo. */}
               <AccountLogo logoUrl={logoUrl} />
             </Link>
-            <div className="mt-1 text-caption text-ink-3">
-              {BRAND.descriptor}
-            </div>
           </div>
           <NavRail accountName={accountName} sections={sections} />
         </aside>

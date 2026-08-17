@@ -37,16 +37,10 @@ export default function SiteHeader() {
         <div className="flex flex-wrap items-center justify-between gap-4 py-3">
           <NextLink
             href="/"
-            aria-label={`${BRAND.name}, ${BRAND.descriptor}`}
+            aria-label={BRAND.name}
             className="flex items-center gap-2.5 rounded-control focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-accent"
           >
             <img src="/brand/white.svg" alt="" height={22} width={38} />
-            {/* The descriptor, hidden on the narrowest phones where four
-                other items are competing for the same row. It is what makes
-                the bar say who this is for rather than only who it is. */}
-            <span className="hidden font-display text-body-s font-medium text-brand-ink-2 sm:inline">
-              {BRAND.descriptor}
-            </span>
           </NextLink>
 
           <div className="flex flex-wrap items-center gap-5">
@@ -76,7 +70,7 @@ export default function SiteHeader() {
               href="/signup"
               className={lButtonClass({ size: "sm", variant: "onBrand" })}
             >
-              Try {BRAND.name} free
+              Get started
             </NextLink>
           </div>
         </div>

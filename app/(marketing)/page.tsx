@@ -331,9 +331,9 @@ export default async function LandingPage() {
             </h1>
 
             <p className="text-lead text-brand-ink-2">
-              {BRAND.name} keeps the books for a flying business of one: who
-              owes you, what you earned, what you spent, and the year-end
-              packet your CPA asks for. All of it comes off the trips you fly.
+              {BRAND.name} keeps the books for your flying business: who owes
+              you, what you earned, what you spent, and the year-end packet
+              your CPA asks for. All of it comes off the trips you fly.
             </p>
 
             <div className="mt-1 flex flex-wrap gap-3">
@@ -430,7 +430,7 @@ export default async function LandingPage() {
           <div className="lg:col-span-4">
             <div className="lg:sticky lg:top-24">
               <h2 className="font-display text-display-s font-bold text-ink">
-                Everything a flying business keeps
+                The rest of the books
               </h2>
               <NextLink
                 href="/pricing"

@@ -75,7 +75,8 @@ export default function TermsPage() {
 
         <p className="text-body-s text-ink-2">
           When this page is published for real, it will cover the terms
-          of using {BRAND.name} (including billing, the trial, and
+          of using {BRAND.name} (including billing, the introductory
+          first-month price, and
           cancellation), and creating an account will ask you to accept
           it explicitly. Until then, this URL exists so it has a stable
           address; it does not yet describe any agreement you are bound

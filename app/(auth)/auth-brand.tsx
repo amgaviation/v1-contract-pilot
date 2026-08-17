@@ -40,14 +40,11 @@ export default function AuthBrand() {
     <div className="flex items-center justify-between gap-4">
       <NextLink
         href="/"
-        aria-label={`${BRAND.name}, ${BRAND.descriptor}`}
+        aria-label={BRAND.name}
         className="group flex items-center gap-2.5 rounded-control focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
       >
         <span className="flex size-9 items-center justify-center rounded-control bg-brand">
           <img src="/brand/white.svg" alt="" height={16} width={28} />
-        </span>
-        <span className="font-display text-body font-semibold tracking-tight text-ink">
-          {BRAND.descriptor}
         </span>
       </NextLink>
 

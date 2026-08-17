@@ -7,7 +7,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"),
   title: {
-    default: `${BRAND.name}: ${BRAND.descriptor}`,
+    default: BRAND.name,
     template: `%s | ${BRAND.name}`,
   },
   // THE ONE DESCRIPTION, and it is now a crawlable marketing claim rather
