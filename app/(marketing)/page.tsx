@@ -239,35 +239,6 @@ function specGroups(): { title: string; items: { text: string; tag: string | nul
 }
 
 /**
- * THE COMPARISON. WORKFLOW ONLY — no competitor pricing, and no claim that
- * any of these tools is bad at its own job. A logbook app is good at
- * logbooks; the cost named here is the seam between three tools that do not
- * know about each other, which is a real and specific cost to the person
- * doing the typing. This editorial constraint predates the rewrite and
- * survives it intact.
- *
- * Row one's second cell is the ONE place BRAND.tagline appears in body copy
- * on this page.
- */
-const COMPARISON: { step: string; today: string; here: string }[] = [
-  {
-    step: "After the trip",
-    today: "Legs typed into the logbook app",
-    here: BRAND.tagline,
-  },
-  {
-    step: "When you invoice",
-    today: "Re-enter dates and calculate billable days",
-    here: "Review the trip and send",
-  },
-  {
-    step: "Tax time",
-    today: "Reconcile logbook, receipts, and books",
-    here: "Export one set of records",
-  },
-];
-
-/**
  * THREE QUESTIONS. Only the ones that remove a real barrier and are
  * answered nowhere else on the page. The second is non-negotiable: it
  * carries the substance of lib/brand.ts's counsel-reviewed
@@ -444,43 +415,6 @@ export default async function LandingPage() {
             </NextLink>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <h2 className="text-h2 font-bold tracking-tight text-ink">
-            Stop rebuilding the same trip.
-          </h2>
-
-          <LCard className="p-0">
-            <LTable className="min-w-[36rem]">
-              <thead>
-                <tr>
-                  <LTh>Step</LTh>
-                  <LTh>Separate apps</LTh>
-                  <LTh>{BRAND.name}</LTh>
-                </tr>
-              </thead>
-              <tbody>
-                {COMPARISON.map((row) => (
-                  <tr key={row.step}>
-                    <LTd>
-                      <span className="font-medium text-ink">{row.step}</span>
-                    </LTd>
-                    <LTd>
-                      <span className="text-ink-2">{row.today}</span>
-                    </LTd>
-                    <LTd>{row.here}</LTd>
-                  </tr>
-                ))}
-              </tbody>
-            </LTable>
-          </LCard>
-        </div>
-      </Band>
-
-      {/* 5. PLANS. One line and a link — /pricing is one click away and
-          rebuilding it here at lower fidelity helps nobody. Amounts and
-          names render from the shared model so they cannot drift. */}
-      <Band>
-        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-          <p className="max-w-2xl text-body text-ink">
             {TIER_ORDER.map((tier) => (
               <LCard key={tier}>
                 <p className="text-body font-semibold text-ink">{TIER_DISPLAY[tier].name}</p>
