@@ -353,8 +353,9 @@ export default async function TripsPage({
                 </NextLink>
               }
             >
-              Log the trip once. Its legs feed your logbook, its days feed the
-              invoice, and its expenses file themselves against it.
+              Start with the trip you flew: its legs feed your logbook drafts,
+              its days feed the invoice lines, and the receipts you scan attach
+              to it.
             </LEmpty>
           )
         ) : (

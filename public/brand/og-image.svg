@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
-  <title>V1 — Log the trip once.</title>
+  <title>V1: The books for your flying business.</title>
   <!--
     Source for public/brand/og-image.png (the file actually declared in
     openGraph/twitter metadata — link-preview crawlers are not reliable SVG
@@ -13,7 +13,7 @@
     social share card is not the app footer or an about page, so it carries
     none. The mark's own letterform already reads as "V1" (see navy.svg's
     <title>); no separate wordmark text is added. Tagline text is
-    lib/brand.ts's BRAND.tagline, "Log the trip once.", copied verbatim — a
+    lib/brand.ts's BRAND.tagline, "The books for your flying business.", copied verbatim — a
     static SVG asset cannot import from a TS module, so if that string ever
     changes this file needs the same edit.
   -->
@@ -24,5 +24,5 @@
     <polygon points="413.019375,0 497.564375,0 497.564375,300 423.928375,300 423.928375,73.636 377.564375,73.636"/>
   </g>
   <text x="600" y="440" fill="#FFFFFF" text-anchor="middle"
-        font-family="Arial, Helvetica, sans-serif" font-size="46">Log the trip once.</text>
+        font-family="Arial, Helvetica, sans-serif" font-size="46">The books for your flying business.</text>
 </svg>

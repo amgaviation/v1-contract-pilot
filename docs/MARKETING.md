@@ -1,11 +1,17 @@
 # Marketing — positioning, message hierarchy, claim rules
 
 The approved strategy for the signed-out surface, written down once so
-future copy has a source. It was signed off in the 2026-08 rewrite and is
-what `app/(marketing)/page.tsx`, `app/(marketing)/pricing/page.tsx` and the
-`app/(auth)/` shell are written against. **Read this before editing a word
-of public copy.** Every rule below exists because the previous version of
-the page broke it.
+future copy has a source. Signed off in the 2026-08 rewrite, and
+**repositioned 2026-08-17 at the owner's direction**: the workflow wedge
+("log the trip once" / "stop entering the same trip three times") is
+retired everywhere — page, tagline, metadata, OG card, tier blurb, in-app
+empty states — and this document now records the money position that
+replaced it. §5's claim rules carried forward unchanged through the
+repositioning; they are honesty constraints, not positioning choices. This
+is what `app/(marketing)/page.tsx`, `app/(marketing)/pricing/page.tsx` and
+the `app/(auth)/` shell are written against. **Read this before editing a
+word of public copy.** Every rule below exists because a previous version
+of the page broke it.
 
 **`app/(auth)/` is inside the scope, not adjacent to it.** §5's claim rules
 bind `/signup`, `/login`, `/forgot-password`, `/reset-password` and
@@ -30,9 +36,9 @@ step.
 
 ## 1. The one-liner
 
-> V1 is the books for an independent contract pilot: log the trip once, and
-> the invoice lines, the logbook draft and the filed receipts all come off
-> that one record.
+> V1 is the books for a flying business of one: who owes you, what you
+> earned, what you spent, and the year-end packet your CPA asks for —
+> every figure off the trips the pilot flies.
 
 ## 2. Who it is for
 
@@ -51,24 +57,39 @@ for their pilots, or hobby/student logbook users. The exclusion belongs on
 `/pricing` if anywhere — never on the front door, where it costs words and
 buys nothing.
 
-## 3. The wedge
+## 3. The position
 
-One trip generates three records — a logbook entry, a billable line, and
-expenses — and every general-purpose tool makes the pilot enter it three
-times, because none of them knows what a trip, a leg, a day rate or a
-travel day is.
+**Money, not workflow.** The retired wedge sold single-entry — a mechanism
+nobody wakes up wanting. The position sells what the pilot already wants:
+to know what they're owed, get paid for every day they flew, and put a
+real set of books behind a 1099 business. The product was always built
+this way — the Overview leads with Unbilled work / Awaiting payment / Paid
+this year, and LEDGER.md chose the fintech register "because this product
+is, above all, how they get paid" — the copy has simply caught up with the
+product's own picture.
 
-V1 is **trip-native**: the trip is the record, the invoice lines and the
-logbook draft are generated from it, and receipts attach to it.
+**The category is books, not workflow software.** Pilots already pay for
+the category (QuickBooks, Wave, a CPA); V1 is the version of it that knows
+what a trip, a leg, a day rate and a travel day are. Positioning in an
+existing category means never having to sell the problem — only why the
+generic answer fits a flying business badly.
 
-The wedge is *not* "cheaper than Wave". It is that a tool for this one
-profession exists at all — and **belonging is proved by vocabulary and
-defaults**, never by an unsigned boast that pilots built it:
+**The mechanic is proof, not headline.** Trip-native — invoice lines
+generated, a per-leg logbook draft, receipts filed against the trip — is
+the reason to believe, stated in section 2 as the three questions a trip
+answers: what am I owed, what did I fly, what did it cost.
+
+**Belonging is still proved by vocabulary and defaults**, never by an
+unsigned boast that pilots built it:
 
 > "day records typed flight, travel, standby or off" · "PIC and SIC kept
 > distinct" · "tag it rebill or deduct"
 
-Sell the mechanic. Name exactly what you type and exactly what comes out.
+**Hold this angle.** Two positionings in one week is already one more than
+a brand should spend. Distinctive assets (the navy, the mark, the mono
+identifiers) and this message now stay consistent for years, not quarters;
+the next person who wants to reposition should have to argue against this
+paragraph.
 
 ---
 
@@ -76,31 +97,31 @@ Sell the mechanic. Name exactly what you type and exactly what comes out.
 
 | Rank | Beat | Where it lives |
 |---|---|---|
-| 1 | What the product is and who it serves | Hero |
-| 2 | The problem it removes | Hero subhead |
-| 3 | The workflow, and the cost of not having it | Section 2 |
+| 1 | The identity claim: flying is the job, this is the business | Hero H1 |
+| 2 | What the books hold: owed, earned, spent, year-end | Hero subhead |
+| 3 | The mechanic as proof: the three questions a trip answers | Section 2 |
 | 4 | Depth as evidence of belonging | Section 3 spec block |
 | 5 | The three barriers left | Section 4 FAQ |
 | 6 | Cost, and the promise that outlives the card | Section 5 close |
 
 **Hero copy, verbatim:**
 
-- **Eyebrow** — Built for independent pilots
-- **H1** — Stop entering the same trip three times.
-- **Subhead** — V1 keeps your trips, invoices, logbook, receipts, and
-  year end records together, so the business side of flying takes less work.
+- **Eyebrow** — For independent contract pilots
+- **H1** — Flying is the job. This is the business.
+- **Subhead** — V1 keeps the books for a flying business of one: who owes
+  you, what you earned, what you spent, and the year-end packet your CPA
+  asks for. All of it comes off the trips you fly.
 - **Fine line** — Plans start at $29/month. Card required.
 
-`BRAND.tagline` ("Log the trip once.") stays in the footer, the auth
-column and metadata. The H1 says what the product is for instead of asking
-a slogan to do that work.
+`BRAND.tagline` ("The books for your flying business.") stays in the
+footer, the auth column and metadata. The H1 says who the reader is
+becoming; the subhead says what the product holds; neither asks a slogan
+to do that work.
 
-**Beats 3 and 6 each used to be two sections, and are now one.** The
-workflow beat had a "what one trip produces" section AND a comparison
-table naming the same three records in the same order one screen later;
-the cost beat had a plans band whose whole content was one line and a link,
-sitting two screens above a closing call to action. Both merges are
-described in §7.
+**Section 2 no longer contains a comparison.** The old "Today: retyped
+into an invoicing tool" column existed to serve the duplicate-entry
+argument and left with it (§7). Claim rule 7 still binds any comparison a
+future edit reintroduces.
 
 ---
 
@@ -217,21 +238,20 @@ tier badges and the interpolated figures be counted as a reader meets them.
 
 | # | Section | Budget | Shipped |
 |---|---|---|---|
-| 1 | Hero, navy, product mock beside the argument | 58 | 42 |
-| 2 | Finish the paperwork while the trip is fresh — three record rows, each showing today and in-product | 155 | 107 |
-| 3 | The rest of the job, in the same place — spec block, sticky heading column | 125 | 86 |
-| 4 | Questions pilots ask us — three FAQ items | 112 | 117 |
-| 5 | Close, navy — plans line and one action | 42 | 26 |
-| | **Total** | **492** | **378** |
+| 1 | Hero, navy — identity H1, money subhead, mock | 70 | 57 |
+| 2 | What a trip is worth — three question rows | 110 | 102 |
+| 3 | Everything a flying business keeps — spec block | 100 | 82 |
+| 4 | Questions pilots ask us — three FAQ items | 120 | 117 |
+| 5 | Close, navy — plans line and one action | 30 | 28 |
+| | **Total** | **430** | **386** |
 
-Recounted at the 2026-08 redesign. Section 2's budget is the old sections
-2 and 4 added together (100 + 55), because it is now the old sections 2 and
-4: they made the same argument about the same three records twice, one
-screen apart, and merging them is where most of the 100-word drop came
-from. Section 5's is likewise the old plans band plus the old closing CTA
-(30 + 12). Section 4 is the only overrun and it is the FAQ, which carries
-the counsel-reviewed currency wording; trimming it would cost substance, so
-it stands and is stated.
+Re-budgeted at the 2026-08-17 repositioning: these are fresh numbers for
+the money position, not the old wedge's budgets carried over. Section 2's
+budget dropped from the merged 155 because the "Today: retyped into…"
+comparison column left with the angle that needed it — the rows now carry
+a question and its answer, nothing else. The hero's rose slightly: the
+subhead now carries the whole value proposition (owed, earned, spent,
+year-end) where the old one restated the H1's mechanism.
 
 **Rules of thumb behind the budgets**
 
@@ -239,10 +259,10 @@ it stands and is stated.
   (103 words) explained the thing sitting directly beneath them.
 - **A body paragraph that restates its own heading is deleted, not
   trimmed.** The old 65-word hero paragraph restated the H1 three times.
-- **One idea, one statement.** "Log the trip once" appeared twelve times on
-  the old landing page and seventeen across the signed-out surface. It now
-  stays in the footer, the auth panel and metadata instead of being repeated
-  through the page body.
+- **One idea, one statement.** The old wedge's slogan appeared twelve
+  times on the pre-2026-08 landing page and seventeen across the signed-out
+  surface. The tagline — whatever it currently is — renders in the footer,
+  the auth panel and metadata, and is never repeated through the page body.
 - **Two aphorisms on the whole page, a full screen apart** — section 3's
   heading and the lapsed-card line. Seven clever titles in a row reads to a
   working professional as being sold to.
@@ -280,12 +300,24 @@ it stands and is stated.
   factually wrong; see claim rule 6.
 - **The 17-word mock caption** → "Illustrative data." Same disclosure, two
   words.
-- **The standalone comparison section** (2026-08). Not the comparison
-  itself, which is claim rule 7's territory and still runs as the middle
-  column of section 2's rows — the second *section*, which re-listed the
-  invoice, the logbook entry and the receipts a screen after section 2 had
-  already listed them. Its heading ("Stop rebuilding the same trip") was
-  also the H1's sentence a second time.
+- **The standalone comparison section** (2026-08), and then **the
+  comparison itself** (2026-08-17). First the second *section* went — it
+  re-listed the invoice, the logbook entry and the receipts a screen after
+  section 2 had already listed them, under a heading that was the H1's
+  sentence a second time. Then the repositioning removed the surviving
+  middle column ("Today: retyped into an invoicing tool…"), because it
+  existed to argue duplicate entry and that argument is retired. Claim
+  rule 7 stays binding on any comparison a future edit reintroduces.
+- **The workflow wedge itself** (2026-08-17, owner's direction). "Log the
+  trip once", "Stop entering the same trip three times", and every echo of
+  them — the H1, the tagline, the root SEO description, the OG card's
+  baked-in text, the Solo tier blurb, the Overview and Trips empty states,
+  and the help guide's summary. The mechanic those slogans described is
+  still the product and still appears as proof (§3); what left is the
+  claim that saved data entry is the reason to buy. §3 records why the
+  money position replaced it — and its "hold this angle" paragraph is the
+  condition for cutting it: a positioning is not something this page
+  changes seasonally.
 - **The plans band** (2026-08). One line and one link do not need a band of
   their own two screens above the closing call to action; the line moved
   into the close. The price is now stated once on the page, in the hero.

@@ -59,7 +59,7 @@ export const TIER_DISPLAY: Record<PlanTier, { name: string; blurb: string }> = {
   solo: {
     name: "Solo",
     blurb:
-      "The working core: trips, invoices, expenses, logbook, and documents. Log the trip once.",
+      "The working core: trips, invoices, expenses, logbook, and documents.",
   },
   pro: {
     name: "Pro",
