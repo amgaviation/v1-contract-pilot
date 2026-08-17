@@ -1,7 +1,7 @@
 import NextLink from "next/link";
 import { LCard, LSeparator, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
 import { BRAND } from "@/lib/brand";
-import { TRIAL_PERIOD_DAYS } from "@/lib/stripe/server";
+import { INTRO_FIRST_MONTH_LABEL } from "@/lib/stripe/server";
 import {
   BUSINESS_MINIMUM_MONTHLY,
   TIER_DISPLAY,
@@ -48,7 +48,7 @@ export const metadata = {
   description:
     `Three plans for the independent contract pilot: Solo, Pro and ` +
     `Business. Your own records are in every plan, and every plan starts ` +
-    `with a ${TRIAL_PERIOD_DAYS}-day free trial.`,
+    `at ${INTRO_FIRST_MONTH_LABEL} for the first month.`,
 };
 
 /** A full-bleed band with the page's one shared measure inside it. */
@@ -123,8 +123,8 @@ export default function PricingPage() {
             documents and your export are in all three.
           </p>
           <p className="text-caption text-ink-3">
-            {TRIAL_PERIOD_DAYS}-day free trial on every plan. Card required
-            to start; nothing is charged until the trial ends.
+            {INTRO_FIRST_MONTH_LABEL} for your first month, on every plan.
+            The regular price applies from month two.
           </p>
         </div>
       </Band>
@@ -182,7 +182,7 @@ export default function PricingPage() {
                 </div>
 
                 <NextLink href="/signup" className={lButtonClass({ className: "w-full" })}>
-                  Start the {TRIAL_PERIOD_DAYS}-day trial
+                  Start for {INTRO_FIRST_MONTH_LABEL}
                 </NextLink>
               </LCard>
             );
@@ -271,7 +271,7 @@ export default function PricingPage() {
           <div className="flex flex-col items-start justify-between gap-5 md:flex-row md:items-center">
             <h2 className="font-display text-h2 font-bold tracking-tight text-ink">Start with your next trip.</h2>
             <NextLink href="/signup" className={lButtonClass({ size: "lg", className: "shrink-0" })}>
-              Start the {TRIAL_PERIOD_DAYS}-day trial
+              Start for {INTRO_FIRST_MONTH_LABEL}
             </NextLink>
           </div>
         </div>
@@ -295,8 +295,8 @@ export default function PricingPage() {
 function buildFaq(): { q: string; a: string }[] {
   return [
     {
-      q: "What happens when the trial ends?",
-      a: `After ${TRIAL_PERIOD_DAYS} days the card you started with is charged for the plan you picked: ${TIER_PRICE_COPY.solo.monthly}, ${TIER_PRICE_COPY.pro.monthly}, or ${TIER_PRICE_COPY.business.monthly} per seat a month. Cancel before it ends and nothing is charged.`,
+      q: "What does the first month cost?",
+      a: `${INTRO_FIRST_MONTH_LABEL}, on any monthly plan. From the second month your card is charged the regular price for the plan you picked: ${TIER_PRICE_COPY.solo.monthly}, ${TIER_PRICE_COPY.pro.monthly}, or ${TIER_PRICE_COPY.business.monthly} per seat a month. Annual plans bill the plain annual price from day one. Cancel during the first month and nothing more is charged.`,
     },
     {
       q: "What happens if I downgrade or cancel?",

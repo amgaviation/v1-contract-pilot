@@ -4,7 +4,7 @@ import { LPill, lButtonClass } from "@/components/ledger";
 import { BRAND } from "@/lib/brand";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import { getSessionContext } from "@/lib/supabase/account";
-import { TRIAL_PERIOD_DAYS } from "@/lib/stripe/server";
+import { INTRO_FIRST_MONTH_LABEL } from "@/lib/stripe/server";
 import {
   FEATURES,
   TIER_RANK,
@@ -352,7 +352,7 @@ export default async function LandingPage() {
                 href="/signup"
                 className={lButtonClass({ size: "lg", variant: "onBrand" })}
               >
-                Try {BRAND.name} free for {TRIAL_PERIOD_DAYS} days
+                Try {BRAND.name} — {INTRO_FIRST_MONTH_LABEL} first month
               </NextLink>
               <NextLink
                 href="/pricing"
@@ -535,8 +535,8 @@ export default async function LandingPage() {
             </h2>
             <p className="text-body text-brand-ink-2">
               {TIER_ORDER.map((tier) => TIER_DISPLAY[tier].name).join(", ")}{" "}
-              plans, all of them with the {TRIAL_PERIOD_DAYS}-day trial and a
-              full account export.
+              plans, every one of them {INTRO_FIRST_MONTH_LABEL} for the first
+              month, with a full account export.
             </p>
           </div>
           <NextLink
@@ -547,7 +547,7 @@ export default async function LandingPage() {
               className: "shrink-0",
             })}
           >
-            Try {BRAND.name} free for {TRIAL_PERIOD_DAYS} days
+            Try {BRAND.name} — {INTRO_FIRST_MONTH_LABEL} first month
           </NextLink>
         </div>
       </Band>

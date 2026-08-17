@@ -11,13 +11,13 @@ import { signUp, type SignUpState } from "./actions";
 const initialState: SignUpState = { error: null };
 
 /**
- * `trialDays` is passed down from the server page rather than imported:
- * TRIAL_PERIOD_DAYS lives in lib/stripe/server.ts, which is `server-only`,
- * and this is a client component. Same pattern the welcome plan picker
- * uses. It is the SAME constant the checkout hands Stripe, so the number
- * on this screen is the trial the code enforces.
+ * `introLabel` is passed down from the server page rather than imported:
+ * INTRO_FIRST_MONTH_LABEL lives in lib/stripe/server.ts, which is
+ * `server-only`, and this is a client component. Same pattern the welcome
+ * plan picker uses. It is the SAME constant the checkout's coupon is
+ * minted from, so the price on this screen is the price the code charges.
  */
-export default function SignUpForm({ trialDays }: { trialDays: number }) {
+export default function SignUpForm({ introLabel }: { introLabel: string }) {
   const [state, formAction, pending] = useActionState(signUp, initialState);
 
   // React 19 resets an uncontrolled form on every action dispatch,
@@ -150,15 +150,17 @@ export default function SignUpForm({ trialDays }: { trialDays: number }) {
           />
         </Field>
 
-        {/* THE TRIAL TERMS, stated before the button rather than under
-            it. trialDays is the checkout's own constant; the card is
+        {/* THE OFFER TERMS, stated before the button rather than under
+            it. introLabel is the checkout's own constant; the card is
             entered at Stripe's checkout on the next screen, which is why
             this says "next step" and does not ask for one here. */}
         <div className="rounded-control border border-hair bg-sunk p-3">
-          <p className="text-body-s font-medium text-ink">{trialDays} days free.</p>
+          <p className="text-body-s font-medium text-ink">
+            {introLabel} for your first month.
+          </p>
           <p className="text-caption text-ink-3">
-            You pick a plan and enter a card on the next step. Nothing is
-            charged until the trial ends.
+            You pick a plan and enter a card on the next step. Your first
+            month is {introLabel}; the regular price applies after that.
           </p>
         </div>
 

@@ -5,7 +5,11 @@ import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionContext } from "@/lib/supabase/account";
 import { DASHBOARD_PATH } from "@/lib/nav";
-import { getStripe, TRIAL_PERIOD_DAYS } from "@/lib/stripe/server";
+import {
+  getStripe,
+  INTRO_FIRST_MONTH_CENTS,
+  INTRO_FIRST_MONTH_LABEL,
+} from "@/lib/stripe/server";
 import { priceIdFor } from "@/lib/stripe/prices";
 import { isBillingInterval, isPlanTier, seatsForTier } from "@/lib/entitlements";
 
@@ -23,7 +27,65 @@ export async function signOut() {
 export type CheckoutState = { error: string | null };
 
 /**
- * Starts the card-required trial (decision #6) for the CHOSEN tier. This
+ * The $5-first-month coupon for one price, minted idempotently. Stripe
+ * coupons take an ABSOLUTE amount off, so "first month costs $5" is
+ * (price × seats − 500) off, once — which differs per tier and interval,
+ * hence one coupon per price rather than one global. The id is
+ * deterministic (price ids are immutable, amounts live on the price), so
+ * every checkout for the same price reuses the same coupon and the create
+ * call collides harmlessly after the first.
+ *
+ * Returns null — meaning "no discount, charge the plain price" — for the
+ * annual interval (a "first month" has no meaning on a yearly invoice),
+ * for a non-USD or amountless price, and for any price at or under $5.
+ * A COUPON FAILURE ALSO RETURNS NULL rather than throwing: the wrong
+ * outcome of a Stripe blip here is a visitor at maximum intent being
+ * turned away; charging one full month instead of $5 is the lesser wrong,
+ * and the log says it happened.
+ */
+async function introCouponId(
+  stripe: ReturnType<typeof getStripe>,
+  priceId: string,
+  tier: Parameters<typeof seatsForTier>[0],
+  interval: "monthly" | "annual"
+): Promise<string | null> {
+  if (interval !== "monthly") return null;
+  try {
+    const price = await stripe.prices.retrieve(priceId);
+    if (typeof price.unit_amount !== "number") return null;
+    if ((price.currency ?? "usd").toLowerCase() !== "usd") return null;
+    const seats = seatsForTier(tier);
+    const amountOff = price.unit_amount * seats - INTRO_FIRST_MONTH_CENTS;
+    if (amountOff <= 0) return null;
+
+    const id = `intro5-${priceId}-x${seats}`;
+    try {
+      await stripe.coupons.create({
+        id,
+        amount_off: amountOff,
+        currency: "usd",
+        duration: "once",
+        name: `First month ${INTRO_FIRST_MONTH_LABEL}`,
+      });
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      // resource_already_exists IS the normal case after the first
+      // checkout for this price. Anything else falls through to the
+      // outer catch: no coupon, full price, logged.
+      if (code !== "resource_already_exists") throw err;
+    }
+    return id;
+  } catch (err) {
+    console.error(
+      `[stripe] intro coupon for ${priceId} unavailable, charging full price:`,
+      err instanceof Error ? err.message : String(err)
+    );
+    return null;
+  }
+}
+
+/**
+ * Starts the $5-first-month subscription for the CHOSEN tier. This
  * creates the Checkout session only — it does NOT create a tenant.
  * Provisioning happens solely in the webhook when Stripe confirms the
  * checkout completed (decision #7), so a user who abandons the payment
@@ -69,6 +131,7 @@ export async function startCheckout(
   let url: string | null = null;
   try {
     const stripe = getStripe();
+    const coupon = await introCouponId(stripe, priceId, tier, interval);
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       // Business is priced per seat with a two-seat minimum (docs/PRICING.md
@@ -88,12 +151,14 @@ export async function startCheckout(
       client_reference_id: ctx.user.id,
       customer_email: ctx.user.email,
       subscription_data: {
-        trial_period_days: TRIAL_PERIOD_DAYS,
         metadata: { supabase_user_id: ctx.user.id },
       },
-      // Card required up front even though the trial is free, per decision
-      // #6 — this is what makes the trial convert without a second ask.
-      payment_method_collection: "always",
+      // THE $5 FIRST MONTH (INTRO_FIRST_MONTH_CENTS): a once-duration
+      // coupon on this checkout's first invoice only. The subscription
+      // itself carries the regular Price, so tierForPriceId and every
+      // renewal are untouched. Null coupon = no discount (annual, a
+      // sub-$5 price, or a Stripe blip — introCouponId logs which).
+      ...(coupon ? { discounts: [{ coupon }] } : {}),
       // plan_tier here is diagnostic breadcrumb only (support can see
       // what the picker showed) — the webhook maps the tier from the
       // PRICE, never from this metadata.

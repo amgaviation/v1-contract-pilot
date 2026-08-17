@@ -170,10 +170,11 @@ export async function changePlan(
  * calls it — same account row, new stripe_subscription_id, status flips
  * off "canceled" the instant that event lands.
  *
- * No trial_period_days here on purpose: TRIAL_PERIOD_DAYS (decision #6) is
- * the FIRST-subscription incentive; granting a fresh free trial every time
- * a subscription is left to lapse and reopened would be a standing
- * discount, not a reactivation.
+ * No intro discount here on purpose: the $5 first month
+ * (INTRO_FIRST_MONTH_CENTS, which replaced the trial decision #6 described)
+ * is the FIRST-subscription incentive; granting it again every time a
+ * subscription is left to lapse and reopened would be a standing discount,
+ * not a reactivation.
  */
 export async function resubscribe(
   _prev: BillingActionState,

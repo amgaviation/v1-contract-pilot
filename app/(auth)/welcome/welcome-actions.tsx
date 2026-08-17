@@ -47,10 +47,11 @@ export type PlanOption = {
  */
 export function PlanPicker({
   options,
-  trialDays,
+  introLabel,
 }: {
   options: PlanOption[];
-  trialDays: number;
+  /** The intro first-month price ("$5"), from INTRO_FIRST_MONTH_LABEL. */
+  introLabel: string;
 }) {
   const [state, formAction, pending] = useActionState(startCheckout, initialState);
 
@@ -151,7 +152,11 @@ export function PlanPicker({
 
         <SubmitButton
           pending={pending}
-          idle={`Start your ${trialDays}-day trial`}
+          idle={
+            interval === "monthly"
+              ? `Start for ${introLabel}`
+              : "Start your plan"
+          }
           busy="Opening checkout…"
           disabled={pending || selectedLabel === null}
         />
@@ -161,12 +166,21 @@ export function PlanPicker({
           history of this file): the cancel path lives in Stripe's billing
           portal via Settings → Billing, which exists only once the account
           does — this screen belongs to someone who doesn't have one yet.
+
+          The intro sentence is interval-aware because the offer is: a
+          monthly plan's first invoice is the intro price and the regular
+          price follows; an annual plan has no "first month" to discount
+          and bills its plain price today (see introCouponId).
         */}
         <p className="text-center text-caption text-ink-3">
           {selectedLabel
-            ? `${selectedLabel}${
-                selectedSeatNote ? ` (${selectedSeatNote})` : ""
-              } after the trial. Card required now.`
+            ? interval === "monthly"
+              ? `${introLabel} today for your first month, then ${selectedLabel}${
+                  selectedSeatNote ? ` (${selectedSeatNote})` : ""
+                }.`
+              : `${selectedLabel}${
+                  selectedSeatNote ? ` (${selectedSeatNote})` : ""
+                }, billed today.`
             : "Card required now."}
         </p>
       </form>
