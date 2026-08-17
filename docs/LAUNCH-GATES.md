@@ -272,8 +272,9 @@ easiest to leave undone because nothing visibly breaks without it. It is the sig
 delivery. Register it in the Stripe dashboard, in the same mode as the platform key, pointed at
 `/api/stripe/connect-webhook`, with **"Listen to events on connected accounts"** selected (the
 non-default choice; a direct charge on a pilot's own account is only delivered on that scope)
-and subscribed to **three** event types — `checkout.session.completed`,
-`checkout.session.async_payment_succeeded` and `checkout.session.async_payment_failed`
+and subscribed to **four** event types — `checkout.session.completed`,
+`checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed` and
+`payment_intent.succeeded` (the autopay settlement path, 20260817160000)
 (`CONNECT_ENDPOINT_EVENT_TYPES` in `lib/stripe/connect-payments.ts` is the authority; this
 list is a copy of it). Until the secret is set, the route answers 503 to every
 delivery before touching Stripe or the database, and a client's payment is not recorded on the

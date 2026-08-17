@@ -11,13 +11,19 @@ import {
   createRecurringSchedule,
   updateRecurringSchedule,
   setRecurringScheduleActive,
+  setRecurringScheduleAutopay,
   deleteRecurringSchedule,
   type ScheduleFormState,
   type ScheduleEditState,
 } from "./actions";
 
 type ScheduleRow = Database["pilot"]["Tables"]["recurring_invoice_schedules"]["Row"];
-export type ClientOption = { id: string; name: string };
+export type ClientOption = {
+  id: string;
+  name: string;
+  /** "Visa •••• 4242" when the client has enrolled in autopay, else null. */
+  autopayLabel: string | null;
+};
 
 const CADENCE_LABEL: Record<string, string> = { monthly: "Monthly", quarterly: "Quarterly" };
 
@@ -227,11 +233,14 @@ function ScheduleRowView({
   schedule,
   clientName,
   editing,
+  autopayLabel,
   onEdit,
   onDone,
 }: {
   schedule: ScheduleRow;
   clientName: string;
+  /** The client's enrolled-card label, or null when not enrolled. */
+  autopayLabel: string | null;
   editing: boolean;
   onEdit: () => void;
   onDone: () => void;
@@ -252,6 +261,14 @@ function ScheduleRowView({
     startTransition(async () => {
       setToggleError(null);
       const result = await setRecurringScheduleActive(schedule.id, !schedule.active);
+      if (result.error) setToggleError(result.error);
+    });
+  }
+
+  function handleAutopayToggle() {
+    startTransition(async () => {
+      setToggleError(null);
+      const result = await setRecurringScheduleAutopay(schedule.id, !schedule.autopay);
       if (result.error) setToggleError(result.error);
     });
   }
@@ -297,8 +314,22 @@ function ScheduleRowView({
       <LTd>
         <div className="flex flex-wrap items-center gap-2">
           {schedule.active ? <LPill tone="good">Active</LPill> : <LPill tone="neutral">Paused</LPill>}
+          {/* The autopay pill states which of the three states this
+              schedule is actually in: off, on-and-armed (client enrolled,
+              card named), or on-but-waiting (flag set, no card saved yet —
+              generation still produces an ordinary draft until there is). */}
+          {schedule.autopay ? (
+            autopayLabel ? (
+              <LPill tone="accent">{`Autopay · ${autopayLabel}`}</LPill>
+            ) : (
+              <LPill tone="warn">Autopay · client hasn&rsquo;t saved a card</LPill>
+            )
+          ) : null}
           <LButton type="button" variant="outline" size="sm" onClick={handleToggle} disabled={pending}>
             {schedule.active ? "Pause" : "Resume"}
+          </LButton>
+          <LButton type="button" variant="outline" size="sm" onClick={handleAutopayToggle} disabled={pending}>
+            {schedule.autopay ? "Autopay off" : "Autopay on"}
           </LButton>
           <LButton type="button" variant="outline" size="sm" onClick={onEdit} disabled={pending}>
             Edit
@@ -360,6 +391,7 @@ export default function ScheduleManager({
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const clientNames = new Map(clients.map((c) => [c.id, c.name]));
+  const clientAutopay = new Map(clients.map((c) => [c.id, c.autopayLabel]));
 
   return (
     <div className="flex flex-col gap-4">
@@ -368,7 +400,9 @@ export default function ScheduleManager({
         <span>
           A schedule never sends anything by itself. It only records a cadence. The app tells
           you when a period is due, and every invoice it creates is a draft you review before
-          sending, the same as any other invoice.
+          sending, the same as any other invoice — unless you switch autopay on for a
+          schedule whose client has saved a card, in which case creating the due invoice
+          also issues it and charges that card.
         </span>
       </LAlert>
 
@@ -440,6 +474,7 @@ export default function ScheduleManager({
                   key={schedule.id}
                   schedule={schedule}
                   clientName={clientNames.get(schedule.client_id) ?? "—"}
+                  autopayLabel={clientAutopay.get(schedule.client_id) ?? null}
                   editing={editingId === schedule.id}
                   onEdit={() => setEditingId(schedule.id)}
                   onDone={() => setEditingId(null)}

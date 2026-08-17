@@ -14,6 +14,7 @@ import ArchiveButton from "./archive-button";
 import RateOverridesPanel from "./rate-overrides-panel";
 import OperatorQualificationsPanel from "./operator-qualifications-panel";
 import PacketPanel from "./packet-panel";
+import VendorPanel, { type ExistingVendorLink } from "./vendor-panel";
 import PaymentInsightPanel from "./payment-insight-panel";
 import CostPanel from "./cost-panel";
 
@@ -59,7 +60,7 @@ export default async function EditClientPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { account } = await requireAccount(`/clients/${id}`);
+  const { account, role } = await requireAccount(`/clients/${id}`);
 
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -101,6 +102,7 @@ export default async function EditClientPage({
     qualificationsResult,
     packetDocsResult,
     packetShareResult,
+    vendorLinkResult,
   ] =
     await Promise.all([
     supabase
@@ -155,6 +157,13 @@ export default async function EditClientPage({
       .select("token, expires_at, revoked_at")
       .eq("client_id", id)
       .maybeSingle(),
+    // The vendor page's own live link, for VendorPanel — same single-row
+    // shape as the packet share right above (unique account_id, client_id).
+    supabase
+      .from("client_vendor_links")
+      .select("token, expires_at, revoked_at, first_viewed_at, last_viewed_at")
+      .eq("client_id", id)
+      .maybeSingle(),
   ]);
 
   const packetDocuments = ((packetDocsResult.data ?? []) as {
@@ -195,6 +204,25 @@ export default async function EditClientPage({
           token: packetShareRow.token,
           expiresAt: formatDate(packetShareRow.expires_at.slice(0, 10)),
           documentCount: 0,
+        }
+      : null;
+
+  // Same U4 shape as the packet share above, on the row right next to it.
+  const vendorLinkRow = vendorLinkResult.data as {
+    token: string;
+    expires_at: string;
+    revoked_at: string | null;
+    first_viewed_at: string | null;
+    last_viewed_at: string | null;
+  } | null;
+  const vendorLinkLoadError = Boolean(vendorLinkResult.error);
+  const liveVendorLink: ExistingVendorLink | null =
+    vendorLinkRow && !vendorLinkRow.revoked_at && vendorLinkRow.expires_at > new Date().toISOString()
+      ? {
+          token: vendorLinkRow.token,
+          expiresAt: formatDate(vendorLinkRow.expires_at.slice(0, 10)),
+          firstViewedAt: vendorLinkRow.first_viewed_at,
+          lastViewedAt: vendorLinkRow.last_viewed_at,
         }
       : null;
 
@@ -422,6 +450,23 @@ export default async function EditClientPage({
         documentsLoadError={packetDocumentsLoadError}
         existing={livePacket}
         existingLoadError={packetShareLoadError}
+      />
+
+      {/* Mounted with 20260817160000's autopay work — the panel existed
+          before that but was never rendered anywhere, so the whole vendor
+          page feature (20260814112000) had no way to mint a link. */}
+      <VendorPanel
+        clientId={client.id}
+        clientName={client.name}
+        existing={liveVendorLink}
+        existingLoadError={vendorLinkLoadError}
+        autopay={{
+          methodLabel: client.autopay_method_label,
+          consentedOn: client.autopay_consented_at
+            ? formatDate(client.autopay_consented_at.slice(0, 10))
+            : null,
+        }}
+        canDisableAutopay={role === "owner"}
       />
 
       <OperatorQualificationsPanel

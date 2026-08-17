@@ -438,6 +438,243 @@ export async function deactivatePaymentLink(params: {
   }
 }
 
+/* ===========================================================================
+ * AUTOPAY — a client's saved payment method, charged off-session.
+ *
+ * Same posture as every payment call above: DIRECT operations on the
+ * pilot's own connected account via `{ stripeAccount }`, no application
+ * fee, no on_behalf_of, no transfer_data. The platform never holds the
+ * money and never holds a key.
+ *
+ * VERIFIED AGAINST CURRENT STRIPE DOCS (2026-08-17):
+ *   - Checkout Sessions in `mode: 'setup'` collect a payment method
+ *     without charging, producing a SetupIntent whose default usage is
+ *     'off_session' — exactly the mandate an autopay charge needs
+ *     (docs.stripe.com/payments/save-and-reuse).
+ *   - An off-session charge is `paymentIntents.create` with `customer`,
+ *     `payment_method`, `off_session: true`, `confirm: true`. A decline or
+ *     an authentication_required challenge surfaces as a thrown
+ *     StripeCardError carrying `code`/`decline_code`
+ *     (docs.stripe.com/payments/save-during-payment#charge-saved-payment-method).
+ * =========================================================================== */
+
+export type AutopaySetupSession = {
+  /** Where to send the client's browser. */
+  url: string;
+  /** The (possibly just-created) Customer the method will attach to. */
+  customerId: string;
+};
+
+/**
+ * Mints the Checkout session (mode `setup`) through which a client saves a
+ * card for autopay, on the pilot's connected account.
+ *
+ * CARD ONLY, deliberately. An off-session ACH debit needs its own mandate
+ * language and carries a 60-day dispute window (see connect-payments.ts's
+ * header) — a strictly larger consent than "charge my card". Card is what
+ * the QuickBooks-shaped feature means, and it is what ships first.
+ *
+ * Metadata mirrors the payment-link contract: it says WHICH client;
+ * Stripe's signed event.account says WHOSE. The webhook re-checks both.
+ */
+export async function createAutopaySetupSession(params: {
+  connectAccountId: string;
+  accountId: string;
+  clientId: string;
+  clientName: string;
+  /** Reuse the client's existing Customer when re-consenting (card swap). */
+  existingCustomerId: string | null;
+  /** Absolute URL of the vendor page to return to, without query. */
+  returnUrl: string;
+}): Promise<AutopaySetupSession> {
+  const stripe = getStripe();
+  const stripeAccount = params.connectAccountId;
+
+  let customerId = params.existingCustomerId;
+  if (!customerId) {
+    const customer = await stripe.customers.create(
+      {
+        name: params.clientName,
+        metadata: { account_id: params.accountId, client_id: params.clientId },
+      },
+      { stripeAccount }
+    );
+    customerId = customer.id;
+  }
+
+  const session = await stripe.checkout.sessions.create(
+    {
+      mode: "setup",
+      customer: customerId,
+      payment_method_types: [CARD_METHOD],
+      success_url: `${params.returnUrl}?autopay=saved`,
+      cancel_url: params.returnUrl,
+      metadata: {
+        autopay_setup: "1",
+        account_id: params.accountId,
+        client_id: params.clientId,
+      },
+    },
+    { stripeAccount }
+  );
+
+  if (!session.url) {
+    // A setup session with no URL cannot be completed by anyone; treat the
+    // absent confirmation as a failure rather than redirecting to nowhere.
+    throw new Error("Stripe returned a setup session with no URL.");
+  }
+  return { url: session.url, customerId };
+}
+
+export type SavedAutopayMethod = {
+  customerId: string;
+  paymentMethodId: string;
+  /** "Visa •••• 4242" — derived once, stored, never re-fetched to render. */
+  label: string;
+};
+
+/**
+ * Reads the saved method off a completed setup session's SetupIntent.
+ * Called by the Connect webhook only. Returns null when the SetupIntent
+ * has not actually succeeded — a canceled or still-processing setup must
+ * not enroll anyone.
+ */
+export async function readAutopaySetupResult(params: {
+  connectAccountId: string;
+  setupIntentId: string;
+}): Promise<SavedAutopayMethod | null> {
+  const stripe = getStripe();
+  const intent = await stripe.setupIntents.retrieve(
+    params.setupIntentId,
+    { expand: ["payment_method"] },
+    { stripeAccount: params.connectAccountId }
+  );
+  if (intent.status !== "succeeded") return null;
+
+  const method = intent.payment_method;
+  if (!method || typeof method === "string") return null;
+  const customerId =
+    typeof intent.customer === "string" ? intent.customer : intent.customer?.id;
+  if (!customerId) return null;
+
+  const card = method.card;
+  const brand = card?.brand
+    ? card.brand.charAt(0).toUpperCase() + card.brand.slice(1)
+    : "Card";
+  const label = card?.last4 ? `${brand} •••• ${card.last4}` : brand;
+
+  return { customerId, paymentMethodId: method.id, label };
+}
+
+export type AutopayChargeResult =
+  | { ok: true; paymentIntentId: string }
+  | {
+      ok: false;
+      /** A sentence for the pilot. Never Stripe's raw internals. */
+      reason: string;
+    };
+
+/**
+ * Charges a client's saved method for one invoice, off-session, as a
+ * direct charge on the pilot's connected account.
+ *
+ * THE LEDGER IS NOT WRITTEN HERE. The Connect webhook records the payment
+ * from `payment_intent.succeeded` — one writer for every Stripe-recorded
+ * row, deduped by the payment-intent unique index, exactly as link
+ * payments work. This function only moves the money and reports whether
+ * Stripe took the charge.
+ *
+ * Failure is a RETURN, not a throw: a declined card mid-generation must
+ * not abort the rest of a due queue, and the caller has to surface the
+ * sentence either way.
+ */
+export async function chargeAutopayInvoice(params: {
+  connectAccountId: string;
+  accountId: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  amountCents: number;
+  customerId: string;
+  paymentMethodId: string;
+}): Promise<AutopayChargeResult> {
+  const stripe = getStripe();
+  try {
+    const intent = await stripe.paymentIntents.create(
+      {
+        amount: params.amountCents,
+        currency: "usd",
+        customer: params.customerId,
+        payment_method: params.paymentMethodId,
+        off_session: true,
+        confirm: true,
+        description: `Invoice ${params.invoiceNumber} (autopay)`,
+        metadata: {
+          // The autopay flag is what the webhook's intent reader gates on:
+          // payment-link charges also produce PaymentIntents, and those
+          // must keep flowing through the Checkout Session events alone.
+          autopay: "1",
+          invoice_id: params.invoiceId,
+          account_id: params.accountId,
+          invoice_number: params.invoiceNumber,
+        },
+      },
+      { stripeAccount: params.connectAccountId }
+    );
+    if (intent.status === "succeeded" || intent.status === "processing") {
+      return { ok: true, paymentIntentId: intent.id };
+    }
+    return {
+      ok: false,
+      reason: `Stripe did not complete the charge (status ${intent.status}). Send the invoice with a payment link instead.`,
+    };
+  } catch (err) {
+    const stripeErr = err as {
+      code?: string;
+      decline_code?: string;
+      message?: string;
+    };
+    if (stripeErr.code === "authentication_required") {
+      return {
+        ok: false,
+        reason:
+          "The client's bank requires them to authenticate this charge, which an automatic charge cannot do. Send the invoice with a payment link so they can pay it themselves, and ask them to re-save their card from your vendor page.",
+      };
+    }
+    if (stripeErr.code === "card_declined" || stripeErr.decline_code) {
+      return {
+        ok: false,
+        reason: `The saved card was declined (${stripeErr.decline_code ?? "no reason given"}). Send the invoice with a payment link instead, and ask the client to update their card.`,
+      };
+    }
+    return {
+      ok: false,
+      reason:
+        "The charge couldn't be made. Send the invoice with a payment link instead.",
+    };
+  }
+}
+
+/**
+ * Detaches a saved autopay method when autopay is turned off. Best-effort:
+ * `resource_missing` means it is already gone (card deleted from the
+ * pilot's dashboard, account disconnected), which is the end state asked
+ * for — same rule as deactivatePaymentLink.
+ */
+export async function detachAutopayMethod(params: {
+  connectAccountId: string;
+  paymentMethodId: string;
+}): Promise<void> {
+  const stripe = getStripe();
+  try {
+    await stripe.paymentMethods.detach(params.paymentMethodId, undefined, {
+      stripeAccount: params.connectAccountId,
+    });
+  } catch (err) {
+    if ((err as { code?: string }).code === "resource_missing") return;
+    throw err;
+  }
+}
+
 /**
  * The wording every caller uses when a Stripe-side deactivation could not
  * be confirmed. One string, because the pilot needs the same instruction

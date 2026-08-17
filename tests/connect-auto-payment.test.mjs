@@ -641,18 +641,25 @@ function achEvent(overrides = {}, sessionOverrides = {}) {
   });
 }
 
-test("the endpoint listens to three types; only two can become money", () => {
+test("the endpoint listens to four types; only two session types can become link money", () => {
   // TWO SEPARATE CONSTANTS ON PURPOSE. The wide one is what an operator
   // registers in the Stripe dashboard; the narrow one is what may put a row
-  // in invoice_payments. Collapsing them would make a FAILED payment
-  // eligible to become a claim, which is the one thing it must never be.
+  // in invoice_payments through the SESSION reader. Collapsing them would
+  // make a FAILED payment eligible to become a claim, which is the one
+  // thing it must never be. payment_intent.succeeded (20260817160000) is
+  // the autopay settlement path, with its own reader and its own gate —
+  // see tests/autopay-intent.test.mjs.
   assert.deepEqual([...CONNECT_ENDPOINT_EVENT_TYPES], [
     "checkout.session.completed",
     "checkout.session.async_payment_succeeded",
     "checkout.session.async_payment_failed",
+    "payment_intent.succeeded",
   ]);
   assert.equal(ASYNC_FAILURE_EVENT_TYPE, "checkout.session.async_payment_failed");
   assert.ok(!AUTO_PAYMENT_EVENT_TYPES.includes(ASYNC_FAILURE_EVENT_TYPE));
+  // The intent event must never reach the SESSION claim path either — the
+  // session reader's own eligible-list guard pins that below.
+  assert.ok(!AUTO_PAYMENT_EVENT_TYPES.includes("payment_intent.succeeded"));
 
   // THE REGISTRATION LIST IS WIDER THAN THE PAYMENT LIST, and that gap is
   // the point: the route acts on a deauthorization, so an operator must
@@ -664,6 +671,7 @@ test("the endpoint listens to three types; only two can become money", () => {
     "checkout.session.completed",
     "checkout.session.async_payment_succeeded",
     "checkout.session.async_payment_failed",
+    "payment_intent.succeeded",
     "account.application.deauthorized",
   ]);
   assert.ok(

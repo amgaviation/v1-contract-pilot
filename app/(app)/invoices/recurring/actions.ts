@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { parseDollarsToCents } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
+import { chargeAutopayInvoice } from "@/lib/stripe/connect";
+import { isLiveMode } from "@/lib/stripe/server";
 import type { Database } from "@/lib/supabase/database.types";
 
 type ScheduleRow = Database["pilot"]["Tables"]["recurring_invoice_schedules"]["Row"];
@@ -347,6 +349,34 @@ export async function setRecurringScheduleActive(
 }
 
 /**
+ * The per-schedule autopay switch — same shape as pause/resume above.
+ * Deliberately allowed even before the client has enrolled: the flag is
+ * inert until they do (attemptAutopayCharge checks the client columns at
+ * charge time), and a pilot setting it up ahead of sending the vendor
+ * page link is the ordinary order of events, not an error.
+ */
+export async function setRecurringScheduleAutopay(
+  id: string,
+  autopay: boolean
+): Promise<{ error: string | null }> {
+  const { account } = await requireEntitlement("recurring_invoices", "/invoices/recurring");
+  if (!UUID_RE.test(id)) return { error: "That schedule couldn't be found." };
+
+  const supabase = await createClient();
+  const payload: ScheduleUpdate = { autopay };
+  const { error, count } = await supabase
+    .from("recurring_invoice_schedules")
+    .update(payload as never, { count: "exact" })
+    .eq("account_id", account.id)
+    .eq("id", id);
+  if (error) return { error: friendlyDbError(error, "recurring_invoice_schedules.update") };
+  if (!count) return { error: "That schedule no longer exists." };
+
+  revalidatePath("/invoices/recurring");
+  return { error: null };
+}
+
+/**
  * Deleting a schedule stops it offering any further due periods. It does
  * NOT touch invoices already generated from it — those stand on their own
  * as ordinary invoices. It DOES delete this schedule's own
@@ -383,7 +413,17 @@ export async function deleteRecurringSchedule(id: string): Promise<{ error: stri
 // in response to an explicit pilot click (recurring/due-queue.tsx).
 // ---------------------------------------------------------------------------
 
-export type GenerateResult = { error: string | null; invoiceId?: string };
+export type GenerateResult = {
+  error: string | null;
+  invoiceId?: string;
+  /**
+   * What happened to the schedule's autopay charge, when one was
+   * attempted — a sentence for the pilot either way ("Charged $X to
+   * Visa •••• 4242" / "The saved card was declined…"). Absent when the
+   * schedule has autopay off or the client is not enrolled.
+   */
+  autopay?: string;
+};
 
 /**
  * Generates one invoice for one (schedule, period). Best-effort
@@ -423,7 +463,7 @@ export async function generateRecurringInvoice(
 
   const { data: scheduleData, error: scheduleError } = await supabase
     .from("recurring_invoice_schedules")
-    .select("id, client_id, cadence, anchor_date, end_date, description, amount_cents, tax_rate_bps, active")
+    .select("id, client_id, cadence, anchor_date, end_date, description, amount_cents, tax_rate_bps, active, autopay")
     .eq("account_id", account.id)
     .eq("id", scheduleId)
     .maybeSingle();
@@ -475,15 +515,126 @@ export async function generateRecurringInvoice(
     return { error: friendlyDbError(generateError, "generate_recurring_invoice") };
   }
 
+  // AUTOPAY, when the schedule asks for it AND the client has actually
+  // enrolled. Everything about the generation above is already committed —
+  // an autopay failure never rolls the invoice back, it just leaves a
+  // draft/sent invoice for the ordinary payment-link path, with a sentence
+  // saying so. The ledger row for a successful charge is written by the
+  // Connect webhook (payment_intent.succeeded), never here: one writer for
+  // every Stripe-recorded payment, deduped by the payment-intent index.
+  let autopayNote: string | undefined;
+  if (schedule.autopay) {
+    autopayNote = await attemptAutopayCharge(
+      supabase,
+      { id: account.id, connectAccountId: account.connect_account_id },
+      schedule.client_id,
+      invoiceId as string
+    );
+  }
+
   revalidatePath("/invoices/recurring");
   revalidatePath("/invoices");
-  return { error: null, invoiceId: invoiceId as string };
+  return { error: null, invoiceId: invoiceId as string, ...(autopayNote ? { autopay: autopayNote } : {}) };
+}
+
+/**
+ * Issues the freshly generated invoice and charges the client's saved
+ * method for it. Returns the sentence for the pilot; never throws.
+ *
+ * THE ORDER IS ISSUE-THEN-CHARGE, and it matters: the draft→sent
+ * transition is what assigns the invoice its number and due date
+ * (pilot.invoices_assign_number_on_issue), and the number goes into the
+ * charge's own metadata and Stripe description. It also means a client is
+ * only ever charged for an ISSUED document — the webhook refuses payments
+ * against drafts outright, so charging first would record nothing.
+ *
+ * Not exported: "use server" would make it a public endpoint, and this
+ * must only ever run right after a generation this module just validated.
+ */
+async function attemptAutopayCharge(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  account: { id: string; connectAccountId: string | null },
+  clientId: string,
+  invoiceId: string
+): Promise<string> {
+  if (!account.connectAccountId) {
+    return "Autopay is on for this schedule, but Stripe isn't connected, so the invoice was created as a draft to send yourself.";
+  }
+
+  const { data: clientData, error: clientError } = await supabase
+    .from("clients")
+    .select(
+      "autopay_stripe_customer_id, autopay_stripe_payment_method_id, autopay_method_label, autopay_livemode"
+    )
+    .eq("id", clientId)
+    .eq("account_id", account.id)
+    .maybeSingle();
+  if (clientError || !clientData) {
+    return "Autopay is on for this schedule, but the client's autopay details couldn't be read, so the invoice was created as a draft to send yourself.";
+  }
+  const enrolled = clientData as {
+    autopay_stripe_customer_id: string | null;
+    autopay_stripe_payment_method_id: string | null;
+    autopay_method_label: string | null;
+    autopay_livemode: boolean | null;
+  };
+  if (!enrolled.autopay_stripe_customer_id || !enrolled.autopay_stripe_payment_method_id) {
+    return "Autopay is on for this schedule, but the client hasn't saved a card yet — send them your vendor page link to set it up. The invoice was created as a draft to send yourself.";
+  }
+  if (enrolled.autopay_livemode !== isLiveMode()) {
+    // A card saved under the other Stripe mode. Refused here rather than
+    // erroring at Stripe with a message nobody could act on.
+    return "Autopay is on, but the client's card was saved under a different Stripe mode (test vs live). Ask them to set autopay up again from your vendor page. The invoice was created as a draft to send yourself.";
+  }
+
+  // ISSUE. Same transition the invoice screen's own send performs; the
+  // status trigger assigns the number and due date. The update grant on
+  // `status` is the one every send path already uses.
+  const { error: sendError, count: sendCount } = await supabase
+    .from("invoices")
+    .update({ status: "sent" } as never, { count: "exact" })
+    .eq("id", invoiceId)
+    .eq("account_id", account.id);
+  if (sendError || sendCount === 0) {
+    return "Autopay is on, but the invoice couldn't be issued, so nothing was charged. It was created as a draft to send yourself.";
+  }
+
+  const [{ data: invoiceRow }, { data: totalsRow }] = await Promise.all([
+    supabase.from("invoices").select("invoice_number").eq("id", invoiceId).eq("account_id", account.id).maybeSingle(),
+    supabase.from("invoice_totals").select("total_cents").eq("invoice_id", invoiceId).maybeSingle(),
+  ]);
+  const invoiceNumber =
+    (invoiceRow as { invoice_number: string | null } | null)?.invoice_number ?? null;
+  const totalCents = (totalsRow as { total_cents: number } | null)?.total_cents ?? null;
+  if (!invoiceNumber || totalCents === null || totalCents <= 0) {
+    return "Autopay is on and the invoice was issued, but its total couldn't be read, so nothing was charged. Send it with a payment link instead.";
+  }
+
+  const charge = await chargeAutopayInvoice({
+    connectAccountId: account.connectAccountId,
+    accountId: account.id,
+    invoiceId,
+    invoiceNumber,
+    amountCents: totalCents,
+    customerId: enrolled.autopay_stripe_customer_id,
+    paymentMethodId: enrolled.autopay_stripe_payment_method_id,
+  });
+  if (!charge.ok) {
+    return `Invoice ${invoiceNumber} was issued, but the autopay charge failed: ${charge.reason}`;
+  }
+  const label = enrolled.autopay_method_label ?? "the client's saved card";
+  return `Invoice ${invoiceNumber} was issued and ${label} was charged ${(totalCents / 100).toLocaleString(
+    "en-US",
+    { style: "currency", currency: "USD" }
+  )}. The payment is recorded automatically when Stripe confirms it.`;
 }
 
 export type GenerateAllResult = {
   error: string | null;
   created: number;
   failed: string[];
+  /** Autopay outcomes, one sentence per attempted charge (see GenerateResult.autopay). */
+  autopay?: string[];
   /**
    * True when the due set exceeds CREATE_ALL_CONFIRM_THRESHOLD and the
    * caller did NOT pass confirmed=true — nothing was created. The caller
@@ -531,7 +682,7 @@ export async function generateAllDueRecurringInvoices(
 
   const { data: schedulesData, error: schedulesError } = await supabase
     .from("recurring_invoice_schedules")
-    .select("id, client_id, cadence, anchor_date, end_date, description, amount_cents, tax_rate_bps, active")
+    .select("id, client_id, cadence, anchor_date, end_date, description, amount_cents, tax_rate_bps, active, autopay")
     .eq("account_id", account.id)
     .eq("active", true);
   if (schedulesError) {
@@ -570,11 +721,15 @@ export async function generateAllDueRecurringInvoices(
 
   let created = 0;
   const failed: string[] = [];
+  const autopay: string[] = [];
   for (const target of targets) {
     const result = await generateRecurringInvoice(target.schedule_id, target.period_start);
     if (result.error) failed.push(`${target.period_start}: ${result.error}`);
-    else created += 1;
+    else {
+      created += 1;
+      if (result.autopay) autopay.push(result.autopay);
+    }
   }
 
-  return { error: null, created, failed };
+  return { error: null, created, failed, ...(autopay.length ? { autopay } : {}) };
 }

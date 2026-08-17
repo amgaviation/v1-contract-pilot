@@ -267,6 +267,13 @@ export default async function SettingsPage({
     >
       <SettingsTabs
         initialTab={tab}
+        // THE BUSINESS TAB IS IDENTITY ONLY — the name, address, defaults
+        // and letterhead mark that print on documents. Money in (Stripe
+        // Connect, payment methods, export) lives on the Payments tab and
+        // money out (the subscription) on the Billing tab: the old single
+        // tab carried three unrelated jobs, and the one a pilot visits
+        // weekly (payments) was buried in a sidebar column of the one they
+        // visit once (their own address).
         business={
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div className="flex flex-col gap-4 lg:col-span-2">
@@ -289,32 +296,12 @@ export default async function SettingsPage({
             </div>
             <div className="flex flex-col gap-4">
               <LogoPanel hasLogo={Boolean(account.logo_url)} canEdit={canEdit} />
-              <LCard>
-                <div className="flex flex-col gap-2">
-                  <h3 className="text-h3 font-semibold">Plan</h3>
-                  <p className="text-body-s text-ink-2">
-                    {account.plan ?? "—"} · {account.status}
-                  </p>
-                  {/* Read-only on purpose. Plan, seat count and every Stripe
-                      column are withheld from the tenant UPDATE grant AND
-                      blocked by the accounts_protect_billing_columns trigger,
-                      so billing state changes only ever arrive through the
-                      Stripe webhook. Showing an editable control here would
-                      promise something the database refuses — the link
-                      below goes to the Billing tab, which changes the plan
-                      through Stripe itself, never this row directly. */}
-                  <p className="text-caption text-ink-3">
-                    Billing is managed through Stripe. Changes to your plan arrive here
-                    automatically.
-                  </p>
-                  <NextLink
-                    href="/settings?tab=billing"
-                    className="text-body-s font-medium text-accent hover:underline"
-                  >
-                    Manage your subscription
-                  </NextLink>
-                </div>
-              </LCard>
+            </div>
+          </div>
+        }
+        payments={
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+            <div className="flex flex-col gap-4">
               <ConnectPanel
                 configured={Boolean(process.env.STRIPE_CONNECT_CLIENT_ID)}
                 canEdit={canEdit}
@@ -332,6 +319,12 @@ export default async function SettingsPage({
                   canEdit={canEdit}
                 />
               ) : null}
+            </div>
+            <div className="flex flex-col gap-4">
+              {/* No Plan card here — the Billing tab, one trigger down in
+                  the same group, IS the plan surface (current plan, change,
+                  interval, receipts, portal). A summary card beside it
+                  would be a second, staler statement of the same facts. */}
               <LCard>
                 <div className="flex flex-col gap-2">
                   <h3 className="text-h3 font-semibold">Your data</h3>

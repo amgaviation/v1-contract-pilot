@@ -9,7 +9,14 @@ import { generateRecurringInvoice, generateAllDueRecurringInvoices, type DuePeri
 
 export type DueRow = DuePeriod & { client_name: string; description: string };
 
-function CreateOneButton({ row, onDone }: { row: DueRow; onDone: () => void }) {
+function CreateOneButton({
+  row,
+  onDone,
+}: {
+  row: DueRow;
+  /** Called with the autopay outcome sentence, when there was one. */
+  onDone: (autopayNote?: string) => void;
+}) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -18,7 +25,7 @@ function CreateOneButton({ row, onDone }: { row: DueRow; onDone: () => void }) {
       setError(null);
       const result = await generateRecurringInvoice(row.schedule_id, row.period_start);
       if (result.error) setError(result.error);
-      else onDone();
+      else onDone(result.autopay);
     });
   }
 
@@ -83,10 +90,14 @@ export default function DueQueue({
       }
       setConfirmInfo(null);
       setDismissed(new Set(rows.map(key)));
-      setAllSummary(
+      const base =
         result.failed.length === 0
           ? `Created ${result.created} invoice${result.created === 1 ? "" : "s"}.`
-          : `Created ${result.created} invoice${result.created === 1 ? "" : "s"}; ${result.failed.length} couldn't be created (${result.failed.join("; ")}).`
+          : `Created ${result.created} invoice${result.created === 1 ? "" : "s"}; ${result.failed.length} couldn't be created (${result.failed.join("; ")}).`;
+      // Autopay outcomes ride the same summary line: a charge that failed
+      // is exactly the thing a pilot must not discover a month later.
+      setAllSummary(
+        result.autopay?.length ? `${base} ${result.autopay.join(" ")}` : base
       );
     });
   }
@@ -226,7 +237,13 @@ export default function DueQueue({
                   <span className="text-ink-2">{formatDate(row.due_on)}</span>
                 </LTd>
                 <LTd>
-                  <CreateOneButton row={row} onDone={() => setDismissed((d) => new Set(d).add(key(row)))} />
+                  <CreateOneButton
+                    row={row}
+                    onDone={(autopayNote) => {
+                      setDismissed((d) => new Set(d).add(key(row)));
+                      if (autopayNote) setAllSummary(autopayNote);
+                    }}
+                  />
                 </LTd>
               </tr>
             ))}

@@ -110,9 +110,22 @@ export const ASYNC_FAILURE_EVENT_TYPE = "checkout.session.async_payment_failed";
  * refund. Adding failure handling here does NOT quietly widen that rule:
  * `async_payment_failed` is money that never arrived, not money leaving.
  */
+/**
+ * The event that means "an autopay charge settled" (20260817160000).
+ *
+ * Payment-link charges ALSO produce PaymentIntents, so subscribing to this
+ * type receives their success events too — readAutopayIntentEvent gates
+ * hard on `metadata.autopay === "1"`, which only chargeAutopayInvoice ever
+ * sets, and everything else lands 'ignored'. The Checkout Session events
+ * above remain the one recording path for link payments; the payment-intent
+ * unique index is the backstop if both paths ever describe the same money.
+ */
+export const AUTOPAY_INTENT_EVENT_TYPE = "payment_intent.succeeded";
+
 export const CONNECT_ENDPOINT_EVENT_TYPES = [
   ...AUTO_PAYMENT_EVENT_TYPES,
   ASYNC_FAILURE_EVENT_TYPE,
+  AUTOPAY_INTENT_EVENT_TYPE,
 ] as const;
 
 /**
@@ -218,6 +231,13 @@ export type ConnectSessionEvent = {
 export type PaymentClaim = {
   eventId: string;
   connectedAccountId: string;
+  /**
+   * The Checkout Session for a link payment. An autopay charge has no
+   * session — the PaymentIntent id stands in, documented here so nothing
+   * reads it as a cs_… and so supersedePendingNotice (keyed by session id)
+   * simply matches nothing for an autopay claim, which is correct: autopay
+   * never wrote a pending notice.
+   */
   sessionId: string;
   paymentIntentId: string;
   paymentLinkId: string | null;
@@ -229,6 +249,12 @@ export type PaymentClaim = {
   /** ISO date (YYYY-MM-DD), UTC, from the event's own timestamp. */
   paidOn: string;
   method: PaymentMethod | null;
+  /**
+   * Which recording path this claim came through — becomes the ledger
+   * row's provenance. 'stripe_link' for the Checkout Session readers,
+   * 'stripe_autopay' for readAutopayIntentEvent.
+   */
+  source: "stripe_link" | "stripe_autopay";
 };
 
 export type PaymentMethod = "ach" | "check" | "wire" | "card" | "cash" | "other";
@@ -592,6 +618,129 @@ export function readConnectPaymentEvent(event: ConnectSessionEvent): ReadResult 
       // later must still date the payment when it happened.
       paidOn: isoDateFromUnixSeconds(event.eventCreated),
       method: paymentMethodFromSession(session.paymentMethodTypes),
+      source: "stripe_link",
+    },
+  };
+}
+
+/**
+ * A payment_intent.succeeded delivery, reduced to what this module needs.
+ * Mirrors ConnectSessionEvent's shape; built by the route's
+ * toConnectIntentEvent.
+ */
+export type ConnectIntentEvent = {
+  eventId: string;
+  eventType: string;
+  eventAccount: string | null;
+  eventCreated: number;
+  intent: {
+    id: string;
+    /** `amount_received` — what actually settled, not what was asked for. */
+    amountReceivedCents: number | null;
+    currency: string | null;
+    metadata: Readonly<Record<string, string>> | null;
+  };
+};
+
+/**
+ * Stage one for an AUTOPAY charge: payment_intent.succeeded → claim.
+ *
+ * THE GATE IS metadata.autopay === "1", and it is load-bearing: this
+ * endpoint receives payment_intent.succeeded for EVERY charge on the
+ * pilot's connected account — payment-link checkouts (whose recording
+ * path is the Checkout Session events, and must stay so), and sales from
+ * any unrelated business the pilot runs on the same Stripe account. Only
+ * chargeAutopayInvoice writes that key, so only its charges pass. The
+ * payment-intent unique index remains the backstop if the two paths ever
+ * describe the same money.
+ *
+ * The same tenancy rule as the session reader applies downstream: the
+ * metadata here is typed by whoever controls the connected account, so it
+ * is a CLAIM, and resolveAutoPayment re-derives whose money this is from
+ * the signed event.account.
+ */
+export function readAutopayIntentEvent(event: ConnectIntentEvent): ReadResult {
+  if (event.eventType !== AUTOPAY_INTENT_EVENT_TYPE) {
+    return {
+      kind: "ignored",
+      detail: `${event.eventType} is not an autopay settlement event.`,
+    };
+  }
+  if (!event.eventAccount) {
+    return {
+      kind: "refused",
+      detail:
+        "Delivery carried no event.account, so it did not come from a connected account. Connect events must be sent to this endpoint from a webhook registered to listen on connected accounts.",
+    };
+  }
+
+  const metadata = event.intent.metadata ?? {};
+  if ((metadata.autopay ?? "") !== "1") {
+    // The ordinary case for this event type: a link payment's own intent,
+    // or a charge on the pilot's Stripe account that has nothing to do
+    // with this product. The session events own the first; nothing owns
+    // the second. Either way: no row.
+    return {
+      kind: "ignored",
+      detail: `PaymentIntent ${event.intent.id} succeeded but is not an autopay charge (link payments are recorded from their Checkout Session events). Nothing was recorded here.`,
+    };
+  }
+
+  const declaredInvoiceId = (metadata.invoice_id ?? "").trim();
+  const declaredAccountId = (metadata.account_id ?? "").trim();
+  const declaredInvoiceNumber = (metadata.invoice_number ?? "").trim() || null;
+
+  if (
+    !declaredInvoiceId ||
+    !declaredAccountId ||
+    !UUID_RE.test(declaredInvoiceId) ||
+    !UUID_RE.test(declaredAccountId)
+  ) {
+    return {
+      kind: "refused",
+      detail: `PaymentIntent ${event.intent.id} claims to be an autopay charge but names no well-formed invoice. Metadata on a connected account is not trusted; check the charge in your Stripe dashboard.`,
+    };
+  }
+  const declared: DeclaredScope = { declaredAccountId, declaredInvoiceId };
+
+  if (
+    event.intent.amountReceivedCents === null ||
+    event.intent.amountReceivedCents <= 0
+  ) {
+    return {
+      kind: "refused",
+      declared,
+      detail: `PaymentIntent ${event.intent.id} succeeded with no positive amount_received, so there is no payment to record.`,
+    };
+  }
+  if ((event.intent.currency ?? "usd").toLowerCase() !== "usd") {
+    return {
+      kind: "refused",
+      declared,
+      detail: `An autopay charge settled in ${String(
+        event.intent.currency
+      ).toUpperCase()}, but payments in this product are recorded in USD, so it was not recorded automatically. Check the amount that reached your Stripe balance and record it by hand.`,
+    };
+  }
+
+  return {
+    kind: "claim",
+    claim: {
+      eventId: event.eventId,
+      connectedAccountId: event.eventAccount,
+      // No Checkout Session exists for an off-session charge — the intent
+      // id stands in. See PaymentClaim.sessionId.
+      sessionId: event.intent.id,
+      paymentIntentId: event.intent.id,
+      paymentLinkId: null,
+      declaredAccountId,
+      declaredInvoiceId,
+      declaredInvoiceNumber,
+      amountCents: event.intent.amountReceivedCents,
+      paidOn: isoDateFromUnixSeconds(event.eventCreated),
+      // chargeAutopayInvoice charges cards only — see its header.
+      method: "card",
+      source: "stripe_autopay",
     },
   };
 }
@@ -675,7 +824,7 @@ export type PaymentInsert = {
   paid_on: string;
   amount_cents: number;
   method: PaymentMethod | null;
-  source: "stripe_link";
+  source: "stripe_link" | "stripe_autopay";
   stripe_payment_intent_id: string;
 };
 
@@ -886,14 +1035,17 @@ export function resolveAutoPayment(input: {
 
   return {
     kind: "record",
-    detail: `Recorded ${formatCentsPlain(claim.amountCents)} paid through this invoice's payment link${linkNote}.`,
+    detail:
+      claim.source === "stripe_autopay"
+        ? `Recorded ${formatCentsPlain(claim.amountCents)} charged automatically to the client's saved card (autopay).`
+        : `Recorded ${formatCentsPlain(claim.amountCents)} paid through this invoice's payment link${linkNote}.`,
     insert: {
       account_id: account.id,
       invoice_id: invoice.id,
       paid_on: claim.paidOn,
       amount_cents: claim.amountCents,
       method: claim.method,
-      source: "stripe_link",
+      source: claim.source,
       stripe_payment_intent_id: claim.paymentIntentId,
     },
     // Mirrors recordPayment: any payment landing makes a link priced

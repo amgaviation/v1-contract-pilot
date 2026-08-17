@@ -30,7 +30,7 @@ export default async function RecurringInvoicesPage() {
     supabase
       .from("recurring_invoice_schedules")
       .select(
-        "id, account_id, client_id, cadence, anchor_date, end_date, description, amount_cents, tax_rate_bps, active, created_at, updated_at"
+        "id, account_id, client_id, cadence, anchor_date, end_date, description, amount_cents, tax_rate_bps, active, autopay, created_at, updated_at"
       )
       .order("created_at", { ascending: false }),
     supabase.from("recurring_invoice_generations").select("schedule_id, period_start"),
@@ -38,7 +38,11 @@ export default async function RecurringInvoicesPage() {
     // invoices, so the picker offers only counterparties the pilot bills.
     supabase
       .from("clients")
-      .select("id, name")
+      // autopay_method_label rides along so the schedule list can say
+      // whether an autopay flag is live ("Visa •••• 4242") or still
+      // waiting on the client to enroll. SELECT is table-wide; the write
+      // grants are what the autopay columns are withheld from.
+      .select("id, name, autopay_method_label")
       .eq(YOU_INVOICE_COLUMN, true)
       .order("name", { ascending: true }),
   ]);
@@ -46,9 +50,12 @@ export default async function RecurringInvoicesPage() {
   const firstError = scheduleError ?? generationError ?? clientError;
 
   const schedules = (scheduleData ?? []) as ScheduleRow[];
-  const clients = ((clientData ?? []) as { id: string; name: string }[]).map((c) => ({
+  const clients = (
+    (clientData ?? []) as { id: string; name: string; autopay_method_label: string | null }[]
+  ).map((c) => ({
     id: c.id,
     name: c.name,
+    autopayLabel: c.autopay_method_label,
   }));
   const clientNames = new Map(clients.map((c) => [c.id, c.name]));
 

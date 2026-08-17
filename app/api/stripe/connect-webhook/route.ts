@@ -1,14 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type Stripe from "stripe";
 import { getStripe, isLiveMode } from "@/lib/stripe/server";
-import { deactivatePaymentLink } from "@/lib/stripe/connect";
+import { deactivatePaymentLink, readAutopaySetupResult } from "@/lib/stripe/connect";
 import { createServiceClient } from "@/lib/supabase/service-role";
 import {
+  AUTOPAY_INTENT_EVENT_TYPE,
   formatCentsPlain,
   nextInvoiceStatus,
+  readAutopayIntentEvent,
   readConnectPaymentEvent,
   resolveAutoPayment,
   type AsyncSettlement,
+  type ConnectIntentEvent,
   type ConnectSessionEvent,
   type DeclaredScope,
   type LedgerRow,
@@ -199,6 +202,7 @@ export async function POST(request: NextRequest) {
 
   const supabase = createServiceClient();
   const session = sessionFrom(event);
+  const intent = intentFrom(event);
 
   // Insert-first idempotency, copied from the platform webhook: the insert
   // IS the check. A redelivery collides on the primary key and we then ask
@@ -208,8 +212,8 @@ export async function POST(request: NextRequest) {
     connected_account_id: connectedAccountId,
     type: event.type,
     stripe_created_at: new Date(event.created * 1000).toISOString(),
-    object_id: session?.id ?? null,
-    payment_intent_id: idOf(session?.payment_intent),
+    object_id: session?.id ?? intent?.id ?? null,
+    payment_intent_id: idOf(session?.payment_intent) ?? intent?.id ?? null,
     livemode: event.livemode,
   };
 
@@ -370,6 +374,27 @@ export async function POST(request: NextRequest) {
         throw new Error(`connect_oauth_states.delete (deauthorize ${account.id}): ${oauthError.message}`);
       }
 
+      // Autopay enrollments die with the grant: the Customer and
+      // PaymentMethod ids live ON the deauthorized account, so every
+      // saved mandate is unreachable from here the moment the grant is
+      // gone. Clearing them is what keeps the vendor page and the
+      // schedules honest ("autopay is not set up") instead of promising
+      // charges that can never be made.
+      const { error: autopayError } = await supabase
+        .from("clients")
+        .update({
+          autopay_stripe_customer_id: null,
+          autopay_stripe_payment_method_id: null,
+          autopay_method_label: null,
+          autopay_consented_at: null,
+          autopay_livemode: null,
+        } as never)
+        .eq("account_id", account.id)
+        .not("autopay_stripe_customer_id", "is", null);
+      if (autopayError) {
+        throw new Error(`clients.update (deauthorize autopay ${account.id}): ${autopayError.message}`);
+      }
+
       console.error(
         `Connect event ${event.id}: account ${account.id} deauthorized the platform's Stripe grant from their own dashboard. connect_account_id cleared, payment links retired, oauth state cleared. Settings will show "not connected" on next load.`
       );
@@ -387,9 +412,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true, outcome: "deauthorized" });
     }
 
-    const read = readConnectPaymentEvent(
-      toConnectSessionEvent(event, connectedAccountId, session)
-    );
+    // AUTOPAY ENROLLMENT — a Checkout Session in `setup` mode completing.
+    // Handled before the payment readers because a setup session moves no
+    // money and must never be fed to a path that could: it has no
+    // payment_intent and payment_status 'no_payment_required', so the
+    // session reader would land it 'ignored' anyway — this branch exists
+    // to act on it, not merely to skip it.
+    if (
+      event.type === "checkout.session.completed" &&
+      session?.mode === "setup"
+    ) {
+      const outcome = await handleAutopaySetup({
+        supabase,
+        connectedAccountId,
+        account,
+        session,
+      });
+      await finish({
+        account_id: account?.id ?? null,
+        outcome: "ignored",
+        detail: outcome,
+      });
+      return NextResponse.json({ received: true, outcome: "autopay-setup" });
+    }
+
+    const read =
+      event.type === AUTOPAY_INTENT_EVENT_TYPE
+        ? readAutopayIntentEvent(toConnectIntentEvent(event, connectedAccountId, intent))
+        : readConnectPaymentEvent(
+            toConnectSessionEvent(event, connectedAccountId, session)
+          );
     if (read.kind !== "claim") {
       // 'ignored' is the ordinary path for every event type this endpoint
       // is not interested in, and for links minted before metadata
@@ -1050,6 +1102,87 @@ async function retirePaymentLink(params: {
   return note;
 }
 
+/**
+ * AUTOPAY ENROLLMENT. A client finished the vendor page's Checkout setup
+ * session, so their saved card lands on pilot.clients — the ONLY writer of
+ * those five columns (the migration withholds them from every
+ * authenticated grant precisely so this signed path is the only way in).
+ *
+ * Returns the sentence for the events ledger. Metadata problems RETURN
+ * rather than throw — a malformed setup session reads the same three days
+ * running, so a retry buys nothing — while Stripe/Postgres failures throw
+ * so the delivery is retried with the enrollment still unrecorded.
+ */
+async function handleAutopaySetup(params: {
+  supabase: ServiceClient;
+  connectedAccountId: string;
+  account: ResolvedAccount;
+  session: Stripe.Checkout.Session;
+}): Promise<string> {
+  const { supabase, connectedAccountId, account, session } = params;
+  const metadata = session.metadata ?? {};
+
+  if ((metadata.autopay_setup ?? "") !== "1") {
+    return `Setup session ${session.id} completed on this Stripe account but was not started by this product's autopay flow. Nothing recorded.`;
+  }
+  if (!account) {
+    return `Setup session ${session.id} completed on connected account ${connectedAccountId}, which no longer resolves to a tenant. Nothing recorded.`;
+  }
+  // The same trust rule as every payment claim: metadata says WHICH
+  // client, the signed event.account says WHOSE. A mismatch is a forgery
+  // attempt or a stale session from before a reconnect — either way, no.
+  if ((metadata.account_id ?? "") !== account.id) {
+    return `Setup session ${session.id} names account ${metadata.account_id ?? "(none)"} but was delivered from connected account ${connectedAccountId}, which belongs to a different tenant. Refused.`;
+  }
+  const clientId = (metadata.client_id ?? "").trim();
+  if (!clientId) {
+    return `Setup session ${session.id} carries no client_id. Nothing recorded.`;
+  }
+  const { data: clientData, error: clientError } = await supabase
+    .from("clients")
+    .select("id, account_id")
+    .eq("id", clientId)
+    .maybeSingle();
+  if (clientError) throw new Error(`clients.select (autopay setup): ${clientError.message}`);
+  const client = clientData as { id: string; account_id: string } | null;
+  if (!client || client.account_id !== account.id) {
+    return `Setup session ${session.id} names a client that is not one of this tenant's. Refused.`;
+  }
+
+  const setupIntentId = idOf(session.setup_intent);
+  if (!setupIntentId) {
+    return `Setup session ${session.id} completed with no setup_intent, so there is no saved method to record.`;
+  }
+  const saved = await readAutopaySetupResult({
+    connectAccountId: connectedAccountId,
+    setupIntentId,
+  });
+  if (!saved) {
+    return `Setup session ${session.id}'s SetupIntent has not succeeded, so no method was saved and autopay was not enabled.`;
+  }
+
+  const { error: updateError, count } = await supabase
+    .from("clients")
+    .update(
+      {
+        autopay_stripe_customer_id: saved.customerId,
+        autopay_stripe_payment_method_id: saved.paymentMethodId,
+        autopay_method_label: saved.label,
+        autopay_consented_at: new Date().toISOString(),
+        autopay_livemode: isLiveMode(),
+      } as never,
+      { count: "exact" }
+    )
+    .eq("id", client.id)
+    .eq("account_id", account.id);
+  if (updateError) throw new Error(`clients.update (autopay setup): ${updateError.message}`);
+  if (count === 0) {
+    throw new Error(`clients.update (autopay setup ${client.id}) matched 0 rows.`);
+  }
+
+  return `Autopay enabled: the client saved ${saved.label} for automatic charging of recurring invoices.`;
+}
+
 /** The Checkout Session on this event, when it carries one. */
 function sessionFrom(event: Stripe.Event): Stripe.Checkout.Session | null {
   if (
@@ -1067,6 +1200,34 @@ function sessionFrom(event: Stripe.Event): Stripe.Checkout.Session | null {
 function idOf(value: string | { id?: string } | null | undefined): string | null {
   if (!value) return null;
   return typeof value === "string" ? value : (value.id ?? null);
+}
+
+/** The PaymentIntent on this event, when it carries one. */
+function intentFrom(event: Stripe.Event): Stripe.PaymentIntent | null {
+  if (event.type === "payment_intent.succeeded") {
+    return event.data.object as Stripe.PaymentIntent;
+  }
+  return null;
+}
+
+/** SDK → plain shape for the autopay intent reader, mirroring toConnectSessionEvent. */
+function toConnectIntentEvent(
+  event: Stripe.Event,
+  connectedAccountId: string,
+  intent: Stripe.PaymentIntent | null
+): ConnectIntentEvent {
+  return {
+    eventId: event.id,
+    eventType: event.type,
+    eventAccount: connectedAccountId,
+    eventCreated: event.created,
+    intent: {
+      id: intent?.id ?? "",
+      amountReceivedCents: intent?.amount_received ?? null,
+      currency: intent?.currency ?? null,
+      metadata: (intent?.metadata ?? null) as Readonly<Record<string, string>> | null,
+    },
+  };
 }
 
 /**

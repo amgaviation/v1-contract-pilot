@@ -89,12 +89,22 @@ const OPEN_STATUS_LABEL: Record<string, { tone: "neutral" | "warn"; label: strin
   partial: { tone: "warn", label: "Partially paid" },
 };
 
+type AutopayState = {
+  available: boolean;
+  enrolled: boolean;
+  method_label: string | null;
+} | null;
+
 export default async function VendorPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string }>;
+  /** `autopay` — the return flag from the consent routes, display only. */
+  searchParams: Promise<{ autopay?: string }>;
 }) {
   const { token } = await params;
+  const { autopay: autopayFlag } = await searchParams;
 
   const supabase = await createClient();
 
@@ -142,6 +152,19 @@ export default async function VendorPage({
   }
 
   const page = data as unknown as VendorPage;
+
+  // Autopay state, best-effort: a failed read renders the page without the
+  // autopay card rather than withholding the rollup the client came for.
+  // Same SECURITY DEFINER token boundary as the rollup itself
+  // (pilot.autopay_public_state, 20260817160000).
+  const { data: autopayData, error: autopayError } = await supabase.rpc(
+    "autopay_public_state",
+    { p_token: token } as never
+  );
+  if (autopayError) {
+    console.error("[vendor-page] autopay state read failed", autopayError.code ?? autopayError.message);
+  }
+  const autopay = (autopayData ?? null) as AutopayState;
 
   return (
     // Ledger's softer marketing variant, hand-painted — same posture as
@@ -271,6 +294,74 @@ export default async function VendorPage({
             <p className="mt-3 text-caption text-ink-3">Showing the 50 most recently paid.</p>
           ) : null}
         </LCard>
+
+        {autopay?.available ? (
+          <LCard className="mb-6 p-6 sm:p-8">
+            <h2 className="mb-1 text-h3 font-semibold text-ink">Autopay</h2>
+            {autopay.enrolled ? (
+              <>
+                <p className="mb-3 text-body-s text-ink-2">
+                  Autopay is on. Recurring invoices from{" "}
+                  {page.account.legal_name} are charged automatically to{" "}
+                  <span className="font-medium text-ink">
+                    {autopay.method_label ?? "your saved card"}
+                  </span>
+                  . One-off invoices still arrive as usual.
+                </p>
+                {autopayFlag === "saved" ? (
+                  <p className="mb-3 text-body-s font-medium text-ink">
+                    Your card was saved.
+                  </p>
+                ) : null}
+                <div className="flex flex-wrap gap-4">
+                  {/* Forms, not links: both change standing payment state,
+                      and a GET a mail scanner can fire must not be able to
+                      re-open a Stripe session or revoke a mandate. */}
+                  <form action="/api/autopay/start" method="POST">
+                    <input type="hidden" name="token" value={token} />
+                    <button
+                      type="submit"
+                      className="text-body-s font-medium text-accent hover:underline"
+                    >
+                      Use a different card
+                    </button>
+                  </form>
+                  <form action="/api/autopay/stop" method="POST">
+                    <input type="hidden" name="token" value={token} />
+                    <button
+                      type="submit"
+                      className="text-body-s font-medium text-accent hover:underline"
+                    >
+                      Turn autopay off
+                    </button>
+                  </form>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="mb-3 text-body-s text-ink-2">
+                  {autopayFlag === "off"
+                    ? `Autopay is off. Nothing will be charged automatically.`
+                    : `Save a card once and recurring invoices from ${page.account.legal_name} are charged automatically when they're issued — no link to click, nothing to chase. You can turn it off here at any time.`}
+                </p>
+                {autopayFlag === "error" ? (
+                  <p className="mb-3 text-body-s font-medium text-crit">
+                    That didn&rsquo;t work. Try again in a moment.
+                  </p>
+                ) : null}
+                <form action="/api/autopay/start" method="POST">
+                  <input type="hidden" name="token" value={token} />
+                  <button
+                    type="submit"
+                    className="text-body-s font-medium text-accent hover:underline"
+                  >
+                    Set up autopay
+                  </button>
+                </form>
+              </>
+            )}
+          </LCard>
+        ) : null}
 
         {page.packet_token ? (
           <LCard className="mb-6 p-6 sm:p-8">
