@@ -94,8 +94,8 @@ function Band({
 const OUTPUTS: { step: string; title: string; body: string }[] = [
   {
     step: "01",
-    title: "Log the trip",
-    body: "Add the client, aircraft, legs, and each flight, travel, standby, or off day.",
+    title: "Invoice lines",
+    body: "Your client’s rate and billable days are already there. Review the details, then send a numbered PDF invoice with a payment link.",
   },
   {
     step: "02",
@@ -104,7 +104,7 @@ const OUTPUTS: { step: string; title: string; body: string }[] = [
     // app/(app)/logbook/db.ts is per-leg, the queue is titled "Trip drafts —
     // legs from completed trips", and one entry per flight is the only form
     // 14 CFR 61.51 recognises. "The legs … a draft entry" read as a merge.
-    body: `${BRAND.name} prepares the invoice lines and a logbook draft for each leg. You approve both before they become records.`,
+    body: "Each leg becomes a draft with PIC and SIC kept separate. You review it before anything is added to your logbook.",
   },
   {
     step: "03",
@@ -117,7 +117,7 @@ const OUTPUTS: { step: string; title: string; body: string }[] = [
     // door is the one signed-out surface with no disclaimer on it, so a tax
     // outcome asserted here is asserted naked. See docs/MARKETING.md §5
     // rule 10.
-    body: "Send the invoice, confirm the logbook entries, and attach any receipts to the trip.",
+    body: "Scan a receipt at the FBO and attach it to the trip. Mark it for client reimbursement or keep it with your deductible expense records.",
   },
 ];
 
@@ -239,6 +239,35 @@ function specGroups(): { title: string; items: { text: string; tag: string | nul
 }
 
 /**
+ * THE COMPARISON. WORKFLOW ONLY — no competitor pricing, and no claim that
+ * any of these tools is bad at its own job. A logbook app is good at
+ * logbooks; the cost named here is the seam between three tools that do not
+ * know about each other, which is a real and specific cost to the person
+ * doing the typing. This editorial constraint predates the rewrite and
+ * survives it intact.
+ *
+ * Row one's second cell is the ONE place BRAND.tagline appears in body copy
+ * on this page.
+ */
+const COMPARISON: { step: string; today: string; here: string }[] = [
+  {
+    step: "After the trip",
+    today: "Legs typed into the logbook app",
+    here: BRAND.tagline,
+  },
+  {
+    step: "When you invoice",
+    today: "Re-enter dates and calculate billable days",
+    here: "Review the trip and send",
+  },
+  {
+    step: "Tax time",
+    today: "Reconcile logbook, receipts, and books",
+    here: "Export one set of records",
+  },
+];
+
+/**
  * THREE QUESTIONS. Only the ones that remove a real barrier and are
  * answered nowhere else on the page. The second is non-negotiable: it
  * carries the substance of lib/brand.ts's counsel-reviewed
@@ -287,7 +316,7 @@ export default async function LandingPage() {
                 sentence — a pill that cannot wrap just runs off the edge of
                 a phone. Plain eyebrow text instead, which wraps normally. */}
             <p className="text-caption font-semibold text-accent">
-              BUSINESS SOFTWARE FOR INDEPENDENT CONTRACT PILOTS
+              BUSINESS SOFTWARE FOR PILOTS
             </p>
 
             {/* THE page's only h1. Ledger's type scale is fixed rather than
@@ -296,12 +325,12 @@ export default async function LandingPage() {
                 uses for a page's one h1, rather than the old Radix
                 responsive size="{8,9}" step. */}
             <h1 className="text-h1 font-bold tracking-tight text-ink">
-              Run your contract flying business in one place.
+              Stop entering the same trip three times.
             </h1>
 
             <p className="text-lead text-ink-2">
-              Log a trip once. {BRAND.name} prepares the invoice and logbook
-              drafts, while keeping the receipts and records with the trip.
+              {BRAND.name} keeps your trips, invoices, logbook, receipts, and year-end
+              records together—so the business side of flying takes less work.
             </p>
 
             <div className="mt-1 flex flex-wrap gap-3">
@@ -331,13 +360,13 @@ export default async function LandingPage() {
           link. */}
       <Band id="how-it-works" tone="sunk">
         <div className="flex flex-col gap-5">
-          <div className="max-w-2xl">
-            <h2 className="text-h2 font-bold tracking-tight text-ink">
-              From completed trip to finished paperwork
-            </h2>
-            <p className="mt-2 text-body text-ink-2">
-              The trip is the source record. You stay in control of what is
-              saved and sent.
+          <h2 className="text-h2 font-bold tracking-tight text-ink">Finish the paperwork while the trip is fresh</h2>
+
+          <div className="rounded-card border border-accent-soft bg-accent-soft p-5">
+            <p className="mb-1 text-caption font-semibold text-accent">START WITH THE TRIP</p>
+            <p className="text-body text-ink">
+              Add the client, aircraft, legs, and your flight, travel, standby,
+              or off days.
             </p>
           </div>
 
@@ -361,6 +390,7 @@ export default async function LandingPage() {
         <div className="flex flex-col gap-5">
           <h2 className="text-h2 font-bold tracking-tight text-ink">
             What you can manage in {BRAND.name}
+            The rest of the job, in the same place.
           </h2>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -414,6 +444,43 @@ export default async function LandingPage() {
             </NextLink>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <h2 className="text-h2 font-bold tracking-tight text-ink">
+            Stop rebuilding the same trip.
+          </h2>
+
+          <LCard className="p-0">
+            <LTable className="min-w-[36rem]">
+              <thead>
+                <tr>
+                  <LTh>Step</LTh>
+                  <LTh>Separate apps</LTh>
+                  <LTh>{BRAND.name}</LTh>
+                </tr>
+              </thead>
+              <tbody>
+                {COMPARISON.map((row) => (
+                  <tr key={row.step}>
+                    <LTd>
+                      <span className="font-medium text-ink">{row.step}</span>
+                    </LTd>
+                    <LTd>
+                      <span className="text-ink-2">{row.today}</span>
+                    </LTd>
+                    <LTd>{row.here}</LTd>
+                  </tr>
+                ))}
+              </tbody>
+            </LTable>
+          </LCard>
+        </div>
+      </Band>
+
+      {/* 5. PLANS. One line and a link — /pricing is one click away and
+          rebuilding it here at lower fidelity helps nobody. Amounts and
+          names render from the shared model so they cannot drift. */}
+      <Band>
+        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+          <p className="max-w-2xl text-body text-ink">
             {TIER_ORDER.map((tier) => (
               <LCard key={tier}>
                 <p className="text-body font-semibold text-ink">{TIER_DISPLAY[tier].name}</p>

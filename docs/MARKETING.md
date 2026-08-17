@@ -75,10 +75,10 @@ Sell the mechanic. Name exactly what you type and exactly what comes out.
 
 **Hero copy, verbatim:**
 
-- **Eyebrow** — Business software for independent contract pilots
-- **H1** — Run your contract flying business in one place.
-- **Subhead** — Log a trip once. V1 prepares the invoice and logbook drafts,
-  while keeping the receipts and records with the trip.
+- **Eyebrow** — Built for independent pilots
+- **H1** — Stop entering the same trip three times.
+- **Subhead** — V1 keeps your trips, invoices, logbook, receipts, and
+  year end records together, so the business side of flying takes less work.
 - **Fine line** — Plans start at $29/month. Card required.
 
 `BRAND.tagline` ("Log the trip once.") stays in the footer and metadata. The
@@ -196,15 +196,16 @@ data, not copy.
 
 | # | Section | Budget | Shipped |
 |---|---|---|---|
-| 1 | Hero; product mock directly under the buttons | 58 | 43 |
-| 2 | From completed trip to finished paperwork | 100 | 70 |
-| 3 | What you can manage in V1 | 125 | 85 |
-| 4 | Simple monthly plans | 45 | 20 |
-| 5 | Questions pilots ask us | 112 | 117 |
-| 6 | Closing CTA | 12 | 12 |
-| | **Total** | **452** | **347** |
+| 1 | Hero (navy; mock directly under the buttons) | 58 | 55 |
+| 2 | Finish the paperwork while the trip is fresh — one input card → three numbered outputs | 100 | 90 |
+| 3 | The rest of the job, in the same place — one three-column spec block | 125 | 135 |
+| 4 | Stop rebuilding the same trip — three-row comparison table | 55 | 52 |
+| 5 | Plans — one line, one link | 30 | 23 |
+| 6 | Questions pilots ask us — three FAQ items | 112 | 123 |
+| 7 | Closing CTA | 12 | 12 |
+| | **Total** | **492** | **490** |
 
-The FAQ was 131 words before the cancel answer's export sentence came out — the
+Section 6 was 131 before the cancel answer's export sentence came out — the
 spec line "Account-wide CSV export — every record type, on every plan" makes
 that promise on the same page. The remaining overruns are the sections whose
 copy is generated from `lib/entitlements.ts` (3) or carries the
