@@ -1,36 +1,44 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { formatDate } from "@/lib/format";
+import { formatCents, formatDate } from "@/lib/format";
 import { billToListLabel } from "@/lib/invoice-bill-to";
+import { labelForKey, labelsFor } from "@/lib/custom-options";
 import type { Database } from "@/lib/supabase/database.types";
 
 /**
- * THE COMMAND PALETTE'S RECORD SEARCH — clients, invoices, trips, by the
- * fields a pilot actually types: a client name, an invoice number, or the
- * ICAO pair of a leg they flew. Backs app/(app)/command-palette.tsx's
- * "records" layer; the "navigation" layer (sections/Settings/Help) never
- * calls this route at all, it is filtered client-side by cmdk.
+ * THE COMMAND PALETTE'S RECORD SEARCH — the system-wide "find any of my
+ * data" behind app/(app)/command-palette.tsx's "records" layer. Six record
+ * types, each matched by the fields a pilot actually types:
+ *
+ *   clients    — client name
+ *   invoices   — invoice number, typed payer name, or the client's name
+ *   trips      — a leg's ICAO in either direction, or the client's name
+ *   estimates  — estimate number, or the client's name
+ *   expenses   — the vendor, or a note the pilot wrote on it
+ *   documents  — the document's label, or a note on it
+ *
+ * The "navigation" layer (sections + actions + sub-pages) never calls this
+ * route — it is a static list filtered client-side by cmdk.
  *
  * AUTH AND SCOPING. There is no service-role client here — this uses the
  * cookie-bound `createClient()` (lib/supabase/server.ts), the same one
- * every page in app/(app) reads through, so every query below is subject
- * to the SAME Row Level Security as the pages it stands in for: RLS scopes
- * `pilot.clients` / `pilot.invoices` / `pilot.trips` / `pilot.trip_legs` to
- * the caller's own account_id, so there is no explicit `.eq("account_id",
- * …)` anywhere below, deliberately — the same pattern clients/page.tsx and
- * trips/page.tsx already use ("RLS scopes this to the caller's tenant; no
- * account_id filter is needed or wanted here"). A signed-out request has
- * no session for RLS to key off, so it is refused with 401 before any
- * query runs, rather than relying on RLS to return zero rows for it.
+ * every page in app/(app) reads through, so every query below is subject to
+ * the SAME Row Level Security as the pages it stands in for: RLS scopes each
+ * `pilot.*` table to the caller's own account_id, so there is no explicit
+ * `.eq("account_id", …)` anywhere below, deliberately — the same pattern the
+ * section pages use ("RLS scopes this to the caller's tenant; no account_id
+ * filter is needed or wanted here"). A signed-out request has no session for
+ * RLS to key off, so it is refused with 401 before any query runs, rather
+ * than relying on RLS to return zero rows for it.
  *
- * NEVER THROWS HTML. A page's data-fetch failure degrades to a Callout on
- * an otherwise-rendered page; this route has no page around it, so a
- * failed Supabase call must not become a Next.js 500 HTML error page
- * rendered inside the palette's result list. Every catch path below
- * resolves to JSON with `error: true` and empty arrays — the palette reads
- * that flag and shows "Search couldn't run" rather than "No results",
- * which would otherwise read as "you searched, and there is nothing",
- * a different and wrong claim when the truth is the search itself failed.
+ * NEVER THROWS HTML. A page's data-fetch failure degrades to a Callout on an
+ * otherwise-rendered page; this route has no page around it, so a failed
+ * Supabase call must not become a Next.js 500 HTML error page rendered
+ * inside the palette's result list. Every catch path below resolves to JSON
+ * with `error: true` and empty arrays — the palette reads that flag and
+ * shows "Search couldn't run" rather than "No results", which would
+ * otherwise read as "you searched, and there is nothing", a different and
+ * wrong claim when the truth is the search itself failed.
  */
 
 type ClientRow = Pick<
@@ -57,6 +65,18 @@ type LegRow = Pick<
   Database["pilot"]["Tables"]["trip_legs"]["Row"],
   "trip_id" | "from_icao" | "to_icao" | "leg_date"
 >;
+type EstimateRow = Pick<
+  Database["pilot"]["Tables"]["estimates"]["Row"],
+  "id" | "client_id" | "estimate_number" | "status" | "valid_until"
+>;
+type ExpenseRow = Pick<
+  Database["pilot"]["Tables"]["expenses"]["Row"],
+  "id" | "vendor" | "category" | "amount_cents" | "incurred_on"
+>;
+type DocumentRow = Pick<
+  Database["pilot"]["Tables"]["documents"]["Row"],
+  "id" | "kind" | "label" | "expires_on" | "issued_on"
+>;
 
 export type CommandSearchResult = {
   href: string;
@@ -69,6 +89,9 @@ export type CommandSearchResponse = {
   clients: CommandSearchResult[];
   invoices: CommandSearchResult[];
   trips: CommandSearchResult[];
+  estimates: CommandSearchResult[];
+  expenses: CommandSearchResult[];
+  documents: CommandSearchResult[];
 };
 
 /** Up to this many rows per entity type land in the palette — a keyboard
@@ -99,10 +122,27 @@ const TRIP_STATUS_LABEL: Record<string, string> = {
   canceled: "Canceled",
 };
 
+const ESTIMATE_STATUS_LABEL: Record<string, string> = {
+  draft: "Draft",
+  sent: "Sent",
+  accepted: "Accepted",
+  declined: "Declined",
+};
+
+// Builtin vocabularies only (empty custom-option rows): the primary label
+// of an expense/document is its vendor/own label, and category/kind is
+// secondary context — worth the stock wording, not worth a per-request read
+// of pilot.custom_options for a tenant's renamed categories.
+const EXPENSE_CATEGORY_LABELS = labelsFor([], "expense_category");
+const DOCUMENT_KIND_LABELS = labelsFor([], "document_kind");
+
 const EMPTY_RESPONSE: Omit<CommandSearchResponse, "error"> = {
   clients: [],
   invoices: [],
   trips: [],
+  estimates: [],
+  expenses: [],
+  documents: [],
 };
 
 export async function GET(request: NextRequest) {
@@ -112,7 +152,7 @@ export async function GET(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   // No session, no tenant to scope RLS to — refused outright rather than
-  // let five queries run and return empty by RLS accident. Mirrors
+  // let the queries run and return empty by RLS accident. Mirrors
   // requireAccount's redirect-to-login for a page; a route handler cannot
   // redirect a fetch() call, so this is the API equivalent: 401 JSON.
   if (!user) {
@@ -136,17 +176,24 @@ export async function GET(request: NextRequest) {
 
   try {
     // PASS 1 — the text matches that can run with no dependency on one
-    // another: client name, invoice number, and leg ICAOs in EITHER
-    // direction. The ICAO match is two separate ilike queries rather than
-    // one `.or("from_icao.ilike...,to_icao.ilike...")` — PostgREST's `or`
-    // filter splits its argument on top-level commas, and a pilot's typed
-    // query is not guaranteed comma-free (a copy-pasted "KTEB, KVNY" is a
-    // plausible search), which would silently mis-parse the filter. Two
-    // plain ilike queries have no such edge case.
+    // another: client name, invoice number/payer, estimate number, expense
+    // vendor/notes, document label/notes, and leg ICAOs in EITHER
+    // direction. The multi-field matches (ICAO, expense vendor+notes,
+    // document label+notes) are separate ilike queries rather than one
+    // `.or(...)` — PostgREST's `or` filter splits its argument on top-level
+    // commas, and a pilot's typed query is not guaranteed comma-free (a
+    // pasted "KTEB, KVNY" or "Gulfstream Ops, LLC" is plausible), which
+    // would silently mis-parse the filter. Plain ilike queries have no such
+    // edge case.
     const [
       clientsByName,
       invoicesByNumber,
       invoicesByBillTo,
+      estimatesByNumber,
+      expensesByVendor,
+      expensesByNotes,
+      documentsByLabel,
+      documentsByNotes,
       legsByFromIcao,
       legsByToIcao,
     ] = await Promise.all([
@@ -163,22 +210,45 @@ export async function GET(request: NextRequest) {
         .order("created_at", { ascending: false })
         .limit(PER_TYPE_LIMIT),
       // THE ONLY WAY TO FIND A CLIENTLESS INVOICE BY WHO IT IS FOR.
-      //
       // Pass 2 finds invoices through a matching client row, and the number
       // match above finds them by number. An invoice raised with no client
-      // (20260815100000) has neither: no client row to match, and while it
-      // is still a draft no invoice number either, because the number is
-      // minted at issue. Its typed payer name is the one identifying value
+      // (20260815100000) has neither while it is still a draft (the number is
+      // minted at issue). Its typed payer name is the one identifying value
       // it has, so without this query the palette can never return it.
-      //
-      // A separate ilike rather than an `.or(...)`, for the same reason the
-      // leg ICAO match below is two queries: PostgREST splits an `or`
-      // argument on top-level commas and a typed payer name ("Gulfstream
-      // Ops, LLC") is not guaranteed comma-free.
       supabase
         .from("invoices")
         .select("id, client_id, bill_to_name, invoice_number, status, issued_on, due_on")
         .ilike("bill_to_name", pattern)
+        .order("created_at", { ascending: false })
+        .limit(PER_TYPE_LIMIT),
+      supabase
+        .from("estimates")
+        .select("id, client_id, estimate_number, status, valid_until")
+        .ilike("estimate_number", pattern)
+        .order("created_at", { ascending: false })
+        .limit(PER_TYPE_LIMIT),
+      supabase
+        .from("expenses")
+        .select("id, vendor, category, amount_cents, incurred_on")
+        .ilike("vendor", pattern)
+        .order("incurred_on", { ascending: false })
+        .limit(PER_TYPE_LIMIT),
+      supabase
+        .from("expenses")
+        .select("id, vendor, category, amount_cents, incurred_on")
+        .ilike("notes", pattern)
+        .order("incurred_on", { ascending: false })
+        .limit(PER_TYPE_LIMIT),
+      supabase
+        .from("documents")
+        .select("id, kind, label, expires_on, issued_on")
+        .ilike("label", pattern)
+        .order("created_at", { ascending: false })
+        .limit(PER_TYPE_LIMIT),
+      supabase
+        .from("documents")
+        .select("id, kind, label, expires_on, issued_on")
+        .ilike("notes", pattern)
         .order("created_at", { ascending: false })
         .limit(PER_TYPE_LIMIT),
       supabase
@@ -199,6 +269,11 @@ export async function GET(request: NextRequest) {
       clientsByName.error ||
       invoicesByNumber.error ||
       invoicesByBillTo.error ||
+      estimatesByNumber.error ||
+      expensesByVendor.error ||
+      expensesByNotes.error ||
+      documentsByLabel.error ||
+      documentsByNotes.error ||
       legsByFromIcao.error ||
       legsByToIcao.error
     ) {
@@ -218,12 +293,16 @@ export async function GET(request: NextRequest) {
       ])
     ).slice(0, PER_TYPE_LIMIT);
 
-    // PASS 2 — records reached only VIA the client-name match (an invoice
-    // or trip for a matched client, even if its own number/ICAO says
-    // nothing about the query) plus the trips behind the matched legs.
+    // PASS 2 — records reached only VIA the client-name match (an invoice,
+    // trip or estimate for a matched client, even if its own number/ICAO
+    // says nothing about the query) plus the trips behind the matched legs.
     // Skipped when there is nothing to look up, same reasoning as
     // trips/page.tsx's `if (trips.length > 0)` guard on its own RPC call.
-    const [invoicesByClient, tripsByClient, tripsByIcao] = await Promise.all([
+    // Expenses and documents are matched by their own text only (vendor /
+    // note / label), not via client: a client match would flood the palette
+    // with every receipt filed against that client, which is browse-the-list
+    // work, not find-the-record work.
+    const [invoicesByClient, tripsByClient, tripsByIcao, estimatesByClient] = await Promise.all([
       clientIds.length > 0
         ? supabase
             .from("invoices")
@@ -248,9 +327,22 @@ export async function GET(request: NextRequest) {
             .order("starts_on", { ascending: false })
             .limit(PER_TYPE_LIMIT)
         : Promise.resolve({ data: [] as TripRow[], error: null }),
+      clientIds.length > 0
+        ? supabase
+            .from("estimates")
+            .select("id, client_id, estimate_number, status, valid_until")
+            .in("client_id", clientIds)
+            .order("created_at", { ascending: false })
+            .limit(PER_TYPE_LIMIT)
+        : Promise.resolve({ data: [] as EstimateRow[], error: null }),
     ]);
 
-    if (invoicesByClient.error || tripsByClient.error || tripsByIcao.error) {
+    if (
+      invoicesByClient.error ||
+      tripsByClient.error ||
+      tripsByIcao.error ||
+      estimatesByClient.error
+    ) {
       return NextResponse.json<CommandSearchResponse>({ error: true, ...EMPTY_RESPONSE });
     }
 
@@ -265,18 +357,35 @@ export async function GET(request: NextRequest) {
       ...((tripsByIcao.data ?? []) as TripRow[]),
     ]).slice(0, PER_TYPE_LIMIT);
 
+    const estimates = dedupeById([
+      ...((estimatesByNumber.data ?? []) as EstimateRow[]),
+      ...((estimatesByClient.data ?? []) as EstimateRow[]),
+    ]).slice(0, PER_TYPE_LIMIT);
+
+    const expenses = dedupeById([
+      ...((expensesByVendor.data ?? []) as ExpenseRow[]),
+      ...((expensesByNotes.data ?? []) as ExpenseRow[]),
+    ]).slice(0, PER_TYPE_LIMIT);
+
+    const documents = dedupeById([
+      ...((documentsByLabel.data ?? []) as DocumentRow[]),
+      ...((documentsByNotes.data ?? []) as DocumentRow[]),
+    ]).slice(0, PER_TYPE_LIMIT);
+
     // PASS 3 — the two lookups every label above needs and cannot supply
-    // itself: the client name behind an invoice/trip that was found by
-    // something OTHER than its client (invoice number, leg ICAO), and one
-    // representative leg (earliest by date) per trip for the route label.
-    // Both sides filter nulls now: pilot.trips.client_id has always been
+    // itself: the client name behind an invoice/trip/estimate that was found
+    // by something OTHER than its client (invoice number, leg ICAO, estimate
+    // number), and one representative leg (earliest by date) per trip for
+    // the route label. Filters nulls: pilot.trips.client_id has always been
     // nullable and pilot.invoices.client_id is since 20260815100000. A null in
     // this set becomes `.in("id", [null])`, which matches nothing and wastes a
-    // round trip at best.
+    // round trip at best. (Estimates.client_id is NOT NULL, but it costs
+    // nothing to run the same filter over it.)
     const namedClientIds = new Set(
       [
         ...invoices.map((i) => i.client_id),
         ...trips.map((t) => t.client_id),
+        ...estimates.map((e) => e.client_id),
       ].filter((id): id is string => id !== null)
     );
     const tripIds = trips.map((t) => t.id);
@@ -355,11 +464,53 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    const estimateResults: CommandSearchResult[] = estimates.map((est) => ({
+      href: `/estimates/${est.id}`,
+      label: est.estimate_number ?? "Draft estimate",
+      sublabel: [
+        est.client_id ? clientNameById.get(est.client_id) ?? "Unknown client" : null,
+        ESTIMATE_STATUS_LABEL[est.status] ?? est.status,
+        est.valid_until ? `valid to ${formatDate(est.valid_until)}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    }));
+
+    const expenseResults: CommandSearchResult[] = expenses.map((exp) => ({
+      href: `/expenses/${exp.id}`,
+      label: exp.vendor ?? labelForKey(EXPENSE_CATEGORY_LABELS, exp.category) ?? "Expense",
+      sublabel: [
+        formatCents(exp.amount_cents),
+        labelForKey(EXPENSE_CATEGORY_LABELS, exp.category),
+        formatDate(exp.incurred_on),
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    }));
+
+    const documentResults: CommandSearchResult[] = documents.map((doc) => ({
+      href: `/documents/${doc.id}`,
+      label: doc.label,
+      sublabel: [
+        labelForKey(DOCUMENT_KIND_LABELS, doc.kind),
+        doc.expires_on
+          ? `expires ${formatDate(doc.expires_on)}`
+          : doc.issued_on
+            ? `issued ${formatDate(doc.issued_on)}`
+            : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    }));
+
     return NextResponse.json<CommandSearchResponse>({
       error: false,
       clients: clientResults,
       invoices: invoiceResults,
       trips: tripResults,
+      estimates: estimateResults,
+      expenses: expenseResults,
+      documents: documentResults,
     });
   } catch {
     // Anything unexpected (a network blip to the Data API, a malformed

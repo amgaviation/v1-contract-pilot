@@ -15,7 +15,7 @@ import { MagnifyingGlassIcon } from "@radix-ui/react-icons";
 import { LDialogShell } from "@/components/ledger/dialog";
 import { LButton } from "@/components/ledger";
 import { cn } from "@/lib/ledger/cn";
-import { NAV_HELP, NAV_SETTINGS, type NavItem } from "@/lib/nav";
+import { NAV_COMMANDS, NAV_HELP, NAV_SETTINGS, type NavItem } from "@/lib/nav";
 import type {
   CommandSearchResponse,
   CommandSearchResult,
@@ -144,17 +144,48 @@ type RecordsState =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "error" }
-  | {
-      status: "ready";
-      clients: CommandSearchResult[];
-      invoices: CommandSearchResult[];
-      trips: CommandSearchResult[];
-    };
+  | ({ status: "ready" } & RecordGroups);
 
-/** Which of the three record arrays a result came from — the live search
- *  response never needs this (the array it comes back in already says
- *  it), but a flat stored "Recent" list has no other way to carry it. */
-type PaletteRecordKind = "client" | "invoice" | "trip";
+/** The six record arrays a ready search carries — the same shape the API
+ *  returns (minus its `error` flag), so the fetch handler spreads the
+ *  response straight in and the render walks this in one order. */
+type RecordGroups = {
+  clients: CommandSearchResult[];
+  invoices: CommandSearchResult[];
+  trips: CommandSearchResult[];
+  estimates: CommandSearchResult[];
+  expenses: CommandSearchResult[];
+  documents: CommandSearchResult[];
+};
+
+/** Which record array a result came from — the live search response never
+ *  needs this (the array it comes back in already says it), but a flat
+ *  stored "Recent" list has no other way to carry it. */
+type PaletteRecordKind =
+  | "client"
+  | "invoice"
+  | "trip"
+  | "estimate"
+  | "expense"
+  | "document";
+
+/** The record groups in the order they render, each with its own heading.
+ *  One source both the live "Records" layer and recordCount walk, so a new
+ *  entity is added in exactly one place. */
+const RECORD_GROUPS: { kind: PaletteRecordKind; heading: string; key: keyof RecordGroups }[] = [
+  { kind: "client", heading: "Clients", key: "clients" },
+  { kind: "invoice", heading: "Invoices", key: "invoices" },
+  { kind: "trip", heading: "Trips", key: "trips" },
+  { kind: "estimate", heading: "Estimates", key: "estimates" },
+  { kind: "expense", heading: "Expenses", key: "expenses" },
+  { kind: "document", heading: "Documents", key: "documents" },
+];
+
+/** The two feature-command groups, split once from lib/nav's flat list so
+ *  the render below reads straight down. cmdk hides a group whose items all
+ *  filter out, so both are rendered unconditionally once there is a query. */
+const CREATE_COMMANDS = NAV_COMMANDS.filter((c) => c.group === "Create");
+const GOTO_COMMANDS = NAV_COMMANDS.filter((c) => c.group === "Go to");
 
 /** One entry in the local "Recent" list — a CommandSearchResult plus the
  *  kind it was found as. */
@@ -178,7 +209,7 @@ function isRecordValue(value: string): boolean {
 }
 
 function isPaletteRecordKind(value: unknown): value is PaletteRecordKind {
-  return value === "client" || value === "invoice" || value === "trip";
+  return RECORD_GROUPS.some((g) => g.kind === value);
 }
 
 /** Defensive parse of ONE stored entry. Every field is checked, not cast
@@ -382,6 +413,9 @@ export function CommandPaletteProvider({
             clients: data.clients,
             invoices: data.invoices,
             trips: data.trips,
+            estimates: data.estimates,
+            expenses: data.expenses,
+            documents: data.documents,
           });
         })
         .catch((err) => {
@@ -428,9 +462,15 @@ export function CommandPaletteProvider({
   const navItems: NavItem[] = [...sections, NAV_SETTINGS, NAV_HELP];
   const showRecords = query.trim().length >= MIN_QUERY_LENGTH;
   const showRecent = !showRecords && recents.length > 0;
+  // Feature commands (Create / Go to) surface as soon as the pilot types —
+  // one character, not MIN_QUERY_LENGTH, since they are filtered client-side
+  // with nothing to fetch. Below that the palette stays the quiet Recent +
+  // Sections list it has always been, rather than unrolling two dozen deep
+  // links the moment it opens.
+  const showCommands = query.trim().length >= 1;
   const recordCount =
     records.status === "ready"
-      ? records.clients.length + records.invoices.length + records.trips.length
+      ? RECORD_GROUPS.reduce((sum, g) => sum + records[g.key].length, 0)
       : 0;
 
   return (
@@ -452,7 +492,7 @@ export function CommandPaletteProvider({
           value={activeValue}
           onValueChange={setActiveValue}
           loop
-          label="Search clients, invoices, trips, or jump to a section"
+          label="Search your records, run an action, or jump to any screen"
           filter={(value, search, keywords) =>
             isRecordValue(value) ? 1 : defaultFilter(value, search, keywords)
           }
@@ -462,7 +502,7 @@ export function CommandPaletteProvider({
               ref={inputRef}
               value={query}
               onValueChange={setQuery}
-              placeholder="Search clients, invoices, trips, or jump to a section…"
+              placeholder="Search records, actions, or a screen…"
               className="w-full bg-transparent text-body text-ink outline-none placeholder:text-ink-3"
             />
           </div>
@@ -503,50 +543,90 @@ export function CommandPaletteProvider({
               ))}
             </CommandGroup>
 
+            {/* FEATURE COMMANDS — actions and sub-pages, the half of "search
+                any feature" the rail never shows. Rendered only once the
+                pilot types (see showCommands): cmdk fuzzy-matches each on its
+                label AND its keywords, and hides a group whose every item
+                filtered out, so an unmatched "Create" group simply doesn't
+                appear. `go()` navigates without touching Recent — a command
+                is a route, not a record. */}
+            {showCommands ? (
+              <>
+                <CommandGroup heading={<GroupHeading>Create</GroupHeading>}>
+                  {CREATE_COMMANDS.map((cmd) => (
+                    <CommandItem
+                      key={cmd.href}
+                      value={cmd.label}
+                      keywords={cmd.keywords ? [...cmd.keywords] : undefined}
+                      onSelect={() => go(cmd.href)}
+                      className={ITEM_CLASS}
+                    >
+                      <PaletteRow label={cmd.label} />
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+                <CommandGroup heading={<GroupHeading>Go to</GroupHeading>}>
+                  {GOTO_COMMANDS.map((cmd) => (
+                    <CommandItem
+                      key={cmd.href}
+                      value={cmd.label}
+                      keywords={cmd.keywords ? [...cmd.keywords] : undefined}
+                      onSelect={() => go(cmd.href)}
+                      className={ITEM_CLASS}
+                    >
+                      <PaletteRow label={cmd.label} />
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </>
+            ) : null}
+
             {/* Records only render once there is something to show for
                 them — below MIN_QUERY_LENGTH the group is omitted outright
                 rather than shown empty, so a pilot who has typed one
                 character sees the sections list alone, not a "Records"
-                header over nothing. */}
+                header over nothing. Each record TYPE that has results is its
+                own titled group (Clients / Invoices / Trips / Estimates /
+                Expenses / Documents), so a match reads as what it is at a
+                glance rather than as an untyped row in one long list. The
+                loading / error / empty states share a single "Records"
+                header, since none of them belongs to a type. */}
             {showRecords ? (
-              <CommandGroup heading={<GroupHeading>Records</GroupHeading>}>
-                {records.status === "loading" ? (
+              records.status === "loading" ? (
+                <CommandGroup heading={<GroupHeading>Records</GroupHeading>}>
                   <StatusRow value="record::loading">Searching…</StatusRow>
-                ) : records.status === "error" ? (
+                </CommandGroup>
+              ) : records.status === "error" ? (
+                <CommandGroup heading={<GroupHeading>Records</GroupHeading>}>
                   <StatusRow value="record::error">
                     Search couldn&rsquo;t run. Try again in a moment.
                   </StatusRow>
-                ) : records.status === "ready" && recordCount === 0 ? (
+                </CommandGroup>
+              ) : records.status === "ready" && recordCount === 0 ? (
+                <CommandGroup heading={<GroupHeading>Records</GroupHeading>}>
                   <StatusRow value="record::empty">No matching records.</StatusRow>
-                ) : records.status === "ready" ? (
-                  <>
-                    {records.clients.map((result) => (
-                      <RecordItem
-                        key={result.href}
-                        result={result}
-                        kind="client"
-                        onSelectRecord={selectRecord}
-                      />
-                    ))}
-                    {records.invoices.map((result) => (
-                      <RecordItem
-                        key={result.href}
-                        result={result}
-                        kind="invoice"
-                        onSelectRecord={selectRecord}
-                      />
-                    ))}
-                    {records.trips.map((result) => (
-                      <RecordItem
-                        key={result.href}
-                        result={result}
-                        kind="trip"
-                        onSelectRecord={selectRecord}
-                      />
-                    ))}
-                  </>
-                ) : null}
-              </CommandGroup>
+                </CommandGroup>
+              ) : records.status === "ready" ? (
+                RECORD_GROUPS.map((groupDef) => {
+                  const items = records[groupDef.key];
+                  if (items.length === 0) return null;
+                  return (
+                    <CommandGroup
+                      key={groupDef.kind}
+                      heading={<GroupHeading>{groupDef.heading}</GroupHeading>}
+                    >
+                      {items.map((result) => (
+                        <RecordItem
+                          key={result.href}
+                          result={result}
+                          kind={groupDef.kind}
+                          onSelectRecord={selectRecord}
+                        />
+                      ))}
+                    </CommandGroup>
+                  );
+                })
+              ) : null
             ) : null}
           </CommandList>
         </Command>
