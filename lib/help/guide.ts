@@ -53,6 +53,45 @@ export type HelpSection = {
 
 export const HELP_SECTIONS: readonly HelpSection[] = [
   {
+    id: "getting-started",
+    title: "Getting started",
+    topics: [
+      {
+        id: "creating-account",
+        title: "Creating your account",
+        summary: "Sign up, confirm your email, and start your trial.",
+        body: [
+          "Sign up with an email and password. You confirm that address before you can sign in, so the first thing you see afterward is a check-your-email screen — open the link it sends, then come back and log in.",
+          "Once you are signed in you land on the plan screen, where you choose a tier and a billing interval and start a trial, card required. The exact trial length and the price of each tier and interval are shown live there, and again on Settings → Billing once you are in, so nothing here restates a number that could go stale.",
+          "Nothing is set up until payment is confirmed. If you are sent back to the plan screen after checkout and it says your workspace is being prepared, that is normal and resolves on its own within seconds.",
+        ],
+        keywords: ["signup", "sign up", "trial", "plan", "welcome", "confirm email"],
+      },
+      {
+        id: "account-setup",
+        title: "Setting up your account",
+        summary: "The three things this product asks for the first time you reach the dashboard.",
+        href: "/settings",
+        body: [
+          "The first time you reach the dashboard, you are asked for three things the signup form deliberately left out: your business identity (legal name, address, the details that should print on an invoice), your airman profile (certificate type and number, ratings), and your default rates (day rate, travel day rate, per diem, payment terms), which pre-fill your first trip and your first invoice.",
+          "Confirm whatever signup already carried over and fill in the rest. You do this once; everything entered here can be changed later at Settings → Your business, so none of it has to be exactly right on day one.",
+        ],
+        keywords: ["onboarding", "business identity", "airman profile", "default rates", "certificate"],
+      },
+      {
+        id: "how-v1-works",
+        title: "The idea behind this product",
+        summary: "Log a trip once; the invoice, the logbook draft, and the receipts come from it.",
+        href: "/trips",
+        body: [
+          "Everything else follows from one idea: the trip is the record. Log a trip once, and legs are the flying itself while a day grid covers every calendar day of the trip, each one typed as a duty day, a travel day, standby, or off — the type that decides its rate.",
+          "From a completed trip you can draft an invoice with the lines already filled in, propose a logbook entry for each leg for you to review, and attach any billable expense filed against it. One record in; an invoice, a logbook draft, and a filed expense out.",
+        ],
+        keywords: ["overview", "workflow", "trip is the record", "how it works"],
+      },
+    ],
+  },
+  {
     id: "getting-paid",
     title: "Getting paid",
     topics: [
@@ -63,10 +102,11 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         href: "/trips",
         body: [
           "A trip is the assignment. Inside it, legs are the flying and the day grid is what you bill: each calendar day is typed as a duty day, a travel day, standby, or off, and each type carries its own rate.",
+          "Picking a client is not required to start a trip: like an invoice, a trip can exist with no client attached yet and have one added later.",
           "Once a trip is complete you can draft an invoice straight from it. The lines come from the day grid and the rates agreed with that client, so the numbers on the invoice are the ones you recorded, not ones you retype.",
           "The same trip also produces a logbook draft for each leg, which you review before it becomes a logbook entry. One capture, several outputs.",
         ],
-        keywords: ["day grid", "day rate", "billing", "legs", "duty day", "travel day"],
+        keywords: ["day grid", "day rate", "billing", "legs", "duty day", "travel day", "no client"],
       },
       {
         id: "invoice-without-a-client",
@@ -99,8 +139,9 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
           "An invoice is a draft until you send it. Sending assigns its permanent number and stamps the date; a number, once minted, never changes, including if you revise and re-send.",
           "If you share a link, the invoice records when the client first opened it and when they last did. That is a record of the link being fetched, not proof a human read it.",
           "Voiding an invoice releases any rebilled expenses attached to it, so they become unbilled again and can go on a replacement.",
+          "Paid by check, wire, or cash instead of through a payment link? Record the payment by hand on the invoice itself. That moves its status the same way an online payment does, and it is what stops a scheduled reminder from continuing to chase an invoice that is actually settled.",
         ],
-        keywords: ["void", "numbering", "share link", "viewed", "overdue", "aging", "partial payment"],
+        keywords: ["void", "numbering", "share link", "viewed", "overdue", "aging", "partial payment", "record payment", "manual payment", "offline payment", "mark paid"],
       },
       {
         id: "reminders",
@@ -113,6 +154,17 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
           "If a client has opened the share link recently, the schedule holds off. Chasing someone who is looking at the invoice reads as noise.",
         ],
         keywords: ["chase", "follow up", "overdue", "dunning", "late"],
+      },
+      {
+        id: "message-wording",
+        title: "Message wording",
+        summary: "The one sentence you can edit in the emails sent in your name.",
+        href: "/settings?tab=messages",
+        body: [
+          "Settings → Message wording edits exactly one sentence: the opening line of the email a client receives when you send an invoice, and a separate opening line for a reminder. Both are saved once and reused on every send.",
+          "Everything else in that mail — the balance, part-payment reconciliation, the receipt count, the payment link, the invoice's own notes, the sign-off in your business's name — is a statement of fact about that particular invoice and is not editable from here.",
+        ],
+        keywords: ["email template", "opening line", "wording", "copy", "message"],
       },
       {
         id: "online-payments",
@@ -235,8 +287,9 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         body: [
           "Enter the dates exactly as printed on the document. Nothing here is calculated from anything else: an issue date is not used to work out an expiry, because the document is the authority and the product is not.",
           "Overview shows what is coming due. It shows the dates you entered and nothing more: it does not compute currency or tell you whether you are legal to fly. That judgement is yours and the operator's.",
+          "Every new client tends to ask for the same envelope: a W-9, a certificate of insurance, sometimes a certificate or a medical. Rather than emailing attachments by hand each time, generate a credential packet link from your documents: a single revocable, expiring link that shares exactly the documents you choose, nothing else in your document wallet. The link expires by default, and you pick which documents it includes each time you create one.",
         ],
-        keywords: ["medical", "passport", "expiry", "due", "insurance", "coi", "w-9", "certificate"],
+        keywords: ["medical", "passport", "expiry", "due", "insurance", "coi", "w-9", "certificate", "packet", "credential", "share"],
       },
       {
         id: "operator-quals",
@@ -249,6 +302,16 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
           "Add an operator from this panel the moment you sit their indoc, before there is any work or any money. All it needs is a name. They start as someone you do not invoice, so they stay out of your invoices, estimates and unbilled work until you say otherwise.",
         ],
         keywords: ["135", "part 135", "checkride", "recurrent", "training", "ipc", "line check", "indoc", "operator"],
+      },
+      {
+        id: "currency",
+        title: "Currency",
+        summary: "A screen for tracking FAA currency against your logbook.",
+        href: "/currency",
+        body: [
+          "The Currency screen is not a tier feature: it switches on for the whole product at once, and stays off for every account until it does. Until then the screen says so plainly rather than showing anything — no partial board, no placeholder numbers.",
+        ],
+        keywords: ["currency", "faa", "recency", "landings", "instrument"],
       },
     ],
   },
@@ -265,8 +328,9 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
           "Rates set on a client are defaults. Every trip can override them, and the rates a trip was confirmed at are what its invoice uses. Renegotiating later does not rewrite work already done.",
           "A rate override sets what this client pays per day type. Left blank, the day type's own default applies.",
           "Turn off \u201cYou invoice this client\u201d for an operator you fly for but never bill. They keep their qualifications, documents, trips and rates, and they drop out of the invoice and estimate pickers, your unbilled work and your statements. Once you have invoiced or quoted somebody you cannot turn it off: archive them instead, which keeps the invoices and takes them out of new work.",
+          "The same toggle handles a common arrangement: you fly for an aircraft owner directly, but a management company actually pays you. Add both as clients. Turn off \u201cYou invoice this client\u201d on the owner, so their qualifications and documents are still tracked but they never show up as someone you bill, and send invoices to the management company instead.",
         ],
-        keywords: ["operator", "owner", "rate", "day rate", "per diem", "terms", "contract", "not invoiced", "billing"],
+        keywords: ["operator", "owner", "rate", "day rate", "per diem", "terms", "contract", "not invoiced", "billing", "management company"],
       },
       {
         id: "day-types",
@@ -338,8 +402,9 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
           "Profit and loss, cash flow and the balance sheet come from the same ledger the rest of the product posts to, so they agree with your invoices and expenses by construction.",
           "The year-end packet and the quarterly summary are there to hand to whoever prepares your taxes. They are a presentation of your own records, not tax advice.",
           "Pilot history is the arithmetic an insurer or a chief pilot asks for: totals by category, class and type, with recent windows. It reports hours you logged; it makes no claim about currency or legality.",
+          "Trip profitability ranks your clients by margin, so you can see which relationships are actually worth the most, and which cost you the most. Flight time totals cross-operator flying in the windows 14 CFR 135.267 defines, totals only, with no legality verdicts. Sales tax reports what your invoices charged and what has actually been collected in a period, the worksheet a filing preparer works from — it never states what you owe or whether you need to register or file anywhere.",
         ],
-        keywords: ["p&l", "profit", "tax", "quarterly", "1099", "year end", "cpa", "pilot history", "flight time"],
+        keywords: ["p&l", "profit", "tax", "quarterly", "1099", "year end", "cpa", "pilot history", "flight time", "trip profitability", "margin", "sales tax", "135.267"],
       },
       {
         id: "plans-billing",
@@ -349,8 +414,10 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         body: [
           "The billing screen shows your current plan, what is next to be charged and when, the card on file, and recent receipts.",
           "Every amount shown comes from the live subscription, and the feature list is generated from the same table the product gates on, so what a plan opens cannot drift from what it says.",
+          "There are three tiers, Solo, Pro and Business, and none of them gate safety or record-keeping: the logbook, the documents wallet, the currency screen and your operator qualification records stay available on every tier for as long as you have an account. What the tiers separate is business depth — estimates, client statements, recurring invoice schedules, the accounting and bank-import layer and the deeper tax reports sit above Solo. Business bills per seat with a two-seat minimum, so your own login and one more, a co-pilot's or a bookkeeper's, are what you are paying for and what you get; a third seat is not self-serve yet.",
+          "Downgrading and cancelling are different things. Downgrade a tier and records created above your new tier stay visible and exportable — only creating new ones on those screens stops, and everything comes straight back the moment you upgrade again. Cancel outright and the account goes read-only rather than disappearing: every page still loads, export still works, and nothing already recorded, including your logbook, is ever deleted, but nothing new can be recorded until you reactivate.",
         ],
-        keywords: ["subscription", "upgrade", "downgrade", "cancel", "trial", "invoice", "receipt", "seats"],
+        keywords: ["subscription", "upgrade", "downgrade", "cancel", "trial", "invoice", "receipt", "seats", "solo", "pro", "business", "tier", "read-only"],
       },
       {
         id: "export",
