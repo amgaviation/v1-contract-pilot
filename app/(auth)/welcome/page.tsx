@@ -8,6 +8,7 @@ import { TRIAL_PERIOD_DAYS } from "@/lib/stripe/server";
 import { AuthFooter, AuthHeading } from "../auth-parts";
 import { signOut } from "./actions";
 import { PlanPicker, type PlanOption } from "./welcome-actions";
+import { TestBypass } from "./test-bypass";
 
 export const metadata = { title: "Welcome" };
 
@@ -100,6 +101,11 @@ export default async function WelcomePage({
           </LButton>
         </form>
       </AuthFooter>
+
+      {/* PIN-gated test bypass — renders nothing unless ONBOARDING_TEST_PIN
+          is set on this deployment. See test-bypass-actions.ts for the
+          gates and the argument for why this doesn't break decision #7. */}
+      {process.env.ONBOARDING_TEST_PIN ? <TestBypass /> : null}
     </LCard>
   );
 }
