@@ -124,8 +124,8 @@ export default function SignUpForm({ introLabel }: { introLabel: string }) {
         row copy. Nothing here may give the trip a verb it does not have.
       */}
       <AuthHeading title="Start your books">
-        Two minutes now, and your next trip&rsquo;s invoice lines and logbook
-        drafts are ready for you to review.
+        Two minutes, and your next trip&rsquo;s invoice lines and logbook
+        drafts are ready to review.
       </AuthHeading>
 
       <form action={formAction} className="flex flex-col gap-4">
