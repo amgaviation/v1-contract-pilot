@@ -118,7 +118,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         id: "online-payments",
         title: "Taking card and bank payments",
         summary: "Connect your own Stripe account so clients can pay an invoice online.",
-        href: "/settings?tab=business",
+        href: "/settings?tab=payments",
         body: [
           "You are the merchant of record. Payments settle straight into your own Stripe balance: this platform never sees your Stripe keys, never holds your funds, and never takes a cut of what your clients pay you.",
           "Once connected, any sent invoice can generate a payment link. When the money actually settles, the payment is recorded against the invoice automatically.",

@@ -105,9 +105,15 @@ export function LTabsTrigger({
     );
     const values = list.map((btn) => btn.dataset.value ?? "");
     const index = values.indexOf(tabValue);
+    // Up/Down mirror Right/Left so the same tablist works laid out as a
+    // vertical sidebar (settings' lg+ layout) as well as a horizontal
+    // strip. Supporting both axes at once is the accepted pattern when a
+    // tablist's orientation is responsive rather than fixed.
     const map: Record<string, number> = {
       ArrowRight: index + 1,
+      ArrowDown: index + 1,
       ArrowLeft: index - 1,
+      ArrowUp: index - 1,
       Home: 0,
       End: values.length - 1,
     };

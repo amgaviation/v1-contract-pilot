@@ -136,7 +136,10 @@ async function rollBackGrant(connectAccountId: string): Promise<boolean> {
 
 function redirectToSettings(request: NextRequest, warning: string | null, connected = false) {
   const url = new URL("/settings", request.url);
-  url.searchParams.set("tab", "business");
+  // The Connect panel lives on the Payments tab — landing anywhere else
+  // after the OAuth round trip would hide the very confirmation (or
+  // warning) this redirect exists to show.
+  url.searchParams.set("tab", "payments");
   if (warning) url.searchParams.set("warning", warning);
   if (connected) url.searchParams.set("connected", "1");
   return NextResponse.redirect(url);

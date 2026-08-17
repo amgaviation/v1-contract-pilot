@@ -12,32 +12,39 @@ import {
 /**
  * The tab vocabulary, written once. It grew from three to six with Phase
  * 9's customisation layer, to seven with the profile/security surface, to
- * nine once categories earned its own tab, and to ten with the billing
- * surface, and a hand-written `a || b || c` predicate was exactly the
- * shape that goes stale each time — so the list IS the type and the type
- * guard reads from the list.
+ * ten with the billing surface, and to eleven when "Payments" was split
+ * out of "Your business" — a hand-written `a || b || c` predicate was
+ * exactly the shape that goes stale each time, so the list IS the type
+ * and the type guard reads from the list.
  *
- * Ten tabs is past Miller's 7±2 as a single flat row, so the strip below
- * clusters them under three small, non-interactive group labels —
- * "Business" (business, day-types, mileage, categories, billing),
- * "Communication" (messages, reminders) and "Appearance" (appearance,
- * layout); see TAB_GROUPS below. TAB_KEYS itself stays exactly this one
- * flat list of values: the grouping is a rendering concern in the JSX, not
- * a change to the type, the `?tab=` vocabulary, or the state machine —
- * still ONE LTabsRoot and ONE LTabsList, so Left/Right/Home/End and the
- * roving tabindex still walk all triggers in a single sequence. "profile"
- * stays outside all three groups; see the comment below for why.
+ * ELEVEN SECTIONS IS A SIDEBAR, NOT A ROW. At this count a single
+ * horizontal strip is past Miller's 7±2 whichever way it wraps, and the
+ * previous design — inline group captions floating between wrapped pills —
+ * let a caption end one visual row while its own tabs started the next,
+ * so the grouping it existed to show was illegible exactly when it was
+ * needed. The layout is now responsive: at lg+ the SAME tablist renders
+ * as a vertical grouped sidebar (headers above each cluster, the pattern
+ * every settings surface this size uses), and below lg it renders as a
+ * plain wrapped row with the captions hidden — eleven legible pills beat
+ * eleven pills interleaved with four orphanable labels on a phone.
  *
- * "profile" sits LAST rather than first, deliberately: this screen's
- * subject is the business, and the one tab about the human signing in is
- * the exception at the end of the row, not the headline. It is also the
- * one tab whose contents are not account-wide — see profile-panel.tsx.
+ * Still ONE LTabsRoot and ONE LTabsList either way, so the `?tab=`
+ * vocabulary, the state machine, and the roving tabindex are unchanged —
+ * LTabsTrigger reads activation order straight off the DOM, and its key
+ * map covers both axes (Left/Right and Up/Down), so the keyboard works in
+ * both orientations without an orientation prop.
+ *
+ * "profile" sits LAST and outside every group, deliberately: this
+ * screen's subject is the business, and the one tab about the human
+ * signing in is the exception at the end, not the headline. It is also
+ * the one tab whose contents are not account-wide — see profile-panel.tsx.
  */
 const TAB_KEYS = [
   "business",
+  "payments",
+  "billing",
   "day-types",
   "mileage",
-  "billing",
   "messages",
   "reminders",
   "appearance",
@@ -54,13 +61,13 @@ function isTabKey(value: string | undefined): value is TabKey {
   return (TAB_KEYS as readonly string[]).includes(value ?? "");
 }
 
-/** Display text for each trigger, keyed once so the grouped tab row and
- *  the (label-free) panel row below never have to repeat it. */
+/** Display text for each trigger, keyed once. */
 const TAB_LABEL: Record<TabKey, string> = {
   business: "Your business",
+  payments: "Payments",
+  billing: "Billing",
   "day-types": "Day types",
   mileage: "Mileage",
-  billing: "Billing",
   messages: "Message wording",
   reminders: "Reminders",
   appearance: "Appearance",
@@ -70,51 +77,60 @@ const TAB_LABEL: Record<TabKey, string> = {
 };
 
 /**
- * The visual grouping for the tab STRIP only — see the header comment
- * above. Each group renders as a small `aria-hidden` label followed by
- * that group's triggers, all still inside the one LTabsList. "profile" is
- * deliberately absent from every group here: it renders last, on its own,
- * with no label before it.
+ * The grouping, by what the pilot is trying to do rather than by which
+ * panel implements it:
+ *
+ *   Business             who you are, money in (Payments — how clients
+ *                        pay you) and money out (Billing — what you pay
+ *                        for this product, plus your data)
+ *   Rates & categories   the vocabulary trips and expenses are priced in
+ *   Communication        what this product says in your name, and when
+ *   Workspace            how the app itself looks and is arranged
+ *
+ * "profile" is deliberately absent from every group: it renders last, on
+ * its own — see the header comment.
  */
 const TAB_GROUPS: { label: string; keys: TabKey[] }[] = [
-  { label: "Business", keys: ["business", "day-types", "mileage", "categories", "billing"] },
+  { label: "Business", keys: ["business", "payments", "billing"] },
+  { label: "Rates & categories", keys: ["day-types", "mileage", "categories"] },
   { label: "Communication", keys: ["messages", "reminders"] },
-  { label: "Appearance", keys: ["appearance", "layout"] },
+  { label: "Workspace", keys: ["appearance", "layout"] },
 ];
 
 /**
- * LEDGER port of this file — components/ledger/tabs.tsx over
- * server-rendered panel content. Every panel is passed in already rendered
- * (data fetched server-side, same as LPageShell composing client children).
+ * LEDGER tabs over server-rendered panel content — every panel is passed
+ * in already rendered, and LTabsContent keeps every panel MOUNTED
+ * (`hidden`, never unmounted) so a mid-edit day-type row or half-arranged
+ * nav layout survives a glance at another tab.
  *
- * Deep link: `initialTab` comes from page.tsx reading `?tab=` server-side,
- * seeding this component's initial state. Switching tabs updates the URL
- * via `history.pushState` — a plain browser call, not a Next navigation —
- * so it costs no RSC round trip, every tab stays bookmarkable,
- * reloadable, and linkable, and browser Back can step back through tab
- * switches instead of leaving the page entirely.
+ * Deep link: `initialTab` comes from page.tsx reading `?tab=` server-side.
+ * Switching tabs updates the URL via `history.pushState` — a plain browser
+ * call, not a Next navigation — so it costs no RSC round trip and every
+ * tab stays bookmarkable and linkable.
  *
- * Mounted panels: LTabsContent renders its children unconditionally
- * (`hidden` when inactive, never unmounted) so a mid-edit day-type row —
- * or a half-arranged nav layout — survives a glance at another tab. No
- * `forceMount`/`display:none` trick is needed here the way the old
- * Radix-based version needed one: LTabsContent already carries that
- * behavior itself.
+ * THE RESPONSIVE SPLIT, spelled out because it is all utility classes on
+ * the same three nodes:
  *
- * LTabsList/LTabsTrigger still give the roving tabindex and the
- * Left/Right/Home/End activation + `aria-controls` wiring the hand-rolled
- * version had to build by hand. The small group labels rendered between
- * clusters of triggers (see TAB_GROUPS) are plain `aria-hidden` text, not
- * `LTabsTrigger`s: they sit in the list's flex flow purely for visual
- * spacing and never join the roving-tabindex sequence LTabsTrigger reads
- * straight off the DOM, so keyboard users still land on all real tabs in
- * order.
+ *   - LTabsRoot gets `lg:grid lg:grid-cols-[12rem_1fr]`: sidebar + panel
+ *     at lg, ordinary stacked flow below.
+ *   - LTabsList keeps its mobile shape (wrapped row, hairline underneath)
+ *     and at lg becomes a sticky vertical column with the hairline off —
+ *     the sidebar's own left rule on each trigger replaces it.
+ *   - Each LTabsTrigger keeps its underline style in the row and swaps to
+ *     a left-rule style at lg (`lg:border-b-0 lg:border-l-2`): the
+ *     primitive's selected state colors `border-accent`, which paints
+ *     whichever border edge currently has width, so the selected style
+ *     follows the orientation with no change to the primitive.
+ *   - Group captions are `hidden lg:block`: headers above their cluster in
+ *     the sidebar, absent from the wrapped row. They are `aria-hidden`
+ *     plain text either way — never triggers, never in the tab sequence.
  */
 export default function SettingsTabs({
   business,
+  payments,
+  billing,
   dayTypes,
   mileage,
-  billing,
   messages,
   reminders,
   appearance,
@@ -124,9 +140,10 @@ export default function SettingsTabs({
   initialTab,
 }: {
   business: ReactNode;
+  payments: ReactNode;
+  billing: ReactNode;
   dayTypes: ReactNode;
   mileage: ReactNode;
-  billing: ReactNode;
   messages: ReactNode;
   reminders: ReactNode;
   appearance: ReactNode;
@@ -150,9 +167,10 @@ export default function SettingsTabs({
 
   const panels: { key: TabKey; content: ReactNode }[] = [
     { key: "business", content: business },
+    { key: "payments", content: payments },
+    { key: "billing", content: billing },
     { key: "day-types", content: dayTypes },
     { key: "mileage", content: mileage },
-    { key: "billing", content: billing },
     { key: "messages", content: messages },
     { key: "reminders", content: reminders },
     { key: "appearance", content: appearance },
@@ -161,59 +179,52 @@ export default function SettingsTabs({
     { key: "profile", content: profile },
   ];
 
+  const triggerClass =
+    "lg:mb-0 lg:w-full lg:border-b-0 lg:border-l-2 lg:px-3 lg:py-1.5 lg:text-left";
+
   return (
-    <LTabsRoot value={tab} onValueChange={handleValueChange}>
-      {/*
-        THE ROW WRAPS RATHER THAN SCROLLING, and that is a reachability
-        fix, not a style preference.
-
-        LTabsList's own default is `overflow-x-auto` on a single row — fine
-        at three tabs, not at ten: "Layout", "Categories" and "Profile &
-        security" would sit past the right edge on a narrow phone with no
-        scrollbar, no fade and no chevron, so a pilot looking for the
-        password control would see four tabs, none of them about security,
-        and would reasonably conclude the feature was not there (see the
-        INSTRUMENT-era version of this component, which hit exactly that
-        with Radix's own scroller).
-
-        Wrapping keeps every tab visible and keyboard-reachable at every
-        width. `overflowX: visible` goes with it so the now-unnecessary
-        scroller cannot clip a wrapped row. The list's hairline ends up
-        under the last row, where it still does its one job: separating
-        the tabs from the panel below.
-      */}
+    <LTabsRoot
+      value={tab}
+      onValueChange={handleValueChange}
+      className="lg:grid lg:grid-cols-[12rem_1fr] lg:items-start lg:gap-8"
+    >
+      {/* Below lg the row WRAPS rather than scrolling — a reachability
+          fix, not a style preference: a scrolled row hides "Profile &
+          security" past the right edge of a phone with no scrollbar, no
+          fade and no chevron, and a pilot looking for the password
+          control reasonably concludes the feature is not there. The
+          style prop wins over the list's own overflow-x-auto. */}
       <LTabsList
         aria-label="Settings sections"
+        className="lg:sticky lg:top-16 lg:flex-col lg:items-stretch lg:gap-0.5 lg:border-b-0"
         style={{ flexWrap: "wrap", overflowX: "visible" }}
       >
         {TAB_GROUPS.flatMap((group, index) => [
           <span
             key={`group-${group.label}`}
             aria-hidden
-            // Not a tab, not focusable, not in the roving-tabindex sequence
-            // LTabsTrigger builds (see the header comment) — a caption that
-            // happens to sit inside the same flex row as the triggers.
-            // `whitespace-nowrap` so a group name can never wrap into its
-            // own row and overlap the wrapped trigger row below it; `ml-4`
-            // before every group after the first is the only thing marking
-            // a new cluster having started, since flex-wrap alone would
-            // otherwise run every trigger into one visually even row.
-            className={`whitespace-nowrap text-caption font-medium text-ink-3 ${
-              index === 0 ? "" : "ml-4"
+            // A caption, not a tab: not focusable, never in the roving-
+            // tabindex sequence LTabsTrigger reads off the DOM. Hidden in
+            // the wrapped row (see the header comment), a section header
+            // above its cluster in the sidebar.
+            className={`hidden whitespace-nowrap pl-3 pb-1 text-caption font-medium uppercase tracking-wide text-ink-3 lg:block ${
+              index === 0 ? "" : "lg:pt-4"
             }`}
           >
             {group.label}
           </span>,
           ...group.keys.map((key) => (
-            <LTabsTrigger key={key} value={key}>
+            <LTabsTrigger key={key} value={key} className={triggerClass}>
               {TAB_LABEL[key]}
             </LTabsTrigger>
           )),
         ])}
-        <LTabsTrigger value="profile">{TAB_LABEL.profile}</LTabsTrigger>
+        <LTabsTrigger value="profile" className={`${triggerClass} lg:mt-4`}>
+          {TAB_LABEL.profile}
+        </LTabsTrigger>
       </LTabsList>
 
-      <div className="pt-4">
+      <div className="min-w-0 pt-4 lg:pt-0">
         {panels.map((panel) => (
           <LTabsContent key={panel.key} value={panel.key}>
             {panel.content}

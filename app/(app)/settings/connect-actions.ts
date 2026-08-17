@@ -57,7 +57,7 @@ export async function startConnectOnboarding() {
     // action's button in that state, so reaching here means a stale form
     // resubmission; just send them back rather than starting a second
     // OAuth grant on top of an existing one.
-    redirect("/settings?tab=business");
+    redirect("/settings?tab=payments");
   }
 
   const supabase = await createClient();
