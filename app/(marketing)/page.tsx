@@ -77,8 +77,8 @@ function Band({
       <div
         className={
           narrow
-            ? "mx-auto w-full max-w-2xl px-4 py-12 sm:py-16"
-            : "mx-auto w-full max-w-5xl px-4 py-12 sm:py-16"
+            ? "mx-auto w-full max-w-3xl px-5 py-14 sm:px-6 sm:py-20"
+            : "mx-auto w-full max-w-6xl px-5 py-14 sm:px-6 sm:py-20"
         }
       >
         {children}
@@ -96,7 +96,7 @@ const OUTPUTS: { step: string; title: string; body: string }[] = [
   {
     step: "01",
     title: "Invoice lines",
-    body: "Billable days price themselves off that client's rate card, with anything you tagged rebill. Sequential number, PDF, email delivery, and a payment link once you connect Stripe.",
+    body: "Your client’s rate and billable days are already there. Review the details, then send a numbered PDF invoice with a payment link.",
   },
   {
     step: "02",
@@ -105,7 +105,7 @@ const OUTPUTS: { step: string; title: string; body: string }[] = [
     // app/(app)/logbook/db.ts is per-leg, the queue is titled "Trip drafts —
     // legs from completed trips", and one entry per flight is the only form
     // 14 CFR 61.51 recognises. "The legs … a draft entry" read as a merge.
-    body: "Each leg comes back as a draft entry, PIC and SIC kept distinct. Nothing saves until you confirm it.",
+    body: "Each leg becomes a draft with PIC and SIC kept separate. You review it before anything is added to your logbook.",
   },
   {
     step: "03",
@@ -118,7 +118,7 @@ const OUTPUTS: { step: string; title: string; body: string }[] = [
     // door is the one signed-out surface with no disclaimer on it, so a tax
     // outcome asserted here is asserted naked. See docs/MARKETING.md §5
     // rule 10.
-    body: "Scan it in the FBO, assign it to the trip. Tag it rebill and it bills the client; tag it deduct and it lands in the year's deductible total.",
+    body: "Scan a receipt at the FBO and attach it to the trip. Mark it for client reimbursement or keep it with your deductible-expense records.",
   },
 ];
 
@@ -257,14 +257,14 @@ const COMPARISON: { step: string; today: string; here: string }[] = [
     here: BRAND.tagline,
   },
   {
-    step: "Billing the client",
-    today: "The same dates retyped in a spreadsheet to get the day count",
-    here: "The days are already there",
+    step: "When you invoice",
+    today: "Re-enter dates and calculate billable days",
+    here: "Review the trip and send",
   },
   {
     step: "Tax time",
-    today: "Three sources that disagree, reconciled by you",
-    here: "One set of numbers, already built",
+    today: "Reconcile logbook, receipts, and books",
+    here: "Export one set of records",
   },
 ];
 
@@ -317,7 +317,7 @@ export default async function LandingPage() {
                 sentence — a pill that cannot wrap just runs off the edge of
                 a phone. Plain eyebrow text instead, which wraps normally. */}
             <p className="text-caption font-semibold text-accent">
-              For the contract pilot: day rates, several operators, one-person business
+              Built for independent contract pilots
             </p>
 
             {/* THE page's only h1. Ledger's type scale is fixed rather than
@@ -326,26 +326,25 @@ export default async function LandingPage() {
                 uses for a page's one h1, rather than the old Radix
                 responsive size="{8,9}" step. */}
             <h1 className="text-h1 font-bold tracking-tight text-ink">
-              One trip in. Invoice out. Logbook out. Receipts filed.
+              Stop entering the same trip three times.
             </h1>
 
             <p className="text-lead text-ink-2">
-              Type the dates, the legs and the tail number once, on the
-              trip. Everything after comes off that record.
+              {BRAND.name} keeps your trips, invoices, logbook, receipts, and year-end
+              records together—so the business side of flying takes less work.
             </p>
 
             <div className="mt-1 flex flex-wrap gap-3">
               <NextLink href="/signup" className={lButtonClass({ size: "lg" })}>
-                Start the {TRIAL_PERIOD_DAYS}-day trial
+                Try {BRAND.name} free for {TRIAL_PERIOD_DAYS} days
               </NextLink>
               <NextLink href="/pricing" className={lButtonClass({ size: "lg", variant: "outline" })}>
-                See pricing
+                View plans
               </NextLink>
             </div>
 
             <p className="text-caption text-ink-3">
-              From {TIER_PRICE_COPY.solo.monthly}/month after the trial. Card
-              required to start.
+              Plans start at {TIER_PRICE_COPY.solo.monthly}/month. Card required.
             </p>
           </div>
 
@@ -362,13 +361,13 @@ export default async function LandingPage() {
           link. */}
       <Band id="how-it-works" tone="sunk">
         <div className="flex flex-col gap-5">
-          <h2 className="text-h2 font-bold tracking-tight text-ink">What one trip produces</h2>
+          <h2 className="text-h2 font-bold tracking-tight text-ink">Finish the paperwork while the trip is fresh</h2>
 
           <div className="rounded-card border border-accent-soft bg-accent-soft p-5">
-            <p className="mb-1 text-caption font-semibold text-accent">YOU TYPE THE TRIP</p>
+            <p className="mb-1 text-caption font-semibold text-accent">START WITH THE TRIP</p>
             <p className="text-body text-ink">
-              The client, the aircraft, the legs, and each day as flight,
-              travel, standby or off.
+              Add the client, aircraft, legs, and your flight, travel, standby,
+              or off days.
             </p>
           </div>
 
@@ -391,7 +390,7 @@ export default async function LandingPage() {
       <Band>
         <div className="flex flex-col gap-5">
           <h2 className="text-h2 font-bold tracking-tight text-ink">
-            Everything the day rate doesn&rsquo;t cover.
+            The rest of the job, in the same place.
           </h2>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -435,7 +434,7 @@ export default async function LandingPage() {
       <Band tone="sunk">
         <div className="flex flex-col gap-5">
           <h2 className="text-h2 font-bold tracking-tight text-ink">
-            The same trip, three times.
+            Stop rebuilding the same trip.
           </h2>
 
           <LCard className="p-0">
@@ -443,7 +442,7 @@ export default async function LandingPage() {
               <thead>
                 <tr>
                   <LTh>Step</LTh>
-                  <LTh>A logbook app + a spreadsheet + accounting software</LTh>
+                  <LTh>Separate apps</LTh>
                   <LTh>{BRAND.name}</LTh>
                 </tr>
               </thead>
@@ -496,7 +495,7 @@ export default async function LandingPage() {
           no JavaScript, keyboard- and screen-reader-correct for free. */}
       <Band tone="sunk" narrow>
         <div className="flex flex-col gap-4">
-          <h2 className="text-h2 font-bold tracking-tight text-ink">Before you sign up</h2>
+          <h2 className="text-h2 font-bold tracking-tight text-ink">Questions pilots ask us</h2>
           <div>
             {FAQ.map((item) => (
               <details key={item.q} className="border-b border-hair">
@@ -519,10 +518,10 @@ export default async function LandingPage() {
       <Band>
         <div className="rounded-card border border-accent-soft bg-accent-soft p-6 sm:p-8">
           <div className="flex flex-col items-start justify-between gap-5 md:flex-row md:items-center">
-            <h2 className="text-h2 font-bold tracking-tight text-ink">Try it on your next trip.</h2>
+            <h2 className="text-h2 font-bold tracking-tight text-ink">Put your next trip in {BRAND.name}.</h2>
             <div className="flex shrink-0 flex-wrap gap-3">
               <NextLink href="/signup" className={lButtonClass({ size: "lg" })}>
-                Start the {TRIAL_PERIOD_DAYS}-day trial
+                Try {BRAND.name} free for {TRIAL_PERIOD_DAYS} days
               </NextLink>
               <NextLink href="/pricing" className={lButtonClass({ size: "lg", variant: "outline" })}>
                 Compare plans

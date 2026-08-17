@@ -76,12 +76,11 @@ Sell the mechanic. Name exactly what you type and exactly what comes out.
 
 **Hero copy, verbatim:**
 
-- **Eyebrow** — For the contract pilot — day rates, several operators,
-  one-person business
-- **H1** — One trip in. Invoice out. Logbook out. Receipts filed.
-- **Subhead** — Type the dates, the legs and the tail number once — on the
-  trip. Everything after comes off that record.
-- **Fine line** — From $29/month after the trial. Card required to start.
+- **Eyebrow** — Built for independent contract pilots
+- **H1** — Stop entering the same trip three times.
+- **Subhead** — V1 keeps your trips, invoices, logbook, receipts, and
+  year-end records together—so the business side of flying takes less work.
+- **Fine line** — Plans start at $29/month. Card required.
 
 `BRAND.tagline` ("Log the trip once.") is **not** the H1. The H1 shows the
 mechanic; showing it once is worth more than saying it three times.
@@ -199,13 +198,13 @@ data, not copy.
 | # | Section | Budget | Shipped |
 |---|---|---|---|
 | 1 | Hero (navy; mock directly under the buttons) | 58 | 55 |
-| 2 | What one trip produces — one input card → three numbered outputs | 100 | 109 |
-| 3 | Everything the day rate doesn't cover — one three-column spec block | 125 | 135 |
-| 4 | The same trip, three times — three-row comparison table | 55 | 63 |
+| 2 | Finish the paperwork while the trip is fresh — one input card → three numbered outputs | 100 | 90 |
+| 3 | The rest of the job, in the same place — one three-column spec block | 125 | 135 |
+| 4 | Stop rebuilding the same trip — three-row comparison table | 55 | 52 |
 | 5 | Plans — one line, one link | 30 | 23 |
-| 6 | Before you sign up — three FAQ items | 112 | 123 |
+| 6 | Questions pilots ask us — three FAQ items | 112 | 123 |
 | 7 | Closing CTA | 12 | 12 |
-| | **Total** | **492** | **520** |
+| | **Total** | **492** | **490** |
 
 Section 6 was 131 before the cancel answer's export sentence came out — the
 spec line "Account-wide CSV export — every record type, on every plan" makes
