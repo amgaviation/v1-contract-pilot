@@ -106,6 +106,67 @@ export const NAV_SETTINGS: NavItem = { href: "/settings", label: "Settings" };
 export const NAV_HELP: NavItem = { href: "/help", label: "Help" };
 
 /**
+ * THE COMMAND PALETTE'S "FEATURES" LAYER — actions and sub-pages, the half
+ * of "search any feature" that is not a top-level section.
+ *
+ * These are deep links the rail never shows (a rail of every create-action
+ * and every report would be unusable), surfaced only when a pilot types in
+ * ⌘K. Two groups:
+ *   Create  — the new-record and import actions ("New invoice", "Import
+ *             expenses").
+ *   Go to   — sub-pages under a section ("Profit & loss", "Billing & plan").
+ *
+ * NOT A GATE, exactly like NAV_SECTIONS above: listing a command here does
+ * not open its route. Every href still lands on a page that runs its own
+ * requireAccount / requireEntitlement / flag check, so a command for a
+ * page a tenant cannot use redirects there rather than rendering it — which
+ * is why entitlement- and flag-specific deep links (recurring invoices,
+ * anything currency) are deliberately LEFT OUT rather than shown and
+ * bounced. `keywords` are extra terms cmdk matches beyond the label, so
+ * "add" or "create" finds "New …", "p&l" finds "Profit & loss".
+ *
+ * robots.txt is unaffected: app/robots.ts derives its disallow list from
+ * NAV_SECTIONS, and every href below is a sub-path of a section already in
+ * that list.
+ */
+export type NavCommandGroup = "Create" | "Go to";
+
+export type NavCommand = {
+  href: string;
+  label: string;
+  group: NavCommandGroup;
+  keywords?: readonly string[];
+};
+
+export const NAV_COMMANDS: readonly NavCommand[] = [
+  // Create — the new-record and import actions.
+  { href: "/trips/new", label: "New trip", group: "Create", keywords: ["add", "create", "leg", "flight"] },
+  { href: "/invoices/new", label: "New invoice", group: "Create", keywords: ["add", "create", "bill"] },
+  { href: "/estimates/new", label: "New estimate", group: "Create", keywords: ["add", "create", "quote", "proposal"] },
+  { href: "/expenses/new", label: "New expense", group: "Create", keywords: ["add", "create", "receipt"] },
+  { href: "/clients/new", label: "New client", group: "Create", keywords: ["add", "create", "operator", "customer"] },
+  { href: "/documents/new", label: "New document", group: "Create", keywords: ["add", "create", "upload", "w-9", "insurance", "medical"] },
+  { href: "/logbook/new", label: "New logbook entry", group: "Create", keywords: ["add", "create", "flight", "hours"] },
+  { href: "/expenses/import", label: "Import expenses", group: "Create", keywords: ["bank", "csv", "statement", "transactions"] },
+  { href: "/expenses/mileage", label: "Log mileage", group: "Create", keywords: ["drive", "miles", "deduction", "car"] },
+  // Go to — sub-pages under a section.
+  { href: "/reports/profit-loss", label: "Profit & loss", group: "Go to", keywords: ["p&l", "pnl", "income", "report"] },
+  { href: "/reports/balance-sheet", label: "Balance sheet", group: "Go to", keywords: ["report"] },
+  { href: "/reports/cash-flow", label: "Cash flow", group: "Go to", keywords: ["report"] },
+  { href: "/reports/sales-tax", label: "Sales tax", group: "Go to", keywords: ["report", "tax"] },
+  { href: "/reports/quarterly", label: "Quarterly summary", group: "Go to", keywords: ["report", "estimated", "tax"] },
+  { href: "/reports/year-end", label: "Year-end summary", group: "Go to", keywords: ["report", "1099", "tax", "annual"] },
+  { href: "/reports/trip-pl", label: "Trip profit & loss", group: "Go to", keywords: ["report", "pnl"] },
+  { href: "/reports/flight-time", label: "Flight time", group: "Go to", keywords: ["report", "hours"] },
+  { href: "/reports/pilot-history", label: "Pilot history", group: "Go to", keywords: ["report", "resume", "experience"] },
+  { href: "/logbook/aircraft", label: "Aircraft", group: "Go to", keywords: ["tail", "registration", "type"] },
+  { href: "/logbook/drafts", label: "Logbook drafts", group: "Go to", keywords: ["pending", "confirm"] },
+  { href: "/expenses/transactions", label: "Bank transactions", group: "Go to", keywords: ["import", "reconcile"] },
+  { href: "/settings/billing", label: "Billing & plan", group: "Go to", keywords: ["subscription", "upgrade", "stripe", "payment"] },
+  { href: "/settings/export", label: "Export data", group: "Go to", keywords: ["download", "backup", "csv"] },
+] as const;
+
+/**
  * The sections the rail and phone strip actually render.
  *
  * Currency ships behind THE flag (docs/PLAN.md decision #15;
