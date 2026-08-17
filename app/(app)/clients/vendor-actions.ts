@@ -103,3 +103,66 @@ export async function revokeVendorLink(
   revalidatePath(`/clients/${clientId}`);
   return { error: null, revoked: true, revokedToken: revokingToken };
 }
+
+export type AutopayDisableState = { error: string | null; disabled?: boolean };
+
+/**
+ * The PILOT turning a client's autopay off. A thin wrapper over
+ * pilot.client_autopay_disable (owner-gated SECURITY DEFINER — the autopay
+ * columns are withheld from every authenticated grant, so the DEFINER body
+ * is this path's only way to clear them; see 20260817160000's header).
+ *
+ * The saved PaymentMethod is detached on Stripe afterwards, best-effort:
+ * the columns are the fact that stops charges, and a Stripe outage must
+ * not leave the pilot told autopay is still on when the app will never
+ * charge it again. The client's own stop control on the vendor page
+ * (app/api/autopay/stop) mirrors this exactly.
+ */
+export async function disableClientAutopay(
+  _prev: AutopayDisableState,
+  formData: FormData
+): Promise<AutopayDisableState> {
+  const clientId = String(formData.get("client_id") ?? "");
+  if (!UUID_RE.test(clientId)) {
+    return { error: "That client couldn't be found." };
+  }
+
+  const { account } = await requireAccount("/clients");
+  const supabase = await createClient();
+
+  // Read the pm id BEFORE the clear, or there is nothing left to detach.
+  const { data: clientData } = await supabase
+    .from("clients")
+    .select("autopay_stripe_payment_method_id")
+    .eq("id", clientId)
+    .eq("account_id", account.id)
+    .maybeSingle();
+  const paymentMethodId =
+    (clientData as { autopay_stripe_payment_method_id: string | null } | null)
+      ?.autopay_stripe_payment_method_id ?? null;
+
+  const { error } = await supabase.rpc("client_autopay_disable", {
+    p_client_id: clientId,
+  } as never);
+  if (error) {
+    return { error: friendlyDbError(error, "client_autopay_disable") };
+  }
+
+  if (paymentMethodId && account.connect_account_id) {
+    try {
+      const { detachAutopayMethod } = await import("@/lib/stripe/connect");
+      await detachAutopayMethod({
+        connectAccountId: account.connect_account_id,
+        paymentMethodId,
+      });
+    } catch (err) {
+      console.error(
+        "[autopay] detach failed (autopay already off):",
+        err instanceof Error ? err.message : "unknown"
+      );
+    }
+  }
+
+  revalidatePath(`/clients/${clientId}`);
+  return { error: null, disabled: true };
+}

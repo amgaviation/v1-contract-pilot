@@ -372,6 +372,23 @@ export type Database = {
           // schedule at all, which is what keeps it out of A/R aging and
           // the statements without either of those needing a filter.
           you_invoice: boolean;
+          // -------------------------------------------------------------
+          // 20260817160000_autopay.sql. The client's saved payment method
+          // for automatic charging of recurring invoices. All five move
+          // together (clients_autopay_consistent) and are WITHHELD from
+          // every authenticated write grant — written only by the Connect
+          // webhook (enrollment) and service-role clears (disable paths).
+          // Hence: present on Row, absent from Insert/Update below, which
+          // is what makes an app-side write a compile error rather than a
+          // runtime grant refusal.
+          // -------------------------------------------------------------
+          autopay_stripe_customer_id: string | null;
+          autopay_stripe_payment_method_id: string | null;
+          /** "Visa •••• 4242" — display only, captured at enrollment. */
+          autopay_method_label: string | null;
+          /** Null = autopay off for this client. */
+          autopay_consented_at: string | null;
+          autopay_livemode: boolean | null;
           archived_at: string | null;
           created_at: string;
           updated_at: string;
@@ -2122,6 +2139,10 @@ export type Database = {
           amount_cents: number;
           tax_rate_bps: number;
           active: boolean;
+          /** 20260817160000. Charge the client's saved method when this
+           *  schedule's invoice is generated — inert until the client has
+           *  actually enrolled (clients.autopay_* set). */
+          autopay: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -2136,6 +2157,8 @@ export type Database = {
           amount_cents: number;
           tax_rate_bps?: number;
           active?: boolean;
+          /** 20260817160000. Defaults false. */
+          autopay?: boolean;
         };
         Update: {
           end_date?: string | null;
@@ -2143,6 +2166,8 @@ export type Database = {
           amount_cents?: number;
           tax_rate_bps?: number;
           active?: boolean;
+          /** 20260817160000. */
+          autopay?: boolean;
         };
         Relationships: [
           {
@@ -2607,6 +2632,18 @@ export type Database = {
       current_account_ids: {
         Args: Record<string, never>;
         Returns: string[];
+      };
+      /** 20260817160000. anon-reachable, vendor-link-token gated. */
+      autopay_public_state: {
+        Args: { p_token: string };
+        Returns: unknown;
+      };
+      /** 20260817160000. Owner-gated SECURITY DEFINER clear of one
+       *  client's autopay enrollment — the columns are withheld from every
+       *  authenticated grant, so this is the pilot-side path's only way in. */
+      client_autopay_disable: {
+        Args: { p_client_id: string };
+        Returns: undefined;
       };
       is_account_owner: {
         Args: { target_account_id: string };

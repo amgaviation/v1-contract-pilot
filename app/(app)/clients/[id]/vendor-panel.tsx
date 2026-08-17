@@ -5,7 +5,13 @@ import { LAlert, LCard, lButtonClass } from "@/components/ledger";
 import { LInput, LSelect } from "@/components/ledger/forms";
 import { LConfirmDialog } from "@/components/ledger/dialog";
 import { formatDate } from "@/lib/format";
-import { createVendorLink, revokeVendorLink, type VendorLinkState } from "../vendor-actions";
+import {
+  createVendorLink,
+  revokeVendorLink,
+  disableClientAutopay,
+  type AutopayDisableState,
+  type VendorLinkState,
+} from "../vendor-actions";
 
 /**
  * "The vendor page" — one persistent link that answers the two questions a
@@ -29,16 +35,30 @@ export type ExistingVendorLink = {
 const DAY_CHOICES = ["30", "60", "90", "180", "365"];
 
 const initial: VendorLinkState = { error: null };
+const autopayInitial: AutopayDisableState = { error: null };
+
+export type ClientAutopayState = {
+  /** "Visa •••• 4242" when enrolled, null otherwise. */
+  methodLabel: string | null;
+  /** Formatted consent date, server-side, or null. */
+  consentedOn: string | null;
+};
 
 export default function VendorPanel({
   clientId,
   clientName,
   existing,
   existingLoadError = false,
+  autopay,
+  canDisableAutopay = false,
 }: {
   clientId: string;
   clientName: string;
   existing: ExistingVendorLink | null;
+  /** The client's autopay enrollment, read off pilot.clients by the page. */
+  autopay?: ClientAutopayState;
+  /** Owner-only — pilot.client_autopay_disable refuses everyone else. */
+  canDisableAutopay?: boolean;
   /**
    * A failed client_vendor_links read degrades `existing` to `null` the
    * same way "no live link" would — hiding the live-link block from a
@@ -235,6 +255,31 @@ export default function VendorPanel({
         </div>
       )}
 
+      {/* AUTOPAY — the client-side consent lives ON the vendor page this
+          panel mints, so its status belongs beside the link. The pilot
+          cannot enroll a client from here (consent is the client's own
+          act, through their browser, on Stripe's hosted page); they can
+          only see the state and turn it off. */}
+      <div className="mt-4 border-t border-hair pt-4">
+        <h3 className="mb-1 text-body font-semibold text-ink">Autopay</h3>
+        {autopay?.methodLabel ? (
+          <div className="flex flex-col items-start gap-2">
+            <p className="text-body-s text-ink-2">
+              {`${clientName} saved ${autopay.methodLabel}${
+                autopay.consentedOn ? ` on ${autopay.consentedOn}` : ""
+              }. Recurring schedules with autopay switched on charge it automatically when their invoice is created.`}
+            </p>
+            {canDisableAutopay ? <AutopayDisableButton clientId={clientId} /> : null}
+          </div>
+        ) : (
+          <p className="text-body-s text-ink-2">
+            Not set up. If they open the vendor page above, they can save a
+            card there — recurring invoices are then charged automatically
+            instead of waiting on a payment link.
+          </p>
+        )}
+      </div>
+
       {state.error ? (
         <LAlert tone="crit" className="mt-3">
           {state.error}
@@ -246,5 +291,42 @@ export default function VendorPanel({
         </LAlert>
       ) : null}
     </LCard>
+  );
+}
+
+function AutopayDisableButton({ clientId }: { clientId: string }) {
+  const [state, action, pending] = useActionState(disableClientAutopay, autopayInitial);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <button
+        type="button"
+        disabled={pending}
+        className={lButtonClass({ variant: "quiet", className: "text-crit" })}
+        onClick={() => setConfirmOpen(true)}
+      >
+        {pending ? "Turning off…" : "Turn autopay off"}
+      </button>
+      <LConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Turn autopay off for this client?"
+        description="Their saved card is removed and nothing is charged automatically from then on — recurring invoices go back to payment links. They can set autopay up again from the vendor page any time."
+        confirmLabel="Turn off"
+        pending={pending}
+        onConfirm={() => {
+          const formData = new FormData();
+          formData.set("client_id", clientId);
+          action(formData);
+          setConfirmOpen(false);
+        }}
+      />
+      {state.error ? (
+        <p className="text-caption text-crit" role="alert">
+          {state.error}
+        </p>
+      ) : null}
+    </div>
   );
 }

@@ -214,6 +214,22 @@ async function refreshSession(
     // /ocr had exactly this bug an hour earlier.
     path.startsWith("/packet/") ||
     normalizedPath === "/packet" ||
+    // The client-facing vendor page (app/vendor/[token]/page.tsx), same
+    // shape and same reasoning as /invoice/ and /packet/ above: opened by
+    // the pilot's client's AP desk, authenticated by the unguessable token
+    // in the URL (pilot.client_vendor_links), no account to log in to.
+    // This line was MISSING when the feature shipped — every anonymous
+    // visit 307'd to /login, the exact silent-failure /packet/'s comment
+    // warns was caught "an hour earlier" there.
+    path.startsWith("/vendor/") ||
+    normalizedPath === "/vendor" ||
+    // Autopay consent, started FROM the vendor page by the same
+    // anonymous client: POST /api/autopay/start mints the Stripe setup
+    // session, POST /api/autopay/stop revokes the mandate. Both
+    // authenticate by the vendor-link token in the form body, checked
+    // server-side against pilot.client_vendor_links — a session
+    // redirect here would break the one flow these routes exist for.
+    path.startsWith("/api/autopay/") ||
     // THE SAMPLE CONNECT STOREFRONT (app/store/[accountId]) — the public
     // shop page belonging to a merchant onboarded through the sample Connect
     // integration, plus its post-checkout success page. Same shape as the

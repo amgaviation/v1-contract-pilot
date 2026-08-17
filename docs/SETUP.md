@@ -230,13 +230,18 @@ STRIPE_CONNECT_WEBHOOK_SECRET=
      "events on your account". A direct charge on a pilot's own account is
      delivered on the connected-accounts scope only; registered the other way
      this endpoint receives nothing it can act on.
-   - **Subscribe to exactly these four:**
+   - **Subscribe to exactly these five:**
      ```
      checkout.session.completed
      checkout.session.async_payment_succeeded
      checkout.session.async_payment_failed
+     payment_intent.succeeded
      account.application.deauthorized
      ```
+     `payment_intent.succeeded` is how an autopay charge (a recurring
+     invoice charged to a client's saved card) is recorded — the webhook
+     ignores every payment intent that isn't one of this product's own
+     autopay charges.
      The first three each earn their place because ACH settles
      asynchronously: `completed` fires at mandate acceptance while the money
      has *not* moved, and one of the other two follows days later. Register
