@@ -11,10 +11,20 @@ the page broke it.
 bind `/signup`, `/login`, `/forgot-password`, `/reset-password` and
 `/welcome` exactly as hard as they bind the landing page, and harder in
 practice: a pilot on `/signup` is one screen from a card. Nothing mechanical
-checks the auth copy, and the gap has already cost once — the signup screen
-shipped "your next trip bills itself" while the landing page it links from
-carefully said nothing of the kind. Read the auth strings against §5 by
-hand whenever they change.
+checks the auth copy, and the gap has now cost twice on the same screen.
+First `/signup` shipped "your next trip bills itself" while the landing page
+it links from carefully said nothing of the kind. The fix carried a long
+comment forbidding exactly that claim, and the replacement line under that
+comment then read "your next trip drafts its own invoice and logbook
+entries" — the same autonomy claim in a quieter voice, plus "invoice" for
+what are invoice *lines* and "entries" for what are per-leg *drafts*. It
+survived a full rewrite of the landing page because nobody re-read it.
+
+The lesson is narrower than "read the copy": **a comment guarding a line is
+not a check, and it will outlive the line it guards.** Read the auth strings
+against §5 by hand whenever they change, and re-read them whenever the
+landing page's mechanic copy changes, because that is when they fall out of
+step.
 
 ---
 
@@ -68,10 +78,10 @@ Sell the mechanic. Name exactly what you type and exactly what comes out.
 |---|---|---|
 | 1 | What the product is and who it serves | Hero |
 | 2 | The problem it removes | Hero subhead |
-| 3 | The workflow: trip → review → send | Section 2 |
+| 3 | The workflow, and the cost of not having it | Section 2 |
 | 4 | Depth as evidence of belonging | Section 3 spec block |
-| 5 | Cost, shown in scannable plan cards | Section 4 |
-| 6 | The three barriers left | Section 5 FAQ |
+| 5 | The three barriers left | Section 4 FAQ |
+| 6 | Cost, and the promise that outlives the card | Section 5 close |
 
 **Hero copy, verbatim:**
 
@@ -81,8 +91,16 @@ Sell the mechanic. Name exactly what you type and exactly what comes out.
   year end records together, so the business side of flying takes less work.
 - **Fine line** — Plans start at $29/month. Card required.
 
-`BRAND.tagline` ("Log the trip once.") stays in the footer and metadata. The
-H1 says what the product is for instead of asking a slogan to do that work.
+`BRAND.tagline` ("Log the trip once.") stays in the footer, the auth
+column and metadata. The H1 says what the product is for instead of asking
+a slogan to do that work.
+
+**Beats 3 and 6 each used to be two sections, and are now one.** The
+workflow beat had a "what one trip produces" section AND a comparison
+table naming the same three records in the same order one screen later;
+the cost beat had a plans band whose whole content was one line and a link,
+sitting two screens above a closing call to action. Both merges are
+described in §7.
 
 ---
 
@@ -176,9 +194,10 @@ These are absolute. A page that breaks one is not shippable.
 
 ## 6. Word budgets
 
-Six sections, down from ~1,600 words across ~13 beats. The standard is
-**ten seconds on FBO wifi**: hero alone answers what it is, who it's for and
-what it costs; hero plus section 2 earns a qualified yes or no inside thirty.
+Five sections, down from seven, down from ~1,600 words across ~13 beats.
+The standard is **ten seconds on FBO wifi**: hero alone answers what it is,
+who it's for and what it costs; hero plus section 2 earns a qualified yes or
+no inside thirty.
 
 Both columns below are real, and they are not the same number. **Budget** is
 what the strategy asked for; **Shipped** is what `app/(marketing)/page.tsx`
@@ -187,34 +206,31 @@ an aspiration — the table used to show only the budget, and the page had
 been over it since the day it was written, so an editor comparing the two
 found them out of step with no way to tell which was authoritative.
 
-Counted the same way each time, or the column means nothing: every visible
-string the page renders — `OUTPUTS`, `SPEC`, `FAQ`, the hero and CTA JSX,
-the derived tier badges, and the plan cards —
-tokenised on whitespace, keeping any token containing a letter or digit and
-dropping bare punctuation. The product mock is excluded; it is illustrative
-data, not copy.
+**Shipped is now measured, not tallied by hand.** Render the page, open
+every `<details>`, drop the `[data-mock]` subtree (the product mock is
+illustrative data, not copy), then take each `main > section`'s rendered
+text and count whitespace-separated tokens containing a letter or digit.
+The `data-mock` attribute on `product-mock.tsx` exists for this and nothing
+else. Measuring the DOM rather than the source is what lets the derived
+tier badges and the interpolated figures be counted as a reader meets them.
 
 | # | Section | Budget | Shipped |
 |---|---|---|---|
-| 1 | Hero (mock directly under the buttons) | 58 | 48 |
-| 2 | Finish the paperwork while the trip is fresh — one input card → three numbered outputs | 100 | 103 |
-| 3 | The rest of the job, in the same place — one three-column spec block | 125 | 128 |
-| 4 | Stop rebuilding the same trip — three-row comparison table | 55 | 45 |
-| 5 | Plans — one line, one link | 30 | 19 |
-| 6 | Questions pilots ask us — three FAQ items | 112 | 123 |
-| 7 | Closing CTA | 12 | 12 |
-| | **Total** | **492** | **478** |
+| 1 | Hero, navy, product mock beside the argument | 58 | 42 |
+| 2 | Finish the paperwork while the trip is fresh — three record rows, each showing today and in-product | 155 | 107 |
+| 3 | The rest of the job, in the same place — spec block, sticky heading column | 125 | 86 |
+| 4 | Questions pilots ask us — three FAQ items | 112 | 117 |
+| 5 | Close, navy — plans line and one action | 42 | 26 |
+| | **Total** | **492** | **378** |
 
-Shipped recounted at the 2026-08 rebuild that restored this table's shape
-to the page (the comparison section had been dropped and the plans
-one-liner had grown back into three cards; both now match the rows above).
-Section 1's "navy" note is gone with the navy itself — the Ledger pass
-retired it. Section 6 was 131 before the cancel answer's export sentence
-came out — the spec line "Account-wide CSV export — every record type, on
-every plan" makes that promise on the same page. The remaining overruns are
-the sections whose copy is generated from `lib/entitlements.ts` (3) or
-whose output cards carry the two-generated-one-organised wording in full
-(2); trimming either would cost substance, so they stand and are stated.
+Recounted at the 2026-08 redesign. Section 2's budget is the old sections
+2 and 4 added together (100 + 55), because it is now the old sections 2 and
+4: they made the same argument about the same three records twice, one
+screen apart, and merging them is where most of the 100-word drop came
+from. Section 5's is likewise the old plans band plus the old closing CTA
+(30 + 12). Section 4 is the only overrun and it is the FAQ, which carries
+the counsel-reviewed currency wording; trimming it would cost substance, so
+it stands and is stated.
 
 **Rules of thumb behind the budgets**
 
@@ -231,7 +247,14 @@ whose output cards carry the two-generated-one-organised wording in full
   working professional as being sold to.
 - **Structural problems get structural fixes.** Trimming the seven-block
   feature band by 20% would have left 535 words and the identical
-  seven-scroll experience. It became one ~125-word spec block.
+  seven-scroll experience. It became one ~125-word spec block. The same
+  reasoning retired sections 4 and 5 in the 2026-08 redesign: two sections
+  that restate each other are not fixed by shortening both.
+- **A record is named once per page.** "Invoice", "logbook entry" and
+  "receipts" each appeared in the outputs cards AND again as comparison
+  rows. Naming a thing twice in different words reads as padding to the
+  reader and as two separate claims to a reviewer checking them against
+  the code.
 
 ---
 
@@ -256,6 +279,18 @@ whose output cards carry the two-generated-one-organised wording in full
   factually wrong; see claim rule 6.
 - **The 17-word mock caption** → "Illustrative data." Same disclosure, two
   words.
+- **The standalone comparison section** (2026-08). Not the comparison
+  itself, which is claim rule 7's territory and still runs as the middle
+  column of section 2's rows — the second *section*, which re-listed the
+  invoice, the logbook entry and the receipts a screen after section 2 had
+  already listed them. Its heading ("Stop rebuilding the same trip") was
+  also the H1's sentence a second time.
+- **The plans band** (2026-08). One line and one link do not need a band of
+  their own two screens above the closing call to action; the line moved
+  into the close. The price is now stated once on the page, in the hero.
+- **The second closing CTA button.** The close had "Try free" and "Compare
+  plans" side by side while the hero already carried both; the close keeps
+  the one action that is not already one click away.
 
 ---
 

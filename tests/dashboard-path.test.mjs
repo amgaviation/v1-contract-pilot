@@ -84,6 +84,15 @@ const ROOT_AS_DASHBOARD = {
     // dashboard to be sent to, and a signed-in one is carried onward by
     // the marketing page's own redirect.
     "app/(auth)/layout.tsx",
+    // The auth brand row, which is where that mark moved to in the 2026-08
+    // redesign, plus the "Back to site" link beside it. BOTH of its "/"s
+    // mean the marketing root for the same reason the layout's did, and the
+    // back link means it twice over: its entire job is to return a visitor
+    // to the public site they arrived from, so pointing it at the dashboard
+    // would send a signed-out stranger into a login wall. The component
+    // withholds the back link on /welcome precisely because that is the one
+    // route in the group whose visitor IS signed in.
+    "app/(auth)/auth-brand.tsx",
     "lib/nav.ts",
     "tests/dashboard-path.test.mjs",
   ],

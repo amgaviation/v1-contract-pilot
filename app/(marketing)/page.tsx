@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import NextLink from "next/link";
-import { LCard, LPill, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
+import { LPill, lButtonClass } from "@/components/ledger";
 import { BRAND } from "@/lib/brand";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import { getSessionContext } from "@/lib/supabase/account";
@@ -21,12 +21,8 @@ import {
 
 /**
  * THE PUBLIC FRONT DOOR. Read docs/MARKETING.md before changing a word
- * here: it carries the positioning, the message hierarchy, the claim
- * rules, and the per-section word budget (§6, seven sections, ~490
- * visible words) this page is written to.
- *
- * The three standing rules that bind the copy, restated because they are
- * the ones a well-meaning edit breaks:
+ * here: it carries the positioning, the message hierarchy and the claim
+ * rules. The three that a well-meaning edit breaks most often:
  *
  *   TWO GENERATED, ONE ORGANISED. A trip GENERATES invoice lines and a
  *   logbook draft. Receipts are ORGANISED by it — nothing in this product
@@ -38,24 +34,48 @@ import {
  *   counsel-gated currency board) or entitlements marks comingSoon (seats)
  *   disappears from this page mechanically. See specGroups() below.
  *
- *   THE TAGLINE IS NOT A HEADLINE. BRAND.tagline stays in the footer and
- *   metadata. The hero names the product and the work it handles instead of
- *   repeating a slogan.
+ *   THE TAGLINE IS NOT A HEADLINE. BRAND.tagline stays in the footer, the
+ *   auth column and metadata. The hero names the product and the work it
+ *   handles instead of repeating a slogan.
  *
  * Figures are interpolated, never typed: the trial is the SAME constant the
  * checkout passes to Stripe (lib/stripe/server.ts), and the amounts come
- * from ./pricing/pricing-model, the one marketing source for the
- * docs/PRICING.md §3.2 numbers.
+ * from ./pricing-model, the one marketing source for docs/PRICING.md §3.2.
  *
- * THIS REBUILD RESTORES §6's SHAPE. The previous revision had drifted from
- * the spec it cited: the three-row comparison table (§6 row 4) was absent,
- * the plans section rendered the three-card teaser §7 cut ("a
- * lower-fidelity duplicate of /pricing, one click away"), and the spec
- * block's h2 concatenated two headings. Sections below are §6's seven, in
- * §4's order, on Ledger's register: every band sits on bg-canvas
- * alternating with bg-sunk for rhythm, one filled-accent action per
- * section (LEDGER.md's marketing rule), a second call to action always the
- * quieter outline variant.
+ * ── THE 2026-08 REDESIGN: WHAT CHANGED AND WHY ─────────────────────────
+ *
+ * SEVEN SECTIONS BECAME FIVE, because two of the seven argued the same
+ * point twice. "Finish the paperwork while the trip is fresh" listed the
+ * three records a trip produces; "Stop rebuilding the same trip" then
+ * listed the same three records as a comparison table. Same claim, same
+ * order, different words, one screen apart — and the hero's own H1 ("Stop
+ * entering the same trip three times") was a third pass at it. They are
+ * now one section: three rows, each naming a record ONCE and showing both
+ * states of it. The comparison did not get cut, it got absorbed, which is
+ * why the workflow-only rule (claim rule 7) still governs the middle
+ * column. The plans band, which was one line and a link, folded into the
+ * closing call to action for the same reason.
+ *
+ * THE PAGE STOPPED BEING THREE CARD GRIDS IN A ROW. Every section was a
+ * heading over a three-column grid of bordered cards on alternating
+ * canvas/sunk grounds, which is the exact shape a reader now recognises as
+ * machine-assembled. The rhythm is deliberately uneven instead: a navy
+ * hero, a numbered three-row ledger, an asymmetric two-column spec block
+ * whose heading column sticks while the list scrolls, a narrow FAQ, and a
+ * navy close that bookends the hero. One section is a grid. It earns it.
+ *
+ * IT HAS A GROUND OF ITS OWN NOW. #0b1f33 is not a new colour: it is the
+ * navy every file in public/brand/ is already drawn on, promoted to a real
+ * token (--ledger-brand, app/design/ledger.css) so the front door can
+ * stand on the brand instead of on the product's paper. Ledger's restraint
+ * rule still binds app/(app) exactly as before; the argument for it there
+ * (a pilot doing data entry should not be shouted at) was never an
+ * argument for a marketing page with no identity.
+ *
+ * THE HERO IS SET IN DISPLAY SIZES. Ledger's scale stops at 30px because
+ * it was drawn for screen titles above dense tables. Rendering a landing
+ * headline at panel-heading size is most of why this page read as flat, so
+ * --text-display / --text-display-s exist for this surface alone.
  */
 
 /** A full-bleed band with the page's one shared measure inside it. */
@@ -63,22 +83,43 @@ function Band({
   children,
   tone = "canvas",
   id,
-  narrow = false,
+  measure = "default",
 }: {
   children: React.ReactNode;
-  tone?: "canvas" | "sunk";
+  /** `brand` is the navy ground, and it carries its own ink colour so a
+   *  caller cannot half-apply it and leave dark text on dark. */
+  tone?: "canvas" | "sunk" | "brand";
   id?: string;
-  /** The FAQ band's measure is a reading column, not the page's full grid. */
-  narrow?: boolean;
+  /**
+   * `narrow` is the FAQ's reading column. `wide` is the hero's, and it is
+   * a measurement rather than a preference: ProductMock is 42rem
+   * (672px) at its floor, so the hero's 7-of-12 track has to clear that or
+   * the mock renders as a screenshot sliced down the middle. At max-w-7xl
+   * the track is 700px from 1280px up, which is why the hero's grid engages
+   * at `xl` and not at `lg` — between 1024 and 1280 the stacked layout
+   * gives the mock the full container and it fits comfortably.
+   */
+  measure?: "default" | "narrow" | "wide";
 }) {
+  const width =
+    measure === "narrow"
+      ? "max-w-3xl"
+      : measure === "wide"
+        ? "max-w-7xl"
+        : "max-w-6xl";
   return (
-    <section id={id} className={tone === "sunk" ? "bg-sunk" : undefined}>
+    <section
+      id={id}
+      className={
+        tone === "sunk"
+          ? "bg-sunk"
+          : tone === "brand"
+            ? "bg-brand text-brand-ink"
+            : undefined
+      }
+    >
       <div
-        className={
-          narrow
-            ? "mx-auto w-full max-w-3xl px-5 py-14 sm:px-6 sm:py-20"
-            : "mx-auto w-full max-w-6xl px-5 py-14 sm:px-6 sm:py-20"
-        }
+        className={`mx-auto w-full ${width} px-5 py-14 sm:px-6 sm:py-20`}
       >
         {children}
       </div>
@@ -87,70 +128,53 @@ function Band({
 }
 
 /**
- * WHAT ONE TRIP PRODUCES. Two generated, one organised — see the header.
- * The titles name the three records in exactly those terms: two are
- * generated ("lines", "draft"), the third is filed. The input card that
- * feeds these three is rendered inline below; it is the source, so it is
- * the one card on the page with its own ground.
+ * THE MECHANIC, in three rows. Two generated, one organised (see the file
+ * header): `from` names what the trip produces, `today` is where that
+ * record lives without this product, `here` is what the product does with
+ * it. The middle column is the absorbed comparison and is bound by claim
+ * rule 7 — workflow only, no competitor named, no claim that a tool is bad
+ * at its own job. "An invoicing tool" and "a logbook app" are categories,
+ * and the cost being named is the seam between them.
  */
-const OUTPUTS: { step: string; title: string; body: string }[] = [
+const RECORDS: {
+  step: string;
+  record: string;
+  today: string;
+  here: string;
+}[] = [
   {
     step: "01",
-    title: "Invoice lines",
-    body: "Your client’s rate and billable days are already there. Review the details, then send a numbered PDF invoice with a payment link.",
+    record: "The invoice",
+    today: "Retyped into an invoicing tool",
+    here: "Your client’s rate and billable days are already filled in. Send a numbered PDF with a payment link.",
   },
   {
     step: "02",
-    title: "A logbook draft",
+    record: "The logbook entry",
+    today: "Entered a second time in a logbook app",
     // ONE DRAFT PER LEG, not one per trip: draftPayloadForLeg() in
     // app/(app)/logbook/db.ts is per-leg, the queue is titled "Trip drafts —
     // legs from completed trips", and one entry per flight is the only form
     // 14 CFR 61.51 recognises. "The legs … a draft entry" read as a merge.
-    body: "Each leg becomes a draft with PIC and SIC kept separate. You review it before anything is added to your logbook.",
+    here: "One draft per leg, with PIC and SIC kept separate. You review it before anything reaches your logbook.",
   },
   {
     step: "03",
-    title: "Receipts, filed",
+    record: "The receipts",
+    today: "Loose in a camera roll until April",
     // "deductible expense records" DESCRIBES THE SOFTWARE. It must never
     // become "lowers your taxable income" or "is deductible": `deduct` is
     // an expense treatment enum (app/(app)/expenses/actions.ts), and the
     // product's own mileage screen says in as many words that it records
-    // drives rather than determining what is deductible. The front door is
-    // the one signed-out surface with no disclaimer on it, so a tax
-    // outcome asserted here is asserted naked. See docs/MARKETING.md §5
-    // rule 10.
-    body: "Scan a receipt at the FBO and attach it to the trip. Mark it for client reimbursement or keep it with your deductible expense records.",
+    // drives rather than determining what is deductible. This is the one
+    // signed-out surface carrying no disclaimer, so a tax outcome asserted
+    // here is asserted naked. See docs/MARKETING.md §5 rule 10.
+    here: "Scanned at the FBO and attached to the trip. Mark it for client reimbursement or keep it with your deductible expense records.",
   },
 ];
 
 /**
- * THE COMPARISON — §6 row 4, workflow only (claim rule 7): no competitor
- * names, no competitor pricing, no claim that a named tool is bad at its
- * own job. The cost being named is the seam between three generic tool
- * categories that do not know about each other. Each row is one of the
- * trip's three records; the "In V1" column repeats the two-generated,
- * one-organised split exactly — generated, drafted, filed.
- */
-const COMPARISON: { record: string; elsewhere: string; here: string }[] = [
-  {
-    record: "Invoice",
-    elsewhere: "Retyped into an invoicing tool",
-    here: "Lines generated from the trip",
-  },
-  {
-    record: "Logbook entry",
-    elsewhere: "Entered again in a logbook app",
-    here: "Drafted from each leg",
-  },
-  {
-    record: "Receipts",
-    elsewhere: "Loose in a camera roll",
-    here: "Filed with the trip",
-  },
-];
-
-/**
- * THE SPEC BLOCK — one three-column list, grouped by the pilot's job.
+ * THE SPEC BLOCK — grouped by the pilot's job.
  *
  * Each line declares the FeatureId(s) it describes, and that is what makes
  * the block honest without hand-maintenance:
@@ -160,9 +184,7 @@ const COMPARISON: { record: string; elsewhere: string; here: string }[] = [
  *   - a line whose feature is not publicly claimable is dropped, so the
  *     counsel-gated currency board can never reappear here by edit;
  *   - a line whose feature entitlements marks comingSoon is dropped, which
- *     is why multi_seat appears nowhere on this page. The Business per-seat
- *     PRICE is a billing fact and may be stated (see the plans line);
- *     inviting a bookkeeper is not shipped and is claimed nowhere.
+ *     is why multi_seat appears nowhere on this page.
  *
  * The prose is written for the reader; the gating is read from the code.
  */
@@ -174,10 +196,7 @@ const SPEC: readonly SpecGroup[] = [
     title: "The trip",
     items: [
       { text: "Clients, aircraft, legs, and day types", features: ["trips"] },
-      {
-        text: "Client rate cards and W-9 status",
-        features: ["clients"],
-      },
+      { text: "Client rate cards and W-9 status", features: ["clients"] },
       {
         text: "Numbered invoice PDFs, email delivery, and view tracking",
         features: ["invoices"],
@@ -196,12 +215,11 @@ const SPEC: readonly SpecGroup[] = [
         features: ["logbook"],
       },
       {
-        // "the rate you set" is load-bearing. lib/mileage.ts stores
-        // "that year's rate in cents per mile, AS THE PILOT ENTERED IT", and
-        // a year with no rate on file renders miles with no dollar figure
-        // ("no IRS rate on file for {year}", reports/quarterly). The product
-        // ships no rate table; dropping the qualifier turned an input field
-        // into an advertised capability.
+        // "the rate you set" is load-bearing. lib/mileage.ts stores that
+        // year's rate in cents per mile AS THE PILOT ENTERED IT, and a year
+        // with no rate on file renders miles with no dollar figure. The
+        // product ships no rate table; dropping the qualifier turns an
+        // input field into an advertised capability.
         text: "Receipt scanning and mileage records using the annual rate you set",
         features: ["expenses"],
       },
@@ -209,10 +227,7 @@ const SPEC: readonly SpecGroup[] = [
         text: "Medical, flight review, passport, and insurance dates",
         features: ["documents"],
       },
-      {
-        text: "CSV and OFX bank-statement imports",
-        features: ["bank_import"],
-      },
+      { text: "CSV and OFX bank-statement imports", features: ["bank_import"] },
     ],
   },
   {
@@ -224,9 +239,8 @@ const SPEC: readonly SpecGroup[] = [
       },
       {
         // account_export is minTier "solo" DELIBERATELY — read the comment
-        // on that row in lib/entitlements.ts. This line is the correction of
-        // the old page's overstated tiering; its tag is derived, so it
-        // cannot drift back.
+        // on that row in lib/entitlements.ts. Its tag is derived, so this
+        // line cannot drift back into overstating the tier.
         text: "Account-wide CSV export on every plan",
         features: ["account_export"],
       },
@@ -250,7 +264,10 @@ function tagFor(features: readonly FeatureId[]): PlanTier | null {
 }
 
 /** The spec block as rendered: unclaimable and unshipped lines removed. */
-function specGroups(): { title: string; items: { text: string; tag: string | null }[] }[] {
+function specGroups(): {
+  title: string;
+  items: { text: string; tag: string | null }[];
+}[] {
   return SPEC.map((group) => ({
     title: group.title,
     items: group.items
@@ -289,12 +306,10 @@ const FAQ: { q: string; a: string }[] = [
 ];
 
 /**
- * "/" moved here from app/(app)/page.tsx because that route group is
- * wrapped, unconditionally, by app/(app)/layout.tsx's requireAccount() —
- * there is no way to make one route inside a gated layout render for a
- * signed-out visitor. A signed-in visitor is bounced before any marketing
- * copy renders: provisioned account -> the dashboard, signed in with no
- * account yet -> /welcome, exactly what requireAccount() would have done.
+ * "/" lives here rather than in app/(app) because that route group is
+ * wrapped, unconditionally, by requireAccount(). A signed-in visitor is
+ * bounced before any marketing copy renders: provisioned account -> the
+ * dashboard, signed in with no account yet -> /welcome.
  */
 export default async function LandingPage() {
   const ctx = await getSessionContext();
@@ -305,229 +320,235 @@ export default async function LandingPage() {
 
   return (
     <>
-      {/* 1. HERO — ten seconds: what it is, what it does, who it's for,
-          what it costs — then the mock, which does the explaining. Copy is
-          docs/MARKETING.md §4 verbatim, brand and figures interpolated. */}
-      <Band>
-        <div className="flex flex-col gap-6">
-          <div className="flex max-w-3xl flex-col items-start gap-4">
-            {/* Not an LPill: that primitive's whitespace-nowrap is correct
-                for a short status badge ("Paid", "Overdue") and wrong for a
-                sentence — a pill that cannot wrap just runs off the edge of
-                a phone. Plain eyebrow text instead, which wraps normally. */}
-            <p className="text-caption font-semibold text-accent">
-              BUILT FOR INDEPENDENT PILOTS
+      {/* ── 1. HERO ──────────────────────────────────────────────────────
+          Navy, and asymmetric: the argument holds a 5-of-12 column and the
+          product holds 7, rather than the headline sitting centered above a
+          full-width screenshot. Stacks at lg and below, where the mock goes
+          under the buttons the way it always did. */}
+      <Band tone="brand" measure="wide">
+        <div className="grid grid-cols-1 items-center gap-10 xl:grid-cols-12 xl:gap-8">
+          <div className="flex flex-col items-start gap-5 xl:col-span-5">
+            {/* Not an LPill: that primitive's whitespace-nowrap is right for
+                a status badge ("Paid") and wrong for a phrase, which on a
+                narrow phone just runs off the edge. */}
+            <p className="font-mono text-caption font-medium tracking-widest text-brand-accent uppercase">
+              Built for independent pilots
             </p>
 
-            {/* THE page's only h1. Ledger's type scale is fixed rather than
-                responsive per breakpoint (docs/design/LEDGER.md), so this
-                renders at the same text-h1 size the rest of the migration
-                uses for a page's one h1. */}
-            <h1 className="text-h1 font-bold tracking-tight text-ink">
+            {/* THE page's only h1, and the only thing on the page set in
+                --text-display. */}
+            <h1 className="font-display text-display font-bold text-brand-ink">
               Stop entering the same trip three times.
             </h1>
 
-            <p className="text-lead text-ink-2">
+            <p className="text-lead text-brand-ink-2">
               {BRAND.name} keeps your trips, invoices, logbook, receipts, and
               year end records together, so the business side of flying takes
               less work.
             </p>
 
             <div className="mt-1 flex flex-wrap gap-3">
-              <NextLink href="/signup" className={lButtonClass({ size: "lg" })}>
+              <NextLink
+                href="/signup"
+                className={lButtonClass({ size: "lg", variant: "onBrand" })}
+              >
                 Try {BRAND.name} free for {TRIAL_PERIOD_DAYS} days
               </NextLink>
-              <NextLink href="/pricing" className={lButtonClass({ size: "lg", variant: "outline" })}>
+              <NextLink
+                href="/pricing"
+                className={lButtonClass({
+                  size: "lg",
+                  variant: "onBrandOutline",
+                })}
+              >
                 View plans
               </NextLink>
             </div>
 
-            <p className="text-caption text-ink-3">
-              Plans start at {TIER_PRICE_COPY.solo.monthly}/month. Card required.
+            <p className="text-caption text-brand-ink-2">
+              Plans start at {TIER_PRICE_COPY.solo.monthly}/month. Card
+              required.
             </p>
           </div>
 
-          {/* THE PRODUCT VISUAL, above the fold. Built from the product's
-              own components with invented data — see product-mock.tsx. */}
-          <ProductMock />
-
-          <p className="text-caption text-ink-3">Illustrative data.</p>
+          {/* THE PRODUCT VISUAL. Built from the product's own components
+              with invented data (see product-mock.tsx), floated on the navy
+              rather than boxed into the text column: shadow-float exists
+              because shadow-card's 4% is invisible against a dark field. */}
+          <div className="flex flex-col gap-2 xl:col-span-7">
+            <div className="overflow-hidden rounded-card shadow-float">
+              <ProductMock />
+            </div>
+            <p className="text-caption text-brand-ink-2">Illustrative data.</p>
+          </div>
         </div>
       </Band>
 
-      {/* 2. WHAT ONE TRIP PRODUCES. The proof, immediately: one input card
-          feeding three numbered outputs. Anchor target for the header's
-          link. */}
-      <Band id="how-it-works" tone="sunk">
-        <div className="flex flex-col gap-5">
-          <h2 className="text-h2 font-bold tracking-tight text-ink">
-            Finish the paperwork while the trip is fresh
-          </h2>
-
-          <div className="rounded-card border border-accent-soft bg-accent-soft p-5">
-            <p className="mb-1 text-caption font-semibold text-accent">START WITH THE TRIP</p>
-            <p className="text-body text-ink">
-              Add the client, aircraft, legs, and your flight, travel, standby,
-              or off days.
-            </p>
+      {/* ── 2. THE MECHANIC ──────────────────────────────────────────────
+          One input, three records. This section absorbed the old comparison
+          table; see RECORDS above for the claim rules that govern the
+          middle column. Anchor target for the header's "How it works". */}
+      <Band id="how-it-works">
+        <div className="flex flex-col gap-8">
+          <div className="flex max-w-2xl flex-col gap-4">
+            <h2 className="font-display text-display-s font-bold text-ink">
+              Finish the paperwork while the trip is fresh
+            </h2>
+            <div className="flex items-start gap-3 border-l-2 border-accent pl-4">
+              <p className="text-body text-ink-2">
+                <span className="font-semibold text-ink">
+                  Start with the trip.
+                </span>{" "}
+                Add the client, aircraft, legs, and your flight, travel,
+                standby, or off days. Everything below comes off that one
+                record.
+              </p>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {OUTPUTS.map((output) => (
-              <LCard key={output.title}>
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="tnum-l text-h3 font-bold text-accent">{output.step}</span>
-                  <h3 className="text-h3 font-semibold text-ink">{output.title}</h3>
+          {/* Hairline-separated rows, not cards: three bordered boxes side
+              by side is the shape this page had three of. A ledger of rows
+              also lets the "today" and "in-product" states of ONE record sit
+              on one line, which is the whole argument. */}
+          <div className="divide-y divide-hair border-t border-hair">
+            {RECORDS.map((row) => (
+              <div
+                key={row.record}
+                className="grid grid-cols-1 gap-x-8 gap-y-3 py-6 md:grid-cols-12 md:items-baseline"
+              >
+                <div className="flex items-baseline gap-3 md:col-span-3">
+                  <span className="font-mono tnum-l text-body-s font-semibold text-accent">
+                    {row.step}
+                  </span>
+                  <h3 className="font-display text-h3 font-semibold text-ink">
+                    {row.record}
+                  </h3>
                 </div>
-                <p className="text-body-s text-ink-2">{output.body}</p>
-              </LCard>
+                <p className="text-body-s text-ink-3 md:col-span-4">
+                  <span className="mr-2 font-mono text-caption font-medium uppercase tracking-wide">
+                    Today
+                  </span>
+                  {row.today}
+                </p>
+                <p className="text-body text-ink md:col-span-5">{row.here}</p>
+              </div>
             ))}
           </div>
         </div>
       </Band>
 
-      {/* 3. WHAT'S IN IT. One three-column spec block, grouped by the
-          pilot's job, every Pro/Business line tagged from the code. The
-          heading is one of the page's two permitted aphorisms
-          (docs/MARKETING.md §6); the other is in the cancel FAQ answer, a
-          full screen away. */}
-      <Band>
-        <div className="flex flex-col gap-5">
-          <h2 className="text-h2 font-bold tracking-tight text-ink">
-            The rest of the job, in the same place
-          </h2>
+      {/* ── 3. THE SPEC BLOCK ────────────────────────────────────────────
+          Asymmetric and sticky: the heading holds a 4-of-12 column and stays
+          put on a tall screen while the list moves, so the reader always
+          knows what the list is answering. Every Pro/Business tag is derived
+          from lib/entitlements.ts — see specGroups(). */}
+      <Band tone="sunk">
+        <div className="grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-12">
+          <div className="lg:col-span-4">
+            <div className="lg:sticky lg:top-24">
+              <h2 className="font-display text-display-s font-bold text-ink">
+                The rest of the job, in the same place
+              </h2>
+              <NextLink
+                href="/pricing"
+                className={lButtonClass({
+                  variant: "outline",
+                  className: "mt-5",
+                })}
+              >
+                Compare all features
+              </NextLink>
+            </div>
+          </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="flex flex-col gap-8 lg:col-span-8">
             {groups.map((group) => (
-              <LCard key={group.title}>
-                <p className="mb-3 text-caption font-semibold text-accent">
-                  {group.title.toUpperCase()}
+              <div key={group.title} className="flex flex-col gap-3">
+                <p className="font-mono text-caption font-medium uppercase tracking-widest text-accent">
+                  {group.title}
                 </p>
-                <ul className="flex flex-col gap-3">
+                <ul className="divide-y divide-hair border-t border-hair">
                   {group.items.map((item) => (
-                    <li key={item.text} className="flex items-start gap-2">
-                      <span aria-hidden className="text-body-s font-medium text-accent">
-                        —
-                      </span>
-                      <span className="text-body-s text-ink">
-                        {item.text}
-                        {/* The tier tag is a pill, not a suffix in gray: a
-                            reader scanning for what their plan includes has
-                            to be able to find it without reading the line.
-                            Its VALUE is derived from entitlements — see
-                            specGroups() — so it cannot claim the wrong
-                            tier. */}
-                        {item.tag ? (
-                          <>
-                            {" "}
-                            <LPill tone="neutral">{item.tag}</LPill>
-                          </>
-                        ) : null}
-                      </span>
+                    <li
+                      key={item.text}
+                      className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-3"
+                    >
+                      <span className="text-body text-ink">{item.text}</span>
+                      {/* The tier tag is a pill, not grey suffix text: a
+                          reader scanning for what their plan includes has to
+                          find it without reading the line. Its VALUE is
+                          derived, so it cannot claim the wrong tier. */}
+                      {item.tag ? <LPill tone="accent">{item.tag}</LPill> : null}
                     </li>
                   ))}
                 </ul>
-              </LCard>
+              </div>
             ))}
           </div>
         </div>
       </Band>
 
-      {/* 4. THE COMPARISON. Three rows, workflow only — see COMPARISON's
-          header comment for the claim rule it lives under. */}
-      <Band tone="sunk">
+      {/* ── 4. BEFORE YOU SIGN UP ────────────────────────────────────────
+          Native <details>/<summary> — works with no JavaScript, and is
+          keyboard- and screen-reader-correct for free. */}
+      <Band measure="narrow">
         <div className="flex flex-col gap-5">
-          <h2 className="text-h2 font-bold tracking-tight text-ink">
-            Stop rebuilding the same trip
+          <h2 className="font-display text-display-s font-bold text-ink">
+            Questions pilots ask us
           </h2>
-          <LCard>
-            <LTable>
-              <caption className="sr-only">
-                Where each of a trip’s three records lives today, compared
-                with {BRAND.name}
-              </caption>
-              <thead>
-                <tr>
-                  <LTh>One trip</LTh>
-                  <LTh>Across three tools</LTh>
-                  <LTh>In {BRAND.name}</LTh>
-                </tr>
-              </thead>
-              <tbody>
-                {COMPARISON.map((row) => (
-                  <tr key={row.record}>
-                    <LTd>
-                      <span className="font-medium">{row.record}</span>
-                    </LTd>
-                    <LTd>
-                      <span className="text-ink-2">{row.elsewhere}</span>
-                    </LTd>
-                    <LTd>{row.here}</LTd>
-                  </tr>
-                ))}
-              </tbody>
-            </LTable>
-          </LCard>
-        </div>
-      </Band>
-
-      {/* 5. PLANS — one line, one link (docs/MARKETING.md §6 row 5). The
-          three-card teaser stays cut (§7): it was a lower-fidelity
-          duplicate of /pricing, one click away. Tier names and the price
-          are interpolated, never typed. */}
-      <Band>
-        <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-          <p className="text-lead text-ink">
-            {TIER_ORDER.map((tier) => TIER_DISPLAY[tier].name).join(", ")} plans
-            from {TIER_PRICE_COPY.solo.monthly}/month — every plan includes the{" "}
-            {TRIAL_PERIOD_DAYS}-day trial and a full account export.
-          </p>
-          <NextLink
-            href="/pricing"
-            className={lButtonClass({ size: "lg", variant: "outline", className: "shrink-0" })}
-          >
-            Compare plans
-          </NextLink>
-        </div>
-      </Band>
-
-      {/* 6. BEFORE YOU SIGN UP. Native <details>/<summary> — works with
-          no JavaScript, keyboard- and screen-reader-correct for free. */}
-      <Band tone="sunk" narrow>
-        <div className="flex flex-col gap-4">
-          <h2 className="text-h2 font-bold tracking-tight text-ink">Questions pilots ask us</h2>
-          <div>
+          <div className="border-t border-hair">
             {FAQ.map((item) => (
-              <details key={item.q} className="border-b border-hair">
+              <details key={item.q} className="group border-b border-hair">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-4 marker:content-none [&::-webkit-details-marker]:hidden">
-                  <span className="text-body font-medium text-ink">{item.q}</span>
-                  <span aria-hidden className="shrink-0 text-body text-ink-3">
+                  <span className="text-body font-medium text-ink">
+                    {item.q}
+                  </span>
+                  {/* Rotates to an X on open. `transition-transform` with
+                      motion-reduce cancelling it, per the same rule the
+                      button press-scale follows. */}
+                  <span
+                    aria-hidden
+                    className="shrink-0 text-h3 leading-none text-ink-3 transition-transform duration-150 group-open:rotate-45 motion-reduce:transition-none"
+                  >
                     +
                   </span>
                 </summary>
-                <p className="pb-4 pr-5 text-body-s text-ink-2">{item.a}</p>
+                <p className="pb-4 pr-8 text-body-s text-ink-2">{item.a}</p>
               </details>
             ))}
           </div>
         </div>
       </Band>
 
-      {/* 7. CLOSING CTA. One line, one filled action. Trial length, price
-          and card-required were stated in the hero and again in plans; a
-          third statement is not persuasion, it is noise. */}
-      <Band>
-        <div className="rounded-card border border-accent-soft bg-accent-soft p-6 sm:p-8">
-          <div className="flex flex-col items-start justify-between gap-5 md:flex-row md:items-center">
-            <h2 className="text-h2 font-bold tracking-tight text-ink">
+      {/* ── 5. CLOSE ─────────────────────────────────────────────────────
+          Navy again, bookending the hero, and carrying what used to be a
+          plans band of its own. The price is stated once on this page, in
+          the hero; repeating it here would be the third statement of a fact
+          nobody disputed. What this adds instead is the export promise,
+          which is the strongest trust claim the product has and is true on
+          every tier (docs/MARKETING.md claim rule 6). */}
+      <Band tone="brand">
+        <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
+          <div className="flex max-w-xl flex-col gap-3">
+            <h2 className="font-display text-display-s font-bold text-brand-ink">
               Put your next trip in {BRAND.name}.
             </h2>
-            <NextLink
-              href="/signup"
-              className={lButtonClass({ size: "lg", className: "shrink-0" })}
-            >
-              Try {BRAND.name} free for {TRIAL_PERIOD_DAYS} days
-            </NextLink>
+            <p className="text-body text-brand-ink-2">
+              {TIER_ORDER.map((tier) => TIER_DISPLAY[tier].name).join(", ")}{" "}
+              plans, all of them with the {TRIAL_PERIOD_DAYS}-day trial and a
+              full account export.
+            </p>
           </div>
+          <NextLink
+            href="/signup"
+            className={lButtonClass({
+              size: "lg",
+              variant: "onBrand",
+              className: "shrink-0",
+            })}
+          >
+            Try {BRAND.name} free for {TRIAL_PERIOD_DAYS} days
+          </NextLink>
         </div>
       </Band>
     </>

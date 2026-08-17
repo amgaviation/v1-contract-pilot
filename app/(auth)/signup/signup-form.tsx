@@ -53,10 +53,21 @@ export default function SignUpForm({ trialDays }: { trialDays: number }) {
         `recurring_invoices`, minTier "pro". The landing page states the
         mechanic correctly; this screen is the higher-stakes surface and
         must state it the same way. docs/MARKETING.md §1 and §5.
+
+        THIS COMMENT OUTLASTED THE LINE IT WAS GUARDING. The copy beneath it
+        read "your next trip drafts its own invoice and logbook entries",
+        which is the same autonomy claim in a quieter voice: a trip that
+        "drafts its own invoice" is a trip that bills itself, and the rule
+        above says in as many words that the pilot invokes it. Two further
+        slips in seven words — "invoice" for what is really invoice LINES,
+        and "entries" for what are really per-leg DRAFTS the pilot reviews
+        before anything reaches the logbook. The line now names what the
+        code produces and who acts on it, matching the landing page's own
+        row copy. Nothing here may give the trip a verb it does not have.
       */}
       <AuthHeading title="Start your trial">
-        Two minutes now, and your next trip drafts its own invoice and
-        logbook entries.
+        Two minutes now, and your next trip&rsquo;s invoice lines and logbook
+        drafts are ready for you to review.
       </AuthHeading>
 
       <form action={formAction} className="flex flex-col gap-4">
