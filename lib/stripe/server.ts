@@ -55,5 +55,26 @@ export function isLiveMode(): boolean {
   return key.startsWith("sk_live_") || key.startsWith("rk_live_");
 }
 
-/** Card-required trial length, in days (decision #6). */
-export const TRIAL_PERIOD_DAYS = 7;
+/**
+ * THE INTRO OFFER, which replaced the 7-day free trial (decision #6 as
+ * originally written): the FIRST month of a new monthly subscription is
+ * charged at $5, and the regular price applies from month two. Implemented
+ * as a once-duration Stripe coupon minted per price at checkout time
+ * (app/(auth)/welcome/actions.ts) — the subscription itself stays at the
+ * regular Price, so entitlement mapping (tierForPriceId) is untouched.
+ *
+ * Annual plans get no intro month: a "first month" has no meaning on an
+ * invoice that bills a year at a time, so annual checkouts charge the
+ * plain annual price.
+ *
+ * This is deliberately the ONE amount that lives in code (docs/PRICING.md
+ * §7 keeps plan prices on the live Stripe Price objects): the coupon is
+ * CREATED from this constant, so the label surfaces show and the amount
+ * Stripe discounts still originate from a single fact.
+ *
+ * Same first-subscription-only logic as the old trial: resubscribe
+ * (settings/billing) never applies it, or lapsing and reopening would be
+ * a standing discount.
+ */
+export const INTRO_FIRST_MONTH_CENTS = 500;
+export const INTRO_FIRST_MONTH_LABEL = "$5";

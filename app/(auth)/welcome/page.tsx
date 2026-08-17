@@ -4,7 +4,7 @@ import { getSessionContext } from "@/lib/supabase/account";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import { PLAN_TIERS, TIER_DISPLAY } from "@/lib/entitlements";
 import { tierPriceLabels } from "@/lib/stripe/prices";
-import { TRIAL_PERIOD_DAYS } from "@/lib/stripe/server";
+import { INTRO_FIRST_MONTH_LABEL } from "@/lib/stripe/server";
 import { AuthFooter, AuthHeading } from "../auth-parts";
 import { signOut } from "./actions";
 import { PlanPicker, type PlanOption } from "./welcome-actions";
@@ -92,7 +92,7 @@ export default async function WelcomePage({
         <LAlert tone="neutral">Checkout cancelled. Nothing was charged.</LAlert>
       ) : null}
 
-      <PlanPicker options={options} trialDays={TRIAL_PERIOD_DAYS} />
+      <PlanPicker options={options} introLabel={INTRO_FIRST_MONTH_LABEL} />
 
       <AuthFooter>
         <form action={signOut}>

@@ -183,8 +183,9 @@ These are absolute. A page that breaks one is not shippable.
     there is made naked. This rule exists because the 2026-08 rewrite
     introduced exactly that sentence while replacing a correct one.
 
-11. **Figures are interpolated, never typed.** The trial comes from
-    `TRIAL_PERIOD_DAYS` (the same constant the checkout hands Stripe); the
+11. **Figures are interpolated, never typed.** The $5 first month comes
+    from `INTRO_FIRST_MONTH_LABEL` (the same constant the checkout's
+    coupon is minted from); the
     public amounts come from `TIER_PRICE_COPY`. Pre-purchase surfaces
     (`/welcome`, settings/billing) read the *live* Stripe Price so the
     number shown equals the charge, and render "Unavailable" rather than a
@@ -299,7 +300,7 @@ it stands and is stated.
 | Fact | Source of truth |
 |---|---|
 | Brand name, descriptor, tagline, attribution | `lib/brand.ts` |
-| Trial length | `TRIAL_PERIOD_DAYS`, `lib/stripe/server.ts` |
+| Intro first-month price | `INTRO_FIRST_MONTH_LABEL`, `lib/stripe/server.ts` |
 | Public amounts | `TIER_PRICE_COPY`, `app/(marketing)/pricing/pricing-model.ts` |
 | Pre-purchase amounts | `lib/stripe/prices.ts` (live Stripe Price) |
 | Tier names, blurbs, feature labels, gating | `lib/entitlements.ts` |

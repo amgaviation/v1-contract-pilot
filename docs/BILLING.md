@@ -14,7 +14,11 @@ includes, and the one deliberate exception to the self-serve rule.
 ## The shape of it
 
 **Three tiers — Solo, Pro, Business — each sold monthly or annually, card
-required, with a 7-day trial** (`docs/PLAN.md` decisions #6, #7, #10;
+required, with the first month at $5 on monthly plans** (the intro offer
+replaced decision #6's 7-day trial; `INTRO_FIRST_MONTH_CENTS` in
+`lib/stripe/server.ts` is the constant, and the checkout mints a
+once-duration coupon per Price from it — annual plans bill their plain
+price from day one) (`docs/PLAN.md` decisions #6, #7, #10;
 tier ladder added by the owner's 2026-08-11 order, see `docs/PRICING.md`
 §1). Business is licensed per seat with a two-seat minimum; Solo and Pro
 are flat-rate, single-unit subscriptions. `lib/entitlements.ts` is the one
@@ -48,9 +52,10 @@ The signup path:
 /login             sign in
    ↓
 /welcome           no tenant yet → pick a tier (Solo/Pro/Business) and
-                    billing interval (monthly/annual), "Start your 7-day trial"
+                    billing interval (monthly/annual), "Start for $5"
    ↓
-Stripe Checkout    subscription mode, card required, trial_period_days=7,
+Stripe Checkout    subscription mode, card required, first-month-$5
+                    once-coupon on monthly plans,
                     quantity = seatsForTier(tier) (2 for Business, 1 otherwise)
    ↓
 webhook            checkout.session.completed → provisions the tenant,
@@ -230,11 +235,12 @@ subscription rather than being provisioned fresh.
   in-product way to add a third seat or invite a second pilot/bookkeeper
   yet (`multi_seat` in `lib/entitlements.ts`, `comingSoon: true`).
   `pilot.account_members` already carries owner/member/bookkeeper roles.
-- **The 7-day trial may end before a contract pilot has flown a billable
-  trip.** Config, not code; worth revisiting after the first cohort.
+- **The $5 first month is monthly-plans-only.** An annual plan has no
+  "first month" to discount and bills its plain price on day one; the
+  pricing page says so.
 - **Email confirmation is ON** in the Supabase project, so signup shows a
   "check your email" state rather than signing the pilot straight in.
-  That is friction on a card-required trial — a deliberate decision to
+  That is friction on a card-required signup — a deliberate decision to
   revisit, not an oversight.
 - **Priority support (Business) has no channel to be priority about** —
   there is no support address or contact route anywhere in the product,
