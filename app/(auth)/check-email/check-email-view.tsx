@@ -47,9 +47,7 @@ export default function CheckEmailView({ email }: { email: string }) {
         <MailIcon className="text-accent" />
         <h1 className="text-h1 font-bold text-ink">Check your email</h1>
         <p className="text-body-s text-ink-2">
-          Open the confirmation link we sent to{" "}
-          <span className="font-medium text-ink">{email}</span>, then pick
-          your plan. The link is single-use and expires, so use it soon.
+          Open the link we sent to{" "} <span className="font-medium text-ink">{email}</span>, then pick your plan. It works once and expires.
         </p>
       </div>
 

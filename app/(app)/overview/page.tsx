@@ -1316,7 +1316,7 @@ export default async function OverviewPage() {
             <div className="flex flex-col gap-1">
               <h2 className="text-h3 font-semibold">Getting started</h2>
               <p className="text-body-s text-ink-3">
-                {`${stepsDone} of ${GETTING_STARTED_STEPS.length} done. Start with a trip: its legs feed your logbook drafts, its days feed the invoice lines, and the receipts you scan attach to it. The figures below fill in from there.`}
+                {`${stepsDone} of ${GETTING_STARTED_STEPS.length} done. Start with a trip. The figures below fill in from there.`}
               </p>
             </div>
             <ol className="m-0 flex list-none flex-col gap-3 p-0">
@@ -1468,9 +1468,8 @@ export default async function OverviewPage() {
             // that panel is gated on (no trips, no invoices), so the two
             // cannot get out of step. No CTA here: step 2 up there is the CTA.
             <LEmpty title="Nothing unbilled yet">
-              Once you log a trip and mark it flown, its billable days and
-              rebillable receipts appear here, grouped by the client
-              you&rsquo;d bill them to.
+              Log a trip and mark it flown; its billable days and rebillable
+              receipts appear here, grouped by client.
             </LEmpty>
           ) : readyCount === 0 ? (
             <LEmpty
@@ -1484,9 +1483,7 @@ export default async function OverviewPage() {
                 </NextLink>
               }
             >
-              Every completed trip on file has been invoiced. When you mark the
-              next one flown, its billable days and rebillable receipts show up
-              here, grouped by the client you&rsquo;d bill them to.
+              Every completed trip on file has been invoiced. Mark the next one flown and it shows up here.
             </LEmpty>
           ) : (
             <>
@@ -1699,12 +1696,10 @@ export default async function OverviewPage() {
                     not a prediction of the invoice total, and must not be
                     written as one. */}
                 <p className="text-caption text-ink-3">
-                  Billable day money plus rebillable receipts, for completed
-                  trips not yet on an issued invoice. It&rsquo;s the same figure as
-                  &ldquo;Unbilled work&rdquo; above, which is why the total row
-                  matches it. Per diem and any contract minimum are added when
-                  the invoice is drafted, so a draft can come out higher than
-                  the figures here.
+                  Billable day money plus rebillable receipts for completed
+                  trips not yet invoiced: the same figure as &ldquo;Unbilled
+                  work&rdquo; above. Per diem and contract minimums are added
+                  at drafting, so a draft can come out higher.
                 </p>
               </div>
             </>

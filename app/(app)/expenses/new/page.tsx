@@ -50,7 +50,7 @@ export default async function NewExpensePage({
   return (
     <LPageShell
       title="Add expense"
-      subtitle="Tag it once as rebill or deduct. It files itself against the trip."
+      subtitle="Tag it rebill or deduct, and it lands on the trip you picked."
     >
       <ExpenseForm
         action={createExpense}

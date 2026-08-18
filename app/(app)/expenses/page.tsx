@@ -590,8 +590,7 @@ export default async function ExpensesPage({
                 // the upgrade wall is an upsell wearing a first-run
                 // instruction's clothes.
               >
-                Capture the receipt once and tag it rebill or deduct. It files
-                itself against the trip from there.
+                Scan the receipt, tag it rebill or deduct, and pick the trip it belongs to.
               </LEmpty>
             ) : (
               <LTable>

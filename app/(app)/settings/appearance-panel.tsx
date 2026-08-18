@@ -134,8 +134,7 @@ export default function AppearancePanel({
                     </span>
                   </div>
                   <p style={{ color: "var(--ledger-ink-2)" }} className="text-sm">
-                    Two flight days, one travel day. This card and this badge use
-                    Ledger's real colours in day or night, whichever you just picked.
+                    Two flight days, one travel day. Real colours, in whichever mode you just picked.
                   </p>
                   <div className="flex gap-2">
                     <span

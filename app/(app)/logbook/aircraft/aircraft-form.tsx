@@ -232,13 +232,13 @@ export default function AircraftForm({
             label="Retractable gear"
             submittedValue={submitted?.is_retractable}
             storedValue={values.is_retractable}
-            hint="Also its own rated line. Separate from the landing gear below: a Bonanza is tricycle and retractable, a Super Cub is tailwheel and fixed."
+            hint="Its own rated line, separate from landing gear: a Bonanza is tricycle and retractable, a Super Cub is tailwheel and fixed."
           />
         </div>
 
         <LField
           label={<span id="gear-label">Landing gear</span>}
-          hint="Worth setting on a taildragger. Under 14 CFR 61.57(a)(1)(ii), if the airplane to be flown is an airplane with a tailwheel, the three required takeoffs and landings must have been made to a full stop in a tailwheel airplane. Leaving this unrecorded is fine. Nothing here will assume tricycle."
+          hint="Worth setting on a taildragger. Under 14 CFR 61.57(a)(1)(ii), if the airplane to be flown is an airplane with a tailwheel, the three required takeoffs and landings must have been made to a full stop in a tailwheel airplane. Left unrecorded, nothing here assumes tricycle."
         >
           <LSelect aria-labelledby="gear-label" value={gear} onChange={(e) => setGear(e.target.value)}>
             <option value={GEAR_UNSTATED}>Not recorded</option>

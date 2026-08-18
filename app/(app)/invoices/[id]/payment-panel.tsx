@@ -341,20 +341,17 @@ function PayOnlinePanel({
               as a SEPARATE payment rather than a retry. */}
           {bankPaymentSettling ? (
             <p className="text-caption text-ink-3">
-              Stripe switched it off when your client authorised the debit: a
-              bank payment (ACH) counts as gone through at authorisation, a few
-              business days before the money actually lands. It is kept here so
-              you can see what they were sent. Only generate a new link if you
-              need a second, separate payment on this invoice. If this debit
-              fails, this app clears the dead link and tells you to replace it.
+              Switched off when your client authorised the debit: ACH counts
+              as paid at authorisation, days before the money lands. Kept so
+              you can see what was sent. A new link is a second, separate
+              payment. If the debit fails, the dead link clears and
+              you&rsquo;ll be asked to replace it.
             </p>
           ) : (
             <p className="text-caption text-ink-3">
-              It can only be paid once. Stripe switches it off after the first
-              payment goes through. A bank payment (ACH) counts as gone through the
-              moment your client authorises it, which is a few business days before
-              the money actually lands. Generating a new link switches this one off
-              too.
+              One payment per link: Stripe switches it off after the first
+              goes through, and ACH counts from the moment your client
+              authorises it. Generating a new link switches this one off too.
             </p>
           )}
         </div>

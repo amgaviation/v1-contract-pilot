@@ -340,10 +340,9 @@ export function AppShell({
               {readOnly ? (
                 <div className="mb-4">
                   <LAlert tone="warn">
-                    Your subscription has ended, so this account is
-                    read-only. Everything stays viewable and exportable,
-                    and nothing is deleted. Reading and export still work;
-                    resubscribe to make changes again.{" "}
+                    Your subscription has ended, so this account is read-only:
+                    everything stays viewable and exportable, and nothing is
+                    deleted. Resubscribe to make changes again.{" "}
                     <Link
                       href="/settings/billing"
                       className="font-medium text-accent underline underline-offset-2 hover:opacity-80"

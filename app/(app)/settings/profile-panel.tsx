@@ -237,10 +237,8 @@ export default function ProfilePanel({
                 stays signed in.
               </p>
               <p className="text-caption text-ink-3">
-                We can revoke those sessions but we can&rsquo;t list them: Supabase
-                doesn&rsquo;t expose a per-device session list to the signed-in user, so
-                this screen shows no device names or locations rather than inventing
-                them.
+                Revoked sessions can&rsquo;t be listed per device, so no names or
+                locations are shown here rather than invented.
               </p>
             </div>
 

@@ -723,11 +723,9 @@ export default function DayGrid({
       {existingDays.length === 0 && seed.seeded ? (
         <div className="mb-3">
           <p className="text-caption text-ink-3">
-            Seeded from this trip&apos;s day counts. Check it before saving.
-            Which dates are travel versus flight days (travel first and
-            last, flight in between), and where a half day lands, is a
-            guess based on the counts alone, not this trip&apos;s real
-            day-by-day record. Verify every row.
+            Seeded from this trip&apos;s day counts: travel first and last,
+            flight between, half days guessed from the counts alone, not the
+            real day-by-day record. Verify every row before saving.
             {seed.approximate
               ? " Some days didn't fit the trip's dates and were left blank."
               : ""}

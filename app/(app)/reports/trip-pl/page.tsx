@@ -584,9 +584,7 @@ export default async function TripProfitabilityPage({
           <LCard>
             <h2 className="mb-1 text-h3 font-semibold">Excluded from margin</h2>
             <p className="mb-3 text-body-s text-ink-2">
-              Each of these is real, and none of them belongs in a margin.
-              They are listed rather than hidden so you can see the whole
-              picture and act on it.
+              Each of these is real, and none of it belongs in a margin. Listed so nothing is hidden.
             </p>
 
             {!anyExcluded ? (
@@ -657,12 +655,9 @@ export default async function TripProfitabilityPage({
                     <h3 className="mb-1 text-body font-semibold">Undecided receipts</h3>
                     <p className="text-body-s text-ink-2">
                       <span className="tnum-l">{formatCents(report.totals.unassignedExpenseCents)}</span>{" "}
-                      of receipts on these trips are still tagged
-                      unassigned. They are neither billed to the client nor
-                      claimed as a deduction. Until you decide, they cost
-                      you in
-                      both directions and cannot be in any margin. Resolve
-                      them on{" "}
+                      of receipts on these trips are still unassigned:
+                      neither billed nor claimed as a deduction, and outside
+                      every margin until you decide. Resolve them on{" "}
                       <NextLink href="/expenses" className="text-accent hover:underline">
                         Expenses
                       </NextLink>
@@ -675,15 +670,11 @@ export default async function TripProfitabilityPage({
                   <div>
                     <h3 className="mb-1 text-body font-semibold">Mileage</h3>
                     <p className="text-body-s text-ink-2">
-                      {formatMiles(report.totals.mileageMiles)} miles logged
-                      against these trips, shown in miles and not in
-                      dollars on purpose. The standard mileage rate and
-                      actual vehicle expenses are alternative deduction
-                      methods for the same vehicle. They are never
-                      additive, so no mileage figure can go into a trip
-                      margin. Your
-                      deduction is computed once, from the year&rsquo;s
-                      rate, on{" "}
+                      {formatMiles(report.totals.mileageMiles)} miles logged against these trips, shown in
+                      miles on purpose: the standard rate and actual vehicle
+                      expenses are alternative methods, never additive, so no
+                      mileage figure can enter a trip margin. The deduction is
+                      computed once, from the year&rsquo;s rate, on{" "}
                       <NextLink href="/expenses/mileage" className="text-accent hover:underline">
                         Mileage
                       </NextLink>

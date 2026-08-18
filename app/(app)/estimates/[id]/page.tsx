@@ -243,10 +243,9 @@ export default async function EstimatePage({
           <LCard>
             <p className="mb-1 text-body-s font-semibold text-ink">What an estimate is</p>
             <p className="text-caption text-ink-3">
-              A quote, not an invoice: it isn&rsquo;t a financial record, no payment
-              can be recorded against it, and it doesn&rsquo;t appear in tax reports.
-              When the client accepts, converting it creates a draft invoice you
-              still review and send.
+              A quote, not a financial record: no payment can be recorded
+              against it and it appears in no tax report. Converting on
+              acceptance creates a draft invoice you still review and send.
             </p>
           </LCard>
         </div>
