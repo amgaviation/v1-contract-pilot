@@ -414,8 +414,10 @@ selection and payment (`app/(marketing)/page.tsx`; `app/(marketing)/site-header.
 `app/(auth)/welcome/page.tsx`).
 
 **Current metrics:** none in the repo. The product is pre-launch by its own claim rules
-(`docs/MARKETING.md` claim rule 8), and `README.md` additionally documents one live blocker
-on real signups today — see Discrepancy 3 below.
+(`docs/MARKETING.md` claim rule 8). The signup blocker this section used to name is
+RESOLVED as of 2026-08-18: mail sends from the verified `mail.amgaviationgroup.com`, and a
+real password-recovery email through Supabase Auth's SMTP relay proved the path. See
+Discrepancy 3 below, which is kept as a closed record rather than deleted.
 
 ---
 
@@ -489,15 +491,20 @@ should treat this section as the punch list.
    contact-support caveat. The Terms placeholder's comment reads as stale — written before,
    or without accounting for, those shipped features.
 
-3. **Every marketing CTA depends on a signup flow README.md says is currently broken for
-   real users.** All entry points in the Funnel table above terminate at `/signup`.
-   `README.md`'s Status section states: *"signup returns `Error sending confirmation
-   email`. SMTP is configured against Resend, credentials are accepted, and the send is
-   rejected with `550 — the sending domain is not verified`… no new pilot can complete
-   signup"* until `amgaviationgroup.com` is verified at Resend (or the sender is temporarily
-   pointed at `onboarding@resend.dev`). The same gap blocks invoice email delivery. This is
-   an infrastructure fact rather than a copy defect, but it means the funnel documented above
-   may not currently convert a real visitor end to end.
+3. **RESOLVED 2026-08-18 — the signup mail blocker.** This entry recorded that every
+   marketing CTA terminated at a `/signup` whose confirmation email failed with
+   `550 — the sending domain is not verified`, so no new pilot could complete signup and
+   invoice delivery was blocked with it. Both are fixed: mail sends from
+   `mail.amgaviationgroup.com` as `v1-support@mail.amgaviationgroup.com`, verified with DKIM
+   and SPF, with `INVOICE_FROM_EMAIL` and the Supabase Auth SMTP sender both pointed at it.
+   Kept here rather than deleted because it is the reason several other documents in this repo
+   still carry "the funnel may not convert" caveats — those are now stale, and this is where a
+   reader finds out. The funnel converts as documented.
+
+   One standing configuration fact survives the fix and is worth knowing: two systems send
+   mail and only one reads this repo's config. Product mail uses `INVOICE_FROM_EMAIL`;
+   confirmation and recovery come from Supabase Auth's own SMTP relay, set in the Supabase
+   dashboard. Setting one and not the other leaves signup broken while invoices work.
 
 4. **`docs/PRICING.md`'s trial-length section is superseded by shipped code.** §5 of
    `docs/PRICING.md` recommends a 14-day card-required trial and frames trial length as

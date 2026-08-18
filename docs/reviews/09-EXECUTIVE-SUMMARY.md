@@ -9,6 +9,37 @@ deduplicated where several reports hit the same defect from different angles.
 
 ---
 
+## Status since the audit (updated 2026-08-18)
+
+The findings below are left as written — this is a dated snapshot, and editing the diagnosis
+after the fact would destroy the record. What has changed since:
+
+- **Finding 1 (the Resend domain) is RESOLVED.** Mail sends from
+  `mail.amgaviationgroup.com`; see `README.md` and G5 in `docs/LAUNCH-GATES.md`.
+- **Finding 2 (signup told the truth about mail failures) is SHIPPED**, including the
+  status-zero hole a review caught afterwards: `@supabase/auth-js` reports a fetch that never
+  reached the server as `AuthRetryableFetchError` with status `0`, which the first version of
+  the resend guard let through as a false success.
+- **Finding 6 (the false read-only banner) is SHIPPED.**
+- **Finding 3 (no contact channel) is SHIPPED**, and the claim is worth stating precisely:
+  `BRAND.supportEmail` reaches the marketing footer, both public FAQs, the auth screens, the
+  checkout and billing-portal failures, the billing and account-lifecycle errors, the
+  unknown-status fallback, and the report exports that refuse to run. It is deliberately NOT
+  on every terminal string in the product: ordinary validation errors and transient
+  save/upload failures a pilot can simply retry do not carry it, and the four tokenized
+  client surfaces never will.
+- **Finding 8 (orphaned token surfaces) is SHIPPED**: the mark links to `/`.
+- **Finding 10 is PARTLY shipped.** The Help topic and the Overview subtitle are corrected.
+  The other half is still open: a completed clientless trip still renders "Invoice it" and
+  routes to a form that cannot bill it (`app/(app)/trips/[id]/page.tsx:351-356`), which is
+  the dead end the finding is actually about.
+- **Still open:** findings 4, 5, 7, 9 and the second half of 10 — the cancel-flow save path,
+  the hold-expiry warning the pricing page promises, pilot-facing lifecycle email, analytics,
+  and the clientless-trip invoice guard. Plus the landing-page rewrite itself
+  (`10-landing-page-copy.md`), which is specced and waiting on implementation.
+
+---
+
 ## 1. The ten highest-impact findings
 
 **1. One unresolved DNS task disables both acquisition and retention.** The Resend

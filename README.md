@@ -71,22 +71,22 @@ skeletons are built on Radix's own `Skeleton` and are `aria-hidden`; the single
 
 `docs/WAVE-PARITY.md` scores all of it against Wave, row by row, with citations.
 
-**One thing blocks real users:** signup returns `Error sending confirmation
-email`. SMTP is configured against Resend, credentials are accepted, and the
-send is rejected with `550 — the sending domain is not verified`.
+**Mail sends, and signup completes.** The long-standing blocker here — signup
+returning `Error sending confirmation email` because Resend rejected the send
+with `550 — the sending domain is not verified` — is resolved. The product
+sends from **`mail.amgaviationgroup.com`** as
+`v1-support@mail.amgaviationgroup.com`, verified at Resend with DKIM and SPF.
+Confirmed working by the product owner on 2026-08-18, and corroborated by a
+recovery email accepted and delivered through the same relay that day.
 
-The sending domain is now decided: **`mail.amgaviationgroup.com`**, sending as
-`v1-support@mail.amgaviationgroup.com`. Until that subdomain is verified at
-resend.com/domains (DKIM + SPF records), or the sender is temporarily pointed
-at `onboarding@resend.dev`, no new pilot can complete signup.
-
-Verifying it is necessary but not sufficient, because two systems send mail
-and only one of them reads this repo's configuration: product mail (invoices,
-receipts, dunning) takes the sender from `INVOICE_FROM_EMAIL`, while the
-signup confirmation is sent by Supabase Auth's own SMTP relay, configured in
-the Supabase dashboard under Auth → SMTP settings. Both have to point at the
-verified domain; setting one and not the other leaves signup broken while
-invoices work, or the reverse.
+Two systems send mail and only one of them reads this repo's configuration.
+This is a standing fact about the setup rather than a defect, and it is the
+thing to check first if mail ever half-works again: product mail (invoices,
+receipts, dunning) takes its sender from `INVOICE_FROM_EMAIL`, while the
+signup confirmation and password recovery come from Supabase Auth's own SMTP
+relay, configured in the Supabase dashboard under Auth → SMTP settings. Both
+must name the verified domain; setting one and not the other leaves signup
+broken while invoices work, or the reverse.
 
 ## Stack
 

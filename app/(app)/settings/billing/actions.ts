@@ -377,7 +377,10 @@ export async function openBillingPortal(
       err instanceof Error ? err.message : String(err)
     );
     return {
-      error: "Couldn't open the billing portal. Try again in a moment.",
+      // Same class as the checkout failure in welcome/actions.ts: a pilot who
+      // cannot open the portal cannot change their card or cancel, and every
+      // route out of that is ours to provide.
+      error: `Couldn't open the billing portal. Try again in a moment, or email ${BRAND.supportEmail}.`,
     };
   }
 
