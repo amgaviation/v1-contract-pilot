@@ -59,13 +59,19 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
       {
         id: "creating-account",
         title: "Creating your account",
-        summary: "Sign up, confirm your email, and start your trial.",
+        summary: "Sign up, confirm your email, pick a plan, and enter a card.",
         body: [
           "Sign up with an email and password. You confirm that address before you can sign in, so the first thing you see afterward is a check-your-email screen — open the link it sends, then come back and log in.",
-          "Once you are signed in you land on the plan screen, where you choose a tier and a billing interval and start a trial, card required. The exact trial length and the price of each tier and interval are shown live there, and again on Settings → Billing once you are in, so nothing here restates a number that could go stale.",
+          // There is no trial: lib/stripe/server.ts's intro-price constants
+          // replaced the 7-day free trial, and this paragraph used to
+          // describe the retired model to the exact pilot most likely to
+          // read it — one double-checking a charge they just paid. Same
+          // no-stale-numbers rule as before: the amounts live on the plan
+          // screen, never here.
+          "Once you are signed in you land on the plan screen, where you choose a tier and a billing interval and enter a card. There is no free trial: a monthly plan's first month is charged at a reduced intro price with the regular price from month two, and an annual plan is billed its plain annual amount from day one. The exact prices are shown live there, and again on Settings → Billing once you are in, so nothing here restates a number that could go stale.",
           "Nothing is set up until payment is confirmed. If you are sent back to the plan screen after checkout and it says your workspace is being prepared, that is normal and resolves on its own within seconds.",
         ],
-        keywords: ["signup", "sign up", "trial", "plan", "welcome", "confirm email"],
+        keywords: ["signup", "sign up", "trial", "intro price", "first month", "plan", "welcome", "confirm email"],
       },
       {
         id: "account-setup",

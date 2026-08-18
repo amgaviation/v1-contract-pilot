@@ -1315,8 +1315,13 @@ export default async function OverviewPage() {
           <div className="flex flex-col gap-3 py-2">
             <div className="flex flex-col gap-1">
               <h2 className="text-h3 font-semibold">Getting started</h2>
+              {/* "Start with a client", matching step 1 of the list this
+                  sentence sits beside — it used to say "Start with a trip",
+                  and a clientless trip saves fine but can never be invoiced
+                  (invoice_lines_validate_trip), so the page's own words
+                  steered a first session into the one dead end. */}
               <p className="text-body-s text-ink-3">
-                {`${stepsDone} of ${GETTING_STARTED_STEPS.length} done. Start with a trip. The figures below fill in from there.`}
+                {`${stepsDone} of ${GETTING_STARTED_STEPS.length} done. Start with a client. The figures below fill in from there.`}
               </p>
             </div>
             <ol className="m-0 flex list-none flex-col gap-3 p-0">

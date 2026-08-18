@@ -53,6 +53,18 @@ export const PENDING_SIGNUP_COOKIE = "pending_signup_email";
  */
 export const PENDING_SIGNUP_MAX_AGE_SECONDS = 1800; // 30 minutes
 
+/**
+ * Set alongside PENDING_SIGNUP_COOKIE when the signup call itself reported
+ * that the confirmation mail FAILED to send (lib/auth/signup-outcome.ts's
+ * "mail-failed"), so /check-email can say so instead of claiming a link is
+ * on its way. Value is "1"; presence is the signal. Cleared by a resend
+ * that Supabase accepts. httpOnly like its sibling.
+ */
+export const SEND_FAILED_COOKIE = "pending_signup_send_failed";
+
+/** Short: the flag describes one failed attempt, not a standing state. */
+export const SEND_FAILED_MAX_AGE_SECONDS = 600; // 10 minutes
+
 /** The send history behind the throttle. Comma-separated epoch seconds. */
 export const RESEND_HISTORY_COOKIE = "confirm_resend_history";
 

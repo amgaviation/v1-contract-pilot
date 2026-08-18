@@ -4,6 +4,7 @@ import { Logo } from "@/components/logo";
 import { BRAND } from "@/lib/brand";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import type { NavItem } from "@/lib/nav";
+import type { ReadOnlyNotice } from "@/lib/billing-state";
 import type { ResolvedTheme } from "@/lib/theme-slots";
 import { CommandPaletteProvider, CommandPaletteTrigger } from "./command-palette";
 import { NavRail, NavStrip } from "./nav-rail";
@@ -84,7 +85,7 @@ export function AppShell({
   accountName,
   sections,
   theme,
-  readOnly,
+  readOnlyNotice,
   signOutAction,
   logoUrl,
   children,
@@ -93,7 +94,13 @@ export function AppShell({
   accountName: string;
   sections: readonly NavItem[];
   theme: ResolvedTheme;
-  readOnly: boolean;
+  /**
+   * The every-page read-only banner's content, or null when the account
+   * writes normally. Built by lib/billing-state.ts's readOnlyNotice() so
+   * the sentence matches the actual state (past due vs hold vs canceled vs
+   * deactivated) — this shell renders it verbatim and adds nothing.
+   */
+  readOnlyNotice: ReadOnlyNotice | null;
   signOutAction: () => void | Promise<void>;
   /** The tenant's uploaded logo (Settings), or null to show the default V1 mark. */
   logoUrl?: string | null;
@@ -337,17 +344,15 @@ export function AppShell({
                 keep the exact number rather than rounding to the nearest
                 one Tailwind ships. */}
             <div className="mx-auto min-w-0 max-w-full lg:max-w-[1136px] xl:max-w-[1280px] min-[1640px]:max-w-[1536px]">
-              {readOnly ? (
+              {readOnlyNotice ? (
                 <div className="mb-4">
                   <LAlert tone="warn">
-                    Your subscription has ended, so this account is read-only:
-                    everything stays viewable and exportable, and nothing is
-                    deleted. Resubscribe to make changes again.{" "}
+                    {readOnlyNotice.message}{" "}
                     <Link
-                      href="/settings/billing"
+                      href={readOnlyNotice.href}
                       className="font-medium text-accent underline underline-offset-2 hover:opacity-80"
                     >
-                      Go to Billing
+                      {readOnlyNotice.linkLabel}
                     </Link>
                     .
                   </LAlert>

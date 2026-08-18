@@ -1,7 +1,8 @@
 import { applyNavLayout, visibleNavSections } from "@/lib/nav";
 import { isCurrencyEngineEnabled } from "@/lib/currency/gate";
 import { loadPreferences, themeFor } from "@/lib/preferences";
-import { accountIsReadOnly, requireAccount } from "@/lib/supabase/account";
+import { readOnlyNotice } from "@/lib/billing-state";
+import { requireAccount } from "@/lib/supabase/account";
 import { accountLogoUrl } from "@/lib/account-logo";
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "./app-shell";
@@ -49,9 +50,13 @@ export default async function AppLayout({
   // it — a read-only account still gets its full shell. The banner the
   // shell renders is the account-status notice (Finding 3): shown on
   // every page so a lapsed pilot always sees why their writes are being
-  // bounced to Billing.
+  // bounced to Billing. Its sentence is status-specific (readOnlyNotice,
+  // lib/billing-state.ts): "past due, update your card" and "on hold, end
+  // the hold" are different situations with different fixes, and the old
+  // single "subscription has ended — resubscribe" line was wrong for most
+  // of them.
   const { user, account } = await requireAccount();
-  const readOnly = accountIsReadOnly(account);
+  const notice = readOnlyNotice(account);
 
   // One preferences read per authenticated render, feeding both the theme
   // and the nav. loadPreferences is total and never throws: a missing row
@@ -77,7 +82,7 @@ export default async function AppLayout({
       accountName={account.legal_name}
       sections={sections}
       theme={theme}
-      readOnly={readOnly}
+      readOnlyNotice={notice}
       signOutAction={signOut}
       logoUrl={logoUrl}
     >

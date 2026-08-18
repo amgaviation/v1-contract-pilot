@@ -7,6 +7,7 @@ import {
   PENDING_SIGNUP_COOKIE,
   RESEND_HISTORY_COOKIE,
   RESEND_WINDOW_SECONDS,
+  SEND_FAILED_COOKIE,
   encodeSendHistory,
   parseSendHistory,
   recordSend,
@@ -116,10 +117,19 @@ export async function resendConfirmation(
     ...(emailRedirectTo ? { options: { emailRedirectTo } } : {}),
   });
 
+  // Per-address outcomes (unknown address, already confirmed) are logged
+  // and never rendered; see the header. An INFRASTRUCTURE failure is the
+  // one class this action may admit to: a 5xx / "unexpected_failure" from
+  // the mail step is a systemic fact, identical for every address hit
+  // during the incident, so saying "we couldn't send it" discloses nothing
+  // about this address. And the unconditional `sent: true` this branch
+  // used to return told a pilot, during a real outage, that "a new link is
+  // on its way" every single time they clicked, forever.
+  const infraFailure =
+    !!error &&
+    (error.code === "unexpected_failure" || (error.status ?? 0) >= 500);
+
   if (error) {
-    // Logged, never rendered. An unknown address, an already-confirmed
-    // account and a Supabase outage all land here and all look the same to
-    // the caller.
     console.error("[auth] confirmation resend failed", error.status ?? "no status", error.message);
   }
 
@@ -133,6 +143,19 @@ export async function resendConfirmation(
     maxAge: RESEND_WINDOW_SECONDS,
     path: "/",
   });
+
+  if (infraFailure) {
+    return {
+      error:
+        "We couldn't send the email just now. The failure is on our side, not a problem with the address; wait a few minutes and try again.",
+      sent: false,
+    };
+  }
+
+  // Supabase accepted the send (or refused for a per-address reason this
+  // action deliberately does not distinguish). Either way the "the signup
+  // mail failed" flag no longer describes the latest attempt.
+  cookieStore.delete(SEND_FAILED_COOKIE);
 
   return { error: null, sent: true };
 }

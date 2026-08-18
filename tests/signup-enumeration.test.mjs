@@ -70,18 +70,28 @@ test("a taken address produces exactly the outcome a new address does", async (t
 });
 
 test("real failures stay visible and specific", async (t) => {
-  await t.test("an SMTP outage or a 500 is reported, not dressed as success", () => {
+  await t.test("a failed confirmation SEND is its own outcome, not 'nothing was saved'", () => {
     // The exact case this product hit in production: the confirmation email
-    // could not be sent. Turning it into a "check your email" screen leaves
-    // a pilot waiting for mail that is never coming.
+    // could not be sent. GoTrue creates the user row BEFORE the mail step,
+    // so the old "nothing was saved" retry sentence was false here — and a
+    // retry with the same address then classified as pending-confirmation
+    // and landed on a screen claiming a link had been sent. The contract
+    // now: this shape is "mail-failed", and the caller routes to
+    // /check-email with copy that says the send failed and offers the
+    // resend. (The earlier version of this test asserted the retry
+    // sentence, guarding against a cheerful "check your email" — the
+    // mail-failed path keeps that guarantee by arriving there flagged,
+    // never with the link-is-on-its-way copy.)
     const outcome = classifySignUpError(
       "unexpected_failure",
       500,
       "Error sending confirmation email"
     );
-    assert.equal(outcome.kind, "retry");
-    assert.match(outcome.message, /couldn't create your account/i);
+    assert.equal(outcome.kind, "mail-failed");
 
+    // Only the mail-send wording gets that treatment: an unrelated 500 and
+    // a network fault keep the visible, generic retry sentence, because for
+    // those "nothing was saved" is the likely truth.
     const network = classifySignUpError(undefined, undefined, "fetch failed");
     assert.equal(network.kind, "retry");
   });

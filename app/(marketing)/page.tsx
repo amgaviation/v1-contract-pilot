@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import NextLink from "next/link";
 import { LPill, lButtonClass } from "@/components/ledger";
@@ -74,6 +76,18 @@ import {
  * this copy; §5's claim rules carried forward UNCHANGED — they are
  * honesty constraints, not positioning choices.
  */
+
+/**
+ * The homepage's own title. Without this the page inherits the root
+ * layout's bare `default` ("V1") — and "V1" is one of the most overloaded
+ * words in this exact audience's vocabulary: the takeoff decision speed
+ * every pilot searches and drills. The tagline distinguishes the result.
+ * `absolute` so the root's "%s | V1" template doesn't double the brand;
+ * both halves come from lib/brand.ts (claim rule 9).
+ */
+export const metadata: Metadata = {
+  title: { absolute: `${BRAND.name} — ${BRAND.tagline}` },
+};
 
 /** A full-bleed band with the page's one shared measure inside it. */
 function Band({
@@ -319,9 +333,25 @@ const FAQ: { q: string; a: string }[] = [
  * dashboard, signed in with no account yet -> /welcome.
  */
 export default async function LandingPage() {
-  const ctx = await getSessionContext();
-  if (ctx?.account) redirect(DASHBOARD_PATH);
-  if (ctx) redirect("/welcome");
+  // The signed-in redirect check used to run unconditionally — a network
+  // round trip to the Supabase Auth server before the hero could paint,
+  // paid on every load by the first-touch visitors who have no session at
+  // all (and this page's own budget is "ten seconds on FBO wifi",
+  // docs/MARKETING.md §6). The auth cookie's presence is a local read:
+  // @supabase/ssr stores the session as `sb-<project-ref>-auth-token`
+  // (chunked cookies keep the same prefix and marker). No such cookie, no
+  // possible session, no round trip. A stale or invalid cookie still takes
+  // the full check and falls through to the marketing page exactly as
+  // before.
+  const cookieStore = await cookies();
+  const mayBeSignedIn = cookieStore
+    .getAll()
+    .some(({ name }) => name.startsWith("sb-") && name.includes("-auth-token"));
+  if (mayBeSignedIn) {
+    const ctx = await getSessionContext();
+    if (ctx?.account) redirect(DASHBOARD_PATH);
+    if (ctx) redirect("/welcome");
+  }
 
   const groups = specGroups();
 
@@ -546,7 +576,14 @@ export default async function LandingPage() {
               Start the books with your next trip.
             </h2>
             <p className="text-body text-brand-ink-2">
-              {TIER_ORDER.map((tier) => TIER_DISPLAY[tier].name).join(", ")}{" "}
+              {/* The last comma becomes ", and" because a bare .join(", ")
+                  rendered "Solo, Pro, Business plans" — a conjunction-less
+                  list at the page's final call to action. Still derived
+                  from TIER_ORDER, so a tier rename can't strand a typed
+                  name. */}
+              {TIER_ORDER.map((tier) => TIER_DISPLAY[tier].name)
+                .join(", ")
+                .replace(/, (?=[^,]*$)/, ", and ")}{" "}
               plans, every one of them {INTRO_FIRST_MONTH_LABEL} for the first
               month, with a full account export.
             </p>

@@ -85,7 +85,7 @@ export default async function MarketingShotPage({
       accountName={FIXTURE_ACCOUNT}
       sections={shotSections()}
       theme={theme}
-      readOnly={false}
+      readOnlyNotice={null}
       // The real shell takes a server action here. The harness never
       // submits it; it exists so the button renders at its true size.
       signOutAction={async () => {
