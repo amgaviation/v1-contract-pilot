@@ -12,6 +12,7 @@
  */
 import { parseCalendarDate } from "@/lib/format";
 import type { CurrencyResult, MissingInput, RuleBasis } from "./types";
+import { BRAND } from "@/lib/brand";
 
 // docs/CURRENCY-SPEC.md's own fetch/retrieval dates — the text every
 // citation in this engine was built from.
@@ -136,7 +137,7 @@ const MISSING_INPUT_COPY: Record<MissingInput, { label: string; href: string }> 
     href: "/documents",
   },
   window_truncated: {
-    label: "Too many entries to load in one request. Contact support.",
+    label: `Too many entries to load in one request. Email ${BRAND.supportEmail}.`,
     href: "/logbook",
   },
 };

@@ -10,6 +10,7 @@ import {
   type LedgerBalanceRow,
 } from "../../accounting/ledger-lib";
 import { isValidIsoDate, todayIso } from "../sales-tax/report-lib";
+import { BRAND } from "@/lib/brand";
 
 export const metadata = { title: "Balance sheet" };
 
@@ -111,7 +112,7 @@ export default async function BalanceSheetPage({
             This sheet does not balance (assets {formatCents(sheet.totalAssetsCents)} vs
             liabilities + equity {formatCents(sheet.totalLiabilitiesAndEquityCents)}), which
             should be impossible. The ledger enforces debits = credits. This report refuses to
-            present it as if it did. Contact support.
+            present it as if it did. Email {BRAND.supportEmail}.
           </span>
         </LAlert>
       ) : (

@@ -124,6 +124,13 @@ INVOICE_FROM_EMAIL=
    unverified domain breaks signup and invoice delivery together, and neither
    is a code problem.
 
+   **This deployment:** the domain is `mail.amgaviationgroup.com` and the
+   sender is `v1-support@mail.amgaviationgroup.com`. Set it in two places or
+   only half the mail flows — `INVOICE_FROM_EMAIL` (Vercel env, read by
+   `lib/email/send.ts`) for product mail, and the Supabase dashboard under
+   Auth → SMTP settings for the signup confirmation and password recovery.
+   Nothing in this repo configures the second one.
+
 3. **Create an API key** — [resend.com/api-keys](https://resend.com/api-keys)
    → *Create API Key*. Sending permission is all it needs. Copy it once; Resend
    does not show it again.

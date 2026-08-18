@@ -10,6 +10,7 @@ import {
   resolveSalesTaxPeriod,
   todayIso,
 } from "../report-lib";
+import { BRAND } from "@/lib/brand";
 
 // Same discipline as app/(app)/reports/profit-loss/export/route.ts: the
 // whole dataset is fetched and any error resolved BEFORE the first byte of
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "This period has more rows than the export can safely total in one file. Narrow the date range or contact support. Exporting a silently partial total would misstate your figures.",
+          `This period has more rows than the export can safely total in one file. Narrow the date range or email ${BRAND.supportEmail}. Exporting a silently partial total would misstate your figures.`,
       },
       { status: 500 }
     );

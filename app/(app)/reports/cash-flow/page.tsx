@@ -13,6 +13,7 @@ import {
   type LedgerBalanceRow,
 } from "../../accounting/ledger-lib";
 import { resolveSalesTaxPeriod, todayIso } from "../sales-tax/report-lib";
+import { BRAND } from "@/lib/brand";
 
 export const metadata = { title: "Cash flow" };
 
@@ -162,7 +163,7 @@ export default async function CashFlowPage({
           <span>
             Opening balance plus net movement doesn&rsquo;t equal the closing balance, which
             should be impossible. This report refuses to show the statement as if it tied.
-            Reload the page, and contact support if it persists.
+            Reload the page, and email {BRAND.supportEmail} if it persists.
           </span>
         </LAlert>
       ) : (

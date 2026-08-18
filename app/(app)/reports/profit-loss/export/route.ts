@@ -4,6 +4,7 @@ import { requireAccount } from "@/lib/supabase/account";
 import { loadOptionLabels } from "@/lib/custom-options-read";
 import { loadProfitLossReport, type PLPeriod, type PLPeriodKind } from "../queries";
 import { csvRow } from "@/lib/csv";
+import { BRAND } from "@/lib/brand";
 
 // Same discipline as app/(app)/reports/year-end/export/route.ts: the whole
 // dataset (both the current and prior period) is fetched and any error
@@ -109,7 +110,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "This period has more rows than the export can safely total in one file. Narrow the date range or contact support. Exporting a silently partial total would misstate your figures.",
+          `This period has more rows than the export can safely total in one file. Narrow the date range or email ${BRAND.supportEmail}. Exporting a silently partial total would misstate your figures.`,
       },
       { status: 500 }
     );

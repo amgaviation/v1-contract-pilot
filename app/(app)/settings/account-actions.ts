@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { BRAND } from "@/lib/brand";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
@@ -225,7 +226,7 @@ export async function deactivateAccount(
       `account lifecycle: deactivate failed for ${auth.account.id} AFTER Stripe cancel: ${error.message}`
     );
     return fail(
-      "Your subscription was ended, but we could not switch the account to read-only. Reload Settings; if it still shows as active, contact support before re-subscribing."
+      `Your subscription was ended, but we could not switch the account to read-only. Reload Settings; if it still shows as active, email ${BRAND.supportEmail} before re-subscribing.`
     );
   }
 
@@ -265,7 +266,7 @@ export async function deleteAccount(
       `account lifecycle: delete failed for ${auth.account.id} AFTER Stripe cancel: ${error.message}`
     );
     return fail(
-      "Your subscription was ended, but the account itself could not be deleted. Nothing was removed. Contact support so this is not left half-done."
+      `Your subscription was ended, but the account itself could not be deleted. Nothing was removed. Email ${BRAND.supportEmail} so this is not left half-done.`
     );
   }
 
@@ -422,7 +423,7 @@ export async function resumeFromHold(
   if (error) {
     console.error(`hold: resume_from_hold failed for ${auth.account.id}: ${error.message}`);
     return fail(
-      "Your billing was restarted, but the hold could not be cleared. Reload Settings; contact support if it still shows as on hold."
+      `Your billing was restarted, but the hold could not be cleared. Reload Settings; email ${BRAND.supportEmail} if it still shows as on hold.`
     );
   }
 
