@@ -172,7 +172,7 @@ export default async function VendorPage({
     <div className="min-h-dvh bg-canvas font-ledger text-body text-ink">
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8 sm:py-12">
         <div className="mb-8 flex items-center justify-between gap-3">
-          <Logo />
+          <Logo href="/" />
         </div>
 
         <LCard className="mb-6 p-6 sm:p-8">

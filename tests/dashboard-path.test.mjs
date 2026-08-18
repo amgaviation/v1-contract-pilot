@@ -65,6 +65,15 @@ const ROOT_AS_DASHBOARD = {
     // These genuinely mean the ROOT, and must keep saying "/" even if the
     // dashboard moves again.
     "app/(marketing)/", // is the root route
+    // The four tokenized client surfaces (and their 404s): the brand mark
+    // on them links to the front door, because the reader is a client's AP
+    // desk with no session and no dashboard to be sent to. Same reasoning
+    // as the auth shell's mark below; the marketing page's own redirect
+    // carries a signed-in visitor onward.
+    "app/invoice/",
+    "app/estimate/",
+    "app/packet/",
+    "app/vendor/",
     "lib/supabase/proxy.ts", // allow-lists "/" as a signed-out surface
     "app/robots.ts",
     "app/sitemap.ts",

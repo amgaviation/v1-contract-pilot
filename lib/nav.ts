@@ -151,6 +151,12 @@ export const NAV_COMMANDS: readonly NavCommand[] = [
   { href: "/documents/new", label: "New document", group: "Create", keywords: ["add", "create", "upload", "w-9", "insurance", "medical"] },
   { href: "/crew/new", label: "New crew member", group: "Create", keywords: ["add", "create", "pilot", "sic", "copilot"] },
   { href: "/logbook/new", label: "New logbook entry", group: "Create", keywords: ["add", "create", "flight", "hours"] },
+  // The landing FAQ's lead objection-handler ("import a ForeFlight or
+  // LogTen export") was reachable only via /logbook's header button —
+  // typing "import" or "logbook" into ⌘K surfaced bank imports but not
+  // this. The palette is the product's only search; the promise belongs
+  // in it.
+  { href: "/logbook/import", label: "Import logbook", group: "Create", keywords: ["foreflight", "logten", "csv", "flights", "hours"] },
   { href: "/expenses/import", label: "Import expenses", group: "Create", keywords: ["bank", "csv", "statement", "transactions"] },
   { href: "/expenses/mileage", label: "Log mileage", group: "Create", keywords: ["drive", "miles", "deduction", "car"] },
   // Go to — sub-pages under a section.

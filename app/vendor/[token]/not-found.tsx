@@ -19,7 +19,7 @@ export default function VendorPageNotFound() {
     <div className="min-h-dvh bg-canvas font-ledger text-body text-ink">
       <div className="mx-auto max-w-md px-4 py-8 sm:px-8 sm:py-12">
         <div className="mb-8">
-          <Logo />
+          <Logo href="/" />
         </div>
         <LCard className="p-6 sm:p-8">
           <div className="mb-2 text-h3 font-bold text-ink">This link isn&rsquo;t valid</div>

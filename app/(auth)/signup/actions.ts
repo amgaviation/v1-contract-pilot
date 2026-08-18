@@ -8,6 +8,8 @@ import { passwordProblem } from "@/lib/password-policy";
 import {
   PENDING_SIGNUP_COOKIE,
   PENDING_SIGNUP_MAX_AGE_SECONDS,
+  SEND_FAILED_COOKIE,
+  SEND_FAILED_MAX_AGE_SECONDS,
 } from "@/lib/auth/confirmation";
 import { classifySignUpError } from "@/lib/auth/signup-outcome";
 
@@ -29,7 +31,10 @@ export type SignUpState = { error: string | null };
  * including the phishing shape a writable ?email= would hand out on this
  * product's own domain.
  */
-async function toCheckEmail(email: string): Promise<never> {
+async function toCheckEmail(
+  email: string,
+  options?: { sendFailed?: boolean }
+): Promise<never> {
   const cookieStore = await cookies();
   cookieStore.set(PENDING_SIGNUP_COOKIE, email, {
     httpOnly: true,
@@ -38,6 +43,20 @@ async function toCheckEmail(email: string): Promise<never> {
     maxAge: PENDING_SIGNUP_MAX_AGE_SECONDS,
     path: "/",
   });
+  // The one branch that varies: when signUp itself reported the mail step
+  // failed ("mail-failed" below), /check-email must not claim a link is on
+  // its way. The flag rides its own short-lived cookie so the screen stays
+  // honest across a reload, and the resend action clears it on a send
+  // Supabase accepts.
+  if (options?.sendFailed) {
+    cookieStore.set(SEND_FAILED_COOKIE, "1", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      maxAge: SEND_FAILED_MAX_AGE_SECONDS,
+      path: "/",
+    });
+  }
   redirect("/check-email");
 }
 
@@ -139,6 +158,16 @@ export async function signUp(
       await toCheckEmail(email);
       // Unreachable: toCheckEmail always redirects, which throws. Present
       // so the outcome narrows here without restructuring the branch.
+      return { error: null };
+    }
+    if (outcome.kind === "mail-failed") {
+      // The account row exists but the confirmation mail did not go out
+      // (see lib/auth/signup-outcome.ts). The old fallback told this pilot
+      // "nothing was saved" — false — and their natural retry then landed
+      // on /check-email claiming a link had been sent. Route them there
+      // directly instead, flagged so the screen says the send failed and
+      // offers the resend as the way forward.
+      await toCheckEmail(email, { sendFailed: true });
       return { error: null };
     }
     return { error: outcome.message };

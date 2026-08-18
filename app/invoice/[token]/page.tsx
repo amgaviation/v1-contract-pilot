@@ -355,7 +355,7 @@ export default async function PublicInvoicePage({
     <div className="min-h-dvh bg-canvas font-ledger text-body text-ink">
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8 sm:py-12">
         <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
-          <Logo />
+          <Logo href="/" />
           <LPill tone={status.tone}>{status.label}</LPill>
         </div>
 

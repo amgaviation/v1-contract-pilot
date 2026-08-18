@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { PENDING_SIGNUP_COOKIE } from "@/lib/auth/confirmation";
+import { PENDING_SIGNUP_COOKIE, SEND_FAILED_COOKIE } from "@/lib/auth/confirmation";
 import CheckEmailView from "./check-email-view";
 
 export const metadata = { title: "Check your email" };
@@ -26,5 +26,10 @@ export default async function CheckEmailPage() {
 
   if (!email) redirect("/signup");
 
-  return <CheckEmailView email={email} />;
+  // Set by signup/actions.ts when the signUp call itself reported the
+  // confirmation mail failed to send: this screen then must not claim a
+  // link is on its way. Cleared by a resend Supabase accepts.
+  const sendFailed = Boolean(cookieStore.get(SEND_FAILED_COOKIE)?.value);
+
+  return <CheckEmailView email={email} sendFailed={sendFailed} />;
 }
