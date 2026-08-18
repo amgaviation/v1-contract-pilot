@@ -119,6 +119,23 @@ export type Database = {
           // other billing column; never read by the webhook or by
           // accountIsReadOnly(). See app/(app)/settings/billing/demo-actions.ts.
           demo_cancel_at_period_end: boolean;
+          // Added by 20260818090000_account_lifecycle.sql. NOT billing
+          // columns: pilot.protect_account_billing_columns() does not guard
+          // these, deliberately — they record a TENANT-initiated state
+          // rather than a fact Stripe owns.
+          //
+          // deactivated_at is read directly by accountIsReadOnly(): a
+          // deactivation cannot write `status` (that belongs to the
+          // webhook), so without reading this column there would be a
+          // window between the owner clicking Deactivate and
+          // customer.subscription.deleted landing in which the account
+          // still accepted writes. See
+          // 20260818140000_deactivate_without_status_write.sql.
+          deactivated_at: string | null;
+          hold_started_at: string | null;
+          hold_ends_at: string | null;
+          retention_paid_until: string | null;
+          business_data_purged_at: string | null;
           // Added by 20260813130000_payment_reminders_and_late_fees.sql —
           // when the due-reminder pass last completed for this account,
           // scheduled or run by hand. NULL = never run. Operational, not
@@ -182,6 +199,11 @@ export type Database = {
           invoice_prefix?: string;
           last_billing_event_at?: string;
           demo_cancel_at_period_end?: boolean;
+          deactivated_at?: string | null;
+          hold_started_at?: string | null;
+          hold_ends_at?: string | null;
+          retention_paid_until?: string | null;
+          business_data_purged_at?: string | null;
           reminders_last_run_at?: string | null;
           onboarding_complete?: boolean;
           dba_name?: string | null;
@@ -242,6 +264,11 @@ export type Database = {
           invoice_prefix?: string;
           last_billing_event_at?: string;
           demo_cancel_at_period_end?: boolean;
+          deactivated_at?: string | null;
+          hold_started_at?: string | null;
+          hold_ends_at?: string | null;
+          retention_paid_until?: string | null;
+          business_data_purged_at?: string | null;
           reminders_last_run_at?: string | null;
           onboarding_complete?: boolean;
           dba_name?: string | null;

@@ -2,7 +2,7 @@ import "server-only";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { isWritableStatus } from "@/lib/entitlements";
+import { accountIsReadOnly } from "@/lib/entitlements";
 import type { User } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -63,9 +63,12 @@ async function isMutatingRequest(): Promise<boolean> {
  * never — but stops creating new work. `account.status` outside
  * ACCOUNT_WRITABLE_STATUSES (lib/entitlements.ts) means read-only.
  */
-export function accountIsReadOnly(account: Pick<AccountRow, "status">): boolean {
-  return !isWritableStatus(account.status);
-}
+// accountIsReadOnly now lives in lib/entitlements.ts, beside the
+// ACCOUNT_WRITABLE_STATUSES allow-list it reads and the deactivated_at rule
+// it also has to apply — pure, and unit-testable without this module's
+// next/navigation and server-only imports. Re-exported so every existing
+// call site is unchanged.
+export { accountIsReadOnly };
 
 /**
  * The signed-in identity plus the tenant it resolves to. This is the one

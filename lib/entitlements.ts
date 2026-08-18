@@ -131,6 +131,36 @@ export function isWritableStatus(status: string): boolean {
 }
 
 /**
+ * Whether an account is closed for writes.
+ *
+ * TWO INDEPENDENT REASONS, and the second is not redundant.
+ *
+ *   `status`          Stripe's subscription state, mirrored by the webhook.
+ *   `deactivated_at`  the OWNER said stop, in this product, just now.
+ *
+ * The second exists because pilot.deactivate_account CANNOT write `status`:
+ * pilot.protect_account_billing_columns() reserves that column for the
+ * service role, so the webhook is its only writer. (The first version of
+ * that function tried anyway and failed on every call — see
+ * 20260818140000_deactivate_without_status_write.sql.) The server action
+ * cancels at Stripe, stamps deactivated_at and returns; the resulting
+ * customer.subscription.deleted lands some time later. Between those two
+ * moments `status` still reads 'active', and consulting it alone would keep
+ * a deactivated account writable for the length of that window.
+ *
+ * Lives here rather than in lib/supabase/account.ts so it is a pure
+ * function over a row shape, unit-testable without next/navigation and
+ * server-only in the import graph. account.ts re-exports it.
+ */
+export function accountIsReadOnly(account: {
+  status: string;
+  deactivated_at?: string | null;
+}): boolean {
+  if (account.deactivated_at) return true;
+  return !isWritableStatus(account.status);
+}
+
+/**
  * The env-var NAME that holds each tier's Stripe price ID. Names only —
  * values live in the Vercel project and .env.local, never in code, and
  * an EMPTY value must be treated as unset (docs/BILLING.md: "an unset

@@ -213,6 +213,18 @@ jobs:
           # unit test).
           node scripts/packet-share-verify.mjs
 
+          # The account lifecycle: reset, deactivate, delete. These functions
+          # delete a tenant's records irreversibly and one of them deletes an
+          # airman's logbook, so the claims about them are asserted by DOING
+          # them — the owner gate refuses a member, a stranger and anon; the
+          # purge spares logbook/documents/aircraft and the number sequence;
+          # a reset does take the logbook; a delete cascades but leaves
+          # pilot.stripe_events. The static sibling (npm test) only reads the
+          # migration text; this is the half that runs it, and it caught
+          # deactivate_account writing a column the protect trigger reserves
+          # for service_role on its very first run.
+          node scripts/account-lifecycle-db-verify.mjs
+
           # PART 1 (lib/bank-import/* parsing + fingerprint stability) needs
           # nothing; PART 2 (the bank schema contract) reads DATABASE_URL,
           # already exported above. Previously wired into no job at all, so
