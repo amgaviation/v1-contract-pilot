@@ -6,6 +6,12 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { reauthMessage, verifyPassword } from "@/lib/supabase/reauth";
 import { getStripe } from "@/lib/stripe/server";
+import {
+  HOLD_MINIMUM_PAID_INVOICES,
+  paidInvoiceCount,
+  pauseCollection,
+  resumeCollection,
+} from "@/lib/stripe/hold";
 
 /**
  * ===========================================================================
@@ -271,3 +277,158 @@ export async function deleteAccount(
 }
 
 export { OK as INITIAL_ACCOUNT_ACTION_STATE };
+
+/**
+ * ===========================================================================
+ * THE MONTHLY HOLD
+ * ===========================================================================
+ *
+ * Two months of paused billing, for a pilot whose flying has stopped for a
+ * season. Read-only while it runs; every record kept.
+ *
+ * ELIGIBILITY IS CHECKED AGAINST STRIPE, not against a local column, and
+ * counted in PAID INVOICES rather than elapsed time — see
+ * lib/stripe/hold.ts's own note on why `created` gets that wrong. The rule
+ * is the owner's: an account must have been actively billing for two months
+ * or more before it can be parked.
+ *
+ * ORDER, as everywhere else in this file: Stripe first, local state second.
+ * A hold recorded locally while Stripe kept collecting would charge a pilot
+ * for months they were locked out of.
+ */
+
+/** The ceiling, in days. Mirrors the CHECK in 20260818090000. */
+const HOLD_MAX_DAYS = 62;
+
+export async function placeHold(
+  _prev: AccountActionState,
+  formData: FormData
+): Promise<AccountActionState> {
+  const auth = await authorize(formData, { requireTypedName: false });
+  if (!auth.ok) return auth.state;
+
+  const months = Number(formData.get("months") ?? "0");
+  if (months !== 1 && months !== 2) {
+    return fail("Choose a hold of one or two months.");
+  }
+
+  const subscriptionId = auth.account.stripe_subscription_id;
+  if (!subscriptionId) {
+    // A comped account has no subscription to pause, so a hold would buy it
+    // nothing and cost it its writes. Refused rather than half-applied.
+    return fail(
+      "This account isn't billed through Stripe, so there is nothing to put on hold."
+    );
+  }
+
+  // The eligibility rule, asked of the only system that knows the answer.
+  let paid: number;
+  try {
+    paid = await paidInvoiceCount(subscriptionId);
+  } catch (error) {
+    console.error(
+      `hold: could not read invoice history for ${subscriptionId}: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    return fail("We could not check your billing history just now. Try again in a moment.");
+  }
+
+  if (paid < HOLD_MINIMUM_PAID_INVOICES) {
+    return fail(
+      `A hold is available once you have been billing for two months. You have ${paid} paid ${
+        paid === 1 ? "month" : "months"
+      } so far.`
+    );
+  }
+
+  // 31 days a month rather than calendar months: the database CHECK is a
+  // flat 62-day ceiling, so computing calendar months here could produce a
+  // date the schema then rejects (a two-month hold starting 31 December ends
+  // 28 February — fine — but starting 1 July ends 1 September, 62 days, and
+  // any drift past that is refused). Flat days can never exceed it.
+  const endsAt = new Date(Date.now() + months * 31 * 24 * 60 * 60 * 1000);
+  if (months * 31 > HOLD_MAX_DAYS) return fail("A hold cannot run longer than two months.");
+
+  try {
+    await pauseCollection(subscriptionId, endsAt);
+  } catch (error) {
+    console.error(
+      `hold: Stripe refused pause_collection on ${subscriptionId}: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    return fail("We could not pause your billing with Stripe, so nothing was changed.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("place_hold", {
+    target_account: auth.account.id,
+    ends_at: endsAt.toISOString(),
+  } as never);
+
+  if (error) {
+    // Stripe is already paused and the local row is not. Unwind, so the
+    // pilot is not left un-billed and fully writable — the one outcome here
+    // that quietly costs money.
+    console.error(`hold: place_hold failed for ${auth.account.id}: ${error.message}`);
+    try {
+      await resumeCollection(subscriptionId);
+    } catch {
+      console.error(
+        `hold: FAILED TO UNWIND pause_collection on ${subscriptionId} after a failed place_hold — this subscription is paused with no hold recorded`
+      );
+    }
+    return fail("We could not place the hold. Nothing was changed.");
+  }
+
+  revalidatePath("/", "layout");
+  return {
+    error: null,
+    notice: `Your account is on hold until ${endsAt.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })}. Billing is paused and your records are read-only. Come back any time.`,
+  };
+}
+
+export async function resumeFromHold(
+  _prev: AccountActionState,
+  formData: FormData
+): Promise<AccountActionState> {
+  const auth = await authorize(formData, { requireTypedName: false });
+  if (!auth.ok) return auth.state;
+
+  const subscriptionId = auth.account.stripe_subscription_id;
+  if (subscriptionId) {
+    try {
+      await resumeCollection(subscriptionId);
+    } catch (error) {
+      console.error(
+        `hold: Stripe refused to resume ${subscriptionId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return fail("We could not restart your billing with Stripe, so nothing was changed.");
+    }
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("resume_from_hold", {
+    target_account: auth.account.id,
+  } as never);
+
+  if (error) {
+    console.error(`hold: resume_from_hold failed for ${auth.account.id}: ${error.message}`);
+    return fail(
+      "Your billing was restarted, but the hold could not be cleared. Reload Settings; contact support if it still shows as on hold."
+    );
+  }
+
+  revalidatePath("/", "layout");
+  return {
+    error: null,
+    notice: "Your hold is over. Billing has restarted and your account is writable again.",
+  };
+}

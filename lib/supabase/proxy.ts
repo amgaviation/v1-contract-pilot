@@ -193,6 +193,13 @@ async function refreshSession(
     // warns about. Every route named in vercel.json's crons[] must be on
     // this allow-list; see tests/cron-allowlist.test.mjs.
     normalizedPath === "/api/reminders/run" ||
+    // The hold-expiry pass (vercel.json), same machine-to-machine shape and
+    // the same CRON_SECRET comparison. Blocked here it would fail the way
+    // reminders once did — silently, with the login page returning 200 and
+    // the pass never running — except the symptom would be holds quietly
+    // never expiring, which looks like nothing at all until someone asks
+    // why an account is still on hold four months later.
+    normalizedPath === "/api/holds/run" ||
     // The client-facing invoice share link (app/invoice/[token]/page.tsx,
     // deliberately OUTSIDE the (app) route group) is this product's one
     // page meant to be opened by someone with NO account at all — a

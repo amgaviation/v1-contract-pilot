@@ -526,6 +526,15 @@ and one more, a co-pilot's or a bookkeeper's, are what you're paying for
 and what you get. A third seat isn't self-serve yet: if you need one
 today, say so directly rather than looking for a button.
 
+**Putting the account on hold.** Once you have been billing for two months
+or more, you can pause for one or two months. Billing stops, your records
+go read-only, nothing is deleted, and you can end it early whenever you
+want. A hold cannot run longer than two months. If it runs out without
+being resumed or paid for, the business side is cleared: clients, trips,
+invoices, estimates, expenses and the accounting ledger. Your logbook,
+documents, aircraft and operator qualifications are kept whatever
+happens.
+
 Downgrading and cancelling are different things. Downgrade a tier and
 records created above your new tier stay visible and exportable; only
 creating new ones on those screens stops, and everything comes straight

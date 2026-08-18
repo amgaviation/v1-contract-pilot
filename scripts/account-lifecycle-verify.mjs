@@ -28,6 +28,12 @@ import { join } from "node:path";
 
 const MIGRATIONS = "supabase/migrations";
 const LIFECYCLE = "20260818090000_account_lifecycle.sql";
+// The delete list moved one function inward when 20260818200000 split the
+// owner check off the deletes (expire_hold runs with no session and could
+// never satisfy an owner check). It is still written in exactly ONE place;
+// this is where that place now is.
+const PURGE_SOURCE = "20260818200000_monthly_hold.sql";
+const PURGE_FN = "purge_business_data_rows";
 
 /**
  * Tables a purge deliberately leaves alone, each with the reason. The
@@ -97,28 +103,42 @@ if (declared.size === 0) {
 
 // ── Every table pilot.purge_business_data deletes from ───────────────────
 const lifecycleSql = readFileSync(join(MIGRATIONS, LIFECYCLE), "utf8");
+const purgeSql = readFileSync(join(MIGRATIONS, PURGE_SOURCE), "utf8");
 
 /** Body of one `create or replace function pilot.<name>` block. */
-function functionBody(name) {
-  const start = lifecycleSql.indexOf(`function pilot.${name}(`);
-  if (start === -1) fail([`Could not find pilot.${name} in ${LIFECYCLE}.`]);
-  const open = lifecycleSql.indexOf("as $$", start);
-  const close = lifecycleSql.indexOf("$$;", open);
+function functionBody(name, source = lifecycleSql, label = LIFECYCLE) {
+  const start = source.indexOf(`function pilot.${name}(`);
+  if (start === -1) fail([`Could not find pilot.${name} in ${label}.`]);
+  const open = source.indexOf("as $$", start);
+  const close = source.indexOf("$$;", open);
   if (open === -1 || close === -1) {
     fail([`Could not read the body of pilot.${name}.`]);
   }
-  return lifecycleSql.slice(open, close);
+  return source.slice(open, close);
 }
 
-function deletedTables(name) {
+function deletedTables(name, source, label) {
   const out = new Set();
-  for (const m of functionBody(name).matchAll(/delete\s+from\s+pilot\.(\w+)/gi)) {
+  for (const m of functionBody(name, source, label).matchAll(
+    /delete\s+from\s+pilot\.(\w+)/gi
+  )) {
     out.add(m[1]);
   }
   return out;
 }
 
-const purged = deletedTables("purge_business_data");
+const purged = deletedTables(PURGE_FN, purgeSql, PURGE_SOURCE);
+
+// A rename or a move that left this list empty would make every check below
+// vacuously pass — the failure mode of a completeness check is that it stops
+// finding the thing it is completing. Refuse an empty parse outright.
+if (purged.size === 0) {
+  fail([
+    `Parsed ZERO deletes out of pilot.${PURGE_FN} in ${PURGE_SOURCE}.`,
+    `Every check in this script would pass vacuously. The function was`,
+    `probably renamed or moved; point PURGE_FN/PURGE_SOURCE at its new home.`,
+  ]);
+}
 const resetOnly = deletedTables("reset_account_data");
 
 const problems = [];

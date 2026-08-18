@@ -334,6 +334,146 @@ begin
 end $$;
 
 -- ===========================================================================
+-- PART 4b — THE HOLD's THREE TRANSITIONS.
+-- ===========================================================================
+
+-- place_hold refuses the states that must not exist, from the row alone.
+do $$
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claims', '{"sub":"${UA}"}', true);
+
+  -- Clear the deactivation left by PART 4 so a hold is even legal here.
+  reset role;
+  update pilot.accounts set deactivated_at = null where id = '${A}';
+  set local role authenticated;
+  perform set_config('request.jwt.claims', '{"sub":"${UA}"}', true);
+
+  begin
+    perform pilot.place_hold('${A}', now() - interval '1 day');
+    raise exception 'HOLD-3 FAILURE: a hold ending in the past was accepted';
+  exception when others then
+    if sqlstate <> '22023' then raise; end if;
+    raise notice 'PASS (HOLD-3, sqlstate 22023): a hold must end in the future';
+  end;
+
+  perform pilot.place_hold('${A}', now() + interval '31 days');
+  raise notice 'PASS (HOLD-4): an eligible owner placed a hold';
+
+  begin
+    perform pilot.place_hold('${A}', now() + interval '31 days');
+    raise exception 'HOLD-5 FAILURE: a second, overlapping hold was accepted';
+  exception when others then
+    if sqlstate <> '22023' then raise; end if;
+    raise notice 'PASS (HOLD-5, sqlstate 22023): an account already on hold cannot be held again';
+  end;
+  reset role;
+end $$;
+
+-- A member cannot park the business they were invited into.
+do $$
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claims', '{"sub":"${UM}"}', true);
+  begin
+    perform pilot.resume_from_hold('${A}');
+    raise exception 'HOLD-6 FAILURE: a member ended the account holder''s hold';
+  exception when insufficient_privilege then
+    raise notice 'PASS (HOLD-6, sqlstate 42501): only the owner may place or end a hold';
+  end;
+  reset role;
+end $$;
+
+-- expire_hold REFUSES a hold that has not expired. This is the guard that
+-- stands between a wrong WHERE clause in the scheduled pass and a paying
+-- customer's records, so it is asserted directly rather than trusted.
+do $$
+declare clients_left int;
+begin
+  insert into pilot.clients (account_id, name) values ('${A}', 'Held Client Co');
+
+  begin
+    perform pilot.expire_hold('${A}');
+    raise exception 'HOLD-7 FAILURE: expire_hold purged an account whose hold is still running';
+  exception when others then
+    if sqlstate <> '22023' then raise; end if;
+    raise notice 'PASS (HOLD-7, sqlstate 22023): expire_hold refuses a hold that has not expired';
+  end;
+
+  select count(*) into clients_left from pilot.clients where account_id = '${A}';
+  if clients_left <> 1 then
+    raise exception 'HOLD-7b FAILURE: a refused expire_hold still deleted data';
+  end if;
+  raise notice 'PASS (HOLD-7b): the refused expiry deleted nothing';
+end $$;
+
+-- Paid retention spares the records even once the window has closed. That is
+-- the entire product of the retention fee.
+do $$
+declare clients_left int;
+begin
+  update pilot.accounts
+     set hold_started_at      = now() - interval '40 days',
+         hold_ends_at         = now() - interval '1 day',
+         retention_paid_until = now() + interval '20 days'
+   where id = '${A}';
+
+  begin
+    perform pilot.expire_hold('${A}');
+    raise exception 'HOLD-8 FAILURE: expire_hold purged an account with paid retention';
+  exception when others then
+    if sqlstate <> '22023' then raise; end if;
+    raise notice 'PASS (HOLD-8, sqlstate 22023): paid retention spares the records past the window';
+  end;
+
+  select count(*) into clients_left from pilot.clients where account_id = '${A}';
+  if clients_left <> 1 then
+    raise exception 'HOLD-8b FAILURE: paid retention did not actually spare the data';
+  end if;
+  raise notice 'PASS (HOLD-8b): the retained account kept its commercial records';
+end $$;
+
+-- And the real expiry: window closed, retention unpaid. Commercial records
+-- go; the airman records do not, on this path either.
+do $$
+declare clients_left int; logbook_left int; docs_left int; still_held timestamptz;
+begin
+  insert into pilot.logbook_entries (account_id, airman_user_id, source, entry_date, total_time, role)
+  values ('${A}', '${UA}', 'manual', '2026-04-01', 1.8, 'PIC');
+  insert into pilot.documents (account_id, kind, label) values ('${A}', 'passport', 'Passport');
+
+  update pilot.accounts
+     set hold_started_at      = now() - interval '40 days',
+         hold_ends_at         = now() - interval '1 day',
+         retention_paid_until = null
+   where id = '${A}';
+
+  perform pilot.expire_hold('${A}');
+
+  select count(*) into clients_left from pilot.clients         where account_id = '${A}';
+  select count(*) into logbook_left from pilot.logbook_entries where account_id = '${A}';
+  select count(*) into docs_left    from pilot.documents       where account_id = '${A}';
+  select hold_started_at into still_held from pilot.accounts   where id = '${A}';
+
+  if clients_left <> 0 then
+    raise exception 'HOLD-9 FAILURE: an expired unpaid hold left commercial records (clients=%)', clients_left;
+  end if;
+  raise notice 'PASS (HOLD-9): an expired, unpaid hold purged the commercial records';
+
+  if logbook_left <> 1 or docs_left <> 1 then
+    raise exception
+      'HOLD-10 FAILURE: hold expiry destroyed airman records (logbook=%, documents=%)',
+      logbook_left, docs_left;
+  end if;
+  raise notice 'PASS (HOLD-10): the logbook and documents survived the expiry — the promise holds on the automated path too';
+
+  if still_held is not null then
+    raise exception 'HOLD-11 FAILURE: the hold was not cleared, so the next pass would purge again';
+  end if;
+  raise notice 'PASS (HOLD-11): the hold was cleared, so a second pass cannot re-purge';
+end $$;
+
+-- ===========================================================================
 -- PART 5 — DELETE. The cascade is the delete list; stripe_events is not.
 -- ===========================================================================
 
