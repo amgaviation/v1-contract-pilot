@@ -475,23 +475,27 @@ export const LOGBOOK_ENTRIES: LogbookEntryCells[] = [
     source: "trip",
   },
   {
+    // Hand-logged rather than drafted off a trip — a personal repositioning
+    // leg, which is what the "Manual" source badge is for. A wholly-
+    // simulator session is deliberately NOT in this set: it carries no
+    // aircraft time and no crew role (61.51), so every column this table
+    // shows would read 0.0 and the row would look like a broken record
+    // rather than a correct one. The product handles it; a screenshot is
+    // the wrong place to explain it.
     id: "e-9005",
     entry_date: "2026-08-09",
-    from_icao: null,
-    to_icao: null,
-    aircraft_ident: "CE-560XL FFS",
-    // 61.51: a wholly-simulator session has no crew role, because there is
-    // no aircraft to be pilot in command of. The device type is what the
-    // real screen shows in the Role column instead.
-    role: null,
-    simulator_device_type: "ffs",
-    total_time: 0.0,
-    night_time: 0.0,
+    from_icao: "KBED",
+    to_icao: "KMMU",
+    aircraft_ident: "N905FL",
+    role: "PIC",
+    simulator_device_type: null,
+    total_time: 1.4,
+    night_time: 0.5,
     instrument_actual_time: 0.0,
-    instrument_simulated_time: 0.0,
+    instrument_simulated_time: null,
     day_landings_full_stop: 0,
     day_landings_touch_go: 0,
-    night_landings_full_stop: 0,
+    night_landings_full_stop: 1,
     night_landings_touch_go: 0,
     source: "manual",
   },

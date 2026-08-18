@@ -56,8 +56,8 @@ const CHROMIUM_PATH = process.env.CHROMIUM_PATH ?? "/opt/pw-browsers/chromium";
  */
 const SHOTS = [
   { slug: "overview", route: "/marketing-shots/overview", width: 1440, height: 790 },
-  { slug: "invoice", route: "/marketing-shots/invoices", width: 1440, height: 965 },
-  { slug: "logbook", route: "/marketing-shots/logbook", width: 1440, height: 940 },
+  { slug: "invoice", route: "/marketing-shots/invoices", width: 1440, height: 940 },
+  { slug: "logbook", route: "/marketing-shots/logbook", width: 1440, height: 952 },
 ];
 
 /**
