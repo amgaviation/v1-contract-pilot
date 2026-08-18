@@ -115,6 +115,14 @@
 | POST /api/stripe/sample-connect/webhook | app/api/stripe/sample-connect/webhook/route.ts | Sample Connect webhook for test data updates |
 | POST /api/stripe/sample-connect/webhook-thin | app/api/stripe/sample-connect/webhook-thin/route.ts | Sample Connect thin webhook for rapid test |
 
+## Public tokenized share surfaces (outside the four route groups; no session, no signup)
+| URL | File | Description |
+|---|---|---|
+| /invoice/[token] | app/invoice/[token]/page.tsx | Client-facing invoice view a pilot shares with a client's AP desk; pay link when Stripe Connect is enrolled |
+| /estimate/[token] | app/estimate/[token]/page.tsx | Client-facing estimate view with accept/decline actions |
+| /packet/[token] | app/packet/[token]/page.tsx | Client-facing credential/insurance expiry packet |
+| /vendor/[token] | app/vendor/[token]/page.tsx | Client-facing per-client rollup for a 135 operator's AP desk (invoices, credentials) |
+
 ## Navigation components
 | File | Description |
 |---|---|
