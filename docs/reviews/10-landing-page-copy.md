@@ -1,6 +1,6 @@
 # Landing page copy — rewrite spec
 
-**Status:** draft v2 (orchestrator) — CRO and UX critic passes applied (see Critic resolutions); pending the aviation/voice flag pass.
+**Status:** FINAL v3 (orchestrator) — CRO critic, UX critic, and aviation/voice flag passes all applied; every required change resolved or rejected with a reason (see Critic resolutions).
 **Deliverable:** copy document only. No file under `app/` or `components/` is modified by this spec; it is written to be implemented against `app/(marketing)/page.tsx`.
 **Inputs read:** `.agents/product-marketing.md`, `docs/reviews/09-EXECUTIVE-SUMMARY.md`, `docs/reviews/01-cro.md`, `docs/reviews/03-content.md`, `docs/MARKETING.md`, current `app/(marketing)/page.tsx`.
 
@@ -65,7 +65,7 @@ Written for the operator-side reader — an AP desk, owner, or management compan
 
 - **Eyebrow:** `If a contract pilot sent you here`
 - **H1:** `Clean paperwork from every contract pilot.`
-- **Subheadline:** `V1 is the books software independent contract pilots run their businesses on. There's nothing for you to buy or log into: invoices, estimates, and credential packets arrive as links — open, check, accept, or pay in the browser.`
+- **Subheadline:** `V1 is the books software independent contract pilots run their businesses on. There's nothing for you to buy or log into. Invoices and estimates arrive as links you can open, check, accept, or pay in the browser, along with the pilot's current credentials and insurance.`
 - **Primary CTA:** `See what your pilots send` → `#for-operators` (§3's strip — it lists exactly what arrives: invoices, estimates, packets as links). *(Was `#how-it-works`, which is written in first-person pilot voice and never shows an operator what they receive — CRO critic required change.)*
 - **Secondary CTA:** `I'm a pilot — start your books` → `/signup`
 - **Fine line:** `Payments go to your pilot directly. V1 adds no fee on top.`
@@ -81,10 +81,10 @@ Written for the operator-side reader — an AP desk, owner, or management compan
 - **Heading:** `What a trip is worth` *(kept.)*
 - **Lead-in:** `Start with the trip. Add the client, aircraft, legs, and your flight, travel, standby, or off days. The three answers below come from that record.` *(kept verbatim — day-type vocabulary is the belonging signal.)*
 - **Row 01 — `What am I owed?`:** `Your client's rate and billable days are already filled in. Review the lines, then send a numbered PDF invoice with a payment link.` *(kept verbatim; invoice capture stays.)*
-- **Row 02 — `What did I fly?`:** `One draft per leg, with PIC and SIC kept separate. You review every draft before anything reaches your logbook.` *(kept verbatim; logbook capture stays. Per-leg phrasing is load-bearing — see the code comment citing 14 CFR 61.51.)*
-- **Row 03 — `What did it cost?`:** `Scan a receipt at the FBO — it reads in your phone's browser, no app to install — and attach it to the trip. Mark it for client reimbursement or keep it with your deductible expense records.`
-  - Change: adds the phone-browser clause. *Addresses:* 01-cro MEDIUM "landing copy invites a mobile scenario ('Scan a receipt at the FBO') but nothing confirms it works from a phone" — answered in place instead of spending an FAQ slot.
-  - **[VERIFY: receipt OCR runs fully in the mobile browser — the OCR engine ships as browser-side assets (`public/ocr/`, `scripts/sync-ocr-assets.mjs`) — confirm on a real phone before shipping "no app to install."]**
+- **Row 02 — `What did I fly?`:** `One draft per leg, with PIC and SIC kept separate. You review every draft before anything reaches your logbook.` *(kept verbatim; logbook capture stays. Per-leg phrasing matches the product's actual one-draft-per-leg behavior and standard logging practice. Note: the code comment beside this line asserts per-flight entries are "the only form 14 CFR 61.51 recognises" — the flag pass checked 61.51(b) against the current eCFR and found it specifies required data per flight without mandating entry granularity; the copy stands on the product's behavior, not that overstated reading. Adjacent fix logged, Appendix item 9.)*
+- **Row 03 — `What did it cost?`:** `Scan a receipt at the FBO from your phone's browser and attach it to the trip. Mark it for client reimbursement or keep it with your deductible expense records.`
+  - Change: adds the phone-browser clause. *Addresses:* 01-cro MEDIUM "landing copy invites a mobile scenario ('Scan a receipt at the FBO') but nothing confirms it works from a phone" — answered in place instead of spending an FAQ slot. ("From your phone's browser" already implies no app; the earlier "no app to install" aside was cut in the flag pass as a bracketed-fragment tell.)
+  - **[VERIFY: receipt OCR runs fully in the mobile browser, with no app install — the OCR engine ships as browser-side assets (`public/ocr/`, `scripts/sync-ocr-assets.mjs`) — confirm on a real phone before shipping the clause.]**
   - The reimbursement/deductible sentence is kept verbatim: it is the claim-rule-10-compliant phrasing (describes the software's action, never a tax outcome).
 
 **Word budget:** 110 (shipped 102 + the mobile clause). §3's strip is budgeted separately below.
@@ -96,7 +96,8 @@ Written for the operator-side reader — an AP desk, owner, or management compan
 **Layout intent:** one hairline row at the end of §2's band, same ledger pattern as the three question rows but with no step number — a coda, not a fourth question. Anchor id `#for-operators` (Variant B and any future token-page link target it).
 
 - **Row heading:** `What your clients get`
-- **Body:** `Nothing to sign up for. The owners, management companies, and Part 135 operators you bill get numbered invoices, estimates they can accept online, and credential packets — as browser links they can open and pay.`
+- **Body:** `Nothing for them to sign up for. The owners and operators you bill get numbered invoices, estimates they can accept online, and your current credentials and insurance, all as browser links.`
+  - *(Flag-pass changes: the stacked double triad is broken up — client types compressed to "owners and operators," one list kept because the three deliverables are the row's payload; "credential packets" replaced with "your current credentials and insurance," which is what the packet holds and how the receiving desk thinks of it.)*
 
 **Why this shape (CRO critic required change #4, accepted with a restructure rather than a pure cut):** the v1 draft's two-column audience split re-identified the pilot (already done by the eyebrow, H1, and subhead — `docs/MARKETING.md` §7 cut a "Who is this for?" FAQ item on exactly that precedent) and addressed operators in second person on a page where they can't convert. This row keeps every fact the split carried but points it at the pilot's own buying decision — what you send clients is part of what you're buying — while still letting an operator reader recognize themselves in one sentence and self-select out of signup. The brief's audience-split requirement is met in function: both readers learn which chair they sit in, with accurate expectations.
 
@@ -113,7 +114,7 @@ Written for the operator-side reader — an AP desk, owner, or management compan
 - **Heading:** `Four promises`
 - **Row 1:** `If a feature isn't in your plan, it isn't on this page. The lists here are generated from the same rules the product enforces.` *(Reordered per CRO optional #7 — leads with the reader-facing meaning, keeps the mechanism as the second sentence.)*
 - **Row 2:** `Cancel or downgrade and nothing is deleted. The account goes read-only, and your records stay readable and exportable.`
-- **Row 3:** `The full account export is on every plan, Solo included — every record type as CSV.`
+- **Row 3:** `The full account export is on every plan, Solo included: every record type as CSV.`
 - **Row 4:** `Client payments go straight to you. V1 adds no fee of its own and never holds the money.`
 - **Band CTA (secondary/outline style):** `Start your books — $5 first month` → `/signup` *(same label as the hero primary — one offer, spoken identically.)*
 
@@ -130,8 +131,10 @@ Grounding, row by row: (1) `specGroups()` / `lib/entitlements.ts` derivation; (2
 **Layout intent:** `canvas` band, narrow measure, native `<details>` items — unchanged. Four items (three kept, one added), then a contact line styled as its own bordered row at body size, not caption fine print (UX critic optional #3: it is the site's only support channel and must read as one).
 
 - **Heading:** `Questions pilots ask us` *(kept.)*
-- **Item 1 (kept verbatim):** `I already keep a logbook. Do I have to start over?` → `No. Import a ForeFlight or LogTen Pro export, or any CSV through the column mapper, and carry on from there.`
-- **Item 2 (kept verbatim — non-negotiable; carries the counsel-reviewed CURRENCY_DISCLAIMER substance):** `Does it decide whether I'm current or legal to fly?` → `No, and it will never present itself that way. It tracks the expiry dates you entered off your own documents so you can see what's coming. Currency and airworthiness decisions stay yours.`
+- **Item 1 (one word changed):** `I already keep a logbook. Do I have to start over?` → `No. Import a ForeFlight or LogTen export, or any CSV through the column mapper, and carry on from there.`
+  - "LogTen Pro" → "LogTen": the flag pass verified the vendor retired the "Pro" branding after the 2022 Coradine acquisition; the stale name is a credibility tell for exactly this audience. **[VERIFY: current LogTen branding at ship time.]** The in-app import UI carries the same stale name in four places — adjacent fix, Appendix item 10.
+- **Item 2 (kept verbatim — this spec changes nothing in it):** `Does it decide whether I'm current or legal to fly?` → `No, and it will never present itself that way. It tracks the expiry dates you entered off your own documents so you can see what's coming. Currency and airworthiness decisions stay yours.`
+  - **[NEEDS DECISION — route to counsel, do not edit in implementation:** the flag pass surfaced a real conflict between two owner documents. This shipped line paraphrases the counsel-reviewed `CURRENCY_DISCLAIMER`, which `docs/MARKETING.md` §5 rule 4 blesses ("the substance survives in the landing FAQ") but `docs/CURRENCY-SPEC.md` §7 forbids ("`CURRENCY_DISCLAIMER` remains the single source; no screen may paraphrase it") — and the word "airworthiness" is itself open counsel question C-1 in that spec, with an explicit instruction not to change the wording without sign-off either way. This spec deliberately keeps the shipped line verbatim rather than rewording counsel-adjacent language, and flags it for the same counsel loop as the Terms/Privacy G3 gate.**]
 - **Item 3 (kept verbatim, including the lapsed-card line — one of the page's two permitted aphorisms):** `What happens if I cancel or downgrade?` → `Nothing is deleted. Downgrading stops new work on the screens your plan no longer includes; cancelling puts the account in read-only. A pilot's logbook is a legal record; a lapsed card will never be the thing that destroys one.`
 - **Item 4 (new):** `Where do my records and receipts live?` → `In your account, exportable in full whenever you want. Receipts are read in your browser when you scan them, and bank statements are parsed in your browser before anything is saved.`
   - **[VERIFY: exact data-handling facts against `app/(marketing)/privacy/page.tsx:76-89` and the import/OCR code paths — the browser-side parsing claims are documented there, but this FAQ must not outrun what the privacy page states.]**
@@ -148,9 +151,9 @@ Grounding, row by row: (1) `specGroups()` / `lib/entitlements.ts` derivation; (2
 **Layout intent:** `sunk` band; the spec block keeps its derived tier pills and mechanical dropping of `comingSoon`/unclaimable lines. The pricing pointer's placement is breakpoint-aware (UX critic required change #4): at `lg`+ it sits in the sticky heading column under the h2; **below `lg`, the pointer sentence and button render as a full-width row above the feature list**, so the price anchor precedes the list at every width instead of scrolling away in a collapsed side column.
 
 - **Heading:** `The rest of the books` *(kept.)*
-- **Pricing pointer:** `Three plans — Solo, Pro, and Business. A full year of the books costs less than half a flying day.`
+- **Pricing pointer:** `Three plans: Solo, Pro, and Business. A year of the books costs less than half of one flight day's pay.`
   - Button: `Compare plans` → `/pricing` *(label unified with the hero secondary — was "Compare all features".)*
-  - The anchor sentence restores the vetted "half" framing (CRO critic required change #5 — the v1 draft's "less than one flying day" diluted the strongest honest version). Qualitative by design: claim rule 11 forbids typed figures and no maintained constant carries a day-rate comparison. **[VERIFY: the comparison against `docs/PRICING.md` §2.8 — a full year of the most expensive published tier under half of one flying day's rate at the low end of researched figures — still holds before shipping; if the owner won't stand behind it, cut the sentence entirely rather than soften it.]**
+  - The anchor sentence restores the vetted "half" framing (CRO critic required change #5), and the flag pass fixed two more things: "flight day" is the product's own shipped day-type vocabulary (`'flight', 'Flight day'` in the phase-9 migration) where "flying day" was not, and "pay" resolves the cost-vs-time unit mismatch. Qualitative by design: claim rule 11 forbids typed figures and no maintained constant carries a day-rate comparison. **[VERIFY: the comparison against `docs/PRICING.md` §2.8 — a full year of the most expensive published tier under half of one flight day's pay at the low end of researched figures — still holds before shipping; if the owner won't stand behind it, cut the sentence entirely rather than soften it.]**
   - *Addresses:* 01-cro MEDIUM "no price-anchor framing despite one already vetted internally"; keeps the page's one dollar-figure statement in the hero.
 - **Spec line change (one):** the invoices line becomes `Numbered invoice PDFs, payment links, email delivery, and view tracking.`
   - *Addresses:* 03-content LOW "the same feature is summarized by two non-overlapping capability lists on the two public pages."
@@ -177,10 +180,10 @@ Grounding, row by row: (1) `specGroups()` / `lib/entitlements.ts` derivation; (2
 
 | Kept verbatim | Changed | New |
 |---|---|---|
-| Eyebrow, H1, subheadline | Primary CTA label (all instances) | §3 clients strip (40 words) |
+| Eyebrow, H1, subheadline | Primary CTA label (all instances) | §3 clients strip (~35 words) |
 | §2 heading, lead-in, rows 01–02 | Hero fine line (monthly scope) | §4 promises band + quiet CTA (80 words) |
 | Spec block headings + 11 of 12 lines | §2 row 03 (mobile clause) | FAQ item 4 (data) |
-| FAQ items 1–3 | Invoices spec line | FAQ contact row |
+| FAQ items 2–3 | Invoices spec line; FAQ item 1 ("LogTen Pro" → "LogTen") | FAQ contact row |
 | Close heading | `/pricing` link labels unified ("Compare plans") | Pricing-pointer anchor sentence |
 | "Illustrative data." caption | Close body (conjunction; $5 removed); page title metadata | Hero Variant B (separate surface) |
 
@@ -196,6 +199,8 @@ Estimated rendered total: **~575 words across six visual beats** (shipped: 384 a
 6. Analytics before this page ships, or the rewrite is unmeasurable (04-strategy HIGH; 09 brief).
 7. Auth screens: the "A business" account-type hint fix (03-content HIGH) — one screen after this page's CTA; the collision undoes this page's clarity work if left.
 8. `docs/MARKETING.md` re-signatures this spec requires: the hero fine line (part of §4's "verbatim" block), the hero budget overage (75 vs 70), and the §6 budget table for the new totals. Export-page/pricing-FAQ wording on "every uploaded file" vs. per-record file downloads should also be reconciled (08-churn MEDIUM) so §4 row 3 never drifts into overclaiming.
+9. The code comment at `app/(marketing)/page.tsx` (RECORDS row 02) asserts per-flight entries are "the only form 14 CFR 61.51 recognises" — the flag pass checked 61.51(b) against the current eCFR: it specifies required data per flight or lesson logged without mandating entry granularity. Soften the comment so the per-leg design stands on product behavior and logging convention, not an overstated regulatory reading.
+10. "LogTen Pro" → "LogTen" branding sweep in the app itself: `app/(app)/logbook/import/import-workspace.tsx` (tab label and two body strings) and `app/(app)/logbook/import/page.tsx` subtitle carry the retired vendor name this spec fixes on the landing FAQ. **[VERIFY: current LogTen branding at ship time.]**
 
 ## Critic resolutions
 
@@ -220,4 +225,13 @@ Every required change from the two critic passes, resolved or rejected with a re
 6. [OPTIONAL] `/pricing` link labels inconsistent — **accepted**: both are now "Compare plans."
 7. [OPTIONAL] Contact line under-emphasized for the site's only support channel — **accepted**: specified as a bordered row at body size.
 
-**Aviation/voice flag pass:** *(pending — flags will be applied by the orchestrator and logged here.)*
+**Aviation/voice flag pass (skills: humanizer aviation layer + aviation-expert):** eight flags returned; all applied by the orchestrator, as follows.
+1. [CONSIDER] Em-dash-as-connective density across ~a third of copy strings — **partially accepted**: prose instances rewritten (Variant B subhead, §4 row 3, §3 body, §6 pointer intro now use plain sentences or colons). The CTA labels keep `— $5 first month`: that is a button-label offer separator, the shipped page's own convention, not prose cadence.
+2. [FIX] §2 row 03's double-em-dash aside + "no app to install" fragment — **accepted**: rewritten as one plain sentence ("Scan a receipt at the FBO from your phone's browser and attach it to the trip."); the no-install fact moved into the [VERIFY] note.
+3. [CONSIDER] The 14 CFR 61.51 justification overstates the reg (61.51(b) sets required data, not entry granularity; verified against current eCFR) — **accepted**: the spec's annotation no longer leans on the reg, and the overstated code comment is logged as Appendix item 9. The copy itself was already correct.
+4. [CONSIDER] §3's stacked double triad — **accepted**: client types compressed to "owners and operators"; the deliverables triad kept (it is the row's payload).
+5. [CONSIDER] "credential packets" is product-internal vocabulary, not the receiving desk's — **accepted**: both occurrences now read "current credentials and insurance."
+6. [FIX] "LogTen Pro" is retired branding (post-2022 Coradine acquisition) — **accepted**: FAQ item 1 now says "LogTen," with a [VERIFY] at ship time; the four in-app occurrences are logged as Appendix item 10.
+7. [FIX] The currency FAQ line paraphrases `CURRENCY_DISCLAIMER` against `docs/CURRENCY-SPEC.md` §7's no-paraphrase rule, and "airworthiness" is open counsel question C-1 — **accepted with a different remedy than rewording**: the line is kept verbatim as shipped (the one thing both owner documents agree on is not changing counsel-adjacent wording without sign-off) and the conflict is documented in place as a [NEEDS DECISION] routed to the same counsel loop as the G3 Terms/Privacy gate. Verified directly against `docs/CURRENCY-SPEC.md` before resolving.
+8. [CONSIDER] Anchor sentence's unit mismatch and "flying day" vs the product's shipped "flight day" vocabulary — **accepted**: now "less than half of one flight day's pay."
+Flagger's closing verdict, for the record: with these addressed, the copy reads as written from inside the world — PIC/SIC, per-leg drafts, FBO, day types, and the client-type list all used correctly; no luxury-jet or generic-SaaS clichés.
