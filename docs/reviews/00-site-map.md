@@ -53,7 +53,7 @@
 | /expenses/import | app/(app)/expenses/import/page.tsx | Import bank statement (CSV/OFX/QFX) with browser-side parsing, preview, confirm |
 | /expenses/transactions | app/(app)/expenses/transactions/page.tsx | Review unreviewed bank transactions, categorize, match to expenses, or dismiss |
 | /help | app/(app)/help/page.tsx | Help browser: searchable user guide describing product features |
-| /invoices | app/(app)/invoices/page.tsx | Invoices list with A/R aging, status badges, past-due count, bulk actions |
+| /invoices | app/(app)/invoices/page.tsx | Invoices list with A/R aging, status badges, past-due count (no bulk actions shipped) |
 | /invoices/new | app/(app)/invoices/new/page.tsx | New invoice form with client picker, trip/line selection, tax, terms |
 | /invoices/[id] | app/(app)/invoices/[id]/page.tsx | Invoice detail with line editor, PDF download, payment panel, reminder policy, share/send |
 | /invoices/recurring | app/(app)/invoices/recurring/page.tsx | Recurring invoice schedules with generation history, due queue, autopay status |
