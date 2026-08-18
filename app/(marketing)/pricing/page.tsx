@@ -10,6 +10,7 @@ import {
   publicCoreFeatures,
   publicMatrix,
   publicTierAdds,
+  type MatrixRow,
   type PlanTier,
 } from "./pricing-model";
 
@@ -203,43 +204,63 @@ export default function PricingPage() {
             </p>
           </div>
 
-          <LCard className="p-0">
+          <LCard>
             <LTable className="min-w-[40rem]">
+              <caption className="sr-only">
+                Every feature, and which of the three plans includes it.
+              </caption>
               <thead>
                 <tr>
-                  <LTh>Feature</LTh>
+                  <LTh scope="col" className="w-[46%]">
+                    Feature
+                  </LTh>
                   {TIER_ORDER.map((tier) => (
-                    <LTh key={tier} className="text-center">
+                    <LTh key={tier} scope="col" className="text-center">
                       {TIER_DISPLAY[tier].name}
                     </LTh>
                   ))}
                 </tr>
               </thead>
-              <tbody>
-                {matrix.map((row) => (
-                  <tr key={row.feature}>
-                    <LTd>
-                      {row.label}
-                      {row.comingSoon ? (
-                        <span className="text-caption text-ink-3"> (coming soon)</span>
-                      ) : null}
-                    </LTd>
-                    {TIER_ORDER.map((tier) => (
-                      <LTd key={tier} className="text-center">
-                        {row.availability[tier] ? (
-                          <span className="font-medium text-accent" aria-label="Included">
-                            ✓
-                          </span>
-                        ) : (
-                          <span className="text-ink-3" aria-label="Not included">
-                            —
-                          </span>
-                        )}
-                      </LTd>
-                    ))}
+              {/* One tbody per band, so a row's tier behaviour is legible from
+                  where it sits rather than by tracking three glyphs across.
+                  Bands are DERIVED from the same availability the rows carry
+                  (groupMatrix below) — no second list to keep in step. */}
+              {groupMatrix(matrix).map((band) => (
+                <tbody key={band.title}>
+                  <tr>
+                    <th
+                      scope="colgroup"
+                      colSpan={1 + TIER_ORDER.length}
+                      className="border-b border-hair pt-6 pb-2 text-left text-caption font-semibold uppercase tracking-wide text-ink-3 first:pl-0"
+                    >
+                      {band.title}
+                    </th>
                   </tr>
-                ))}
-              </tbody>
+                  {band.rows.map((row) => (
+                    <tr key={row.feature}>
+                      <LTd>
+                        {row.label}
+                        {row.comingSoon ? (
+                          <span className="text-caption text-ink-3"> (coming soon)</span>
+                        ) : null}
+                      </LTd>
+                      {TIER_ORDER.map((tier) => (
+                        <LTd key={tier} className="text-center">
+                          {row.availability[tier] ? (
+                            <span className="font-medium text-accent" aria-label="Included">
+                              ✓
+                            </span>
+                          ) : (
+                            <span className="text-ink-3" aria-label="Not included">
+                              —
+                            </span>
+                          )}
+                        </LTd>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              ))}
             </LTable>
           </LCard>
         </div>
@@ -278,6 +299,38 @@ export default function PricingPage() {
       </Band>
     </>
   );
+}
+
+/**
+ * The matrix, split into the three bands a reader is actually comparing.
+ *
+ * WHY THIS EXISTS. The matrix arrives in entitlements' own order, which is
+ * feature order, not tier order — so "Account-wide CSV export" (in every
+ * plan, deliberately: gating export is the one upsell this product
+ * refuses) rendered stranded between the Pro-only rows and the
+ * Business-only ones. A reader scanning for "what does Pro actually add"
+ * had to read three glyphs on every row and hold the pattern in their head,
+ * and the one row that contradicted its neighbours looked like a mistake.
+ *
+ * DERIVED, NEVER DECLARED. A band is computed from the row's own
+ * availability, so a feature that changes tier in lib/entitlements.ts moves
+ * band here with no edit — the failure mode of a hand-kept grouping is that
+ * it silently disagrees with the table it labels, which is the exact class
+ * of drift this page's generation-from-entitlements exists to prevent.
+ */
+function groupMatrix(rows: MatrixRow[]): { title: string; rows: MatrixRow[] }[] {
+  const bands: { title: string; test: (row: MatrixRow) => boolean }[] = [
+    { title: "In every plan", test: (row) => row.availability.solo },
+    { title: "Pro adds", test: (row) => !row.availability.solo && row.availability.pro },
+    {
+      title: "Business adds",
+      test: (row) => !row.availability.solo && !row.availability.pro,
+    },
+  ];
+
+  return bands
+    .map((band) => ({ title: band.title, rows: rows.filter(band.test) }))
+    .filter((band) => band.rows.length > 0);
 }
 
 /**
