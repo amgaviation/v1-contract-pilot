@@ -114,9 +114,26 @@ paragraph.
 | 1 | The identity claim: flying is the job, this is the business | Hero H1 |
 | 2 | What the books hold: owed, earned, spent, year-end | Hero subhead |
 | 3 | The mechanic as proof: the three questions a trip answers | Section 2 |
-| 4 | Depth as evidence of belonging | Section 3 spec block |
-| 5 | The three barriers left | Section 4 FAQ |
-| 6 | Cost, and the promise that outlives the card | Section 5 close |
+| 4 | Who the reader is not: what a pilot's clients receive | Section 2 closing row (`#for-operators`) |
+| 5 | Trust, from promises the code enforces | Section 3 promises |
+| 6 | The four barriers left | Section 4 FAQ |
+| 7 | Depth as evidence of belonging | Section 5 spec block |
+| 8 | Cost, and the promise that outlives the card | Section 6 close |
+
+Re-ordered 2026-08-18 with the landing rewrite. Two beats are new — the
+operator row and the promises band — and the spec block moved BELOW the FAQ.
+That last move is structural, not editorial: with a `sunk` promises band
+added, leaving the spec block where it was put two `sunk` grounds back to
+back and left the FAQ as the page's last word before the close. The page
+now alternates brand / canvas / sunk / canvas / sunk / brand, and no stretch
+of it is more than two beats from a conversion action.
+
+**The operator beat is a self-selection beat, not an audience expansion.**
+There is no operator account type in the schema and no operator tier in
+`lib/entitlements.ts`; §2 below excludes operators buying for their pilots.
+The row exists so an owner or AP desk who followed a pilot's link can
+recognise themselves and stop, and so the pilot can see what their clients
+receive. It never asks an operator to sign up.
 
 **Hero copy, verbatim:**
 
@@ -130,7 +147,16 @@ The subhead's opening phrase is the tagline verbatim — one phrase, spoken
 identically everywhere the brand speaks, which is the whole of how a small
 brand builds a memory structure. Section 3's heading deliberately does NOT
 use it a third time.
-- **Fine line** — Plans start at $29/month. Card required.
+- **Fine line** — Plans start at $29/month; the $5 first month applies to
+  monthly plans. Card required.
+
+The fine line was re-signed 2026-08-18. The scope clause is not decoration:
+`lib/stripe/server.ts` mints the intro coupon per MONTHLY price only ("a
+first month has no meaning on an invoice that bills a year at a time"), so
+an unqualified "$5 first month" beside a page that also sells annual plans
+is a price claim this product does not honour. Correcting offer scope is
+what §5's history demands; the H1, eyebrow and subhead above are untouched
+and stay verbatim.
 
 `BRAND.tagline` ("The books for your flying business.") stays in the
 footer, the auth column and metadata. The H1 says who the reader is
@@ -235,10 +261,11 @@ These are absolute. A page that breaks one is not shippable.
 
 ## 6. Word budgets
 
-Five sections, down from seven, down from ~1,600 words across ~13 beats.
-The standard is **ten seconds on FBO wifi**: hero alone answers what it is,
-who it's for and what it costs; hero plus section 2 earns a qualified yes or
-no inside thirty.
+Six sections, down from ~1,600 words across ~13 beats. The standard is
+**ten seconds on FBO wifi**: hero alone answers what it is, who it's for and
+what it costs; hero plus section 2 earns a qualified yes or no inside
+thirty. That standard is unchanged by the 2026-08-18 re-budget below and is
+still met — the hero is 68 words.
 
 Both columns below are real, and they are not the same number. **Budget** is
 what the strategy asked for; **Shipped** is what `app/(marketing)/page.tsx`
@@ -257,20 +284,47 @@ tier badges and the interpolated figures be counted as a reader meets them.
 
 | # | Section | Budget | Shipped |
 |---|---|---|---|
-| 1 | Hero, navy — identity H1, money subhead, mock | 70 | 55 |
-| 2 | What a trip is worth — three question rows | 110 | 102 |
-| 3 | The rest of the books — spec block | 100 | 82 |
-| 4 | Questions pilots ask us — three FAQ items | 120 | 117 |
-| 5 | Close, navy — plans line and one action | 30 | 28 |
-| | **Total** | **430** | **384** |
+| 1 | Hero, navy — identity H1, money subhead, mock | 75 | 68 |
+| 2 | What a trip is worth — three question rows + the clients row | 155 | 151 |
+| 3 | Four promises, sunk — trust shelf and the mid-page action | 85 | 83 |
+| 4 | Questions pilots ask us — four FAQ items + contact row | 175 | 171 |
+| 5 | The rest of the books — spec block and price anchor | 125 | 123 |
+| 6 | Close, navy — plans line and one action | 30 | 27 |
+| | **Total** | **645** | **623** |
 
-Re-budgeted at the 2026-08-17 repositioning: these are fresh numbers for
-the money position, not the old wedge's budgets carried over. Section 2's
-budget dropped from the merged 155 because the "Today: retyped into…"
-comparison column left with the angle that needed it — the rows now carry
-a question and its answer, nothing else. The hero's rose slightly: the
-subhead now carries the whole value proposition (owed, earned, spent,
-year-end) where the old one restated the H1's mechanism.
+**RE-BUDGETED AND RE-SIGNED 2026-08-18, with the landing rewrite** —
+`docs/reviews/10-landing-page-copy.md` is the spec and carries the reasoning
+per line. The previous total was 430 budgeted / 384 shipped, and the honest
+statement of this change is that the page grew by about 240 rendered words.
+Where they went, and why none of it was met by trimming:
+
+- **The clients row (~40).** A beat the page did not have: what an owner or
+  operator receives, so the pilot can see what they are buying and the
+  operator can self-select out of a signup they would churn from.
+- **The promises band (~83).** Claim rule 8 bans testimonials, statistics
+  and customer counts, and this product has none. The trust shelf therefore
+  has to be built from facts the code enforces — including the zero-take-rate
+  fact, which is the strongest compliant trust signal available and had
+  appeared nowhere on any public page.
+- **A fourth FAQ item, the contact row, and the offer-scope clause (~55).**
+  Each answers a specific audit finding: the data objection went unanswered
+  on a product that asks for bank statements; there was no contact channel
+  at the moment a prospect has an unanswered question; and the offer did not
+  say which plans it applied to.
+
+Two things keep this from being budget drift. First, the **section 4 figure
+is a fully-expanded count** — the method above opens every `<details>`, and
+a reader who opens none meets four question lines, about 30 words. Second,
+the hero still carries the ten-second standard on its own at 68 words, under
+its own budget, which is the number that decides whether the page works on
+FBO wifi.
+
+Section 2's budget absorbed the clients row (110 + 40 + the mobile clause)
+rather than giving it a section of its own — it renders as the closing row
+of the same ledger, so it is the same beat's ground.
+
+The pre-rewrite table, for reference: hero 70/55, section 2 110/102, spec
+block 100/82, FAQ 120/117, close 30/28, total 430/384.
 
 **Rules of thumb behind the budgets**
 
@@ -282,9 +336,12 @@ year-end) where the old one restated the H1's mechanism.
   times on the pre-2026-08 landing page and seventeen across the signed-out
   surface. The tagline — whatever it currently is — renders in the footer,
   the auth panel and metadata, and is never repeated through the page body.
-- **Two aphorisms on the whole page, a full screen apart** — section 3's
-  heading and the lapsed-card line. Seven clever titles in a row reads to a
-  working professional as being sold to.
+- **Two aphorisms on the whole page, a full screen apart** — the spec
+  block's heading ("The rest of the books") and the lapsed-card line in the
+  FAQ. Seven clever titles in a row reads to a working professional as being
+  sold to. The 2026-08-18 rewrite added no third: "Four promises" is a label,
+  not a turn of phrase, and the promises themselves are flat declaratives on
+  purpose.
 - **Structural problems get structural fixes.** Trimming the seven-block
   feature band by 20% would have left 535 words and the identical
   seven-scroll experience. It became one ~125-word spec block. The same

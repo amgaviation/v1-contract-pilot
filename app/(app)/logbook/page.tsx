@@ -262,7 +262,7 @@ export default async function LogbookPage({
           <NextLink href="/logbook/drafts" className={lButtonClass({ variant: "outline" })}>
             Trip drafts
           </NextLink>
-          {/* ForeFlight / LogTen Pro / generic CSV import — see
+          {/* ForeFlight / LogTen / generic CSV import — see
               app/(app)/logbook/import. Same draft-confirm boundary as
               Trip drafts: nothing lands here without the pilot reviewing
               a preview and confirming. */}

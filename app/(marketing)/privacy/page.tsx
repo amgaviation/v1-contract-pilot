@@ -86,6 +86,12 @@ export default function PrivacyPage() {
             · Receipt scanning runs in your own browser, not on a server:
             a receipt image is never uploaded just to be read.
           </p>
+          <p className="text-body-s text-ink-2">
+            · Bank statement files are read and parsed in your own
+            browser too. The transactions reach us when you confirm the
+            import; the statement file itself is never uploaded, only
+            its name and row count.
+          </p>
         </div>
 
         <p className="text-body-s text-ink-2">

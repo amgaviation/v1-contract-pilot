@@ -1,10 +1,77 @@
 # Landing page copy — rewrite spec
 
-**Status:** FINAL v3 (orchestrator) — CRO critic, UX critic, and aviation/voice flag passes all applied; every required change resolved or rejected with a reason (see Critic resolutions).
+**Status: IMPLEMENTED 2026-08-18.** Shipped into `app/(marketing)/page.tsx`.
+Every section below is now live copy; the four `[VERIFY]` markers are
+resolved (see *Ship-time verification* directly below) and the one
+`[NEEDS DECISION]` marker — the currency FAQ's "airworthiness" wording —
+remains open with counsel, with the line shipping unchanged in the meantime.
+`docs/MARKETING.md` §4 and §6 were re-signed in the same change to match what
+renders. This document stays as the reasoning of record; the page is the
+copy of record.
+
+**Prior status:** FINAL v3 (orchestrator) — CRO critic, UX critic, and aviation/voice flag passes all applied; every required change resolved or rejected with a reason (see Critic resolutions).
 **Deliverable:** copy document only. No file under `app/` or `components/` is modified by this spec; it is written to be implemented against `app/(marketing)/page.tsx`.
 **Inputs read:** `.agents/product-marketing.md`, `docs/reviews/09-EXECUTIVE-SUMMARY.md`, `docs/reviews/01-cro.md`, `docs/reviews/03-content.md`, `docs/MARKETING.md`, current `app/(marketing)/page.tsx`.
 
 **Purpose (from the brief):** inform prospects so the right ones sign up with accurate expectations — maximize conversion and minimize future churn through clarity about what the product does and doesn't do. No hype, no dark patterns.
+
+## Ship-time verification (2026-08-18)
+
+Each `[VERIFY]` marker in this spec, and what was actually checked.
+
+**1. §2 row 03 — "from your phone's browser."** *Verified from code, not on a
+handset.* The OCR engine runs client-side on assets served from this origin:
+`scripts/sync-ocr-assets.mjs` copies tesseract.js's wasm cores and language
+model out of `node_modules` into `public/ocr/` at `prebuild`/`predev`
+precisely so nothing is fetched from a CDN at runtime. The capture control is
+a plain `accept="image/*"` file input, and `app/(app)/expenses/receipt-scan.tsx`
+records in its own comment that this offers the camera alongside the photo
+library on both iOS and Android, which is why there is no second capture
+input. **Not done: a scan on a physical phone.** No handset is reachable from
+the build environment. The clause shipped because every claim inside it is a
+property of shipped code; if a real-device scan ever fails, this is the clause
+to pull.
+
+**2. §5 item 1 — LogTen branding.** *Verified 2026-08-18.* logten.com's
+headings and navigation read "LogTen" / "LogTen Pilot Logbook", as does the
+App Store listing; "LogTen Pro" now survives only on a footer copyright line
+and in legacy API documentation from before the 2022 Coradine acquisition.
+The FAQ says "LogTen", and Appendix item 10's in-app sweep shipped with it
+(`app/(app)/logbook/import/import-workspace.tsx` tab label and two body
+strings, `app/(app)/logbook/import/page.tsx` subtitle, and the comment in
+`app/(app)/logbook/page.tsx`).
+
+**3. §5 item 4 — data handling vs. `/privacy`.** *Verified, and the privacy
+page was brought level.* Receipt-in-browser was already stated there. The
+bank-statement claim was NOT, so the FAQ would have outrun the privacy page —
+the exact failure this marker existed to prevent. The claim itself is true:
+`app/(app)/expenses/import/import-workspace.tsx` is a client component that
+reads the file with `FileReader` and parses it with `parseCsv` / `parseOfx`
+before anything is sent, `confirmBankImport` takes parsed rows rather than a
+file (its own comment: "the browser parsed the file"), and
+`pilot.bank_source_files` stores only `file_name` and `row_count`, never the
+bytes. So `/privacy` gained a matching fact rather than the FAQ losing a true
+one.
+
+**4. §6 — "less than half of one flight day's pay."** *Verified as a
+per-pilot comparison; the strict reading this marker wrote does not hold, and
+the sentence shipped anyway. Read this one before re-signing it.* The marker
+asked whether "a full year of the most expensive published tier" sits under
+half of one flight day at the low end of `docs/PRICING.md` §2.8's researched
+figures (PIC ~$1,200, so the bar is ~$600/year). Per pilot every plan clears
+it: Solo $348/yr monthly or $290 annual, Pro $588 or $490, Business $468 or
+$390 **per seat**. Business billed at its published two-seat floor does not
+($936/yr monthly, $1,560 annual) — but that reading multiplies the bill by a
+seat count this page never states: `multi_seat` is `comingSoon`, so
+`specGroups()` drops it mechanically and the word "seat" appears nowhere on
+the landing page. The page's only price frame is per pilot ("Plans start at
+$29/month"), and the comparison is against one pilot's day pay, so comparing
+a two-pilot bill to one pilot's day is a category error in the test rather
+than an overclaim in the copy. **If the owner does not want to stand behind
+the per-pilot reading, cut the sentence — do not soften it.** The reasoning
+is repeated in a comment beside the string so a future editor re-checks the
+arithmetic rather than the vibe.
+
 
 ## Ground rules this spec obeys
 
@@ -198,9 +265,9 @@ Estimated rendered total: **~575 words across six visual beats** (shipped: 384 a
 5. Pricing cards should carry the chosen tier through signup (`?plan=`) so the pointer's promise ("compare, then start") survives the funnel (05-signup MEDIUM).
 6. Analytics before this page ships, or the rewrite is unmeasurable (04-strategy HIGH; 09 brief).
 7. Auth screens: the "A business" account-type hint fix (03-content HIGH) — one screen after this page's CTA; the collision undoes this page's clarity work if left.
-8. `docs/MARKETING.md` re-signatures this spec requires: the hero fine line (part of §4's "verbatim" block), the hero budget overage (75 vs 70), and the §6 budget table for the new totals. Export-page/pricing-FAQ wording on "every uploaded file" vs. per-record file downloads should also be reconciled (08-churn MEDIUM) so §4 row 3 never drifts into overclaiming.
-9. The code comment at `app/(marketing)/page.tsx` (RECORDS row 02) asserts per-flight entries are "the only form 14 CFR 61.51 recognises" — the flag pass checked 61.51(b) against the current eCFR: it specifies required data per flight or lesson logged without mandating entry granularity. Soften the comment so the per-leg design stands on product behavior and logging convention, not an overstated regulatory reading.
-10. "LogTen Pro" → "LogTen" branding sweep in the app itself: `app/(app)/logbook/import/import-workspace.tsx` (tab label and two body strings) and `app/(app)/logbook/import/page.tsx` subtitle carry the retired vendor name this spec fixes on the landing FAQ. **[VERIFY: current LogTen branding at ship time.]**
+8. **DONE 2026-08-18** (§4 and §6 re-signed in the implementing change; the reconciliation note below is still open). `docs/MARKETING.md` re-signatures this spec required: the hero fine line (part of §4's "verbatim" block), the hero budget overage (75 vs 70), and the §6 budget table for the new totals. Export-page/pricing-FAQ wording on "every uploaded file" vs. per-record file downloads should also be reconciled (08-churn MEDIUM) so §4 row 3 never drifts into overclaiming.
+9. **DONE 2026-08-18.** The code comment at `app/(marketing)/page.tsx` (RECORDS row 02) asserted per-flight entries are "the only form 14 CFR 61.51 recognises" — the flag pass checked 61.51(b) against the current eCFR: it specifies required data per flight or lesson logged without mandating entry granularity. Soften the comment so the per-leg design stands on product behavior and logging convention, not an overstated regulatory reading.
+10. **DONE 2026-08-18.** "LogTen Pro" → "LogTen" branding sweep in the app itself: `app/(app)/logbook/import/import-workspace.tsx` (tab label and two body strings) and `app/(app)/logbook/import/page.tsx` subtitle carry the retired vendor name this spec fixes on the landing FAQ. **[VERIFY: current LogTen branding at ship time.]**
 
 ## Owner decisions, 2026-08-18
 

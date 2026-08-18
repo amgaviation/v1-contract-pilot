@@ -695,7 +695,7 @@ export default function ImportWorkspace() {
         <LTabsRoot value={format} onValueChange={(v) => setFormat(v as ImportFormat)}>
           <LTabsList aria-label="Logbook file format">
             <LTabsTrigger value="foreflight">ForeFlight</LTabsTrigger>
-            <LTabsTrigger value="logten">LogTen Pro</LTabsTrigger>
+            <LTabsTrigger value="logten">LogTen</LTabsTrigger>
             <LTabsTrigger value="generic_csv">Any other CSV</LTabsTrigger>
           </LTabsList>
         </LTabsRoot>
@@ -703,8 +703,8 @@ export default function ImportWorkspace() {
           {format === "foreflight"
             ? "Upload the CSV from ForeFlight's Logbook export (Logbook → Export)."
             : format === "logten"
-              ? "Upload a CSV export from LogTen Pro."
-              : "Upload any CSV. You'll match its columns to logbook fields yourself on the next step. This is the path for any logbook that isn't ForeFlight or LogTen Pro."}
+              ? "Upload a CSV export from LogTen."
+              : "Upload any CSV. You'll match its columns to logbook fields yourself on the next step. This is the path for any logbook that isn't ForeFlight or LogTen."}
         </p>
         <div className="flex flex-col gap-1">
           <label htmlFor={fileInputId} className="text-body-s font-medium text-ink">
