@@ -55,9 +55,9 @@ const CHROMIUM_PATH = process.env.CHROMIUM_PATH ?? "/opt/pw-browsers/chromium";
  * panel boundary rather than slicing a table row in half.
  */
 const SHOTS = [
-  { slug: "overview", route: "/marketing-shots/overview", width: 1440, height: 880 },
-  { slug: "invoice", route: "/marketing-shots/invoices", width: 1440, height: 900 },
-  { slug: "logbook", route: "/marketing-shots/logbook", width: 1440, height: 800 },
+  { slug: "overview", route: "/marketing-shots/overview", width: 1440, height: 790 },
+  { slug: "invoice", route: "/marketing-shots/invoices", width: 1440, height: 965 },
+  { slug: "logbook", route: "/marketing-shots/logbook", width: 1440, height: 940 },
 ];
 
 /**
@@ -85,6 +85,30 @@ const FREEZE_CSS = `
     display: none !important;
   }
 `;
+
+/**
+ * PALETTE-QUANTISE THE PNG BEFORE IT LANDS.
+ *
+ * A 2880px-wide 24-bit capture of a product screen is ~460 KB, and these
+ * files ship to every visitor of the landing page. A screenshot of a
+ * fintech register is a few dozen flat colours plus antialiased text, which
+ * is exactly the input an 8-bit palette encodes losslessly to the eye — it
+ * takes the same images to ~90–170 KB with no visible change to the
+ * figures, which are the whole reason for capturing at 2x.
+ *
+ * sharp is Next's own optional image dependency rather than something this
+ * repo declares, so this is written to DEGRADE rather than fail: no sharp,
+ * or an encode that throws, and the raw capture is written with a warning.
+ * A bigger file is a worse outcome, not a broken one.
+ */
+async function compress(png) {
+  try {
+    const { default: sharp } = await import("sharp");
+    return await sharp(png).png({ palette: true, quality: 90, effort: 10 }).toBuffer();
+  } catch {
+    return null;
+  }
+}
 
 const browser = await chromium.launch({ executablePath: CHROMIUM_PATH });
 await mkdir(OUT_DIR, { recursive: true });
@@ -118,8 +142,15 @@ for (const shot of SHOTS) {
     await page.addStyleTag({ content: FREEZE_CSS });
     await page.evaluate(() => document.fonts.ready);
     const png = await page.screenshot({ type: "png" });
+    const squeezed = await compress(png);
+    if (!squeezed) {
+      console.warn(
+        `  ! ${shot.slug}: sharp unavailable, writing the raw 24-bit capture ` +
+          `(several times larger than it needs to be).`
+      );
+    }
     const file = join(OUT_DIR, `${shot.slug}.png`);
-    await writeFile(file, png);
+    await writeFile(file, squeezed ?? png);
     const { size } = await stat(file);
     written.push({ file, slug: shot.slug, size, shot });
   } catch (e) {

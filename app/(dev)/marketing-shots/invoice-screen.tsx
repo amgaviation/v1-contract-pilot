@@ -15,7 +15,6 @@ import {
   INVOICE_LINES,
   INVOICE_NUMBER,
   INVOICE_RECEIPT_COUNT,
-  INVOICE_SHARE,
   INVOICE_TOTALS,
 } from "./fixtures";
 
@@ -105,18 +104,28 @@ export default function InvoiceScreen() {
             automaticChase="live"
             hasDueDate
           />
-          <SharePanel
-            invoiceId={INVOICE_ID}
-            share={INVOICE_SHARE}
-            receiptCount={INVOICE_RECEIPT_COUNT}
-          />
+          {/* NO SHARE ROW AND NO PAYMENT LINK, DELIBERATELY — this is the
+              state of an issued invoice before either has been created,
+              and it is the only state of these two panels a screenshot can
+              show honestly.
+
+              SharePanel builds its URL from window.location.origin (see its
+              own comment on why), which on a harness capture is the dev
+              server — putting "http://localhost:3000/invoice/…" in a
+              marketing image. And a Stripe payment-link URL is an opaque
+              buy.stripe.com path; fabricating one would put a plausible,
+              typeable link to somebody else's checkout on the public site.
+              Neither is worth doctoring the picture for, and both panels
+              read perfectly well showing the control that creates the
+              thing rather than the thing. */}
+          <SharePanel invoiceId={INVOICE_ID} share={null} receiptCount={INVOICE_RECEIPT_COUNT} />
           <PaymentPanel
             invoiceId={INVOICE_ID}
             status="sent"
             payments={[]}
             connectAccountConnected
-            existingPaymentLinkUrl="https://buy.stripe.com/8wMcQ2b7k3Ln5wY9AA"
-            existingPaymentLinkAmountCents={INVOICE_TOTALS.balance_due_cents}
+            existingPaymentLinkUrl={null}
+            existingPaymentLinkAmountCents={null}
             balanceDueCents={INVOICE_TOTALS.balance_due_cents}
             defaultPaymentMethods="card_ach"
           />

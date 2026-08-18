@@ -320,13 +320,6 @@ export const INVOICE_TOTALS: InvoiceTotalsView = {
 /** Two of the five lines are rebilled receipts, and both have a file. */
 export const INVOICE_RECEIPT_COUNT = 2;
 
-export const INVOICE_SHARE = {
-  token: "shr_8Qk2Ve7RtC4hLmXa",
-  revoked_at: null,
-  first_viewed_at: "2026-08-09T13:41:00.000Z",
-  last_viewed_at: "2026-08-13T08:26:00.000Z",
-};
-
 /* ── Logbook ────────────────────────────────────────────────────────── */
 
 /**
