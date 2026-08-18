@@ -84,6 +84,7 @@ export const NAV_SECTIONS: readonly NavItem[] = [
   { href: "/clients", label: "Clients", group: "BUSINESS" },
   { href: "/accounting", label: "Accounting", group: "BUSINESS" },
   { href: "/documents", label: "Documents", group: "RECORDS" },
+  { href: "/crew", label: "Crew", group: "RECORDS" },
   { href: "/reports", label: "Reports", group: "RECORDS" },
   { href: CURRENCY_PATH, label: "Currency", group: "RECORDS" },
 ] as const;
@@ -146,6 +147,7 @@ export const NAV_COMMANDS: readonly NavCommand[] = [
   { href: "/expenses/new", label: "New expense", group: "Create", keywords: ["add", "create", "receipt"] },
   { href: "/clients/new", label: "New client", group: "Create", keywords: ["add", "create", "operator", "customer"] },
   { href: "/documents/new", label: "New document", group: "Create", keywords: ["add", "create", "upload", "w-9", "insurance", "medical"] },
+  { href: "/crew/new", label: "New crew member", group: "Create", keywords: ["add", "create", "pilot", "sic", "copilot"] },
   { href: "/logbook/new", label: "New logbook entry", group: "Create", keywords: ["add", "create", "flight", "hours"] },
   { href: "/expenses/import", label: "Import expenses", group: "Create", keywords: ["bank", "csv", "statement", "transactions"] },
   { href: "/expenses/mileage", label: "Log mileage", group: "Create", keywords: ["drive", "miles", "deduction", "car"] },
