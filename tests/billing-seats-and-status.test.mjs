@@ -64,3 +64,41 @@ test("isWritableStatus: every lapsed/terminal status is read-only (fail closed)"
   assert.equal(isWritableStatus("some_future_status"), false);
   assert.equal(isWritableStatus(""), false);
 });
+
+/**
+ * THE DEACTIVATION WINDOW.
+ *
+ * pilot.deactivate_account cannot write `status`: that column mirrors
+ * Stripe's subscription state and pilot.protect_account_billing_columns()
+ * reserves it for the service role, so the webhook is its only writer
+ * (20260818140000_deactivate_without_status_write.sql — the first version
+ * of that function tried to write it and failed on every call).
+ *
+ * The consequence is a window. The server action cancels at Stripe, stamps
+ * deactivated_at, and returns; customer.subscription.deleted arrives some
+ * time later. Until it does, `status` still reads 'active' or 'trialing'.
+ * If the read-only gate consulted status alone, a deactivated account would
+ * keep accepting writes for the length of that window.
+ */
+const { accountIsReadOnly } = await import("../lib/entitlements.ts");
+
+test("a deactivated account is read-only immediately, before Stripe's webhook lands", () => {
+  // The exact shape of the window: the owner has deactivated, Stripe has
+  // not told us yet, and the account must already be closed for writes.
+  assert.equal(
+    accountIsReadOnly({ status: "active", deactivated_at: "2026-08-18T03:20:06Z" }),
+    true
+  );
+  assert.equal(
+    accountIsReadOnly({ status: "trialing", deactivated_at: "2026-08-18T03:20:06Z" }),
+    true
+  );
+});
+
+test("deactivated_at does not make a live account read-only when it is null", () => {
+  assert.equal(accountIsReadOnly({ status: "active", deactivated_at: null }), false);
+  assert.equal(accountIsReadOnly({ status: "trialing", deactivated_at: null }), false);
+  // And the pre-existing status rule is untouched.
+  assert.equal(accountIsReadOnly({ status: "canceled", deactivated_at: null }), true);
+  assert.equal(accountIsReadOnly({ status: "past_due", deactivated_at: null }), true);
+});
