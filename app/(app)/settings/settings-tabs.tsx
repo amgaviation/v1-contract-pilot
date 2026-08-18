@@ -51,6 +51,7 @@ const TAB_KEYS = [
   "layout",
   "categories",
   "profile",
+  "account",
 ] as const;
 
 type TabKey = (typeof TAB_KEYS)[number];
@@ -74,6 +75,7 @@ const TAB_LABEL: Record<TabKey, string> = {
   layout: "Layout",
   categories: "Categories",
   profile: "Profile & security",
+  account: "Account",
 };
 
 /**
@@ -137,6 +139,7 @@ export default function SettingsTabs({
   layout,
   categories,
   profile,
+  account,
   initialTab,
 }: {
   business: ReactNode;
@@ -150,6 +153,7 @@ export default function SettingsTabs({
   layout: ReactNode;
   categories: ReactNode;
   profile: ReactNode;
+  account: ReactNode;
   initialTab?: string;
 }) {
   const [tab, setTab] = useState<TabKey>(
@@ -177,6 +181,7 @@ export default function SettingsTabs({
     { key: "layout", content: layout },
     { key: "categories", content: categories },
     { key: "profile", content: profile },
+    { key: "account", content: account },
   ];
 
   const triggerClass =
@@ -221,6 +226,13 @@ export default function SettingsTabs({
         ])}
         <LTabsTrigger value="profile" className={`${triggerClass} lg:mt-4`}>
           {TAB_LABEL.profile}
+        </LTabsTrigger>
+        {/* Last, and after Profile: the terminal actions. The convention
+            every settings surface of this size uses, and the reason is
+            ordering rather than taste — "delete everything" must not sit
+            where a mis-aimed click lands on the way to something else. */}
+        <LTabsTrigger value="account" className={triggerClass}>
+          {TAB_LABEL.account}
         </LTabsTrigger>
       </LTabsList>
 

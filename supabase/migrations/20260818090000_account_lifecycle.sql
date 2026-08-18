@@ -138,12 +138,65 @@ alter table pilot.accounts
   );
 
 -- ----------------------------------------------------------------------------
+-- pilot.assert_account_owner — the authorization every function below shares.
+--
+-- WHY THE OWNER CHECK LIVES IN THE DATABASE, not only in the server action.
+-- The obvious implementation of these lifecycle calls is a service-role
+-- client in a server action, which is how most products do it. This one
+-- does not: `README.md` records that the service role is used in EXACTLY
+-- one place, the Stripe webhook, and that is a property worth keeping —
+-- the service role holds BYPASSRLS, so every additional call site is
+-- another place where a missing `if (role !== "owner")` is a cross-tenant
+-- delete rather than a permission error.
+--
+-- So these are SECURITY DEFINER functions that re-derive the caller from
+-- `auth.uid()` and check membership themselves, granted to `authenticated`
+-- and reached with the pilot's ORDINARY session. A server action that
+-- forgot its own ownership check still cannot delete somebody else's
+-- account, because the function it calls will not do it. The action's
+-- check stays anyway (a clear error beats an exception), but it is no
+-- longer the only thing standing between a bug and a tenant's data.
+--
+-- `search_path` is pinned on every definer function here for the reason
+-- the Phase 1 companion migration pins it everywhere else.
+-- ----------------------------------------------------------------------------
+
+create or replace function pilot.assert_account_owner(target_account uuid)
+returns void
+language plpgsql
+security definer
+set search_path = pilot, public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'account lifecycle: no authenticated caller'
+      using errcode = '42501';
+  end if;
+
+  if not exists (
+    select 1
+      from pilot.account_members m
+     where m.account_id = target_account
+       and m.user_id = auth.uid()
+       and m.role = 'owner'
+  ) then
+    -- Deliberately the same error whether the account does not exist or
+    -- the caller is simply not its owner: distinguishing them would let a
+    -- caller probe which account ids are real.
+    raise exception 'account lifecycle: caller is not the owner of this account'
+      using errcode = '42501';
+  end if;
+end;
+$$;
+
+revoke all on function pilot.assert_account_owner(uuid) from public;
+
+-- ----------------------------------------------------------------------------
 -- pilot.purge_business_data — the selective purge.
 --
--- SECURITY DEFINER because it deletes across 29 tables whose RLS policies
+-- SECURITY DEFINER because it deletes across 30 tables whose RLS policies
 -- are written for a signed-in tenant doing ordinary work, not for a
--- lifecycle job; `search_path` is pinned for the reason the Phase 1
--- companion migration pins every other definer function.
+-- lifecycle job.
 --
 -- Deletion order is child-before-parent even where a cascade would cover
 -- it, so the function does not depend on which FKs happen to cascade today.
@@ -156,6 +209,8 @@ security definer
 set search_path = pilot, public
 as $$
 begin
+  perform pilot.assert_account_owner(target_account);
+
   -- Accounting ledger (derived from everything below it, so it goes first).
   delete from pilot.journal_lines   where account_id = target_account;
   delete from pilot.journal_entries where account_id = target_account;
@@ -220,11 +275,11 @@ comment on function pilot.purge_business_data(uuid) is
   'future document can never re-mint a number already issued. Completeness '
   'is enforced by scripts/account-lifecycle-verify.mjs.';
 
--- Only the service role runs this. No tenant-facing grant: a lifecycle
--- purge is reached through a server action that has already checked
--- ownership and confirmation, never by a client calling an RPC.
+-- Reachable by the OWNER's own session; the function's first statement is
+-- the ownership check, so the grant cannot be turned into a cross-tenant
+-- delete by a caller passing somebody else's account id.
 revoke all on function pilot.purge_business_data(uuid) from public;
-revoke all on function pilot.purge_business_data(uuid) from authenticated;
+grant execute on function pilot.purge_business_data(uuid) to authenticated;
 
 -- ----------------------------------------------------------------------------
 -- pilot.reset_account_data — everything the pilot has entered, including the
@@ -244,6 +299,10 @@ security definer
 set search_path = pilot, public
 as $$
 begin
+  -- purge_business_data checks this too; asserting first means an
+  -- unauthorized caller is refused before any row is touched rather than
+  -- part-way through.
+  perform pilot.assert_account_owner(target_account);
   perform pilot.purge_business_data(target_account);
 
   -- The airman records, which purge_business_data deliberately spares.
@@ -271,4 +330,88 @@ comment on function pilot.reset_account_data(uuid) is
   'number sequences survive.';
 
 revoke all on function pilot.reset_account_data(uuid) from public;
-revoke all on function pilot.reset_account_data(uuid) from authenticated;
+grant execute on function pilot.reset_account_data(uuid) to authenticated;
+
+-- ----------------------------------------------------------------------------
+-- pilot.deactivate_account — stop billing, keep everything, go read-only.
+--
+-- The reversible one. It destroys nothing: it stamps deactivated_at and
+-- moves `status` to 'canceled', which is already a non-writable status in
+-- lib/entitlements.ts's ACCOUNT_WRITABLE_STATUSES allow-list, so the whole
+-- read-only machinery (requireAccount's gate, the billing banner, export
+-- staying available) applies with no new concept.
+--
+-- THIS IS THE ONE PLACE OUTSIDE THE WEBHOOK THAT WRITES `status`, and it is
+-- allowed to because the subscription is genuinely already canceled at
+-- Stripe by the time it runs — the server action ends it there FIRST and
+-- refuses to continue if Stripe did not agree. The webhook's own
+-- customer.subscription.deleted event arrives moments later and writes the
+-- same value; its out-of-order guard (last_billing_event_at) means whichever
+-- lands second is a no-op rather than a fight.
+-- ----------------------------------------------------------------------------
+
+create or replace function pilot.deactivate_account(target_account uuid)
+returns void
+language plpgsql
+security definer
+set search_path = pilot, public
+as $$
+begin
+  perform pilot.assert_account_owner(target_account);
+
+  update pilot.accounts
+     set deactivated_at  = now(),
+         status          = 'canceled',
+         -- A deactivation clears any hold: the two are different answers to
+         -- the same question and an account must not be in both.
+         hold_started_at = null,
+         hold_ends_at    = null
+   where id = target_account;
+end;
+$$;
+
+comment on function pilot.deactivate_account(uuid) is
+  'Owner-initiated deactivation: stamps deactivated_at and sets status to '
+  '''canceled'' so the existing read-only gate applies. Destroys nothing. '
+  'Called only after the subscription is already canceled at Stripe.';
+
+revoke all on function pilot.deactivate_account(uuid) from public;
+grant execute on function pilot.deactivate_account(uuid) to authenticated;
+
+-- ----------------------------------------------------------------------------
+-- pilot.delete_account — the tenant, and everything that cascades from it.
+--
+-- The whole delete is the one DELETE at the bottom; see this file's header
+-- for why the cascade is the delete list rather than a hand-kept table
+-- inventory. What this function adds is the ownership check and the fact
+-- that a tenant has no direct DELETE grant on pilot.accounts (Phase 1's
+-- column-scoped grants), so this is the only way for a pilot to remove
+-- their own account without the service role.
+--
+-- The auth.users row is deliberately NOT deleted here. Auth is Supabase's
+-- table, not this schema's, and a definer function reaching into it is how
+-- you end up with a half-deleted identity when one of the two fails. The
+-- server action signs the person out; removing the auth user is an
+-- operator action (or a later, deliberate, transactional migration).
+-- ----------------------------------------------------------------------------
+
+create or replace function pilot.delete_account(target_account uuid)
+returns void
+language plpgsql
+security definer
+set search_path = pilot, public
+as $$
+begin
+  perform pilot.assert_account_owner(target_account);
+  delete from pilot.accounts where id = target_account;
+end;
+$$;
+
+comment on function pilot.delete_account(uuid) is
+  'Deletes the tenant row; 43 cascading account_id FKs take every tenant '
+  'table with it, including the airman records — this is the pilot asking '
+  'to be gone. pilot.stripe_events (idempotency ledger, not tenant-scoped) '
+  'deliberately survives. Does not touch auth.users.';
+
+revoke all on function pilot.delete_account(uuid) from public;
+grant execute on function pilot.delete_account(uuid) to authenticated;
