@@ -23,7 +23,11 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { friendlyDbError } from "@/lib/db-errors";
-import { logbookFrom } from "../db";
+// This directory moved from app/(app)/logbook/aircraft to app/(app)/aircraft
+// (promoted to a top-level section); logbookFrom still lives one level up
+// from its OLD position, so the relative "../db" that used to reach it no
+// longer resolves and this is now an absolute import instead.
+import { logbookFrom } from "@/app/(app)/logbook/db";
 import {
   normaliseTypeDesignator,
   normaliseTypeRating,
@@ -60,6 +64,7 @@ const FIELDS = [
   "make_model",
   "gear",
   "category_class",
+  "client_id",
   "is_turbine",
   "is_retractable",
   "notes",
@@ -81,6 +86,20 @@ function trimmedOrNull(formData: FormData, field: string): string | null {
   return value === "" ? null : value;
 }
 
+/**
+ * A uuid from a form, or null for "not set" — undefined signals a
+ * malformed value so the caller can reject it with a sentence rather than
+ * let a crafted POST reach Postgres as a raw `22P02 invalid input syntax
+ * for type uuid`. Same idiom as expenses/actions.ts and
+ * documents/actions.ts's own optionalUuid; this one is built on
+ * trimmedOrNull above rather than duplicating it under a second name.
+ */
+function optionalUuid(formData: FormData, field: string): string | null | undefined {
+  const value = trimmedOrNull(formData, field);
+  if (value === null) return null;
+  return UUID_RE.test(value) ? value : undefined;
+}
+
 type Parsed =
   | { ok: false; error: string }
   | {
@@ -92,6 +111,7 @@ type Parsed =
         make_model: string | null;
         gear: AircraftGear | null;
         category_class: string | null;
+        client_id: string | null;
         is_turbine: boolean | null;
         is_retractable: boolean | null;
         notes: string | null;
@@ -135,6 +155,16 @@ function parse(formData: FormData): Parsed {
     return { ok: false, error: "That isn't one of the landing gear options." };
   }
 
+  // Shape-checked here; tenancy is enforced by the composite FK
+  // (aircraft_client_fk, 20260818220000) at write time, the same division
+  // of labour documents/actions.ts and expenses/actions.ts use for their
+  // own optional client_id — a cross-tenant or invented id fails there and
+  // friendlyDbError turns the 23503 into a sentence.
+  const clientId = optionalUuid(formData, "client_id");
+  if (clientId === undefined) {
+    return { ok: false, error: "That client isn't valid." };
+  }
+
   return {
     ok: true,
     fields: {
@@ -147,6 +177,10 @@ function parse(formData: FormData): Parsed {
       // from "tricycle".
       gear: gearRaw === "" ? null : (gearRaw as AircraftGear),
       category_class: trimmedOrNull(formData, "category_class"),
+      // Optional, and not merely absent: a freelance-fleet tail belongs to
+      // no client at all. See the migration header for why the link lives
+      // on the registry row rather than on a trip or logbook entry.
+      client_id: clientId,
       // TRI-STATE, and left unstated rather than guessed — the same rule as
       // `gear` above, and the same rule the columns themselves carry
       // (20260811040000, 20260813110000): NULL means nobody said, and it
@@ -170,7 +204,7 @@ export async function createAircraft(
   const parsed = parse(formData);
   if (!parsed.ok) return { error: parsed.error, values: echo(formData) };
 
-  const { account } = await requireAccount("/logbook/aircraft");
+  const { account } = await requireAccount("/aircraft");
   if (!account) return { error: "No account.", values: echo(formData) };
 
   const supabase = await createClient();
@@ -205,7 +239,7 @@ export async function createAircraft(
     return { error: friendlyDbError(error, "aircraft.insert"), values: echo(formData) };
   }
 
-  revalidatePath("/logbook/aircraft");
+  revalidatePath("/aircraft");
   revalidatePath("/logbook");
   return { error: null, saved: true };
 }
@@ -220,7 +254,7 @@ export async function updateAircraft(
   const parsed = parse(formData);
   if (!parsed.ok) return { error: parsed.error, values: echo(formData) };
 
-  const { account } = await requireAccount("/logbook/aircraft");
+  const { account } = await requireAccount("/aircraft");
   if (!account) return { error: "No account.", values: echo(formData) };
 
   const supabase = await createClient();
@@ -245,7 +279,7 @@ export async function updateAircraft(
   }
   if (count === 0) return { error: "That aircraft is no longer in your fleet.", values: echo(formData) };
 
-  revalidatePath("/logbook/aircraft");
+  revalidatePath("/aircraft");
   revalidatePath("/logbook");
   return { error: null, saved: true };
 }
@@ -260,7 +294,7 @@ export async function setAircraftArchived(formData: FormData): Promise<void> {
   if (!UUID_RE.test(id)) return;
   const archived = String(formData.get("archived") ?? "") === "true";
 
-  const { account } = await requireAccount("/logbook/aircraft");
+  const { account } = await requireAccount("/aircraft");
   if (!account) return;
 
   const supabase = await createClient();
@@ -270,6 +304,6 @@ export async function setAircraftArchived(formData: FormData): Promise<void> {
     .eq("id", id)
     .eq("account_id", account.id);
 
-  revalidatePath("/logbook/aircraft");
+  revalidatePath("/aircraft");
   revalidatePath("/logbook");
 }

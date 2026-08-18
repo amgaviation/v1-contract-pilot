@@ -1574,8 +1574,9 @@ test("describeResult never says current/legal/compliant, and names a remedy for 
 test("describeResult, SEC-6/SEC-14: every aircraft-related remedy points at the real aircraft registry route", () => {
   // A hardcoded string like the previous test's `startsWith("/")` cannot
   // fail no matter what the href is. This instead pins the exact route —
-  // app/(app)/logbook/aircraft, not the nonexistent "/aircraft" every one
-  // of these five remedies used to point at.
+  // app/(app)/aircraft, promoted from app/(app)/logbook/aircraft on
+  // 2026-08-18 (the old path now redirects there rather than resolving on
+  // its own; see app/(app)/logbook/aircraft/page.tsx).
   const base = evaluateGeneralExperience({ asOf: "2026-08-07", airmanUserId: AIRMAN, intendedAircraft: null, entries: [] });
   const AIRCRAFT_MISSING = [
     "intended_aircraft_absent",
@@ -1586,7 +1587,7 @@ test("describeResult, SEC-6/SEC-14: every aircraft-related remedy points at the 
   ];
   for (const missing of AIRCRAFT_MISSING) {
     const described = describeResult({ ...base, missing: [missing] });
-    assert.equal(described.remedies[0].href, "/logbook/aircraft", `${missing} must route to the real aircraft registry`);
+    assert.equal(described.remedies[0].href, "/aircraft", `${missing} must route to the real aircraft registry`);
   }
 });
 

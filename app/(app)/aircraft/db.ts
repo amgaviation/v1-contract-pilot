@@ -3,10 +3,17 @@
  * supabase/migrations/20260810110000_aircraft_registry.sql. Read that
  * file's header before changing anything here; the reasoning behind the
  * generated key, the read-time join and the deliberate absence of a DELETE
- * path all lives there.
+ * path all lives there. client_id (below) is
+ * supabase/migrations/20260818220000_aircraft_client.sql — read that
+ * file's header for why the link lives on the registry row, why it is
+ * nullable, and why the FK is ON DELETE RESTRICT rather than SET NULL.
  *
  * Shapes only. The `.from()` escape hatch is the parent directory's
  * logbookFrom(), which these table names were added to — see its comment.
+ *
+ * This directory used to live at app/(app)/logbook/aircraft — see
+ * app/(app)/logbook/aircraft/page.tsx for the redirect stub that keeps an
+ * old bookmark working.
  */
 
 import { tailKeyOf } from "@/lib/logbook-views";
@@ -71,6 +78,15 @@ export type AircraftRow = {
   gear: AircraftGear | null;
   category_class: string | null;
   /**
+   * 20260818220000_aircraft_client.sql. Which client this airframe
+   * belongs to, or is flown for — a fact about the AIRFRAME, not about
+   * any one trip. NULL means not recorded, which covers both "nobody
+   * said" and a freelance-fleet tail that belongs to no client at all.
+   * Composite FK to pilot.clients (account_id, id); see the migration's
+   * header for why ON DELETE RESTRICT.
+   */
+  client_id: string | null;
+  /**
    * 20260811040000_currency_snapshots.sql. NULL means NOT RECORDED and
    * must never be read as false — the same three-state rule as `gear`
    * above. The fleet form writes it, and the pilot-history report reports
@@ -102,6 +118,7 @@ export type AircraftFields = Pick<
   | "make_model"
   | "gear"
   | "category_class"
+  | "client_id"
   | "is_turbine"
   | "is_retractable"
   | "notes"

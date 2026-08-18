@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { LButton, LCard, LPill, LTable, LTd, LTh } from "@/components/ledger";
 import { formatDate } from "@/lib/format";
-import AircraftForm from "./aircraft-form";
+import AircraftForm, { type AircraftClientOption } from "./aircraft-form";
 import { createAircraft, updateAircraft, setAircraftArchived } from "./actions";
 import { GEAR_LABEL, type AircraftGear } from "./db";
 
@@ -26,6 +26,7 @@ export type FleetAircraft = {
   make_model: string | null;
   gear: AircraftGear | null;
   category_class: string | null;
+  client_id: string | null;
   notes: string | null;
   archived_at: string | null;
   entryCount: number;
@@ -34,6 +35,11 @@ export type FleetAircraft = {
   simulatorTime: number;
   lastFlownOn: string | null;
 };
+
+/** A client this fleet may name — the FULL roster (archived included), so
+ *  an airframe flown for a client who has since been archived still shows
+ *  a real name instead of "Unknown client". The page fetches it once. */
+export type FleetClient = { id: string; name: string; archived_at: string | null };
 
 export type Suggestion = {
   tailKey: string;
@@ -53,6 +59,8 @@ export default function FleetPanel({
   suggestions,
   moreSuggestions = false,
   hoursUnavailable = false,
+  clients = [],
+  clientFilterLabel = null,
 }: {
   aircraft: FleetAircraft[];
   suggestions: Suggestion[];
@@ -60,12 +68,31 @@ export default function FleetPanel({
   moreSuggestions?: boolean;
   /** The hours query failed. Columns read blank, never zero. */
   hoursUnavailable?: boolean;
+  /** The full roster, for resolving `client_id` to a name in the table. */
+  clients?: FleetClient[];
+  /**
+   * Set only when the page's ?client= filter narrowed `aircraft` before it
+   * got here. Changes the empty-state copy so "no aircraft on file for
+   * this client" cannot be misread as "add your first aircraft" — the
+   * same "empty because of what you asked for" distinction
+   * app/(app)/logbook/page.tsx already draws for its own filtered view.
+   */
+  clientFilterLabel?: string | null;
 }) {
   // `null` = closed, "new" = the blank add form, otherwise an aircraft id.
   const [open, setOpen] = useState<string | null>(null);
   // A suggestion clicked into the add form: prefills what the logbook
   // already knows so the pilot confirms rather than retypes.
   const [prefill, setPrefill] = useState<Suggestion | null>(null);
+
+  const clientNames = new Map(clients.map((c) => [c.id, c.name]));
+  // The form's own picker: active clients only, mirroring trip-form.tsx —
+  // an aircraft can keep flying for a client who has since been archived
+  // (clientNames above still resolves that name), it just cannot be newly
+  // assigned to one.
+  const activeClients: AircraftClientOption[] = clients
+    .filter((c) => !c.archived_at)
+    .map((c) => ({ id: c.id, name: c.name }));
 
   const active = aircraft.filter((a) => a.archived_at === null);
   const archived = aircraft.filter((a) => a.archived_at !== null);
@@ -130,6 +157,7 @@ export default function FleetPanel({
               key={prefill?.tailKey ?? "blank"}
               action={createAircraft}
               submitLabel="Add to my fleet"
+              clients={activeClients}
               values={
                 prefill
                   ? {
@@ -165,11 +193,19 @@ export default function FleetPanel({
       <LCard>
         {active.length === 0 && archived.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-3 text-center">
-            <p className="text-body-s font-medium text-ink">No aircraft yet.</p>
+            <p className="text-body-s font-medium text-ink">
+              {clientFilterLabel ? `No aircraft on file for ${clientFilterLabel}.` : "No aircraft yet."}
+            </p>
             <p className="text-body-s text-ink-2">
-              Add the airframes you fly and your logbook starts answering &ldquo;how much
-              time do you have in type?&rdquo; That&rsquo;s the question every insurance
-              pilot-history form and every chief pilot asks.
+              {clientFilterLabel ? (
+                "Nothing is wrong with your fleet. This view is narrowed to one client. Clear the filter to see the rest of it."
+              ) : (
+                <>
+                  Add the airframes you fly and your logbook starts answering &ldquo;how much
+                  time do you have in type?&rdquo; That&rsquo;s the question every insurance
+                  pilot-history form and every chief pilot asks.
+                </>
+              )}
             </p>
           </div>
         ) : (
@@ -181,6 +217,7 @@ export default function FleetPanel({
               <tr>
                 <LTh>Registration</LTh>
                 <LTh>Type</LTh>
+                <LTh>Flown for</LTh>
                 <LTh numeric>Hours</LTh>
                 <LTh numeric>PIC</LTh>
                 <LTh>Last flown</LTh>
@@ -209,6 +246,11 @@ export default function FleetPanel({
                         <span className="text-caption text-ink-3">{item.make_model}</span>
                       ) : null}
                     </div>
+                  </LTd>
+                  <LTd>
+                    <span className="text-ink-2">
+                      {item.client_id ? clientNames.get(item.client_id) ?? "Unknown client" : "—"}
+                    </span>
                   </LTd>
                   <LTd numeric>
                     <div className="flex flex-col items-end">
@@ -284,6 +326,7 @@ export default function FleetPanel({
                     action={updateAircraft}
                     submitLabel="Save"
                     values={editing}
+                    clients={activeClients}
                     onDone={() => setOpen(null)}
                   />
                   <p className="text-caption text-ink-3">

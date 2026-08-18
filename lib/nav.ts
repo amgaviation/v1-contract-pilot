@@ -84,6 +84,9 @@ export const NAV_SECTIONS: readonly NavItem[] = [
   { href: "/clients", label: "Clients", group: "BUSINESS" },
   { href: "/accounting", label: "Accounting", group: "BUSINESS" },
   { href: "/documents", label: "Documents", group: "RECORDS" },
+  { href: "/receipts", label: "Receipts", group: "RECORDS" },
+  { href: "/aircraft", label: "Aircraft", group: "RECORDS" },
+  { href: "/crew", label: "Crew", group: "RECORDS" },
   { href: "/reports", label: "Reports", group: "RECORDS" },
   { href: CURRENCY_PATH, label: "Currency", group: "RECORDS" },
 ] as const;
@@ -146,6 +149,7 @@ export const NAV_COMMANDS: readonly NavCommand[] = [
   { href: "/expenses/new", label: "New expense", group: "Create", keywords: ["add", "create", "receipt"] },
   { href: "/clients/new", label: "New client", group: "Create", keywords: ["add", "create", "operator", "customer"] },
   { href: "/documents/new", label: "New document", group: "Create", keywords: ["add", "create", "upload", "w-9", "insurance", "medical"] },
+  { href: "/crew/new", label: "New crew member", group: "Create", keywords: ["add", "create", "pilot", "sic", "copilot"] },
   { href: "/logbook/new", label: "New logbook entry", group: "Create", keywords: ["add", "create", "flight", "hours"] },
   { href: "/expenses/import", label: "Import expenses", group: "Create", keywords: ["bank", "csv", "statement", "transactions"] },
   { href: "/expenses/mileage", label: "Log mileage", group: "Create", keywords: ["drive", "miles", "deduction", "car"] },
@@ -159,7 +163,10 @@ export const NAV_COMMANDS: readonly NavCommand[] = [
   { href: "/reports/trip-pl", label: "Trip profit & loss", group: "Go to", keywords: ["report", "pnl"] },
   { href: "/reports/flight-time", label: "Flight time", group: "Go to", keywords: ["report", "hours"] },
   { href: "/reports/pilot-history", label: "Pilot history", group: "Go to", keywords: ["report", "resume", "experience"] },
-  { href: "/logbook/aircraft", label: "Aircraft", group: "Go to", keywords: ["tail", "registration", "type"] },
+  // Aircraft used to be a "Go to" sub-page command (/logbook/aircraft).
+  // Promoted to its own NAV_SECTIONS entry above — a top-level section
+  // needs no Go-to command, and keeping one here would collide with the
+  // section's own label (tests/nav-commands.test.mjs forbids that).
   { href: "/logbook/drafts", label: "Logbook drafts", group: "Go to", keywords: ["pending", "confirm"] },
   { href: "/expenses/transactions", label: "Bank transactions", group: "Go to", keywords: ["import", "reconcile"] },
   { href: "/settings/billing", label: "Billing & plan", group: "Go to", keywords: ["subscription", "upgrade", "stripe", "payment"] },

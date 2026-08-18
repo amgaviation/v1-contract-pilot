@@ -113,6 +113,12 @@ begin
   delete from pilot.mileage_entries where account_id = target_account;
   delete from pilot.expenses        where account_id = target_account;
 
+  -- Crew (20260818210000): the business's people records — who the pilot
+  -- flew with, who a business account employs. Third-party contact data
+  -- with no airman-record standing (nothing kept computes off it), so it
+  -- goes the way clients do, and for the same privacy reason.
+  delete from pilot.crew_members where account_id = target_account;
+
   delete from pilot.guarantee_periods where account_id = target_account;
   delete from pilot.trip_legs         where account_id = target_account;
   delete from pilot.trip_days         where account_id = target_account;

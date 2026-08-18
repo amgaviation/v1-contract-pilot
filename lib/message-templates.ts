@@ -90,6 +90,62 @@ export function messageTemplateProblem(
   return null;
 }
 
+/* ===========================================================================
+ * INSERT-TOKEN — the one string operation the settings panel's chip row
+ * performs on a template box.
+ * ===========================================================================
+ *
+ * Lives here, in a plain module, rather than in
+ * app/(app)/settings/template-editor.tsx where it is actually called from.
+ * That is a deliberate exception to "put it where it's used", forced by
+ * this repo's test runner: tests/*.test.mjs run under Node's
+ * `--experimental-strip-types` (package.json's test:unit), which erases
+ * TypeScript's type syntax but has no JSX transform at all — confirmed
+ * directly against this runner, not assumed, a `.tsx` file fails with
+ * `ERR_UNKNOWN_FILE_EXTENSION` before a single line of it is parsed, chip
+ * component or not. A pure function that happened to live in a "use
+ * client" component file would therefore be untestable from tests/. So it
+ * is defined here, in a `.ts` module already on the test runner's import
+ * path (see tests/invoice-message.test.mjs), and template-editor.tsx
+ * imports it rather than redefining it — the same split this file already
+ * keeps from lib/email/invoice-message.ts: validation/string logic in a
+ * plain module, JSX in the component that renders around it.
+ */
+
+/**
+ * Insert `token` at the caret, or over the current selection when one is
+ * active. `start`/`end` are the box's own `selectionStart`/`selectionEnd`,
+ * so a chip click REPLACES a selection rather than appending after it —
+ * matching what typing a character over a selected range does natively. A
+ * pilot who re-selects a stray hand-typed name and clicks "Client name"
+ * expects the chip to replace it, not to land after it.
+ *
+ * CLAMPED, not trusted. `start`/`end` are read from the DOM by the caller
+ * one event earlier than this runs. Nothing at the type level stops them
+ * from outliving a shorter `text` (a caret can be read, then the box
+ * cleared by something else, then a stale index arrives here); an
+ * out-of-range index must not silently wrap through `.slice`'s
+ * negative-index behaviour and splice the token into the wrong place.
+ *
+ * PURE — takes the box's current text, returns the next one plus where the
+ * caret belongs, and never touches a DOM node. That is what lets
+ * tests/template-editor.test.mjs exercise every case with no textarea in
+ * sight, and it is what leaves the component itself as the only thing that
+ * has to talk to the DOM at all (see its own header for why that talking
+ * needs `flushSync`).
+ */
+export function insertToken(
+  text: string,
+  start: number,
+  end: number,
+  token: string
+): { text: string; caret: number } {
+  const len = text.length;
+  const from = Math.max(0, Math.min(start, len));
+  const to = Math.max(from, Math.min(end, len));
+  return { text: text.slice(0, from) + token + text.slice(to), caret: from + token.length };
+}
+
 /** Untrusted jsonb → known-good templates. Total; never throws. */
 export function normalizeMessageTemplates(raw: unknown): MessageTemplates {
   const source =

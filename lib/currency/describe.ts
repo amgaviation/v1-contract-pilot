@@ -68,7 +68,7 @@ const MISSING_INPUT_COPY: Record<MissingInput, { label: string; href: string }> 
   },
   intended_aircraft_absent: {
     label: "Choose the aircraft you intend to fly.",
-    href: "/logbook/aircraft",
+    href: "/aircraft",
   },
   aircraft_unregistered: {
     // Q5: the old wording said "with takeoffs or landings" unconditionally
@@ -76,11 +76,11 @@ const MISSING_INPUT_COPY: Record<MissingInput, { label: string; href: string }> 
     // this gate on approaches, holds, or a course intercept, never a
     // takeoff or landing. Worded to be true on every card it can render on.
     label: "Register the aircraft flown on the entries this card's notes name. It isn't in your registry yet.",
-    href: "/logbook/aircraft",
+    href: "/aircraft",
   },
   aircraft_gear_unrecorded: {
     label: "Record whether the intended aircraft is tailwheel, and the gear on any aircraft flown in this window. It changes which takeoffs and landings count.",
-    href: "/logbook/aircraft",
+    href: "/aircraft",
   },
   aircraft_category_class_unrecorded: {
     // Two distinct causes share this code: the INTENDED aircraft's own
@@ -90,7 +90,7 @@ const MISSING_INPUT_COPY: Record<MissingInput, { label: string; href: string }> 
     // to be true in EITHER case — never claiming a note exists when it
     // does not (P4).
     label: "Record the intended aircraft's category and class; or, if those are already recorded, check this card's notes for an entry whose category could not be matched against it.",
-    href: "/logbook/aircraft",
+    href: "/aircraft",
   },
   aircraft_type_unrecorded: {
     // Same two-cause shape as aircraft_category_class_unrecorded above:
@@ -101,7 +101,7 @@ const MISSING_INPUT_COPY: Record<MissingInput, { label: string; href: string }> 
     // intended aircraft's type" when it is already recorded and a
     // different entry is the actual reason.
     label: "Record the intended aircraft's type rating or type designator; or, if those are already recorded, check this card's notes for an entry whose type could not be matched against it.",
-    href: "/logbook/aircraft",
+    href: "/aircraft",
   },
   night_window_unasserted: {
     label: "Confirm which night takeoffs/landings fell inside the 1-hour-after-sunset to 1-hour-before-sunrise period.",

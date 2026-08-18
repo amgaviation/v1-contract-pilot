@@ -272,7 +272,7 @@ export const HELP_SECTIONS: readonly HelpSection[] = [
         id: "aircraft",
         title: "Aircraft and types",
         summary: "Tail numbers you have flown, grouped so time in type adds up.",
-        href: "/logbook/aircraft",
+        href: "/aircraft",
         body: [
           "Adding an aircraft groups every entry you already logged in it, however you spelled the registration at the time, under one tail number.",
           "Hours by type is the shape an insurance pilot-history form asks for. Simulator time is kept in its own column because it is not aircraft time.",

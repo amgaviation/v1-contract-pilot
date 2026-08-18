@@ -222,7 +222,7 @@ export default async function PilotHistoryReportPage() {
               <p className="text-body-s text-ink-2">
                 Two lines rated separately on most history forms. Both come
                 from what you recorded about each airframe in{" "}
-                <NextLink href="/logbook/aircraft" className="text-accent hover:underline">
+                <NextLink href="/aircraft" className="text-accent hover:underline">
                   your aircraft
                 </NextLink>
                 , so an aeroplane you have not annotated yet is counted as
