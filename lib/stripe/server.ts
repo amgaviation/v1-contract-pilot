@@ -38,7 +38,7 @@ export function getStripe(): Stripe {
     // Shows up in Stripe's dashboard/logs as the integration's identity.
     // Composed from lib/brand.ts rather than spelled out — no literal
     // brand string may live outside that file.
-    appInfo: { name: `${BRAND.name} ${BRAND.descriptor}` },
+    appInfo: { name: BRAND.name },
   });
   return cached;
 }

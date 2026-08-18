@@ -583,11 +583,10 @@ export default function ClientForm({
               their client without them, so it names the client, says nothing
               is on by default, and says where to stop it. */}
           <p className="text-body-s text-ink-2">
-            Reminders go out on their own, in your name, to the contact above.
-            They&rsquo;re the same follow-up you could send by hand from an
-            invoice, with the invoice attached. Nothing is on until you tick
-            it, and you can switch reminders off for any single invoice from
-            that invoice&rsquo;s page.
+            Reminders email the contact above in your name, invoice
+            attached: the same follow-up you could send by hand. Nothing is
+            on until you tick it, and any single invoice can opt out from
+            its own page.
           </p>
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -642,12 +641,11 @@ export default function ClientForm({
                 any chase (yours included), and a pause when the client has
                 just opened the link. */}
             <p className="text-caption text-ink-3">
-              Only one reminder ever goes out per invoice per day. If you tick
-              several and an invoice is already well past due, the most recent
-              one is sent and the earlier ones are skipped, not queued up.
-              Nothing goes out within five days of any reminder, including one
-              you sent by hand, or while the client has just opened the invoice
-              link. Paid and voided invoices are never chased.
+              One reminder per invoice per day: when several are due, the
+              most recent is sent and the rest are skipped, not queued.
+              Nothing goes out within five days of any chase, yours included,
+              or just after the client has opened the invoice. Paid and
+              voided invoices are never chased.
             </p>
           </div>
         </div>

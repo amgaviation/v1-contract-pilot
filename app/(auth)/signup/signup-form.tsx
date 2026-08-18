@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import NextLink from "next/link";
 import { LCard } from "@/components/ledger";
+import { BRAND } from "@/lib/brand";
 import { LSegmented } from "@/components/ledger/segmented";
 import { LInput } from "@/components/ledger/forms";
 import { AuthFooter, AuthHeading, Field, FormError, SubmitButton } from "../auth-parts";
@@ -43,7 +44,64 @@ export default function SignUpForm({ introLabel }: { introLabel: string }) {
   // reload, which an action state does not. signUp redirects there.
 
   return (
-    <LCard className="flex flex-col gap-6 p-6 sm:p-8">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[10fr_11fr] lg:items-start lg:gap-8">
+      {/*
+        THE BRAND PANEL — the signup screen's half of the landing page's
+        argument, restated where the decision actually happens. Everything
+        on it is bound by docs/MARKETING.md §5 exactly as hard as the
+        landing page (the §intro warning exists because THIS screen has
+        overclaimed twice): the three lines below are the pilot's own verbs
+        — review, send, scan, file — and the mechanics are the shipped
+        ones. The trust line is claim rule 6 plus the downgrade promise,
+        stated where a sceptic is deciding whether to hand over a card.
+
+        order-last / lg:order-first: DOM order keeps the FORM first on a
+        phone — a visitor who tapped "Get started" gets the fields, not a
+        billboard — while desktop reads brand left, form right.
+
+        A <section>, deliberately NOT an <aside>: scripts/layout-verify.mjs
+        detects the app shell by the presence of an <aside> and then holds
+        the page to the shell's invariants (a section nav, a visible Sign
+        out) — an <aside> here fails 32 viewport checks for chrome this
+        page correctly does not have.
+      */}
+      <section
+        aria-labelledby="signup-brand-heading"
+        className="order-last flex flex-col gap-5 rounded-card bg-brand p-6 text-brand-ink shadow-card sm:p-8 lg:order-first lg:sticky lg:top-8"
+      >
+        <img src="/brand/white.svg" alt="" height={20} width={35} className="self-start" />
+        <h2
+          id="signup-brand-heading"
+          className="font-display text-display-s font-bold text-brand-ink"
+        >
+          Flying is the job. This is the business.
+        </h2>
+        <p className="text-body text-brand-ink-2">
+          {BRAND.name} keeps the books for your flying business. Set up
+          takes about two minutes, and the books start with the first trip
+          you log.
+        </p>
+        <ul className="flex flex-col divide-y divide-brand-hair border-t border-brand-hair">
+          {[
+            "Log a trip, review its invoice lines, and send a numbered PDF invoice with a payment link.",
+            "Every leg becomes a logbook draft, PIC and SIC kept separate, for you to review.",
+            "Scan receipts at the FBO and file them against the trip: client reimbursement or your own expense records.",
+          ].map((line, i) => (
+            <li key={line} className="flex items-baseline gap-3 py-3">
+              <span className="font-mono tnum-l text-body-s font-semibold text-brand-accent">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <span className="text-body-s text-brand-ink-2">{line}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="text-caption text-brand-ink-2">
+          Account-wide export on every plan. Cancelling puts the account in
+          read-only; nothing is deleted.
+        </p>
+      </section>
+
+      <LCard className="flex flex-col gap-6 p-6 sm:p-8">
       {/*
         NOT "your next trip bills itself". Nothing bills itself: an invoice
         exists only when the pilot invokes createInvoiceDraft from
@@ -65,9 +123,9 @@ export default function SignUpForm({ introLabel }: { introLabel: string }) {
         code produces and who acts on it, matching the landing page's own
         row copy. Nothing here may give the trip a verb it does not have.
       */}
-      <AuthHeading title="Start your trial">
-        Two minutes now, and your next trip&rsquo;s invoice lines and logbook
-        drafts are ready for you to review.
+      <AuthHeading title="Start your books">
+        Two minutes, and your next trip&rsquo;s invoice lines and logbook
+        drafts are ready to review.
       </AuthHeading>
 
       <form action={formAction} className="flex flex-col gap-4">
@@ -199,6 +257,7 @@ export default function SignUpForm({ introLabel }: { introLabel: string }) {
           </NextLink>
         </p>
       </AuthFooter>
-    </LCard>
+      </LCard>
+    </div>
   );
 }

@@ -66,12 +66,12 @@ export default function RemindersPanel({
             <p className={cn("text-body-s", schedulerConfigured ? "text-ink-2" : "text-warn")}>
               {schedulerConfigured
                 ? "The daily run is switched on."
-                : "The daily run is switched off. Nothing goes out on its own until CRON_SECRET is set on the deployment. You can still run it by hand below."}
+                : "The daily run is off for this deployment. Nothing sends on its own, but you can run it by hand below."}
             </p>
             <p className={cn("text-body-s", mailConfigured ? "text-ink-2" : "text-warn")}>
               {mailConfigured
                 ? "Emailing is set up."
-                : "Emailing isn't set up, so nothing can be sent. A run will still tell you exactly what was due, and nothing gets marked as sent."}
+                : "Emailing isn't set up, so nothing sends. A run still shows what was due, and marks nothing as sent."}
             </p>
             <p className="text-body-s text-ink-2">
               {lastRunAt ? `Last run ${lastRunAt}.` : "It has never run for this account."}
@@ -135,11 +135,10 @@ export default function RemindersPanel({
                 in somebody's client's inbox, so it must not read like a
                 refresh. */}
             <p className="text-caption text-ink-3">
-              Sends anything that is due right now, exactly as the daily run
-              would. Safe to press twice: a reminder that has already gone out
-              is never sent again. One that definitely didn&rsquo;t send is
-              tried again on the next few runs; one the mail service left
-              unconfirmed is never retried, so you decide that one yourself.
+              Sends whatever is due now, exactly as the daily run would.
+              Pressing twice is safe: a sent reminder is never re-sent. A
+              confirmed failure retries on later runs; an unconfirmed send
+              never does, so that one stays your call.
             </p>
             {lines ? (
               <div role="status">

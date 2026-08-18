@@ -84,11 +84,10 @@ export default async function YearEndReportPage({
             and it is not a tax return.
           </div>
           <div className="mt-1">
-            Every figure below comes directly from the trips, expenses, and
-            payments you entered in this product. It doesn&rsquo;t know your
-            deductions, your entity structure, or what the IRS will
-            ultimately accept. Your CPA or tax preparer is the authority on
-            what to file — use this to hand them clean numbers, not to
+            Every figure comes from the trips, expenses, and payments you
+            entered. It doesn&rsquo;t know your deductions, your entity
+            structure, or what the IRS will accept. Your CPA or tax preparer
+            is the authority on what to file — use this to hand them clean numbers, not to
             decide what you owe.
           </div>
         </div>
@@ -332,8 +331,7 @@ export default async function YearEndReportPage({
                 <h2 className="text-h3 font-semibold">Unassigned receipts</h2>
                 <p className="text-body-s text-ink-2">
                   Dated in {year}, neither billed to a client nor claimed as
-                  a deduction. This is money you&rsquo;re currently losing
-                  in both directions. Resolve them on{" "}
+                  a deduction. Resolve them on{" "}
                   <NextLink href="/expenses" className="text-accent hover:underline">
                     Expenses
                   </NextLink>
@@ -416,14 +414,11 @@ export default async function YearEndReportPage({
               <div>
                 <h2 className="text-h3 font-semibold">Mileage, standard rate</h2>
                 <p className="text-body-s text-ink-2">
-                  Standard-mileage-rate drives logged in {year}. These are
-                  excluded from Deductible expenses above. The standard
-                  mileage rate and actual vehicle expenses (fuel, rental
-                  car) are alternative deduction methods for the same
-                  vehicle, never additive. This report can&rsquo;t tell
-                  which one applies to a given vehicle and year, so folding
-                  this in automatically risks a double-claimed deduction.
-                  Review it in{" "}
+                  Standard-mileage-rate drives logged in {year}. These are excluded from Deductible expenses above. The standard rate and
+                  actual vehicle expenses (fuel, rental car) are alternative
+                  methods for the same vehicle, never additive, and this
+                  report can&rsquo;t tell which you elected, so folding this
+                  in would risk a double-claimed deduction. Review it in{" "}
                   <NextLink href="/expenses/mileage" className="text-accent hover:underline">
                     Mileage
                   </NextLink>{" "}
@@ -623,16 +618,11 @@ export default async function YearEndReportPage({
               <div>
                 <h2 className="text-h3 font-semibold">1099 reconciliation</h2>
                 <p className="text-body-s text-ink-2">
-                  Your cash-basis ledger for {year}, compared against what
-                  each client told the IRS they paid you. A difference here
-                  usually means a payment crossed the Dec/Jan boundary. For
-                  example, a client who mailed a cheque on Dec 28 that you
-                  deposited on Jan 4 reports it in one tax year, while your
-                  own ledger, dated by when you actually received it, lands
-                  it in the other. That is not an error to fix in your
-                  books. It&rsquo;s a reason the two numbers won&rsquo;t
-                  match, and it&rsquo;s worth having ready when your CPA
-                  asks about it.
+                  Your cash-basis ledger for {year} beside what each client
+                  reported to the IRS. A gap usually means a payment crossed
+                  the Dec/Jan boundary: the client reports the year they
+                  paid, your ledger the year you received it. Not an error
+                  to fix, just a note for your CPA.
                 </p>
               </div>
               <a

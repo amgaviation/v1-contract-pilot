@@ -25,9 +25,9 @@ export default function DayTypesPanel({
         {dayTypes.length === 0 ? (
           <LCard>
             <LEmpty title="No day types yet">
-              A day type is what one day of work is called on a trip (flight day,
-              travel day, standby) and how it bills. Add the ones you use below and
-              they become the picker on every trip&rsquo;s day grid.
+              A day type names one day of work on a trip (flight, travel,
+              standby) and sets how it bills. Add yours below and they become
+              the day grid&rsquo;s picker.
             </LEmpty>
           </LCard>
         ) : (

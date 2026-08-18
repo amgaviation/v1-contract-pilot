@@ -12,7 +12,6 @@
 export const BRAND = {
   name: "V1",
   wordmark: "V1",
-  descriptor: "Contract Pilot",
   lockup: "V1: powered by AMG Aviation",
   attribution: "powered by AMG Aviation",
   tagline: "The books for your flying business.",

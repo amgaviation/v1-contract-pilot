@@ -398,11 +398,10 @@ export default function ScheduleManager({
       <LAlert tone="accent" className="flex items-start gap-2">
         <InfoIcon className="mt-0.5 shrink-0 text-accent" />
         <span>
-          A schedule never sends anything by itself. It only records a cadence. The app tells
-          you when a period is due, and every invoice it creates is a draft you review before
-          sending, the same as any other invoice — unless you switch autopay on for a
-          schedule whose client has saved a card, in which case creating the due invoice
-          also issues it and charges that card.
+          A schedule records a cadence and never sends anything itself: each
+          due invoice is created as a draft you review before sending. The one
+          exception is autopay: if the client has saved a card, creating the
+          due invoice also issues and charges it.
         </span>
       </LAlert>
 
@@ -421,10 +420,8 @@ export default function ScheduleManager({
               </NextLink>
             }
           >
-            A recurring schedule bills exactly one client: the owner, operator, or
-            management company on a retainer or a committed-rate contract. The
-            arrangement repeats, so the payer is worth a record. A one-off invoice
-            needs no client at all.
+            A schedule bills one client: an owner or operator on a retainer or
+            committed-rate contract. A one-off invoice needs no client at all.
           </LEmpty>
         </LCard>
       ) : (
@@ -447,7 +444,9 @@ export default function ScheduleManager({
               )
             }
           >
-            {`A schedule is for the billing that repeats on a cadence: a monthly retainer or a committed-rate contract you re-bill by hand today. It records the cadence only: every invoice it creates is a draft you review before sending.${
+            {`A schedule is for billing that repeats: a monthly retainer or a
+            committed-rate contract. Every invoice it creates is a draft you
+            review before sending.${
               clients.length === 0
                 ? " Add a client above and this list fills in from there."
                 : " Add one above and the periods it owes you show up in the queue at the top of this screen."

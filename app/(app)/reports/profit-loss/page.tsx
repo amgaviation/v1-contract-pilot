@@ -425,11 +425,10 @@ export default async function ProfitLossReportPage({
                   {report.rebilledCount} rebilled receipt
                   {report.rebilledCount === 1 ? "" : "s"} totaling{" "}
                   <span className="tnum-l">{formatCents(report.rebilledCostCents)}</span>{" "}
-                  this period ARE counted above, as their own line inside
-                  Expenses. This is money you actually paid out of pocket,
-                  so it is not excluded. The matching reimbursement is a
-                  client payment already counted in Income above.
-                  Subtracting the outflow here is what lets the two sides
+                  this period are counted above, as their own
+                  line inside Expenses: money you actually paid out of pocket.
+                  The matching reimbursement is already in Income, and
+                  subtracting the outflow here is what lets the two sides
                   of that pass-through net out to the true economic
                   result. See the{" "}
                   <NextLink href="/reports/year-end" className="text-accent hover:underline">
@@ -450,14 +449,11 @@ export default async function ProfitLossReportPage({
               <div>
                 <h2 className="text-h3 font-semibold">Mileage</h2>
                 <p className="text-body-s text-ink-2">
-                  Standard-mileage-rate drives logged {period.start} through{" "}
-                  {period.end}. These are excluded from Expenses above. The
-                  standard mileage rate and actual vehicle expenses (fuel,
-                  rental car) are alternative deduction methods for the
-                  same vehicle, never additive. This report can&rsquo;t
-                  tell which one applies to a given vehicle and year, so
-                  folding this in automatically risks a double-claimed
-                  deduction. Review it in{" "}
+                  Standard-mileage-rate drives logged {period.start} through{" "} {period.end}. These are excluded from Expenses above. The standard rate and
+                  actual vehicle expenses (fuel, rental car) are alternative
+                  methods for the same vehicle, never additive, and this
+                  report can&rsquo;t tell which you elected, so folding this
+                  in would risk a double-claimed deduction. Review it in{" "}
                   <NextLink href="/expenses/mileage" className="text-accent hover:underline">
                     Mileage
                   </NextLink>{" "}

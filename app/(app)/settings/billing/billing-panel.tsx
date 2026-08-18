@@ -689,8 +689,8 @@ export default async function BillingPanel({ changed, state }: BillingPanelProps
                 </p>
                 <p className="text-body-s text-ink-2">
                   {facts?.cancelAtPeriodEnd
-                    ? "Your subscription is set to end at the close of the current period. Resuming withdraws that: no new charge, no gap, and the date above goes back to being a renewal."
-                    : "Cancelling stops the NEXT charge. You keep everything you've paid for until the end of the current period. After that, the account goes read-only: every record stays viewable and exportable, and nothing is deleted."}
+                    ? "Set to end at the close of this period. Resuming withdraws that: no new charge, no gap, and the date above becomes a renewal again."
+                    : "Cancelling stops the next charge; you keep what you've paid for through the period. Then the account goes read-only: everything stays viewable and exportable, and nothing is deleted."}
                 </p>
                 <CancelResumeButton
                   cancelling={facts?.cancelAtPeriodEnd ?? false}

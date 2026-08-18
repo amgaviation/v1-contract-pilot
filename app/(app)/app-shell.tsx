@@ -177,7 +177,7 @@ export function AppShell({
               <div className="flex items-center gap-2">
                 <Link
                   href={DASHBOARD_PATH}
-                  aria-label={`${BRAND.name}: ${BRAND.descriptor}`}
+                  aria-label={BRAND.name}
                 >
                   <AccountLogo logoUrl={logoUrl} />
                 </Link>
@@ -235,7 +235,7 @@ export function AppShell({
           <div className="p-4">
             <Link
               href={DASHBOARD_PATH}
-              aria-label={`${BRAND.name}: ${BRAND.descriptor}`}
+              aria-label={BRAND.name}
             >
               {/* Wordmark auto-inverts to white on a dark ground —
                   app/globals.css's `[data-appearance="dark"]` rule, keyed
@@ -246,9 +246,6 @@ export function AppShell({
                   mark — an uploaded logo renders as-is, see AccountLogo. */}
               <AccountLogo logoUrl={logoUrl} />
             </Link>
-            <div className="mt-1 text-caption text-ink-3">
-              {BRAND.descriptor}
-            </div>
           </div>
           <NavRail accountName={accountName} sections={sections} />
         </aside>
@@ -343,10 +340,9 @@ export function AppShell({
               {readOnly ? (
                 <div className="mb-4">
                   <LAlert tone="warn">
-                    Your subscription has ended, so this account is
-                    read-only. Everything stays viewable and exportable,
-                    and nothing is deleted. Reading and export still work;
-                    resubscribe to make changes again.{" "}
+                    Your subscription has ended, so this account is read-only:
+                    everything stays viewable and exportable, and nothing is
+                    deleted. Resubscribe to make changes again.{" "}
                     <Link
                       href="/settings/billing"
                       className="font-medium text-accent underline underline-offset-2 hover:opacity-80"

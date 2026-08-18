@@ -265,7 +265,7 @@ export default async function NewInvoicePage({
   return (
     <LPageShell
       title="New invoice"
-      subtitle="Bill a client, or type the details in for a one-off. Pick trips you have already flown to turn flight days, travel days and rebilled expenses into lines, or take an empty invoice and write the lines yourself."
+      subtitle="Pick flown trips and their days and rebilled expenses become the lines, or start empty and write them yourself."
     >
       <DraftForm
         action={createInvoiceDraft}

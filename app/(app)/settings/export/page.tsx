@@ -239,12 +239,10 @@ export default async function ExportPage() {
         </LCard>
 
         <p className="text-caption text-ink-3">
-          Not included as files: receipt images and document scans. The
-          expenses and documents CSVs say whether a file is on record; the
-          files themselves stay downloadable one at a time from their own
-          pages. Also not included: internal bookkeeping trails with no
-          data of your own in them, such as bank-import batch/source-file records
-          and payment-reminder send logs.
+          Not included as files: receipt images and document scans (the
+          CSVs record that a file exists; download each from its own page),
+          and internal bookkeeping trails with none of your data in them,
+          like bank-import batches and reminder send logs.
         </p>
       </div>
     </LPageShell>

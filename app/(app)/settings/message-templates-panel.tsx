@@ -134,11 +134,10 @@ export default function MessageTemplatesPanel({
             <LengthNote />
 
             <p className="text-body-s text-ink-3">
-              The amount due, the payment link, any receipts attached, your
-              invoice notes and your business name are added automatically
-              underneath, and can&rsquo;t be edited here: they have to match
-              the invoice. The subject line is set for you too, so your client
-              can find the message by invoice number.
+              The amount due, payment link, attached receipts, invoice notes
+              and your business name are added underneath automatically; they
+              have to match the invoice. The subject line is set too, so the
+              message is findable by invoice number.
             </p>
 
             <div role="alert" aria-live="polite">

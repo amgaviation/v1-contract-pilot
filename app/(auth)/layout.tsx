@@ -1,4 +1,5 @@
 import AuthBrand from "./auth-brand";
+import AuthColumn from "./auth-column";
 import { BRAND } from "@/lib/brand";
 
 /**
@@ -17,8 +18,9 @@ import { BRAND } from "@/lib/brand";
  * pilot who clicks "Sign in" from the marketing site landed on a screen
  * that could have belonged to any product, with no signposted way back to
  * the page they came from; the mark was a link, but nothing said so. The
- * row is now a real lockup (the brand kit's own navy badge beside the
- * descriptor) with an explicit "Back to site" link opposite it, and the
+ * row is now the brand kit's own navy badge (the mark IS the wordmark —
+ * the brand is strictly the name, no descriptor) with an explicit "Back
+ * to site" link opposite it, and the
  * column is top-aligned rather than vertically centered so that row reads
  * as a header instead of floating. See auth-brand.tsx for why the back
  * link is route-aware.
@@ -44,7 +46,9 @@ export default function AuthLayout({
 }) {
   return (
     <div className="v1-nozoom-fields flex min-h-dvh flex-col bg-canvas font-ledger text-body text-ink">
-      <div className="mx-auto flex w-full max-w-md flex-1 flex-col gap-8 px-4 py-8 sm:px-8 sm:py-12">
+      {/* Width lives in AuthColumn: max-w-md for every screen except
+          /signup, which carries the brand panel and gets max-w-5xl. */}
+      <AuthColumn>
         <AuthBrand />
 
         {/* The panel takes the leftover height and centers itself in it, so
@@ -54,7 +58,7 @@ export default function AuthLayout({
         <div className="flex flex-1 flex-col justify-center">{children}</div>
 
         <p className="text-caption text-ink-3">{BRAND.tagline}</p>
-      </div>
+      </AuthColumn>
     </div>
   );
 }

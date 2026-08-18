@@ -32,6 +32,20 @@ against §5 by hand whenever they change, and re-read them whenever the
 landing page's mechanic copy changes, because that is when they fall out of
 step.
 
+**An offer change must sweep the SHELL, not just the page.** The 2026-08-17
+switch to the $5 first month updated the landing CTAs and left "Try V1
+free" in the site header, "Start free trial" in the footer, and "Start your
+trial" on the signup card — three false price claims shipped by omission.
+The shell's own call-to-action copy therefore makes no price claim at all
+("Get started"); the price is stated only where there is room to state it
+from `INTRO_FIRST_MONTH_LABEL`.
+
+**The brand is strictly "V1"** (2026-08-17, owner's direction). The
+"Contract Pilot" descriptor is retired everywhere — tab title, PWA
+manifest, Stripe appInfo, app shell, auth lockup, platform email footer.
+"Contract pilot" survives only as lower-case audience prose ("for
+independent contract pilots"), never as part of the name.
+
 ---
 
 ## 1. The one-liner
@@ -108,9 +122,14 @@ paragraph.
 
 - **Eyebrow** — For independent contract pilots
 - **H1** — Flying is the job. This is the business.
-- **Subhead** — V1 keeps the books for a flying business of one: who owes
+- **Subhead** — V1 keeps the books for your flying business: who owes
   you, what you earned, what you spent, and the year-end packet your CPA
   asks for. All of it comes off the trips you fly.
+
+The subhead's opening phrase is the tagline verbatim — one phrase, spoken
+identically everywhere the brand speaks, which is the whole of how a small
+brand builds a memory structure. Section 3's heading deliberately does NOT
+use it a third time.
 - **Fine line** — Plans start at $29/month. Card required.
 
 `BRAND.tagline` ("The books for your flying business.") stays in the
@@ -238,12 +257,12 @@ tier badges and the interpolated figures be counted as a reader meets them.
 
 | # | Section | Budget | Shipped |
 |---|---|---|---|
-| 1 | Hero, navy — identity H1, money subhead, mock | 70 | 57 |
+| 1 | Hero, navy — identity H1, money subhead, mock | 70 | 55 |
 | 2 | What a trip is worth — three question rows | 110 | 102 |
-| 3 | Everything a flying business keeps — spec block | 100 | 82 |
+| 3 | The rest of the books — spec block | 100 | 82 |
 | 4 | Questions pilots ask us — three FAQ items | 120 | 117 |
 | 5 | Close, navy — plans line and one action | 30 | 28 |
-| | **Total** | **430** | **386** |
+| | **Total** | **430** | **384** |
 
 Re-budgeted at the 2026-08-17 repositioning: these are fresh numbers for
 the money position, not the old wedge's budgets carried over. Section 2's

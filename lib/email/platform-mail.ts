@@ -219,7 +219,7 @@ function card(params: {
           </tr>
           <tr>
             <td style="padding:20px 8px 0 8px; font-family:Arial, Helvetica, sans-serif; font-size:12px; line-height:18px; color:#8b92a3;">
-              V1 &middot; Contract Pilot<br />
+              V1<br />
               ${params.footerReason}
             </td>
           </tr>
