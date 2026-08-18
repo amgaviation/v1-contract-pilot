@@ -11,7 +11,7 @@ import {
   type FeatureId,
   type PlanTier,
 } from "@/lib/entitlements";
-import ProductMock from "./product-mock";
+import ProductShot, { type ShotSlug } from "./product-shot";
 import {
   TIER_DISPLAY,
   TIER_ORDER,
@@ -89,12 +89,17 @@ function Band({
   id?: string;
   /**
    * `narrow` is the FAQ's reading column. `wide` is the hero's, and it is
-   * a measurement rather than a preference: ProductMock is 42rem
-   * (672px) at its floor, so the hero's 7-of-12 track has to clear that or
-   * the mock renders as a screenshot sliced down the middle. At max-w-7xl
-   * the track is 700px from 1280px up, which is why the hero's grid engages
-   * at `xl` and not at `lg` — between 1024 and 1280 the stacked layout
-   * gives the mock the full container and it fits comfortably.
+   * a measurement rather than a preference: the hero carries a 1440px-wide
+   * capture of the Overview screen, and its 7-of-12 track is what decides
+   * how far that gets scaled down. At max-w-7xl the track is ~700px from
+   * 1280px up — a hair under half scale, where the KPI figures are still
+   * legible. That is why the hero's grid engages at `xl` and not at `lg`:
+   * between 1024 and 1280 the stacked layout gives the shot the full
+   * container, which is wider than the 7-of-12 track would be there.
+   *
+   * (The old floor this comment recorded — a 42rem min-width on the
+   * hand-built mock, which would have sliced the panel down the middle
+   * below it — is gone with the mock. An image simply scales.)
    */
   measure?: "default" | "narrow" | "wide";
 }) {
@@ -133,11 +138,23 @@ function Band({
  * needed it; claim rule 7 (workflow only, no competitor named) binds any
  * comparison a future edit reintroduces.
  */
-const RECORDS: { step: string; q: string; body: string }[] = [
+/**
+ * TWO OF THE THREE CARRY A SCREENSHOT, and only where the picture answers
+ * the same question the words do: the invoice screen beside "What am I
+ * owed?", the logbook beside "What did I fly?". Row 03 deliberately has
+ * none — a receipt-scanning screen next to copy about filing receipts adds
+ * nothing the sentence does not already say, and a third figure in one band
+ * would turn a ledger of question-and-answer into a gallery.
+ *
+ * They render inside the answer column, at a constrained measure. These are
+ * supporting figures, not heroes: the hero is the hero.
+ */
+const RECORDS: { step: string; q: string; body: string; shot?: ShotSlug }[] = [
   {
     step: "01",
     q: "What am I owed?",
     body: "Your client’s rate and billable days are already filled in. Review the lines, then send a numbered PDF invoice with a payment link.",
+    shot: "invoice",
   },
   {
     step: "02",
@@ -147,6 +164,7 @@ const RECORDS: { step: string; q: string; body: string }[] = [
     // legs from completed trips", and one entry per flight is the only form
     // 14 CFR 61.51 recognises. "The legs … a draft entry" read as a merge.
     body: "One draft per leg, with PIC and SIC kept separate. You review every draft before anything reaches your logbook.",
+    shot: "logbook",
   },
   {
     step: "03",
@@ -360,15 +378,18 @@ export default async function LandingPage() {
             </p>
           </div>
 
-          {/* THE PRODUCT VISUAL. Built from the product's own components
-              with invented data (see product-mock.tsx), floated on the navy
-              rather than boxed into the text column: shadow-float exists
-              because shadow-card's 4% is invisible against a dark field. */}
-          <div className="flex flex-col gap-2 xl:col-span-7">
-            <div className="overflow-hidden rounded-card shadow-float">
-              <ProductMock />
-            </div>
-            <p className="text-caption text-brand-ink-2">Illustrative data.</p>
+          {/* THE PRODUCT VISUAL — a real capture of the real Overview
+              screen, with invented data (see ./product-shot.tsx, and the
+              harness it names). It replaced a hand-built approximation of
+              the same dashboard: same panels, same figures, but drawn
+              rather than photographed, and therefore free to drift from
+              the product the moment either changed.
+
+              Floated on the navy rather than boxed into the text column:
+              shadow-float exists because shadow-card's 4% is invisible
+              against a dark field. Eager, not lazy — it is the fold. */}
+          <div className="xl:col-span-7">
+            <ProductShot slug="overview" onBrand priority />
           </div>
         </div>
       </Band>
@@ -413,7 +434,15 @@ export default async function LandingPage() {
                     {row.q}
                   </h3>
                 </div>
-                <p className="text-body text-ink md:col-span-8">{row.body}</p>
+                <div className="flex flex-col gap-5 md:col-span-8">
+                  <p className="text-body text-ink">{row.body}</p>
+                  {/* max-w-2xl, not the full 8-of-12 track: the figure is
+                      the answer's evidence, so it sits inside the answer
+                      rather than taking the row. */}
+                  {row.shot ? (
+                    <ProductShot slug={row.shot} className="max-w-2xl" />
+                  ) : null}
+                </div>
               </div>
             ))}
           </div>

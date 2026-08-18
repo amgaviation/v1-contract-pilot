@@ -248,10 +248,10 @@ been over it since the day it was written, so an editor comparing the two
 found them out of step with no way to tell which was authoritative.
 
 **Shipped is now measured, not tallied by hand.** Render the page, open
-every `<details>`, drop the `[data-mock]` subtree (the product mock is
-illustrative data, not copy), then take each `main > section`'s rendered
+every `<details>`, drop the `[data-mock]` subtree (the product screenshots
+and their captions are illustrative data, not copy), then take each `main > section`'s rendered
 text and count whitespace-separated tokens containing a letter or digit.
-The `data-mock` attribute on `product-mock.tsx` exists for this and nothing
+The `data-mock` attribute on `product-shot.tsx` exists for this and nothing
 else. Measuring the DOM rather than the source is what lets the derived
 tier badges and the interpolated figures be counted as a reader meets them.
 
