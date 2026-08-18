@@ -414,8 +414,10 @@ selection and payment (`app/(marketing)/page.tsx`; `app/(marketing)/site-header.
 `app/(auth)/welcome/page.tsx`).
 
 **Current metrics:** none in the repo. The product is pre-launch by its own claim rules
-(`docs/MARKETING.md` claim rule 8), and `README.md` additionally documents one live blocker
-on real signups today — see Discrepancy 3 below.
+(`docs/MARKETING.md` claim rule 8). The signup blocker this section used to name is
+RESOLVED as of 2026-08-18: mail sends from the verified `mail.amgaviationgroup.com`, and a
+real password-recovery email through Supabase Auth's SMTP relay proved the path. See
+Discrepancy 3 below, which is kept as a closed record rather than deleted.
 
 ---
 

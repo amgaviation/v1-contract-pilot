@@ -554,7 +554,7 @@ should quietly resolve in either direction.
 | Locked decision | Reality today |
 |---|---|
 | #12/#13 — logbook import: ForeFlight, LogTen Pro, generic column mapper | **Built, and the public copy may say so.** `/logbook/import` ships all three paths; `app/(app)/logbook/import/actions.ts` writes both `pilot.logbook_import_batches` and `pilot.logbook_source_files`. `npm run logbook:verify` round-trips a fixture of each shape and asserts that a re-imported file is deduped by fingerprint while trip-derived and manual entries bypass fingerprinting entirely. **This row previously read "Not built … no code path writes to them", which was true when the gate was written and false by the time anyone read it** — the risk a stale gate row carries is the opposite of the one it was written for: it makes the owner refuse a claim that is actually honest. |
-| #16 — invoice delivery from the platform | **Built, and the public copy may say so — with one honest qualifier.** `sendInvoice(id, "platform_email")` sends a real email with the PDF attached and the payment link in the body (`lib/email/send.ts`; `sendInvoiceReminder` chases without touching status; replies route to the pilot's own address, never a platform mailbox). The option is hidden in the UI unless `RESEND_API_KEY` and `INVOICE_FROM_EMAIL` are configured AND the client has an address on file — so it cannot silently no-op. **This row previously read "Not built… there is no send path", which was true when written and false by the time anyone read it** — the same stale-in-the-refusing-direction failure the logbook-import row above already documents. The qualifier: no live send has yet been executed, because the sending domain is unverified (G5). The mechanism is built and tested to the boundary; the boundary itself is unexercised until DNS lands. |
+| #16 — invoice delivery from the platform | **Built, and the public copy may say so — with one honest qualifier.** `sendInvoice(id, "platform_email")` sends a real email with the PDF attached and the payment link in the body (`lib/email/send.ts`; `sendInvoiceReminder` chases without touching status; replies route to the pilot's own address, never a platform mailbox). The option is hidden in the UI unless `RESEND_API_KEY` and `INVOICE_FROM_EMAIL` are configured AND the client has an address on file — so it cannot silently no-op. **This row previously read "Not built… there is no send path", which was true when written and false by the time anyone read it** — the same stale-in-the-refusing-direction failure the logbook-import row above already documents. The qualifier, narrowed 2026-08-18: the sending domain IS now verified (`mail.amgaviationgroup.com`, G5), and Supabase Auth mail through the same domain has been received and clicked. What remains unexercised is a live INVOICE send specifically, which runs through `lib/email/send.ts` and `INVOICE_FROM_EMAIL` rather than the auth relay. The mechanism is built and tested to that boundary; send one real invoice and this qualifier goes too. |
 | #10 — business per-seat plan | **Deferred on purpose.** No `STRIPE_PRICE_ID_BUSINESS_SEAT`, no seat-sync job. |
 
 **Who signs.** Product owner.
@@ -603,8 +603,10 @@ preserve. A genuinely comped billable day cannot be recorded without a warning o
 the moment the product proves itself. Config, not code (`docs/BILLING.md`).
 
 **Email confirmation is ON at signup**, so a card-required trial starts with a "check your
-email" wall. A deliberate decision to revisit, not an oversight — and G5's sending-domain
-problem makes it currently fatal rather than merely frictional.
+email" wall. A deliberate decision to revisit, not an oversight. It is no longer FATAL:
+G5's sending-domain problem was resolved 2026-08-18 (`mail.amgaviationgroup.com` verified,
+a real auth email received and clicked), so the wall is frictional again rather than a dead
+end. Whether to keep the wall at all is still the open decision this paragraph records.
 
 **`docs/CURRENCY-SPEC.md` §10's owner questions (O-1 … O-6)** are open product decisions in
 their own right and are listed there rather than repeated here, because the reasoning that makes

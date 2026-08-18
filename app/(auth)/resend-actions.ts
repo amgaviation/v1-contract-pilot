@@ -125,9 +125,23 @@ export async function resendConfirmation(
   // about this address. And the unconditional `sent: true` this branch
   // used to return told a pilot, during a real outage, that "a new link is
   // on its way" every single time they clicked, forever.
+  //
+  // STATUS 0 COUNTS, and missing it was a real hole in the first version of
+  // this branch. The installed @supabase/auth-js throws
+  // AuthRetryableFetchError(message, 0) for anything that is not an HTTP
+  // response at all (src/lib/fetch.ts handleError): DNS failure, connection
+  // refused, TLS error, request abort. Those carry no `code` and a status of
+  // 0, so a `status >= 500` test alone let the most ordinary transient
+  // failure of all fall through to `sent: true`, which is the exact false
+  // success this branch exists to stop. A fetch that never reached Supabase
+  // says even less about the address than a 500 does, so admitting it is
+  // enumeration-safe for the same reason.
   const infraFailure =
     !!error &&
-    (error.code === "unexpected_failure" || (error.status ?? 0) >= 500);
+    (error.name === "AuthRetryableFetchError" ||
+      error.code === "unexpected_failure" ||
+      (error.status ?? 0) >= 500 ||
+      error.status === 0);
 
   if (error) {
     console.error("[auth] confirmation resend failed", error.status ?? "no status", error.message);
