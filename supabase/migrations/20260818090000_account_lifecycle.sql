@@ -165,7 +165,7 @@ create or replace function pilot.assert_account_owner(target_account uuid)
 returns void
 language plpgsql
 security definer
-set search_path = pilot, public
+set search_path = ''
 as $$
 begin
   if auth.uid() is null then
@@ -206,7 +206,7 @@ create or replace function pilot.purge_business_data(target_account uuid)
 returns void
 language plpgsql
 security definer
-set search_path = pilot, public
+set search_path = ''
 as $$
 begin
   perform pilot.assert_account_owner(target_account);
@@ -296,7 +296,7 @@ create or replace function pilot.reset_account_data(target_account uuid)
 returns void
 language plpgsql
 security definer
-set search_path = pilot, public
+set search_path = ''
 as $$
 begin
   -- purge_business_data checks this too; asserting first means an
@@ -354,7 +354,7 @@ create or replace function pilot.deactivate_account(target_account uuid)
 returns void
 language plpgsql
 security definer
-set search_path = pilot, public
+set search_path = ''
 as $$
 begin
   perform pilot.assert_account_owner(target_account);
@@ -399,7 +399,7 @@ create or replace function pilot.delete_account(target_account uuid)
 returns void
 language plpgsql
 security definer
-set search_path = pilot, public
+set search_path = ''
 as $$
 begin
   perform pilot.assert_account_owner(target_account);
