@@ -9,6 +9,24 @@ deduplicated where several reports hit the same defect from different angles.
 
 ---
 
+## Status since the audit (updated 2026-08-18)
+
+The findings below are left as written — this is a dated snapshot, and editing the diagnosis
+after the fact would destroy the record. What has changed since:
+
+- **Finding 1 (the Resend domain) is RESOLVED.** Mail sends from
+  `mail.amgaviationgroup.com`; see `README.md` and G5 in `docs/LAUNCH-GATES.md`.
+- **Finding 2 (signup told the truth about mail failures), finding 6 (the false read-only
+  banner) and finding 10's Help/Overview corrections are SHIPPED.**
+- **Finding 3 (no contact channel) is SHIPPED**: `BRAND.supportEmail` reaches the footer, both
+  FAQs, the auth screens and every in-product dead end.
+- **Finding 8 (orphaned token surfaces) is SHIPPED**: the mark links to `/`.
+- **Still open:** findings 4, 5, 7, 9 — the cancel-flow save path, the hold-expiry warning the
+  pricing page promises, pilot-facing lifecycle email, and analytics. Plus the landing-page
+  rewrite itself (`10-landing-page-copy.md`), which is specced and waiting on implementation.
+
+---
+
 ## 1. The ten highest-impact findings
 
 **1. One unresolved DNS task disables both acquisition and retention.** The Resend

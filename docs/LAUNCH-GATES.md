@@ -383,21 +383,28 @@ has to be registered against the final origin.
 | Shared invoice links | `app/(app)/invoices/[id]/share-panel.tsx` builds them from `window.location.origin` | Links a pilot already sent to *their* client keep pointing at the old host — so the old host must keep resolving, it cannot simply be turned off |
 | Credential packet links | `app/packet/[token]` | Same as above |
 
-**The related blocker, which is not optional and is currently open.** `README.md` records it:
-signup returns `Error sending confirmation email` because Resend rejects the send with
-`550 — the sending domain is not verified`. **The owner decision this gate left open is now
-made: the sending domain is `mail.amgaviationgroup.com`, sending as
-`v1-support@mail.amgaviationgroup.com`** (2026-08-18). Until that subdomain is verified at
-resend.com/domains with DKIM and SPF, **no new pilot can complete signup**. This needs someone
-with DNS access, which is the definition of a human gate.
+**The related blocker: CLOSED, 2026-08-18.** It read, for months: signup returns `Error
+sending confirmation email` because Resend rejects the send with `550 — the sending domain is
+not verified`, so **no new pilot can complete signup**. Both halves are now settled.
 
-Verification alone does not close it. Two systems send mail and only one reads this repo's
-config: product mail uses `INVOICE_FROM_EMAIL`, and the signup confirmation comes from Supabase
-Auth's SMTP relay, set in the Supabase dashboard. Both must name the verified domain.
+- **The owner decision this gate left open** — which domain the product's mail sends from — is
+  made: `mail.amgaviationgroup.com`, sending as `v1-support@mail.amgaviationgroup.com`. A real
+  inbox rather than a no-reply, because an operator's AP desk replying to an invoice is the
+  pilot's own revenue conversation.
+- **The DNS work is done and the relay works.** The subdomain is verified at resend.com/domains
+  with DKIM and SPF, and both senders are pointed at it: `INVOICE_FROM_EMAIL` for product mail,
+  and the Supabase dashboard's Auth → SMTP settings for confirmation and recovery. Confirmed
+  working by the product owner. Corroborating evidence in the database the same day: a recovery
+  email accepted and sent at 16:45 UTC through the same Supabase-to-Resend path whose failure
+  was the blocker.
 
-**Closes when.** The domain is bought and attached, every row of the table above is updated,
-the sending domain is verified and a real confirmation email has been received and clicked, and
-the previous host still resolves for already-issued share links.
+Recorded so a future reader knows what this rests on: the owner's confirmation plus that
+delivered recovery mail. This session could not observe the Resend dashboard or the Supabase
+SMTP field directly, and no fresh signup row was created while it was watching.
+
+**Closes when.** The domain is bought and attached, every row of the table above is updated, and
+the previous host still resolves for already-issued share links. (The sending-domain condition
+is satisfied — see above.)
 
 ---
 
