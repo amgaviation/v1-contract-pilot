@@ -12,7 +12,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { logbookFrom } from "@/app/(app)/logbook/db";
-import { tailKey } from "@/app/(app)/logbook/aircraft/db";
+import { tailKey } from "@/app/(app)/aircraft/db";
 import { CURRENCY_DISCLAIMER } from "@/lib/brand";
 import { assertCurrencyEngineEnabled } from "./gate";
 import { describeResult } from "./describe";
@@ -50,7 +50,7 @@ function pilotFrom(supabase: Awaited<ReturnType<typeof createClient>>, table: st
 
 /**
  * Row shapes this file reads. Hand-authored, matching the house pattern
- * app/(app)/logbook/db.ts and app/(app)/logbook/aircraft/db.ts already
+ * app/(app)/logbook/db.ts and app/(app)/aircraft/db.ts already
  * use for these same tables — lib/supabase/database.types.ts is kept in
  * lockstep with migrations by hand and does not yet carry the columns
  * this phase's migration adds (sole_manipulator, night_window_asserted,

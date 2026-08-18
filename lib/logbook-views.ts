@@ -146,7 +146,7 @@ export const MAX_TYPE_LABEL = 60;
  * `'ß'.toUpperCase()` is "SS", so uppercasing first PROMOTES a
  * character Postgres strips: for the tail number "ßß" the
  * reversed order answers "SSSS" while the database stores an empty key.
- * That defect shipped once already (see app/(app)/logbook/aircraft/db.ts,
+ * That defect shipped once already (see app/(app)/aircraft/db.ts,
  * whose tailKey() now delegates here so there is exactly one
  * implementation of this in TypeScript rather than two that have already
  * disagreed).

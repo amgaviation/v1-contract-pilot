@@ -22,10 +22,15 @@ export type AircraftFormValues = {
   make_model?: string | null;
   gear?: AircraftGear | null;
   category_class?: string | null;
+  client_id?: string | null;
   is_turbine?: boolean | null;
   is_retractable?: boolean | null;
   notes?: string | null;
 };
+
+/** The picker's own options — active clients only. Passed in by the pages,
+ *  which are the only place this can be read server-side. */
+export type AircraftClientOption = { id: string; name: string };
 
 // The sentinel "not recorded" carries from the pre-Ledger Select.Item-era
 // vocabulary — "not recorded" is a real answer here rather than an
@@ -90,11 +95,18 @@ export default function AircraftForm({
   values = {},
   submitLabel,
   onDone,
+  clients = [],
 }: {
   action: (state: AircraftFormState, formData: FormData) => Promise<AircraftFormState>;
   values?: AircraftFormValues;
   submitLabel: string;
   onDone?: () => void;
+  /** Active clients only — the pages filter out archived ones before
+   *  passing this down, the same way trip-form.tsx's own client picker
+   *  does. An aircraft already flown for a client who has since been
+   *  archived keeps showing that client's name (fleet-panel.tsx resolves
+   *  it from the full list); it just cannot be newly assigned to one. */
+  clients?: AircraftClientOption[];
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
   const submitted = state.values;
@@ -212,6 +224,26 @@ export default function AircraftForm({
             </datalist>
           </LField>
         </div>
+
+        <LField
+          label="Flown for"
+          htmlFor="client_id"
+          hint="The client this airframe belongs to or is flown for. Optional."
+        >
+          {/* A plain native select: value "" already means what "Not
+              recorded" needs it to mean (client_id nullable, no CHECK
+              vocabulary to dodge), so unlike `gear` below this posts
+              straight through its own name with no sentinel or hidden
+              input to translate it back. */}
+          <LSelect id="client_id" name="client_id" defaultValue={initial("client_id", values.client_id)}>
+            <option value="">Not recorded</option>
+            {clients.map((client) => (
+              <option key={client.id} value={client.id}>
+                {client.name}
+              </option>
+            ))}
+          </LSelect>
+        </LField>
 
         {/* The two lines an insurance pilot-history form rates separately
             from total time, and the two this product could not answer at
