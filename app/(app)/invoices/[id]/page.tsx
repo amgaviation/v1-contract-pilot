@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { LAlert, LCard, LPill, LSeparator } from "@/components/ledger";
 import { LPageShell } from "@/components/ledger/page-shell";
-import { cn } from "@/lib/ledger/cn";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
@@ -18,6 +17,7 @@ import LinesEditor, { type LineRow, type RebillableExpense } from "./lines-edito
 import PdfDownload from "./pdf-download";
 import StatusActions from "./status-actions";
 import PaymentPanel, { type ConnectNoticeRow, type PaymentRow } from "./payment-panel";
+import { InvoiceTotals } from "./totals";
 import SharePanel, { type ShareRow } from "./share-panel";
 import ReminderPanel, {
   type LateFeeView,
@@ -696,17 +696,7 @@ export default async function InvoicePage({
             {totalsError ? (
               <p className="text-crit">{friendlyDbError(totalsError, "invoice_totals.select")}</p>
             ) : (
-              <div className="flex flex-col items-end gap-1">
-                <TotalsLine label="Subtotal" value={totals?.subtotal_cents ?? 0} />
-                <TotalsLine label="Tax" value={totals?.tax_cents ?? 0} />
-                <TotalsLine label="Total" value={totals?.total_cents ?? 0} emphasize />
-                <TotalsLine label="Paid" value={totals?.amount_paid_cents ?? 0} />
-                <TotalsLine
-                  label="Balance due"
-                  value={totals?.balance_due_cents ?? 0}
-                  emphasize
-                />
-              </div>
+              <InvoiceTotals totals={totals} />
             )}
           </LCard>
         </div>
@@ -801,23 +791,6 @@ export default async function InvoicePage({
         </div>
       </div>
     </LPageShell>
-  );
-}
-
-function TotalsLine({
-  label,
-  value,
-  emphasize = false,
-}: {
-  label: string;
-  value: number;
-  emphasize?: boolean;
-}) {
-  return (
-    <div className="flex min-w-56 justify-between gap-4">
-      <span className={cn("text-ink-3", emphasize && "font-bold text-ink")}>{label}</span>
-      <span className={cn("tnum-l", emphasize && "font-bold")}>{formatCents(value)}</span>
-    </div>
   );
 }
 
