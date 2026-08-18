@@ -392,15 +392,18 @@ export const FEATURES: Record<FeatureId, FeatureDef> = {
     label: "Priority support",
     minTier: "business",
     routePatterns: [],
-    // comingSoon BECAUSE THERE IS NO CHANNEL AT ALL — not "the queue is not
-    // prioritised yet". There is no support address, no contact route and no
-    // help link anywhere in the product or in the marketing footer, so a
-    // Business subscriber has nowhere to send a request, prioritised or
-    // otherwise. Without this flag the pricing matrix rendered a bare ✓ under
-    // Business while that page's own subtitle told the reader everything
-    // unmarked is live today. Clear it when a support channel ships and is
-    // routed, and not before; the Business blurb above loses its "plus
-    // priority support" clause for the same reason.
+    // STILL comingSoon, but the reason has moved. It used to be "there is no
+    // channel at all" — no support address anywhere in the product. There is
+    // one now (BRAND.supportEmail, on the marketing footer, the auth screens
+    // and every in-product error a pilot cannot resolve alone), so that
+    // justification has expired. What has NOT shipped is the word this
+    // feature actually sells: PRIORITY. Every message lands in one inbox, and
+    // nothing anywhere triages a Business subscriber ahead of a Solo one, so
+    // a ✓ here would promise a queue position that does not exist on a page
+    // whose own subtitle tells the reader everything unmarked is live today.
+    // Clear it when Business mail is genuinely handled first, and not before;
+    // the Business blurb above keeps its "plus priority support" clause out
+    // for the same reason. (Owner decision, 2026-08-18.)
     comingSoon: true,
   },
 };

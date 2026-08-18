@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import NextLink from "next/link";
 import { LAlert, LCard } from "@/components/ledger";
+import { BRAND } from "@/lib/brand";
 import { RESEND_SENT_MESSAGE } from "@/lib/auth/confirmation";
 import { AuthFooter, FormError, SubmitButton } from "../auth-parts";
 import { resendConfirmation, type ResendState } from "../resend-actions";
@@ -83,6 +84,19 @@ export default function CheckEmailView({
 
         <SubmitButton pending={pending} idle="Send it again" busy="Sending…" variant="outline" />
       </form>
+
+      {sendFailed ? (
+        <p className="text-body-s text-ink-2">
+          Still nothing after a few tries? Email{" "}
+          <a
+            href={`mailto:${BRAND.supportEmail}`}
+            className="font-medium text-accent hover:underline"
+          >
+            {BRAND.supportEmail}
+          </a>{" "}
+          and a person will get you in.
+        </p>
+      ) : null}
 
       <AuthFooter>
         <p className="text-body-s text-ink-2">

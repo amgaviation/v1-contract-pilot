@@ -10,6 +10,7 @@ import {
   type LedgerBalanceRow,
 } from "../../../accounting/ledger-lib";
 import { isValidIsoDate } from "../../sales-tax/report-lib";
+import { BRAND } from "@/lib/brand";
 
 // Same discipline as reports/profit-loss/export: everything fetched and
 // verified BEFORE the first byte — a failure is a real 500, never a
@@ -90,7 +91,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Opening plus net movement doesn't equal closing. Nothing was exported: this product never ships a statement that doesn't tie. Contact support.",
+          `Opening plus net movement doesn't equal closing. Nothing was exported: this product never ships a statement that doesn't tie. Email ${BRAND.supportEmail}.`,
       },
       { status: 500 }
     );

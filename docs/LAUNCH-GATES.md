@@ -385,10 +385,15 @@ has to be registered against the final origin.
 
 **The related blocker, which is not optional and is currently open.** `README.md` records it:
 signup returns `Error sending confirmation email` because Resend rejects the send with
-`550 — the sending domain is not verified`. Until `amgaviationgroup.com` (or whichever domain
-this product's mail ends up sending from — an owner decision that belongs with the domain
-choice) is verified at resend.com/domains with DKIM and SPF, **no new pilot can complete
-signup**. This needs someone with DNS access, which is the definition of a human gate.
+`550 — the sending domain is not verified`. **The owner decision this gate left open is now
+made: the sending domain is `mail.amgaviationgroup.com`, sending as
+`v1-support@mail.amgaviationgroup.com`** (2026-08-18). Until that subdomain is verified at
+resend.com/domains with DKIM and SPF, **no new pilot can complete signup**. This needs someone
+with DNS access, which is the definition of a human gate.
+
+Verification alone does not close it. Two systems send mail and only one reads this repo's
+config: product mail uses `INVOICE_FROM_EMAIL`, and the signup confirmation comes from Supabase
+Auth's SMTP relay, set in the Supabase dashboard. Both must name the verified domain.
 
 **Closes when.** The domain is bought and attached, every row of the table above is updated,
 the sending domain is verified and a real confirmation email has been received and clicked, and

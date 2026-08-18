@@ -139,7 +139,7 @@ Grounding, row by row: (1) `specGroups()` / `lib/entitlements.ts` derivation; (2
 - **Item 4 (new):** `Where do my records and receipts live?` → `In your account, exportable in full whenever you want. Receipts are read in your browser when you scan them, and bank statements are parsed in your browser before anything is saved.`
   - **[VERIFY: exact data-handling facts against `app/(marketing)/privacy/page.tsx:76-89` and the import/OCR code paths — the browser-side parsing claims are documented there, but this FAQ must not outrun what the privacy page states.]**
   - *Addresses:* 01-cro MEDIUM "FAQ set leaves the data-security objection unanswered" for a product that asks for bank statements and income data.
-- **Contact row (bordered, below the items):** `Something we didn't answer? Email [NEEDS DECISION: support address — no channel exists anywhere in the product today; see 01-cro HIGH / 04-strategy HIGH] and a person will answer.`
+- **Contact row (bordered, below the items):** `Something we didn't answer? Email v1-support@amgaviationgroup.com and a person will answer.`
   - *Addresses:* the no-contact-channel finding at the exact moment a hesitating prospect has an unanswered question. The same address belongs in the site footer (Appendix item 3).
 
 **Word budget:** 145 including the contact row.
@@ -193,7 +193,7 @@ Estimated rendered total: **~575 words across six visual beats** (shipped: 384 a
 
 1. **Precondition:** none of this converts anyone until the Resend sending domain is verified (09 finding 1). Ship order: DNS → signup error-handling honesty (05-signup) → this page.
 2. Hero paint: skip the session round trip for cookie-less visitors (01-cro HIGH) — copy assumes a fast first paint.
-3. Footer: add the support address (same one as §5's contact row) to `site-footer.tsx`; add `/pricing` FAQ items for the anti-persona ("who it's not for") and the $5 refund clause **[NEEDS DECISION: is the $5 refundable on same-month cancel? 01-cro LOW says the current copy leaves it implied]**.
+3. Footer: add the support address (same one as §5's contact row) to `site-footer.tsx`; add a `/pricing` FAQ item for the anti-persona ("who it's not for"). **Both the support address and the refund clause are now decided and shipped** (2026-08-18): the footer, both FAQs, the auth screens and the in-product billing errors name `v1-support@amgaviationgroup.com`, and the first-month answer now ends "the $5 you already paid isn't refunded, and the account stays open until that first month ends" (figure interpolated from `INTRO_FIRST_MONTH_LABEL`).
 4. `/pricing` hero needs one sentence of value proposition/audience of its own (01-cro HIGH — it is an indexed, shareable entry point that currently opens on bare dollar figures) and the same day-rate anchor (01-cro MEDIUM). §3's clients-strip language and §6's anchor sentence are the ready source material. *(Logged per CRO critic required change #6.)*
 5. Pricing cards should carry the chosen tier through signup (`?plan=`) so the pointer's promise ("compare, then start") survives the funnel (05-signup MEDIUM).
 6. Analytics before this page ships, or the rewrite is unmeasurable (04-strategy HIGH; 09 brief).
@@ -201,6 +201,18 @@ Estimated rendered total: **~575 words across six visual beats** (shipped: 384 a
 8. `docs/MARKETING.md` re-signatures this spec requires: the hero fine line (part of §4's "verbatim" block), the hero budget overage (75 vs 70), and the §6 budget table for the new totals. Export-page/pricing-FAQ wording on "every uploaded file" vs. per-record file downloads should also be reconciled (08-churn MEDIUM) so §4 row 3 never drifts into overclaiming.
 9. The code comment at `app/(marketing)/page.tsx` (RECORDS row 02) asserts per-flight entries are "the only form 14 CFR 61.51 recognises" — the flag pass checked 61.51(b) against the current eCFR: it specifies required data per flight or lesson logged without mandating entry granularity. Soften the comment so the per-leg design stands on product behavior and logging convention, not an overstated regulatory reading.
 10. "LogTen Pro" → "LogTen" branding sweep in the app itself: `app/(app)/logbook/import/import-workspace.tsx` (tab label and two body strings) and `app/(app)/logbook/import/page.tsx` subtitle carry the retired vendor name this spec fixes on the landing FAQ. **[VERIFY: current LogTen branding at ship time.]**
+
+## Owner decisions, 2026-08-18
+
+Resolved after the critic passes; the spec above is updated to match.
+
+| Question | Decision |
+|---|---|
+| Support address (published to users) | `v1-support@amgaviationgroup.com` |
+| Sending domain / `INVOICE_FROM_EMAIL` | `mail.amgaviationgroup.com`, sending as `v1-support@mail.amgaviationgroup.com`. A real inbox, not a no-reply: an AP desk replying to an invoice is the pilot's own revenue conversation. |
+| Is the intro month refunded on an early cancel? | No, and the page now says so plainly rather than leaving it implied. The pilot keeps access to the end of the month they paid for, which is what `cancel_at_period_end` actually does. No `stripe.refunds` call exists on any path, so this describes shipped behavior rather than announcing a policy; it also under-promises, so a goodwill refund issued by hand never contradicts the page. Recorded against G3, which classifies refund terms as Terms-of-Service surface the owner accepts. |
+| `priority_support` on the Business tier | Stays `comingSoon`. A shared inbox is a channel, not a prioritised queue; a ✓ would claim a queue position that does not exist. |
+| The currency FAQ's "airworthiness" wording | **Still open.** Genuinely counsel's call (question C-1); the line ships unchanged in the meantime. |
 
 ## Critic resolutions
 

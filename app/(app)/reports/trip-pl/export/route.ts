@@ -10,6 +10,7 @@ import {
   type TripPLPeriod,
   type TripPLPeriodKind,
 } from "../report-lib";
+import { BRAND } from "@/lib/brand";
 
 // Same discipline as the year-end and profit-loss exports: the whole
 // dataset is fetched and any error resolved BEFORE the first byte of the
@@ -94,7 +95,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "These figures don't reconcile, so they can't be exported. A margin is a subtraction, and a partial join makes it too high, not too low. Contact support.",
+          `These figures don't reconcile, so they can't be exported. A margin is a subtraction, and a partial join makes it too high, not too low. Email ${BRAND.supportEmail}.`,
       },
       { status: 500 }
     );
@@ -109,7 +110,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "This period has more rows than the export can safely total in one file. Narrow the date range or contact support. Exporting a silently partial margin would misstate your figures.",
+          `This period has more rows than the export can safely total in one file. Narrow the date range or email ${BRAND.supportEmail}. Exporting a silently partial margin would misstate your figures.`,
       },
       { status: 500 }
     );

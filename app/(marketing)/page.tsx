@@ -327,6 +327,13 @@ const FAQ: { q: string; a: string }[] = [
 ];
 
 /**
+ * The one line on this page that reaches a person. It sits under the FAQ
+ * rather than inside it because it is not a question a pilot asks: it is
+ * what to do when the three above did not cover theirs. Before this
+ * existed the answer was to pay and find out, on a funnel with no trial.
+ */
+
+/**
  * "/" lives here rather than in app/(app) because that route group is
  * wrapped, unconditionally, by requireAccount(). A signed-in visitor is
  * bounced before any marketing copy renders: provisioned account -> the
@@ -559,6 +566,16 @@ export default async function LandingPage() {
               </details>
             ))}
           </div>
+          <p className="text-body-s text-ink-2">
+            Something we didn&apos;t answer?{" "}
+            <a
+              href={`mailto:${BRAND.supportEmail}`}
+              className="font-medium text-accent hover:underline"
+            >
+              Email {BRAND.supportEmail}
+            </a>{" "}
+            and a person will answer.
+          </p>
         </div>
       </Band>
 

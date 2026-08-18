@@ -8,6 +8,7 @@ import {
   type LedgerBalanceRow,
 } from "../../../accounting/ledger-lib";
 import { isValidIsoDate, todayIso } from "../../sales-tax/report-lib";
+import { BRAND } from "@/lib/brand";
 
 // Same discipline as reports/profit-loss/export: the whole dataset is
 // fetched and any error resolved BEFORE the first byte is written, so a
@@ -59,7 +60,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "This balance sheet does not balance, which should be impossible. Nothing was exported: this product never ships figures that don't tie. Contact support.",
+          `This balance sheet does not balance, which should be impossible. Nothing was exported: this product never ships figures that don't tie. Email ${BRAND.supportEmail}.`,
       },
       { status: 500 }
     );

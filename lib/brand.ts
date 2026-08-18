@@ -8,6 +8,21 @@
  * appear in the nav rail, the header, an invoice PDF, or transactional
  * email — the invoice is a document the pilot's own client sees, and it
  * carries no AMG branding.
+ *
+ * `supportEmail` HAS ITS OWN PLACEMENT RULE, for the same reason. It is
+ * ours to publish on surfaces the PILOT reads: the marketing footer and
+ * FAQs, the auth screens, and any in-product error a pilot cannot resolve
+ * alone. It must NEVER render on the four tokenized client-facing pages
+ * (/invoice, /estimate, /packet, /vendor) or their 404s: the reader there
+ * is the pilot's own client, their question is about the pilot's invoice,
+ * and app/invoice/[token]/not-found.tsx already sends them to the pilot
+ * who issued it. Routing an operator's AP desk to us would put this
+ * product between a pilot and the person paying them.
+ *
+ * NOTE it is not the address mail is SENT from. Outbound mail uses
+ * INVOICE_FROM_EMAIL, which must sit on the Resend-verified sending
+ * domain (see .env.example); this is the address a human is invited to
+ * write to. They are configured to reach the same inbox.
  */
 export const BRAND = {
   name: "V1",
@@ -15,6 +30,7 @@ export const BRAND = {
   lockup: "V1: powered by AMG Aviation",
   attribution: "powered by AMG Aviation",
   tagline: "The books for your flying business.",
+  supportEmail: "v1-support@amgaviationgroup.com",
 } as const;
 
 export type Brand = typeof BRAND;

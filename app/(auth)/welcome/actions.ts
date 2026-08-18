@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { getSessionContext } from "@/lib/supabase/account";
+import { BRAND } from "@/lib/brand";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import {
   getStripe,
@@ -186,11 +187,12 @@ export async function startCheckout(
       err instanceof Error ? err.message : String(err)
     );
     return {
-      // No "get in touch" clause: the product has no support address or
-      // contact route anywhere (lib/entitlements.ts's priority_support
-      // comment), so the old copy pointed a visitor at maximum intent
-      // toward a channel that does not exist.
-      error: "Couldn't start checkout. Try again in a moment.",
+      // The "get in touch" clause is back, and now it points somewhere
+      // real: this clause was removed when the product had no support
+      // address at all, which left a visitor at MAXIMUM intent (card out,
+      // checkout refused, our misconfiguration) with no way to tell anyone.
+      // BRAND.supportEmail is that way; the address is never typed here.
+      error: `Couldn't start checkout. Try again in a moment, or email ${BRAND.supportEmail} and we'll sort it out.`,
     };
   }
 

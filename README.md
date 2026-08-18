@@ -73,10 +73,20 @@ skeletons are built on Radix's own `Skeleton` and are `aria-hidden`; the single
 
 **One thing blocks real users:** signup returns `Error sending confirmation
 email`. SMTP is configured against Resend, credentials are accepted, and the
-send is rejected with `550 — the sending domain is not verified`. Until
-`amgaviationgroup.com` is verified at resend.com/domains (DKIM + SPF records),
-or the sender is temporarily pointed at `onboarding@resend.dev`, no new pilot
-can complete signup. The same verification gates invoice email delivery.
+send is rejected with `550 — the sending domain is not verified`.
+
+The sending domain is now decided: **`mail.amgaviationgroup.com`**, sending as
+`v1-support@mail.amgaviationgroup.com`. Until that subdomain is verified at
+resend.com/domains (DKIM + SPF records), or the sender is temporarily pointed
+at `onboarding@resend.dev`, no new pilot can complete signup.
+
+Verifying it is necessary but not sufficient, because two systems send mail
+and only one of them reads this repo's configuration: product mail (invoices,
+receipts, dunning) takes the sender from `INVOICE_FROM_EMAIL`, while the
+signup confirmation is sent by Supabase Auth's own SMTP relay, configured in
+the Supabase dashboard under Auth → SMTP settings. Both have to point at the
+verified domain; setting one and not the other leaves signup broken while
+invoices work, or the reverse.
 
 ## Stack
 

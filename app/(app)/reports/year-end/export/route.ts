@@ -5,6 +5,7 @@ import { loadOptionLabels } from "@/lib/custom-options-read";
 import { loadYearEndReport } from "../queries";
 import { loadTravelLog } from "../travel-log-queries";
 import { csvRow } from "@/lib/csv";
+import { BRAND } from "@/lib/brand";
 
 // A year-end figure is either right or it should error loudly — never a
 // silently truncated download that looks complete. This report's queries
@@ -80,7 +81,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "This year holds more trip days than the export can safely list in one file. Contact support. Exporting a silently partial travel log would misstate your away-day counts.",
+            `This year holds more trip days than the export can safely list in one file. Email ${BRAND.supportEmail}. Exporting a silently partial travel log would misstate your away-day counts.`,
         },
         { status: 500 }
       );
@@ -165,7 +166,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "This section has more rows than the export can safely total in one file. Narrow the date range or contact support. Exporting a silently partial total would misstate your year-end figures.",
+          `This section has more rows than the export can safely total in one file. Narrow the date range or email ${BRAND.supportEmail}. Exporting a silently partial total would misstate your year-end figures.`,
       },
       { status: 500 }
     );

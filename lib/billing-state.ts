@@ -3,10 +3,12 @@
  * two date sums the billing screen needs to say it.
  *
  * DELIBERATELY PURE, for the same reasons lib/entitlements.ts is: no
- * imports beyond that file's types, no "server-only", no I/O, no Date.now()
- * captured at module scope. `now` is always a parameter, so the unit suite
- * (tests/billing-state.test.mjs) exercises the real module against fixed
- * clocks rather than whatever today happens to be.
+ * "server-only", no I/O, no Date.now() captured at module scope. `now` is
+ * always a parameter, so the unit suite (tests/billing-state.test.mjs)
+ * exercises the real module against fixed clocks rather than whatever today
+ * happens to be. Its only imports are two equally pure sibling modules:
+ * entitlements.ts (the tier vocabulary) and brand.ts (the support address,
+ * which belongs in a sentence a pilot reads and must not be typed here).
  *
  * WHAT LIVES HERE AND WHY IT IS NOT IN entitlements.ts: entitlements.ts is
  * the TIER vocabulary — what a plan includes. This is the SUBSCRIPTION
@@ -21,6 +23,7 @@
  * dates, counts and sentences only.
  */
 
+import { BRAND } from "./brand";
 import {
   ACCOUNT_WRITABLE_STATUSES,
   TIER_RANK,
@@ -140,8 +143,7 @@ export function statusDisplay(status: string): StatusDisplay {
   return {
     label: status,
     tone: "gray",
-    meaning:
-      "Stripe reports this subscription in a state this screen doesn't have a description for. Open the billing portal for the full picture, or get in touch.",
+    meaning: `Stripe reports this subscription in a state this screen doesn't have a description for. Open the billing portal for the full picture, or email ${BRAND.supportEmail}.`,
   };
 }
 
