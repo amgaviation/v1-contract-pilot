@@ -23,6 +23,7 @@ import AppearancePanel from "./appearance-panel";
 import LayoutPanel from "./layout-panel";
 import CategoriesPanel from "./categories-panel";
 import ProfilePanel from "./profile-panel";
+import AccountPanel from "./account-panel";
 import { loadPreferences } from "@/lib/preferences";
 import { loadCustomOptionsResult } from "@/lib/custom-options-read";
 import { applyNavLayout, visibleNavSections } from "@/lib/nav";
@@ -441,6 +442,7 @@ export default async function SettingsPage({
             accountName={account.legal_name}
           />
         }
+        account={<AccountPanel legalName={account.legal_name} isOwner={canEdit} />}
       />
     </LPageShell>
   );

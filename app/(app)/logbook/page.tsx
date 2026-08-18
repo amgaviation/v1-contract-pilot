@@ -1,11 +1,10 @@
 import NextLink from "next/link";
-import { LAlert, LCard, LEmpty, LPill, LStat, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
+import { LAlert, LCard, LEmpty, lButtonClass } from "@/components/ledger";
 import { LPageShell } from "@/components/ledger/page-shell";
 import { cn } from "@/lib/ledger/cn";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
-import { formatDate } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import { loadPreferences } from "@/lib/preferences";
 import {
@@ -21,42 +20,23 @@ import {
   type LogbookEntryRow,
   type LogbookFilterArgs,
   type LogbookFilteredTotalsRow,
-  type LogbookSource,
 } from "./db";
 import type { AircraftRow, TimeByTypeRow } from "./aircraft/db";
+import {
+  HoursByTypeTable,
+  LogbookEntriesTable,
+  LogbookTotalsCards,
+} from "./panels";
 import SavedViews, { type TailOption } from "./saved-views";
 import { deleteLogbookViewAction, saveLogbookViewAction } from "./views-actions";
 
 export const metadata = { title: "Logbook" };
 
-// Ledger's LPill vocabulary (neutral/accent/good/warn/crit) replaces
-// Radix Badge's gray/blue/amber/green/red one-for-one — see
-// invoices/page.tsx's own statusToPillTone for the same dictionary.
-type SourceBadge = { tone: "neutral" | "accent" | "good" | "warn" | "crit"; label: string };
-
-const SOURCE_FALLBACK: SourceBadge = { tone: "neutral", label: "Manual" };
-const SOURCE_BADGE: Record<LogbookSource, SourceBadge> = {
-  manual: SOURCE_FALLBACK,
-  trip: { tone: "accent", label: "From trip" },
-  import: { tone: "neutral", label: "Imported" },
-  foreflight_sync: { tone: "neutral", label: "ForeFlight sync" },
-};
-
-// logbookFrom() returns `any` (see its own comment), so nothing type-checks
-// these numeric(4,1) columns before they reach here — if one ever arrives
-// as a string, `+` concatenates instead of adding and `.toFixed` throws a
-// 500. Number() coerces the same way trips/invoices/page.tsx already does
-// for their own numerics, so a string doesn't silently become NaN-shaped
-// arithmetic three renders downstream.
-
-function landings(entry: LogbookEntryRow): number {
-  return (
-    Number(entry.day_landings_full_stop) +
-    Number(entry.day_landings_touch_go) +
-    Number(entry.night_landings_full_stop) +
-    Number(entry.night_landings_touch_go)
-  );
-}
+// The card row, the hours-by-type table and the entries table live in
+// ./panels.tsx now — presentation only, taking already-read rows. This file
+// keeps every read and every gate: which of the four empty states applies,
+// whether a failed read may render as an empty logbook, the filter caption
+// and the pagination. See that file's header for why they moved.
 
 /** One screenful. Entries beyond it are a page away, not unreachable. */
 const PAGE_SIZE = 200;
@@ -351,26 +331,9 @@ export default async function LogbookPage({
             </p>
           ) : null}
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
-            {(totals
-              ? [
-                  { label: "Total time", value: totals.total, decimals: 1 },
-                  { label: "PIC", value: totals.pic, decimals: 1 },
-                  { label: "Night", value: totals.night, decimals: 1 },
-                  { label: "Instrument", value: totals.instrument, decimals: 1 },
-                  { label: "Simulator", value: totals.simulator, decimals: 1 },
-                  { label: "Landings", value: totals.landings, decimals: 0 },
-                ]
-              : []
-            ).map((stat) => (
-              <LCard key={stat.label} className="items-center text-center">
-                <LStat
-                  label={stat.label}
-                  figure={stat.decimals === 0 ? stat.value : stat.value.toFixed(1)}
-                />
-              </LCard>
-            ))}
-          </div>
+          {/* A failed totals read renders NOTHING here, not a row of zeros
+              — see `totals` above, and the warn alert that says so. */}
+          {totals ? <LogbookTotalsCards totals={totals} /> : null}
 
           {/* HIDDEN WHILE A FILTER IS ON. This panel is account-global —
               pilot.logbook_time_by_type takes no arguments — so leaving it
@@ -397,62 +360,7 @@ export default async function LogbookPage({
                     </span>
                   </LAlert>
                 ) : hasTypeBreakdown ? (
-                  <LTable>
-                    <caption>
-                      <span className="sr-only">Hours by type</span>
-                    </caption>
-                    <thead>
-                      <tr>
-                        <LTh>Type</LTh>
-                        <LTh numeric>Total</LTh>
-                        <LTh numeric>PIC</LTh>
-                        <LTh numeric>SIC</LTh>
-                        <LTh numeric>Night</LTh>
-                        <LTh numeric>Sim</LTh>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {byType.map((row) => (
-                        <tr key={row.label}>
-                          <th
-                            scope="row"
-                            className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
-                          >
-                            <div className="flex items-center gap-2">
-                              <span>{row.label}</span>
-                              {/* Says WHY a row reads the way it does: these
-                                  hours are grouped by what the pilot typed on
-                                  each entry, not by a registered airframe, so
-                                  the same aeroplane spelled two ways is still
-                                  two rows here. */}
-                              {row.registered ? null : (
-                                <LPill tone="neutral">No aircraft on file</LPill>
-                              )}
-                            </div>
-                          </th>
-                          <LTd numeric>
-                            <span className="font-medium">{row.total.toFixed(1)}</span>
-                          </LTd>
-                          <LTd numeric>
-                            <span className="text-ink-2">{row.pic.toFixed(1)}</span>
-                          </LTd>
-                          <LTd numeric>
-                            <span className="text-ink-2">{row.sic.toFixed(1)}</span>
-                          </LTd>
-                          <LTd numeric>
-                            <span className="text-ink-2">{row.night.toFixed(1)}</span>
-                          </LTd>
-                          {/* Its own column, never folded into Total. An
-                              underwriter's pilot-history form asks for
-                              simulator time separately, because it is not
-                              time in the aircraft. */}
-                          <LTd numeric>
-                            <span className="text-ink-2">{row.simulator.toFixed(1)}</span>
-                          </LTd>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </LTable>
+                  <HoursByTypeTable rows={byType} />
                 ) : (
                   <p className="text-body-s text-ink-2">
                     Your entries aren&rsquo;t grouped by type yet. Add the airframes you
@@ -554,81 +462,7 @@ export default async function LogbookPage({
                 trip proposes.
               </LEmpty>
             ) : (
-              <LTable>
-                <caption>
-                  <span className="sr-only">Logbook entries</span>
-                </caption>
-                <thead>
-                  <tr>
-                    <LTh>Date</LTh>
-                    <LTh>Route</LTh>
-                    <LTh>Aircraft</LTh>
-                    <LTh>Role</LTh>
-                    <LTh numeric>Total</LTh>
-                    <LTh numeric>Night</LTh>
-                    <LTh numeric>Instrument</LTh>
-                    <LTh numeric>Landings</LTh>
-                    <LTh numeric>Source</LTh>
-                  </tr>
-                </thead>
-                <tbody>
-                  {entries.map((entry) => {
-                    const source = SOURCE_BADGE[entry.source] ?? SOURCE_FALLBACK;
-                    return (
-                      <tr key={entry.id}>
-                        <th
-                          scope="row"
-                          className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
-                        >
-                          <NextLink
-                            href={`/logbook/${entry.id}`}
-                            className="text-accent hover:underline"
-                          >
-                            {formatDate(entry.entry_date)}
-                          </NextLink>
-                        </th>
-                        <LTd>
-                          <span className="text-ink-2">
-                            {entry.from_icao ?? "—"} → {entry.to_icao ?? "—"}
-                          </span>
-                        </LTd>
-                        <LTd>
-                          <span className="text-ink-2">{entry.aircraft_ident ?? "—"}</span>
-                        </LTd>
-                        <LTd>
-                          <span className="text-ink-2">
-                            {/* A wholly-simulator entry carries no crew role
-                                (20260810020000). Showing the device says WHY
-                                the role is absent, which is more use to a
-                                pilot scanning the column than a bare dash. */}
-                            {entry.role ??
-                              (entry.simulator_device_type
-                                ? entry.simulator_device_type.toUpperCase()
-                                : "—")}
-                          </span>
-                        </LTd>
-                        <LTd numeric>
-                          <span className="font-medium">{Number(entry.total_time).toFixed(1)}</span>
-                        </LTd>
-                        <LTd numeric>
-                          <span className="text-ink-2">{Number(entry.night_time ?? 0).toFixed(1)}</span>
-                        </LTd>
-                        <LTd numeric>
-                          <span className="text-ink-2">
-                            {(Number(entry.instrument_actual_time ?? 0) + Number(entry.instrument_simulated_time ?? 0)).toFixed(1)}
-                          </span>
-                        </LTd>
-                        <LTd numeric>
-                          <span className="text-ink-2">{landings(entry)}</span>
-                        </LTd>
-                        <LTd numeric>
-                          <LPill tone={source.tone}>{source.label}</LPill>
-                        </LTd>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </LTable>
+              <LogbookEntriesTable entries={entries} />
             )}
           </LCard>
 

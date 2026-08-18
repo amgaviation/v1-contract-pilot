@@ -126,10 +126,13 @@ test("every published claim maps to a route that exists in the tree", () => {
   }
 });
 
-test("the marketing product mock's nav source is currency-free", () => {
-  // app/(marketing)/product-mock.tsx renders visibleNavSections(false) —
-  // the flag-off view — so the public landing page can never show the
-  // counsel-gated section in its rail. Pin the source it renders from.
+test("the marketing screenshots' nav source is currency-free", () => {
+  // app/(dev)/marketing-shots/fixtures.ts builds the harness rail from
+  // visibleNavSections(false) — the flag-off view — so the product
+  // screenshots on the public landing page can never show the
+  // counsel-gated section in their rail. Pin the source they render from.
+  // (This replaced the hand-built product mock, which pinned the same
+  // helper for the same reason.)
   const sections = visibleNavSections(false);
   for (const item of sections) {
     assert.notEqual(item.href, CURRENCY_PATH);
