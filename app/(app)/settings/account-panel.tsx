@@ -3,11 +3,13 @@
 import NextLink from "next/link";
 import { useActionState } from "react";
 import { LAlert, LButton, LCard, LSeparator } from "@/components/ledger";
-import { LField, LInput } from "@/components/ledger/forms";
+import { LField, LInput, LSelect } from "@/components/ledger/forms";
 import {
   deactivateAccount,
   deleteAccount,
+  placeHold,
   resetAccountData,
+  resumeFromHold,
   type AccountActionState,
 } from "./account-actions";
 
@@ -38,9 +40,12 @@ const initialState: AccountActionState = { error: null, notice: null };
 export default function AccountPanel({
   legalName,
   isOwner,
+  holdEndsAt,
 }: {
   legalName: string;
   isOwner: boolean;
+  /** Formatted end date when a hold is running, else null. */
+  holdEndsAt: string | null;
 }) {
   const [resetState, resetAction, resetPending] = useActionState(
     resetAccountData,
@@ -52,6 +57,11 @@ export default function AccountPanel({
   );
   const [deleteState, deleteAction, deletePending] = useActionState(
     deleteAccount,
+    initialState
+  );
+  const [holdState, holdAction, holdPending] = useActionState(placeHold, initialState);
+  const [resumeState, resumeAction, resumePending] = useActionState(
+    resumeFromHold,
     initialState
   );
 
@@ -90,6 +100,95 @@ export default function AccountPanel({
           </NextLink>
         </div>
       </LCard>
+
+      {/* 0 — THE HOLD. The mildest answer of all: nothing ends, nothing is
+          deleted, and billing simply stops for a season. It sits FIRST
+          because a pilot whose flying has paused for the winter is the
+          single most common reason someone opens this tab, and every card
+          below it is a worse answer to that question. */}
+      {holdEndsAt ? (
+        <LCard className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-h3 font-semibold text-ink">Your account is on hold</h2>
+            <p className="text-body-s text-ink-2">
+              Billing is paused until {holdEndsAt} and your records are
+              read-only. Everything is still here and still exportable.
+            </p>
+            <p className="text-caption text-ink-3">
+              If the hold runs out without being resumed, your clients, trips,
+              invoices, estimates and expenses are deleted. Your logbook,
+              documents, aircraft and operator qualifications are kept either
+              way.
+            </p>
+          </div>
+
+          {resumeState.error ? <LAlert tone="crit">{resumeState.error}</LAlert> : null}
+          {resumeState.notice ? <LAlert tone="good">{resumeState.notice}</LAlert> : null}
+
+          <form action={resumeAction} className="flex flex-col gap-3">
+            <LField label="Your password" htmlFor="resume-password">
+              <LInput
+                id="resume-password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+              />
+            </LField>
+            <div>
+              <LButton type="submit" disabled={resumePending}>
+                {resumePending ? "Restarting…" : "End the hold and restart billing"}
+              </LButton>
+            </div>
+          </form>
+        </LCard>
+      ) : (
+        <LCard className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-h3 font-semibold text-ink">Put your account on hold</h2>
+            <p className="text-body-s text-ink-2">
+              Pauses billing for one or two months and puts your records in
+              read-only. Nothing is deleted, and you can come back early
+              whenever you want. Available once you have been billing for two
+              months or more.
+            </p>
+            <p className="text-caption text-ink-3">
+              A hold cannot run longer than two months. If it runs out without
+              being resumed, your clients, trips, invoices, estimates and
+              expenses are deleted — your logbook, documents, aircraft and
+              operator qualifications are kept whatever happens.
+            </p>
+          </div>
+
+          {holdState.error ? <LAlert tone="crit">{holdState.error}</LAlert> : null}
+          {holdState.notice ? <LAlert tone="good">{holdState.notice}</LAlert> : null}
+
+          <form action={holdAction} className="flex flex-col gap-3">
+            <LField label="How long" htmlFor="hold-months">
+              <LSelect id="hold-months" name="months" defaultValue="1">
+                <option value="1">One month</option>
+                <option value="2">Two months</option>
+              </LSelect>
+            </LField>
+            <LField label="Your password" htmlFor="hold-password">
+              <LInput
+                id="hold-password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+              />
+            </LField>
+            <div>
+              <LButton type="submit" disabled={holdPending}>
+                {holdPending ? "Placing the hold…" : "Put my account on hold"}
+              </LButton>
+            </div>
+          </form>
+        </LCard>
+      )}
+
+      <LSeparator className="my-1" />
 
       {/* 1 — DEACTIVATE. Reversible. */}
       <LCard className="flex flex-col gap-3">

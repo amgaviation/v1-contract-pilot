@@ -123,6 +123,14 @@ export function seatsForTier(tier: PlanTier): number {
  * the read-only set deliberately (Finding 2/3's brief): a failed renewal
  * stops new work and nudges the owner to the billing portal, while every
  * record stays readable and exportable.
+ *
+ * ONE PATH IN THIS PRODUCT DOES DELETE, and it is not this one: an expired,
+ * unpaid HOLD clears the account's commercial records (20260818200000). It
+ * is never reached by a lapse, a failed card or a cancellation — only by a
+ * pilot who deliberately parked the account and then let the window close —
+ * and it is bounded in kind as well as in cause: no logbook, document,
+ * aircraft or qualification record is reachable from it on any code path.
+ * Read-only-on-lapse is still exactly what this allow-list means.
  */
 export const ACCOUNT_WRITABLE_STATUSES = ["trialing", "active"] as const;
 
@@ -155,8 +163,25 @@ export function isWritableStatus(status: string): boolean {
 export function accountIsReadOnly(account: {
   status: string;
   deactivated_at?: string | null;
+  hold_started_at?: string | null;
 }): boolean {
   if (account.deactivated_at) return true;
+
+  // A HOLD IS READ-ONLY, and Stripe cannot say so on its behalf. The pinned
+  // SDK has no subscriptions.pause(); the available mechanism is
+  // pause_collection, which deliberately keeps the subscription `active` and
+  // the customer's access intact ("stop charging them, keep serving them").
+  // A hold is the opposite bargain — the pilot stops paying and stops
+  // writing — so `status` reads 'active' for its entire duration and the
+  // local column is the only thing that knows.
+  //
+  // Any non-null hold_started_at counts, deliberately, without comparing
+  // hold_ends_at to now(). A hold whose window has closed but whose
+  // scheduled pass has not run yet is still a hold; treating it as writable
+  // for those hours would let a lapsed account create records that the very
+  // next pass deletes.
+  if (account.hold_started_at) return true;
+
   return !isWritableStatus(account.status);
 }
 

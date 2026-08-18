@@ -368,6 +368,18 @@ in those words.**
   fact.
 - **Business → Pro/Solo**: additional seats deactivate (sign-in revoked for non-owner
   members) but every record a seat created stays, attributed, in the account.
+- **Hold (added 2026-08-18)**: an owner who has been billing two months or
+  more may pause for up to two months. Billing stops at Stripe
+  (`pause_collection`, behavior `void`, so no debt accrues for the paused
+  period) and the account goes read-only. Nothing is deleted while it runs.
+  If the window closes without the pilot resuming or paying to retain,
+  the **commercial** records are purged: clients, trips, invoices,
+  estimates, expenses, the ledger and the bank-import tables. The
+  **airman** records are kept unconditionally — logbook, documents,
+  aircraft, operator qualifications, currency — because a subscription
+  lapse may never destroy a 14 CFR 61.51 record. That split is enforced in
+  the database and asserted by `scripts/account-lifecycle-db-verify.mjs`,
+  not merely intended.
 - **Cancellation**: the account goes **read-only with export still working** — logbook,
   currency history, documents, invoices, all of it viewable and downloadable, deleted
   never. A pilot's logbook is a legal record; a subscription lapse cannot be the thing

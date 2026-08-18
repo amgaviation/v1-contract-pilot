@@ -13,11 +13,12 @@ import type { Database } from "@/lib/supabase/database.types";
  * because there's no live database to test it against). Until that exists,
  * the only control is: read this comment before you import this function.
  *
- * It exists for exactly FOUR entry points, and that list IS the control —
- * adding a fourth is a security decision, not a refactor. (It said TWO until
+ * It exists for exactly FIVE entry points, and that list IS the control —
+ * adding one is a security decision, not a refactor. (It said TWO until
  * 20260813130000 added the scheduled reminder pass, which is written up as
- * entry point 3 below with the argument for why it earns its place. Adding
- * one is meant to feel like this: a paragraph, not a line.)
+ * entry point 3 below with the argument for why it earns its place, and
+ * FOUR until the hold-expiry pass was added as entry point 5. Adding one is
+ * meant to feel like this: a paragraph, not a line.)
  *
  *   1. THE STRIPE WEBHOOK that provisions a new tenant on checkout
  *      completion (Phase 2 — app/api/stripe/webhook/route.ts and
@@ -79,6 +80,41 @@ import type { Database } from "@/lib/supabase/database.types";
  *      the signed `event.account` and never from link metadata (which the
  *      connected account's own owner can type), and the only rows it may
  *      touch belong to that account's own invoice.
+ *
+ *   5. THE HOLD-EXPIRY PASS (app/api/holds/run/route.ts), because a pilot
+ *      whose hold has run out is, by definition, not present to authenticate
+ *      as. Same shape as entry point 3, arriving from the same cron runner.
+ *
+ *      THIS IS THE MOST DANGEROUS ENTRY POINT IN THE LIST AND MUST BE READ
+ *      AS SUCH. Every other one reads, or writes a row. This one DELETES a
+ *      tenant's commercial records — clients, trips, invoices, estimates,
+ *      expenses, the ledger — unattended, on a schedule, with no human
+ *      confirming anything. Entry point 3's argument ("one route, one fixed
+ *      operation, no caller-supplied account id") is necessary here and is
+ *      not sufficient on its own, so it carries three more guards that the
+ *      others do not:
+ *        * A FLAG, HOLD_EXPIRY_PURGE_ENABLED (lib/holds/gate.ts), unset on
+ *          every deployment until someone types it exactly. With it off the
+ *          pass still runs and still reports precisely which accounts it
+ *          WOULD have purged, and deletes nothing — so the selection can be
+ *          watched against real expiries, in production, before anything is
+ *          destroyed. No staging tenant has a real pilot's records in it,
+ *          which is why a dry run against the real thing is the only test
+ *          that proves the query.
+ *        * A CAP on accounts purged per run. A pass finding more than a
+ *          handful due has more likely met a clock or query fault than a
+ *          real cohort; it refuses the whole run rather than working
+ *          through the list.
+ *        * THE DATABASE REFUSES INDEPENDENTLY. pilot.expire_hold re-derives
+ *          due-ness from the row and rejects an account that is not on hold,
+ *          whose window has not closed, or whose retention is paid. So the
+ *          route's SELECT is not the last word on who gets purged — which
+ *          matters because a wrong WHERE clause is the realistic way this
+ *          product destroys a paying customer's data.
+ *      And the blast radius is bounded in kind as well as in number: the
+ *      purge cannot reach a logbook, a documents wallet, an aircraft or a
+ *      qualification record on any code path, and
+ *      scripts/account-lifecycle-db-verify.mjs asserts that by executing it.
  *
  * It must never be imported into a Client Component, never used to read or
  * write tenant business data on a pilot's behalf outside the narrow, fixed

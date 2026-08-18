@@ -442,7 +442,15 @@ export default async function SettingsPage({
             accountName={account.legal_name}
           />
         }
-        account={<AccountPanel legalName={account.legal_name} isOwner={canEdit} />}
+        account={
+          <AccountPanel
+            legalName={account.legal_name}
+            isOwner={canEdit}
+            holdEndsAt={
+              account.hold_ends_at ? formatDate(account.hold_ends_at) : null
+            }
+          />
+        }
       />
     </LPageShell>
   );

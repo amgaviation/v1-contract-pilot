@@ -356,6 +356,10 @@ function buildFaq(): { q: string; a: string }[] {
       a: "Nothing is deleted. Downgrading closes the screens your new plan doesn't include (those come straight back the moment you upgrade), but every record you already created stays in the account-wide export the whole time, on any plan. Cancelling puts the account in read-only: everything stays viewable and exportable there too. A pilot's logbook is a legal record; a lapsed card will never be the thing that destroys one.",
     },
     {
+      q: "What happens if I put my account on hold?",
+      a: "A hold pauses billing for up to two months and puts your records in read-only. Nothing is deleted while it runs, and you can end it early whenever you want. If a hold runs the full two months and isn't resumed or paid for, the business side is cleared — clients, trips, invoices, estimates, expenses and the accounting ledger. Your logbook, your documents, your aircraft and your operator qualifications are kept whatever happens: those are your records as an airman, not ours to delete over a subscription. The export works throughout, and we tell you before anything goes.",
+    },
+    {
       q: "Can I get my data out?",
       a: "On every plan. The account-wide export in Settings writes one CSV per record type: clients, trips, trip days, trip legs, estimates, invoices, payments, expenses, mileage, and documents. The logbook exports in full, every report downloads, and uploaded receipt and document files download from their own pages.",
     },
