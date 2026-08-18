@@ -84,6 +84,7 @@ export const NAV_SECTIONS: readonly NavItem[] = [
   { href: "/clients", label: "Clients", group: "BUSINESS" },
   { href: "/accounting", label: "Accounting", group: "BUSINESS" },
   { href: "/documents", label: "Documents", group: "RECORDS" },
+  { href: "/receipts", label: "Receipts", group: "RECORDS" },
   { href: "/crew", label: "Crew", group: "RECORDS" },
   { href: "/reports", label: "Reports", group: "RECORDS" },
   { href: CURRENCY_PATH, label: "Currency", group: "RECORDS" },
