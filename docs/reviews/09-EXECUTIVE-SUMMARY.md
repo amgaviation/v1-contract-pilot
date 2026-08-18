@@ -33,10 +33,18 @@ after the fact would destroy the record. What has changed since:
   The other half is still open: a completed clientless trip still renders "Invoice it" and
   routes to a form that cannot bill it (`app/(app)/trips/[id]/page.tsx:351-356`), which is
   the dead end the finding is actually about.
+- **The landing-page rewrite is SHIPPED** (`10-landing-page-copy.md`, implemented into
+  `app/(marketing)/page.tsx`). It closes the copy items in §2's fix list below: the page has a
+  title of its own, the CTA no longer promises a trial the funnel does not deliver, the offer
+  states which plans it applies to, the operator reader is named without being sold an account
+  that does not exist, the zero-take-rate fact appears for the first time, the data objection
+  is answered, and the FAQ carries a route to a person. `docs/MARKETING.md` §4 and §6 were
+  re-signed to match. Two things it does NOT close: **finding 9 (analytics) is still absent, so
+  this rewrite ships unmeasured** — there is no before/after to read — and the currency FAQ's
+  "airworthiness" wording is still with counsel (`docs/CURRENCY-SPEC.md` question C-1).
 - **Still open:** findings 4, 5, 7, 9 and the second half of 10 — the cancel-flow save path,
   the hold-expiry warning the pricing page promises, pilot-facing lifecycle email, analytics,
-  and the clientless-trip invoice guard. Plus the landing-page rewrite itself
-  (`10-landing-page-copy.md`), which is specced and waiting on implementation.
+  and the clientless-trip invoice guard.
 
 ---
 

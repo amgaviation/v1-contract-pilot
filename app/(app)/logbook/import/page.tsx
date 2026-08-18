@@ -19,7 +19,7 @@ export default async function LogbookImportPage() {
   return (
     <LPageShell
       title="Import your logbook"
-      subtitle="Bring in flight time from ForeFlight, LogTen Pro, or any other CSV export. Nothing is written until you review and confirm."
+      subtitle="Bring in flight time from ForeFlight, LogTen, or any other CSV export. Nothing is written until you review and confirm."
     >
       <ImportWorkspace />
     </LPageShell>
