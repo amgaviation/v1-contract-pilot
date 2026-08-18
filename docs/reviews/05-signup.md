@@ -48,7 +48,7 @@ inline) rather than assumed.
 - Fix: Add a toggle button to `LInput` (or a small wrapper used only for password fields) that flips `type` between `password` and `text`, `aria-pressed` state included.
 
 ### [LOW-MEDIUM] Password length is enforced only after a full server round trip
-- Where: `app/(auth)/signup/signup-form.tsx:199-209` (hint text "At least 8 characters," no `minLength`); `app/(auth)/reset-password/reset-password-form.tsx:25-36` (same, both fields); rule lives in `lib/password-policy.ts:26` (`MIN_PASSWORD_LENGTH = 8`)
+- Where: `app/(auth)/signup/signup-form.tsx:199-209` (hint text "At least 8 characters," no `minLength`); `app/(auth)/reset-password/reset-password-form.tsx:25-36` (New password) and `:38-47` (Confirm new password) — neither field carries `minLength`; rule lives in `lib/password-policy.ts:26` (`MIN_PASSWORD_LENGTH = 8`)
 - Issue: The 8-character floor is stated as static caption copy but never attached to the input as `minLength={8}`. A pilot who types a 5-character password gets no feedback until the full form submits, the server action runs, and `passwordProblem` (`lib/password-policy.ts`) rejects it — a full network round trip to catch something the browser could flag instantly, and on signup specifically the password field is not preserved across the failed submit (deliberately, per the form's own comment, since the password "is intentionally never echoed back"), so the pilot retypes it from scratch.
 - Fix: Add `minLength={8}` to each password `<input>` alongside the existing hint text. This is purely additive to the existing server-side check (which must stay, since `minLength` is trivially bypassable) and costs nothing in security terms.
 
@@ -58,7 +58,7 @@ inline) rather than assumed.
 - Fix: Raise `LSegmented`'s vertical padding (e.g. `py-2.5`-`py-3` at this font size) to clear 44px, or increase the touch target via a taller hit area independent of the visible pill.
 
 ### [LOW] `autoFocus` on the first field of every auth screen risks an immediate mobile keyboard pop before the surrounding context is read
-- Where: `app/(auth)/signup/signup-form.tsx:140` (`full_name`); `app/(auth)/login/login-form.tsx:34` (`email`); `app/(auth)/forgot-password/forgot-password-form.tsx` and `app/(auth)/link-expired/link-expired-view.tsx` (`email`); `app/(auth)/reset-password/reset-password-form.tsx:29` (`password`)
+- Where: `app/(auth)/signup/signup-form.tsx:140` (`full_name`); `app/(auth)/login/login-form.tsx:34` (`email`); `app/(auth)/forgot-password/forgot-password-form.tsx:91` (`email`); `app/(auth)/link-expired/link-expired-view.tsx:110` (`email`); `app/(auth)/reset-password/reset-password-form.tsx:32` (`password`)
 - Issue: Every one of these forms auto-focuses its first field on mount. Where the browser honors it, this opens the on-screen keyboard immediately on load, which on a phone can push page content (and, on `/signup` specifically, the "$5 for your first month" offer box that sits below the fields, `signup-form.tsx:215-223`) out of view before the visitor has read it. This is inconsistent across mobile browsers (some suppress programmatic focus-triggered keyboards on load), which is exactly why it is easy to miss in review and worth flagging rather than asserting as a guaranteed defect everywhere.
 - Fix: Drop `autoFocus` on small viewports (a simple `matchMedia` check, or CSS-driven via a data attribute) while keeping it for desktop pointer users, where it costs nothing.
 
