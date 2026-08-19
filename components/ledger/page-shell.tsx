@@ -38,7 +38,9 @@ export function LPageShell({
     <div className="flex flex-col gap-5 font-ledger text-body text-ink">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-1">
-          <h1 className="text-h1 font-bold tracking-tight">{title}</h1>
+          {/* text-balance: a two-line title on a phone breaks into even
+              halves instead of stranding its last word alone. */}
+          <h1 className="text-balance text-h1 font-bold tracking-tight">{title}</h1>
           {subtitle ? <p className="text-body-s text-ink-3">{subtitle}</p> : null}
         </div>
         {/* Wide screens: action sits beside the title. Narrow: it stacks
