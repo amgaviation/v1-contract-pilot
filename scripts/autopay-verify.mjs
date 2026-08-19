@@ -62,6 +62,13 @@ const UA = "00000000-0000-0000-0000-00000000aa09"; // owner of A
 const UM = "00000000-0000-0000-0000-00000000ab09"; // non-owner member of A
 const UB = "00000000-0000-0000-0000-00000000bb09"; // owner of B, a stranger to A
 const CLIENT_A = "00000000-0000-0000-0000-0000000ca901"; // A's client, the row under test
+// CHECK (f)'s fixtures — one schedule per guard the unattended generation
+// door has to refuse, plus a second client of A's with no autopay consent.
+const CLIENT_A_BARE = "00000000-0000-0000-0000-0000000ca902"; // A's client, never enrolled
+const SCHED_OK = "00000000-0000-0000-0000-00000005c401"; // autopay on, active
+const SCHED_NOAUTO = "00000000-0000-0000-0000-00000005c402"; // autopay off
+const SCHED_PAUSED = "00000000-0000-0000-0000-00000005c403"; // autopay on, paused
+const SCHED_UNENROL = "00000000-0000-0000-0000-00000005c404"; // autopay on, client not enrolled
 
 const sql = `
 begin;
@@ -418,6 +425,262 @@ begin
     raise exception 'AUTOPAY-5 FAILURE: a client''s autopay enrollment survived disconnecting Stripe (%) — the saved ids now point at an account the pilot no longer controls', r;
   end if;
   raise notice 'PASS (AUTOPAY-5): disconnecting Stripe clears connect_account_id AND every client''s autopay enrollment on that tenant';
+end $$;
+
+-- ===========================================================================
+-- CHECK (f) — pilot.generate_autopay_invoice, the unattended generation door
+-- added by 20260819100000. This is the only path that can create an invoice
+-- destined to be charged off-session with no human confirming it that day,
+-- so its grants and its five re-derived guards are asserted by execution
+-- here, not read out of the migration.
+--
+-- Why the role wrappers below are load-bearing: a function's OWNER always
+-- retains implicit EXECUTE on it regardless of any REVOKE, so a check that
+-- runs as the migration-owner role proves nothing about whether the real
+-- caller can reach it. That is exactly how pilot.expire_hold shipped with
+-- no service_role grant and a purge that silently never ran (see
+-- 20260819090000). Every call below states the role it is making.
+-- ===========================================================================
+
+-- Re-populate the enrollment that CHECK (e) deliberately cleared, and give
+-- tenant A a schedule per case: autopay+active, autopay-off, paused, and one
+-- pointing at a client with no enrollment.
+set local role service_role;
+update pilot.clients
+   set autopay_stripe_customer_id = 'cus_gen_verify',
+       autopay_stripe_payment_method_id = 'pm_gen_verify',
+       autopay_method_label = 'Visa •••• 4242',
+       autopay_consented_at = '2026-07-20T10:00:00Z',
+       autopay_livemode = false
+ where account_id = '${A}' and id = '${CLIENT_A}';
+insert into pilot.clients (id, account_id, name)
+  values ('${CLIENT_A_BARE}', '${A}', 'Autopay verify — not enrolled');
+insert into pilot.recurring_invoice_schedules
+  (id, account_id, client_id, cadence, anchor_date, description, amount_cents, autopay, active)
+values
+  ('${SCHED_OK}',       '${A}', '${CLIENT_A}',      'monthly', '2026-01-01', 'Autopay verify retainer', 250000, true,  true),
+  ('${SCHED_NOAUTO}',   '${A}', '${CLIENT_A}',      'monthly', '2026-01-01', 'Autopay verify no-auto',  250000, false, true),
+  ('${SCHED_PAUSED}',   '${A}', '${CLIENT_A}',      'monthly', '2026-01-01', 'Autopay verify paused',   250000, true,  false),
+  ('${SCHED_UNENROL}',  '${A}', '${CLIENT_A_BARE}', 'monthly', '2026-01-01', 'Autopay verify unenrol',  250000, true,  true);
+reset role;
+
+-- AUTOPAY-6 — the grants. service_role must reach it; nobody else may.
+do $$
+declare fn text := 'pilot.generate_autopay_invoice(uuid,uuid,date)';
+begin
+  if not has_function_privilege('service_role', fn, 'EXECUTE') then
+    raise exception 'AUTOPAY-6 FAILURE: service_role cannot EXECUTE % — the scheduled pass would fail with 42501 on every call and, depending on the caller''s error handling, may not say so out loud. This is the pilot.expire_hold defect (20260819090000) repeating.', fn;
+  end if;
+  if has_function_privilege('authenticated', fn, 'EXECUTE') then
+    raise exception 'AUTOPAY-6 FAILURE: authenticated can EXECUTE % — a pilot session could drive unattended generation, bypassing the interactive path''s entitlement checks', fn;
+  end if;
+  if has_function_privilege('anon', fn, 'EXECUTE') then
+    raise exception 'AUTOPAY-6 FAILURE: anon can EXECUTE %', fn;
+  end if;
+  raise notice 'PASS (AUTOPAY-6): generate_autopay_invoice is granted to service_role only';
+end $$;
+
+-- AUTOPAY-7 — denial in practice, as the actual roles, not just in the
+-- catalog. A grant that reads correctly but does not hold is the whole
+-- failure mode this check exists for.
+do $$
+begin
+  begin
+    set local role authenticated;
+    perform pilot.generate_autopay_invoice('${A}', '${SCHED_OK}', '2026-06-01');
+    reset role;
+    raise exception 'AUTOPAY-7 FAILURE: an authenticated session generated an unattended autopay invoice';
+  exception when insufficient_privilege then
+    reset role;
+  end;
+  begin
+    set local role anon;
+    perform pilot.generate_autopay_invoice('${A}', '${SCHED_OK}', '2026-06-01');
+    reset role;
+    raise exception 'AUTOPAY-7 FAILURE: an anonymous caller generated an unattended autopay invoice';
+  exception when insufficient_privilege then
+    reset role;
+  end;
+  raise notice 'PASS (AUTOPAY-7): authenticated and anon are refused with 42501 when they actually try';
+end $$;
+
+-- AUTOPAY-8 — the five guards, each exercised as service_role (a caller
+-- that CAN execute the function, so a refusal here is the guard talking and
+-- not the grant). Each must refuse, and none may leave a row behind.
+-- Each case records whether the call SUCCEEDED into a flag and reports
+-- afterwards, rather than raising the failure from inside the handler's own
+-- scope. That is not a style preference. \`raise exception\` without an
+-- explicit errcode defaults to P0001 — the very code four of these five
+-- guards raise — so a failure signal raised inside the begin/exception
+-- block would be caught by that block's own \`when sqlstate 'P0001'\`
+-- handler and silently counted as a pass. Written the obvious way, this
+-- check reported all five guards passing against a function whose guard 3
+-- had been deleted outright (found by removing it and watching this check
+-- stay green). A flag cannot be swallowed.
+do $$
+declare
+  generated boolean;
+  failures text[] := '{}';
+begin
+  set local role service_role;
+
+  -- Guard 1 asserts the OUTCOME (no cross-tenant generation), not which line
+  -- produced the refusal, so it accepts either sqlstate. That is not
+  -- looseness: guard 4's client lookup is scoped on target_account too, so
+  -- deleting guard 1's tenancy predicate still blocks the write — it just
+  -- refuses with guard 4's P0001 ("client is not enrolled") instead of guard
+  -- 1's P0002. Verified by deleting guard 1 and re-running: the cross-tenant
+  -- write is still refused, two layers deep. Pinning this to P0002 alone
+  -- would make the check fail with a misleading message about enrollment
+  -- when what actually regressed was tenancy.
+  begin
+    perform pilot.generate_autopay_invoice('${B}', '${SCHED_OK}', '2026-06-01');
+    generated := true;
+  exception when sqlstate 'P0002' or sqlstate 'P0001' then generated := false; end;
+  if generated then failures := array_append(failures, 'guard 1: a schedule was generated against a tenant that does not own it — cross-tenant write'); end if;
+
+  begin
+    perform pilot.generate_autopay_invoice('${A}', '${SCHED_PAUSED}', '2026-06-01');
+    generated := true;
+  exception when sqlstate 'P0001' then generated := false; end;
+  if generated then failures := array_append(failures, 'guard 2: a paused schedule generated an invoice'); end if;
+
+  begin
+    perform pilot.generate_autopay_invoice('${A}', '${SCHED_NOAUTO}', '2026-06-01');
+    generated := true;
+  exception when sqlstate 'P0001' then generated := false; end;
+  if generated then failures := array_append(failures, 'guard 3: a schedule with autopay = false was generated unattended — this is the guard that keeps a bug in the scheduled pass from auto-issuing invoices for schedules the pilot never opted into automating'); end if;
+
+  begin
+    perform pilot.generate_autopay_invoice('${A}', '${SCHED_UNENROL}', '2026-06-01');
+    generated := true;
+  exception when sqlstate 'P0001' then generated := false; end;
+  if generated then failures := array_append(failures, 'guard 4: an invoice was generated for a client with no autopay consent record — it would be issued and then never charged'); end if;
+
+  begin
+    perform pilot.generate_autopay_invoice('${A}', '${SCHED_OK}', '2099-01-01');
+    generated := true;
+  exception when sqlstate 'P0001' then generated := false; end;
+  if generated then failures := array_append(failures, 'guard 5: a period that has not started was generated'); end if;
+
+  reset role;
+  if array_length(failures, 1) is not null then
+    raise exception 'AUTOPAY-8 FAILURE: %', array_to_string(failures, ' | ');
+  end if;
+  raise notice 'PASS (AUTOPAY-8): all five guards refuse — wrong tenant, paused, autopay off, client not enrolled, future period';
+end $$;
+
+-- AUTOPAY-8b — structural, and the necessary complement to AUTOPAY-8's
+-- behavioural pass. Cross-tenant generation is blocked twice over: guard 1
+-- scopes the SCHEDULE lookup on target_account, and guard 4 independently
+-- scopes the CLIENT lookup the same way. That redundancy is a strength at
+-- runtime and a blind spot for a purely behavioural check — with guard 1
+-- deleted, guard 4 alone still refuses, so AUTOPAY-8 stays green while the
+-- function's primary tenancy check is gone (confirmed by deleting it).
+-- Losing one layer silently is how you end up with none. This asserts both
+-- predicates are actually present, the same way AUTOPAY-0 sweeps the
+-- catalog rather than trusting the behavioural result alone.
+do $$
+declare src text; missing text[] := '{}';
+begin
+  select pg_get_functiondef(p.oid) into src
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'pilot' and p.proname = 'generate_autopay_invoice';
+
+  if src is null then
+    raise exception 'AUTOPAY-8b FAILURE: pilot.generate_autopay_invoice does not exist';
+  end if;
+  if src !~ 'recurring_invoice_schedules\\s+where id = p_schedule_id\\s+and account_id = target_account' then
+    missing := array_append(missing, 'the SCHEDULE lookup (guard 1) is no longer scoped by target_account — cross-tenant generation would then rest entirely on guard 4''s client lookup');
+  end if;
+  if src !~ 'from pilot\\.clients\\s+where id = v_schedule\\.client_id\\s+and account_id = target_account' then
+    missing := array_append(missing, 'the CLIENT lookup (guard 4) is no longer scoped by target_account — the second tenancy layer is gone');
+  end if;
+  if array_length(missing, 1) is not null then
+    raise exception 'AUTOPAY-8b FAILURE: %', array_to_string(missing, ' | ');
+  end if;
+  raise notice 'PASS (AUTOPAY-8b): both tenancy predicates are present — the schedule lookup and the client lookup are each scoped by target_account';
+end $$;
+
+-- AUTOPAY-9 — no refusal above wrote anything.
+do $$
+declare n int;
+begin
+  select count(*) into n from pilot.recurring_invoice_generations
+   where account_id = '${A}' and schedule_id in ('${SCHED_OK}','${SCHED_NOAUTO}','${SCHED_PAUSED}','${SCHED_UNENROL}');
+  if n <> 0 then
+    raise exception 'AUTOPAY-9 FAILURE: % generation row(s) exist after only refusals', n;
+  end if;
+  raise notice 'PASS (AUTOPAY-9): every refusal left the ledger empty';
+end $$;
+
+-- AUTOPAY-10 — the happy path, as service_role. Must produce exactly one
+-- invoice, one line, one ledger row, and the invoice must still be a DRAFT:
+-- this function generates, it does not issue or charge.
+do $$
+declare v_invoice uuid; v_status text; n_lines int; n_ledger int;
+begin
+  set local role service_role;
+  v_invoice := pilot.generate_autopay_invoice('${A}', '${SCHED_OK}', '2026-06-01');
+  reset role;
+
+  if v_invoice is null then
+    raise exception 'AUTOPAY-10 FAILURE: generation returned null';
+  end if;
+  select status into v_status from pilot.invoices where id = v_invoice;
+  select count(*) into n_lines from pilot.invoice_lines where invoice_id = v_invoice;
+  select count(*) into n_ledger from pilot.recurring_invoice_generations
+   where schedule_id = '${SCHED_OK}' and period_start = '2026-06-01';
+
+  if v_status is distinct from 'draft' then
+    raise exception 'AUTOPAY-10 FAILURE: unattended generation produced an invoice in status % — it must leave a DRAFT and let the caller decide to issue and charge', v_status;
+  end if;
+  if n_lines <> 1 or n_ledger <> 1 then
+    raise exception 'AUTOPAY-10 FAILURE: expected 1 line and 1 ledger row, got % and %', n_lines, n_ledger;
+  end if;
+  raise notice 'PASS (AUTOPAY-10): service_role generates one draft invoice, one line, one ledger row';
+end $$;
+
+-- AUTOPAY-11 — THE DOUBLE-BILL GUARD, and the reason this whole function
+-- was allowed to exist. A cron retry, two overlapping passes, or the pass
+-- racing the pilot's own click all land on the same (schedule, period).
+-- The second one must raise 23505 AND roll back the invoice and line it
+-- inserted moments earlier — an orphaned invoice here is a client billed
+-- twice for one period.
+do $$
+declare n_before int; n_after int; lines_before int; lines_after int;
+begin
+  select count(*) into n_before from pilot.invoices where account_id = '${A}';
+  select count(*) into lines_before from pilot.invoice_lines where account_id = '${A}';
+
+  begin
+    set local role service_role;
+    perform pilot.generate_autopay_invoice('${A}', '${SCHED_OK}', '2026-06-01');
+    reset role;
+    raise exception 'AUTOPAY-11 FAILURE: the same (schedule, period) generated TWICE — this is a double bill';
+  exception when unique_violation then
+    reset role;
+  end;
+
+  select count(*) into n_after from pilot.invoices where account_id = '${A}';
+  select count(*) into lines_after from pilot.invoice_lines where account_id = '${A}';
+  if n_after <> n_before or lines_after <> lines_before then
+    raise exception 'AUTOPAY-11 FAILURE: the refused second call left % orphan invoice(s) and % orphan line(s) behind — the three writes are not rolling back as one statement', n_after - n_before, lines_after - lines_before;
+  end if;
+
+  -- The interactive door must contend on the same row, or the two paths can
+  -- double-bill each other even though neither can double-bill itself.
+  begin
+    insert into pilot.recurring_invoice_generations (account_id, schedule_id, period_start, invoice_id)
+      values ('${A}', '${SCHED_OK}', '2026-06-01',
+              (select invoice_id from pilot.recurring_invoice_generations
+                where schedule_id = '${SCHED_OK}' and period_start = '2026-06-01'));
+    raise exception 'AUTOPAY-11 FAILURE: the ledger accepted a duplicate (schedule, period) — the interactive and unattended paths do not contend, so they can double-bill each other';
+  exception when unique_violation then
+    null;
+  end;
+
+  raise notice 'PASS (AUTOPAY-11): a repeated period raises 23505, leaves no orphan invoice or line, and both generation doors contend on the same ledger row';
 end $$;
 
 -- The unrelated tenant must be untouched by all of the above.
