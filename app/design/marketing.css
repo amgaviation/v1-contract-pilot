@@ -1,0 +1,239 @@
+/**
+ * MARKETING — the signed-out surface's craft layer, over Ledger's paper.
+ *
+ * Added 2026-08-19 and CORRECTED the same day at the owner's direction:
+ * the first cut remapped the whole surface dark, and the owner's call is
+ * that the public site is primarily LIGHT — the navy stays where it always
+ * was, as the hero and close bands' ground, and the page body stands on
+ * Ledger's own day palette. What survives from that cut is the craft, not
+ * the darkness: the floating pill nav with a real phone menu, the
+ * double-bezel screenshot trays, the billboard display sizes, the island
+ * CTAs, and the reduced-motion-safe entry reveals.
+ *
+ * So this sheet no longer remaps any --ledger-* token. It declares only
+ * its own knobs (--mkt-*) and the .mkt-* component classes; the `.mkt`
+ * class on the marketing layout scopes those and nothing else. Every
+ * literal value on the surface lives HERE (the sheet is on
+ * scripts/verify-tokens.mjs's EXEMPT_FILES list, same exemption
+ * ledger.css holds), and the TSX keeps to token utilities plus these
+ * classes.
+ *
+ * MOTION follows the house rules (see ledger.css's dialog block): the
+ * house curve cubic-bezier(0.22, 1, 0.36, 1), transform/opacity only,
+ * reduced motion keeps content and drops movement. Entry reveals are
+ * additionally gated behind (scripting: enabled) so a no-JS visitor gets
+ * a fully visible page rather than one hidden waiting for an
+ * IntersectionObserver that will never run.
+ */
+
+.mkt {
+  /* This sheet's own knobs. */
+  --mkt-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --mkt-tray-radius: 1.25rem;
+  --mkt-tray-pad: 0.375rem;
+}
+
+/* ── Display sizes ─────────────────────────────────────────────────────
+   ledger.css's --text-display caps at 60px because it also serves the
+   auth column; the marketing hero wants the full billboard. Fluid for the
+   same reason ledger.css's is: honest at 320px without a media query. */
+.mkt-display {
+  font-size: clamp(2.5rem, 1.45rem + 5.2vw, 4.5rem);
+  line-height: 1.02;
+  letter-spacing: -0.022em;
+}
+.mkt-display-s {
+  font-size: clamp(1.85rem, 1.4rem + 2.2vw, 2.85rem);
+  line-height: 1.1;
+  letter-spacing: -0.014em;
+}
+
+/* ── Glow fields — the NAVY bands only ─────────────────────────────────
+   The two brand blues as low-alpha radial orbs behind a navy section's
+   content (the hero and the close, nothing between). These never render
+   on the paper body. pointer-events: none so they can never eat a click;
+   overflow lives on the section, not here. */
+.mkt-glow {
+  position: absolute;
+  inset: -20% -10%;
+  pointer-events: none;
+  background:
+    radial-gradient(52rem 32rem at 22% 0%, rgba(3, 107, 252, 0.2), transparent 62%),
+    radial-gradient(46rem 30rem at 82% 12%, rgba(91, 155, 255, 0.12), transparent 65%);
+}
+.mkt-glow-low {
+  position: absolute;
+  inset: -20% -10%;
+  pointer-events: none;
+  background: radial-gradient(60rem 30rem at 50% 115%, rgba(3, 107, 252, 0.16), transparent 65%);
+}
+
+/* ── The floating nav ──────────────────────────────────────────────────
+   A detached glass pill on the paper ground. backdrop-filter appears only
+   on fixed/sticky chrome (this, and the phone menu) — never on scrolling
+   content. The pill is near-opaque paper so it stays legible over the
+   navy hero it initially floats above AND wherever the blur is
+   unavailable. */
+.mkt-nav {
+  background: rgba(251, 251, 250, 0.88);
+  border: 1px solid rgba(25, 29, 27, 0.1);
+  border-radius: 999px;
+  backdrop-filter: blur(18px) saturate(1.4);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 8px 30px rgba(20, 24, 22, 0.12);
+}
+
+/* The phone menu: a full-screen paper sheet. Kept in the DOM so the
+   open/close transition can run; visibility flips with [data-open].
+   Stacks BELOW the nav pill (the header is z-30) so the burger that has
+   morphed into the X stays interactive above it. Near-opaque on its own:
+   the blur is an enhancement, not what makes it legible. */
+.mkt-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(251, 251, 250, 0.96);
+  backdrop-filter: blur(26px) saturate(1.4);
+  -webkit-backdrop-filter: blur(26px) saturate(1.4);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 420ms var(--mkt-ease), visibility 0s linear 420ms;
+}
+.mkt-menu[data-open="true"] {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 420ms var(--mkt-ease);
+}
+/* Staggered mask reveal for the menu's links. */
+.mkt-menu .mkt-menu-item {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity 480ms var(--mkt-ease), transform 480ms var(--mkt-ease);
+}
+.mkt-menu[data-open="true"] .mkt-menu-item {
+  opacity: 1;
+  transform: none;
+}
+.mkt-menu[data-open="true"] .mkt-menu-item:nth-child(1) { transition-delay: 60ms; }
+.mkt-menu[data-open="true"] .mkt-menu-item:nth-child(2) { transition-delay: 110ms; }
+.mkt-menu[data-open="true"] .mkt-menu-item:nth-child(3) { transition-delay: 160ms; }
+.mkt-menu[data-open="true"] .mkt-menu-item:nth-child(4) { transition-delay: 210ms; }
+.mkt-menu[data-open="true"] .mkt-menu-item:nth-child(5) { transition-delay: 260ms; }
+.mkt-menu[data-open="true"] .mkt-menu-item:nth-child(6) { transition-delay: 320ms; }
+
+/* The hamburger that morphs to an X — two bars rotating through the
+   middle, not three bars vanishing. */
+.mkt-burger {
+  position: relative;
+  width: 1.125rem;
+  height: 0.875rem;
+}
+.mkt-burger span {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 1.5px;
+  border-radius: 999px;
+  background: currentColor;
+  transition: transform 360ms var(--mkt-ease), top 360ms var(--mkt-ease);
+}
+.mkt-burger span:nth-child(1) { top: 0; }
+.mkt-burger span:nth-child(2) { top: calc(50% - 0.75px); }
+.mkt-burger span:nth-child(3) { top: calc(100% - 1.5px); }
+[aria-expanded="true"] .mkt-burger span:nth-child(1) { top: calc(50% - 0.75px); transform: rotate(45deg); }
+[aria-expanded="true"] .mkt-burger span:nth-child(2) { transform: scaleX(0); }
+[aria-expanded="true"] .mkt-burger span:nth-child(3) { top: calc(50% - 0.75px); transform: rotate(-45deg); }
+
+/* ── The tray (double-bezel) ───────────────────────────────────────────
+   Product screenshots never sit flat on the ground: an outer machined
+   shell, an inner core with its own hairline and a concentric radius.
+   Default is the PAPER ground's tray (a shadowed aluminum rim on the
+   page body); -onbrand is the navy bands' variant, where the rim reads
+   in white alpha and the shadow goes deep. */
+.mkt-tray {
+  background: rgba(25, 29, 27, 0.05);
+  border: 1px solid rgba(25, 29, 27, 0.1);
+  border-radius: var(--mkt-tray-radius);
+  padding: var(--mkt-tray-pad);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.65) inset, 0 2px 6px rgba(20, 24, 22, 0.07), 0 22px 55px rgba(20, 24, 22, 0.12);
+}
+.mkt-tray-core {
+  border-radius: calc(var(--mkt-tray-radius) - var(--mkt-tray-pad));
+  overflow: hidden;
+  border: 1px solid rgba(25, 29, 27, 0.1);
+  background: #ffffff;
+}
+.mkt-tray-onbrand {
+  background: rgba(159, 179, 200, 0.09);
+  border-color: rgba(159, 179, 200, 0.18);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 2px 8px rgba(4, 12, 20, 0.4), 0 28px 70px rgba(4, 12, 20, 0.45);
+}
+.mkt-tray-onbrand > .mkt-tray-core {
+  border-color: rgba(159, 179, 200, 0.14);
+}
+
+/* ── The showcase panel ────────────────────────────────────────────────
+   A section-scale card on the paper body — Soft Structuralism's move: an
+   airy floating slab with a highly diffused ambient shadow, not a boxed
+   border. No backdrop-filter (it sits in scrolling content — the
+   performance rule, not a style preference). */
+.mkt-panel {
+  background: #ffffff;
+  border: 1px solid rgba(25, 29, 27, 0.08);
+  border-radius: 1.5rem;
+  box-shadow: 0 2px 8px rgba(20, 24, 22, 0.05), 0 24px 70px rgba(20, 24, 22, 0.1);
+}
+
+/* ── Island CTA orb ────────────────────────────────────────────────────
+   The trailing arrow never sits naked in a button: it rides in its own
+   circular well, which drifts toward the corner on hover. -onlight for
+   the filled-white (navy band) button, -onaccent for the indigo fill. */
+.mkt-orb {
+  width: 1.625rem;
+  height: 1.625rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  transition: transform 500ms var(--mkt-ease);
+}
+.mkt-orb-onlight { background: rgba(11, 31, 51, 0.1); }
+.mkt-orb-onaccent { background: rgba(255, 255, 255, 0.16); }
+.group:hover .mkt-orb { transform: translate(2px, -2px); }
+
+/* ── Entry reveals ─────────────────────────────────────────────────────
+   Hidden ONLY where scripting is enabled — a browser that will never run
+   the IntersectionObserver never hides the content. Reduced motion shows
+   everything immediately, movement and all timing dropped. */
+@media (scripting: enabled) {
+  .mkt-reveal {
+    opacity: 0;
+    transform: translateY(26px);
+    transition: opacity 850ms var(--mkt-ease), transform 850ms var(--mkt-ease);
+  }
+}
+.mkt-reveal[data-shown="true"] {
+  opacity: 1;
+  transform: none;
+}
+.mkt-reveal.mkt-d1 { transition-delay: 90ms; }
+.mkt-reveal.mkt-d2 { transition-delay: 180ms; }
+.mkt-reveal.mkt-d3 { transition-delay: 270ms; }
+@media (prefers-reduced-motion: reduce) {
+  .mkt-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .mkt-menu,
+  .mkt-menu .mkt-menu-item,
+  .mkt-burger span,
+  .mkt-orb {
+    transition: none;
+  }
+  .mkt-menu .mkt-menu-item {
+    opacity: 1;
+    transform: none;
+  }
+}

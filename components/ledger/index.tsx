@@ -32,7 +32,7 @@ const buttonVariants = cva(
     // the instant `:active` engages. `motion-safe:` gates the scale so a
     // reduced-motion pilot keeps the colour change and loses the movement
     // (the animate skill's rule: reduced-motion ships WITH the animation).
-    "transition duration-100 motion-safe:active:scale-[0.98] select-none " +
+    "transition duration-100 ease-ledger motion-safe:active:scale-[0.98] select-none " +
     "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent " +
     "disabled:pointer-events-none disabled:opacity-50",
   {
@@ -120,7 +120,7 @@ export const LCard = React.forwardRef<
 /* ── Pill (status) ─────────────────────────────────────────────────── */
 
 const pillVariants = cva(
-  "inline-flex items-center rounded-full px-2.5 py-0.5 text-caption font-semibold whitespace-nowrap",
+  "inline-flex items-center rounded-full px-2.5 py-0.5 text-caption font-semibold whitespace-nowrap transition-colors duration-150 ease-ledger",
   {
     variants: {
       tone: {

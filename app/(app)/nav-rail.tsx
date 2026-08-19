@@ -74,7 +74,7 @@ function RailLink({ item, pathname }: { item: NavItem; pathname: string }) {
       // statement, not a substitute for it.
       aria-current={current ? "page" : undefined}
       className={cn(
-        "block rounded-control border-l-2 px-3 py-2 no-underline",
+        "block rounded-control border-l-2 px-3 py-2 no-underline transition-colors duration-150 ease-ledger",
         current
           ? "border-accent bg-accent-soft"
           : "border-transparent hover:bg-sunk",
@@ -110,7 +110,7 @@ const StripLink = React.forwardRef<
       href={item.href}
       aria-current={current ? "page" : undefined}
       className={cn(
-        "block shrink-0 snap-center whitespace-nowrap rounded-control px-3 py-2 no-underline",
+        "block shrink-0 snap-center whitespace-nowrap rounded-control px-3 py-2 no-underline transition-colors duration-150 ease-ledger",
         current ? "bg-accent-soft" : "hover:bg-sunk",
         LINK_FOCUS
       )}

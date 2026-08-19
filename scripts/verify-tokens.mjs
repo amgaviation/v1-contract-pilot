@@ -138,6 +138,12 @@ const SCAN_DIRS = ["app", "components", "lib"];
  */
 const EXEMPT_FILES = new Set([
   join(ROOT, "app", "design", "ledger.css"),
+  // The marketing surface's token sheet — the same exemption ledger.css
+  // holds, for the same reason: it IS a token layer. It remaps the
+  // --ledger-* names inside the `.mkt` scope (the signed-out reskin,
+  // 2026-08-19) and declares the .mkt-* component classes, so every
+  // literal on that surface has a correct home here rather than in TSX.
+  join(ROOT, "app", "design", "marketing.css"),
   join(ROOT, "app", "globals.css"),
   join(ROOT, "lib", "brand.ts"),
   join(ROOT, "lib", "pdf-palette.ts"),
@@ -490,7 +496,8 @@ const RULES = [
  * The fix is not a new pattern to ban — it is a set of names to check
  * against, built once at start-up:
  *
- *   DECLARED_TOKEN_NAMES  every `--name` app/design/ledger.css and
+ *   DECLARED_TOKEN_NAMES  every `--name` app/design/ledger.css,
+ *                        app/design/marketing.css and
  *                        app/globals.css declare, plus the `--font-schibsted`
  *                        name lib/fonts.ts's next/font loader creates (it
  *                        is never declared with a CSS `:` — the font loader
@@ -508,7 +515,14 @@ function collectDeclaredTokenNames() {
   const names = new Set();
   const globalsCss = readFileSync(join(ROOT, "app", "globals.css"), "utf8");
   const ledgerCss = readFileSync(join(ROOT, "app", "design", "ledger.css"), "utf8");
-  for (const css of [globalsCss, ledgerCss]) {
+  // marketing.css only REMAPS names ledger.css already declares, plus its
+  // own --mkt-* knobs — reading it here is what lets the existence rule
+  // hold var(--mkt-…) references to the same standard as var(--ledger-…).
+  const marketingCss = readFileSync(
+    join(ROOT, "app", "design", "marketing.css"),
+    "utf8"
+  );
+  for (const css of [globalsCss, ledgerCss, marketingCss]) {
     for (const m of css.matchAll(/--([a-zA-Z][\w-]*)\s*:/g)) names.add(m[1]);
   }
   const fontsSrc = readFileSync(join(ROOT, "lib", "fonts.ts"), "utf8");
@@ -676,5 +690,5 @@ if (violations.length > 0) {
 console.log(
   `tokens:verify passed — no visual values hardcoded outside the ${EXEMPT_FILES.size} ` +
     `documented files, and every var() reference names something ` +
-    `${join("app", "design", "ledger.css")} or ${join("app", "globals.css")} actually declares.`
+    `${join("app", "design", "ledger.css")}, ${join("app", "design", "marketing.css")} or ${join("app", "globals.css")} actually declares.`
 );

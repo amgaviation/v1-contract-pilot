@@ -3,6 +3,7 @@ import { lButtonClass } from "@/components/ledger";
 import { BRAND } from "@/lib/brand";
 import { INTRO_FIRST_MONTH_LABEL } from "@/lib/stripe/server";
 import { TIER_PRICE_COPY } from "../pricing/pricing-model";
+import Reveal from "../reveal";
 
 /**
  * /your-data — the trust page, new at the 2026-08-19 restructure.
@@ -45,9 +46,13 @@ export const metadata = {
 function Band({
   children,
   tone = "canvas",
+  glow = "top",
 }: {
   children: React.ReactNode;
+  /** `brand` is the navy ground with its glow field; `sunk` the grey
+   *  band — see the landing page's Band for the shared reasoning. */
   tone?: "canvas" | "sunk" | "brand";
+  glow?: "top" | "low";
 }) {
   return (
     <section
@@ -55,11 +60,14 @@ function Band({
         tone === "sunk"
           ? "bg-sunk"
           : tone === "brand"
-            ? "bg-brand text-brand-ink"
+            ? "relative overflow-hidden bg-brand text-brand-ink"
             : undefined
       }
     >
-      <div className="mx-auto w-full max-w-3xl px-5 py-14 sm:px-6 sm:py-20">
+      {tone === "brand" ? (
+        <div aria-hidden className={glow === "low" ? "mkt-glow-low" : "mkt-glow"} />
+      ) : null}
+      <div className="relative mx-auto w-full max-w-3xl px-5 py-16 sm:px-6 sm:py-24">
         {children}
       </div>
     </section>
@@ -107,11 +115,11 @@ export default function YourDataPage() {
   return (
     <>
       <Band tone="brand">
-        <div className="flex flex-col items-start gap-5">
+        <Reveal className="flex flex-col items-start gap-5">
           <p className="font-mono text-caption font-medium uppercase tracking-widest text-brand-accent">
             Your data
           </p>
-          <h1 className="font-display text-display font-bold text-brand-ink">
+          <h1 className="mkt-display font-display font-bold text-brand-ink">
             It's yours, and you can take it with you
           </h1>
           <p className="text-lead text-brand-ink-2">
@@ -120,7 +128,7 @@ export default function YourDataPage() {
             week. Here's exactly what happens to all of it, including the one
             case where something does get cleared.
           </p>
-        </div>
+        </Reveal>
       </Band>
 
       <Band>
@@ -140,8 +148,8 @@ export default function YourDataPage() {
         </div>
       </Band>
 
-      <Band tone="sunk">
-        <div className="flex flex-col items-start gap-4">
+      <Band>
+        <Reveal className="mkt-panel flex flex-col items-start gap-4 px-6 py-8 sm:px-9 sm:py-10">
           <h2 className="font-display text-h2 font-bold text-ink">
             One thing this doesn't do
           </h2>
@@ -152,13 +160,13 @@ export default function YourDataPage() {
             Currency and airworthiness decisions stay yours, the same as they
             were before you had software for any of this.
           </p>
-        </div>
+        </Reveal>
       </Band>
 
-      <Band tone="brand">
-        <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
+      <Band tone="brand" glow="low">
+        <Reveal className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
           <div className="flex max-w-lg flex-col gap-3">
-            <h2 className="font-display text-display-s font-bold text-brand-ink">
+            <h2 className="mkt-display-s font-display font-bold text-brand-ink">
               Start with your next trip.
             </h2>
             <p className="text-body text-brand-ink-2">
@@ -171,12 +179,15 @@ export default function YourDataPage() {
             className={lButtonClass({
               size: "lg",
               variant: "onBrand",
-              className: "shrink-0",
+              className: "group shrink-0 rounded-full pr-2",
             })}
           >
             Try {BRAND.name} — {INTRO_FIRST_MONTH_LABEL} first month
+            <span aria-hidden className="mkt-orb mkt-orb-onlight">
+              ↗
+            </span>
           </NextLink>
-        </div>
+        </Reveal>
       </Band>
     </>
   );

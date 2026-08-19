@@ -2,6 +2,7 @@ import NextLink from "next/link";
 import { LCard, LSeparator, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
 import { BRAND } from "@/lib/brand";
 import { INTRO_FIRST_MONTH_LABEL } from "@/lib/stripe/server";
+import Reveal from "../reveal";
 import {
   BUSINESS_MINIMUM_MONTHLY,
   TIER_DISPLAY,
@@ -67,8 +68,8 @@ function Band({
       <div
         className={
           narrow
-            ? "mx-auto w-full max-w-2xl px-4 py-12 sm:py-16"
-            : "mx-auto w-full max-w-5xl px-4 py-12 sm:py-16"
+            ? "mx-auto w-full max-w-2xl px-4 py-14 sm:py-20"
+            : "mx-auto w-full max-w-5xl px-4 py-14 sm:py-20"
         }
       >
         {children}
@@ -116,9 +117,9 @@ export default function PricingPage() {
     <>
       {/* HERO */}
       <Band>
-        <div className="flex max-w-3xl flex-col items-start gap-4">
-          <p className="text-caption font-semibold uppercase tracking-wide text-ink-3">Pricing</p>
-          <h1 className="font-display text-h1 font-bold tracking-tight text-ink">Three plans. One record.</h1>
+        <Reveal className="flex max-w-3xl flex-col items-start gap-4">
+          <p className="font-mono text-caption font-medium uppercase tracking-widest text-accent">Pricing</p>
+          <h1 className="mkt-display-s font-display font-bold text-ink">Three plans. One record.</h1>
           <p className="text-lead text-ink-2">
             Every plan runs the same trip record, so the invoice, the
             logbook drafts and the year-end numbers work the same on all
@@ -129,7 +130,7 @@ export default function PricingPage() {
             {INTRO_FIRST_MONTH_LABEL} for your first month, on every plan.
             The regular price applies from month two.
           </p>
-        </div>
+        </Reveal>
       </Band>
 
       {/* THE THREE CARDS. Names, blurbs and feature lists come from
@@ -184,7 +185,7 @@ export default function PricingPage() {
                   ))}
                 </div>
 
-                <NextLink href="/signup" className={lButtonClass({ className: "w-full" })}>
+                <NextLink href="/signup" className={lButtonClass({ className: "w-full rounded-full" })}>
                   Start for {INTRO_FIRST_MONTH_LABEL}
                 </NextLink>
               </LCard>
@@ -290,14 +291,23 @@ export default function PricingPage() {
 
       {/* CLOSING CTA BAND. */}
       <Band>
-        <div className="rounded-card border border-accent-soft bg-accent-soft p-6 sm:p-8">
+        <Reveal className="mkt-panel p-6 sm:p-9">
           <div className="flex flex-col items-start justify-between gap-5 md:flex-row md:items-center">
-            <h2 className="font-display text-h2 font-bold tracking-tight text-ink">Start with your next trip.</h2>
-            <NextLink href="/signup" className={lButtonClass({ size: "lg", className: "shrink-0" })}>
+            <h2 className="mkt-display-s font-display font-bold text-ink">Start with your next trip.</h2>
+            <NextLink
+              href="/signup"
+              className={lButtonClass({
+                size: "lg",
+                className: "group shrink-0 rounded-full pr-2",
+              })}
+            >
               Start for {INTRO_FIRST_MONTH_LABEL}
+              <span aria-hidden className="mkt-orb mkt-orb-onaccent">
+                ↗
+              </span>
             </NextLink>
           </div>
-        </div>
+        </Reveal>
       </Band>
     </>
   );

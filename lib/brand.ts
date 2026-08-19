@@ -64,6 +64,15 @@ export type Brand = typeof BRAND;
 export const THEME_COLOR = "#fcfcfd";
 
 /**
+ * The marketing surface's browser-chrome tint — the brand navy the hero
+ * band opens every signed-out page with, so a phone's address bar meets
+ * the navy rather than flashing the product's paper white above it.
+ * Exported from here because this file is the one non-CSS home
+ * tokens:verify permits a colour literal.
+ */
+export const MARKETING_THEME_COLOR = "#0b1f33";
+
+/**
  * COUNSEL-REVIEWED COPY — verbatim, docs/PLAN.md Design system. This is
  * the one string in the codebase where a paraphrase is a liability
  * question, not a style question. It lives here, not inline on the

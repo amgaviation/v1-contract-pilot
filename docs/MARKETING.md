@@ -202,6 +202,32 @@ the public site had never once said a client can pay an invoice.
 
 ---
 
+## 3.2 The visual register (2026-08-19 polish)
+
+The marketing surface stays PRIMARILY LIGHT — the owner's call, made the
+same day a dark-first cut was tried and corrected. The page body stands
+on Ledger's own day palette and the navy stays exactly where it always
+was: the hero and close bands' ground, via the brand tokens. What the
+polish added is craft, not a palette:
+
+- the nav is a detached paper-glass pill with a real phone menu (which
+  also fixed two pages being unreachable from a phone's navigation);
+- product screenshots sit in machined double-bezel trays (a paper-ground
+  tray on the body, a white-alpha rim on the navy bands);
+- the navy bands carry a low-alpha glow field in the two brand blues;
+- sections enter with a reduced-motion-safe fade-up, gated behind
+  (scripting: enabled) so a no-JS visitor sees a full page;
+- the hero type stepped up to a billboard scale (`.mkt-display`), and
+  primary CTAs are pills with the trailing arrow in its own orb.
+
+The mechanism lives in `app/design/marketing.css` (a `.mkt` scope of
+component classes — it remaps NO Ledger tokens), and the sheet is on
+tokens:verify's exempt list as a token sheet. Copy was untouched
+throughout — the polish was a zero-copy-change pass.
+
+The signed-out/auth seam is unremarkable again: light site, light auth,
+one navy band between them.
+
 ## 4. Message hierarchy
 
 Rewritten 2026-08-19 for the landing page's six bands.

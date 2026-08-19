@@ -32,22 +32,29 @@ suggestions):
 
 | Role | Day | Night | Utility |
 |---|---|---|---|
-| Canvas | `#FBFBFA` | `#15171A` | `bg-canvas` |
-| Card | `#FFFFFF` | `#1D2024` | `bg-card` + `shadow-card` |
-| Sunk (wells, quiet fills) | `#F2F2F0` | `#191C1F` | `bg-sunk` |
-| Ink | `#191D1B` | `#E9EBE9` | `text-ink` |
-| Ink 2 (secondary) | `#545A56` | `#B3B8B4` | `text-ink-2` |
-| Ink 3 (labels, hints) | `#737A75` | `#878D89` | `text-ink-3` |
-| Hairline | `#E5E6E3` | `#2B2F33` | `border-hair` |
-| Accent (indigo) | `#35509C` | `#8FA3D9` | `bg-accent` / `text-accent` |
+| Canvas | `#FBFBFA` | `#101722` | `bg-canvas` |
+| Card | `#FFFFFF` | `#18212E` | `bg-card` + `shadow-card` |
+| Sunk (wells, quiet fills) | `#F2F2F0` | `#0B111A` | `bg-sunk` |
+| Ink | `#191D1B` | `#E9EEF5` | `text-ink` |
+| Ink 2 (secondary) | `#545A56` | `#AAB8C9` | `text-ink-2` |
+| Ink 3 (labels, hints) | `#6A706C` | `#8090A3` | `text-ink-3` |
+| Hairline | `#E5E6E3` | `#273344` | `border-hair` |
+| Accent (indigo) | `#35509C` | `#6F9FE8` | `bg-accent` / `text-accent` |
 | Good | `#1C7A52` | `#4CC38A` | + `-soft` fills |
 | Warn | `#92600F` | `#D9A04B` | + `-soft` fills |
 | Crit | `#B03434` | `#E0716B` | + `-soft` fills |
 
 Contrast: every ink-on-ground pair above holds ≥ 4.5:1 in its own theme
-(ink-3 on card is the floor at ~4.6:1 day / ~4.5:1 night); accent-on-white is
-7.4:1; accent-ink on accent ≥ 4.5:1 both themes. Night is a designed palette
-(desaturated accent, lifted semantic hues), not an inversion.
+(ink-3 on card is the floor at ~4.6:1 day / ~5.0:1 night); accent-on-white is
+7.4:1; accent-ink on accent ≥ 4.5:1 both themes. Night is a designed palette,
+not an inversion — and **as of 2026-08-19 it is brand-derived**: every night
+ground and ink sits in the hue family of `--ledger-brand` (#0B1F33), and the
+night accent descends from the brand accent (#5B9BFF) rather than from a
+desaturated indigo, so a night-mode pilot lives in the same navy world the
+signed-out surface opens with. The elevation pass landed the same day:
+day cards carry a broad soft ambient shadow (the old 4% was invisible),
+night cards a light inset top edge plus deep ambient, and the house curve
+is exported as the `ease-ledger` utility for every transition.
 
 ### The brand ground — signed-out surface only
 

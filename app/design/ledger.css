@@ -115,8 +115,12 @@
   --ledger-brand-ink-2: #9fb3c8;
   --ledger-brand-accent: #5b9bff;
 
-  --ledger-shadow-card: 0 1px 2px rgba(20, 24, 22, 0.04);
-  --ledger-shadow-raised: 0 1px 3px rgba(20, 24, 22, 0.07), 0 4px 12px rgba(20, 24, 22, 0.05);
+  /* 2026-08-19 elevation pass: the old 4% card shadow measured as
+     invisible against the canvas — cards read as flat boxes with borders.
+     A soft, broad ambient half plus a tight contact half gives them
+     material presence without darkening the register. */
+  --ledger-shadow-card: 0 1px 2px rgba(20, 24, 22, 0.05), 0 6px 20px rgba(20, 24, 22, 0.05);
+  --ledger-shadow-raised: 0 2px 4px rgba(20, 24, 22, 0.07), 0 12px 32px rgba(20, 24, 22, 0.09);
   /* Lift for a light card floating on the navy ground. Deeper than
      shadow-card because it is read against a dark field, where a 4%
      shadow is invisible. */
@@ -126,27 +130,39 @@
 [data-appearance="dark"] {
   color-scheme: dark;
 
-  --ledger-canvas: #15171a;
-  --ledger-card: #1d2024;
-  --ledger-sunk: #191c1f;
+  /* NIGHT IS BRAND-DERIVED as of 2026-08-19 (owner's direction). The old
+     night was a neutral graphite family with greenish inks — designed,
+     but unrelated to the brand. Every ground and ink below now sits in
+     the hue family of --ledger-brand (#0b1f33), so a pilot who runs
+     night mode lives in the same navy world the signed-out surface
+     opens with. Same discipline as before: a designed palette, not an
+     inversion, and every text-bearing pair re-checked to WCAG AA
+     (ink-3 on card is the floor at ~5.0:1; accent-as-text 5.9:1 on
+     card; white on crit-fill 4.65:1 unchanged). */
+  --ledger-canvas: #101722;
+  --ledger-card: #18212e;
+  --ledger-sunk: #0b111a;
 
-  --ledger-ink: #e9ebe9;
-  --ledger-ink-2: #b3b8b4;
-  --ledger-ink-3: #878d89;
+  --ledger-ink: #e9eef5;
+  --ledger-ink-2: #aab8c9;
+  --ledger-ink-3: #8090a3;
 
-  --ledger-hair: #2b2f33;
-  --ledger-hair-strong: #3a3f44;
+  --ledger-hair: #273344;
+  --ledger-hair-strong: #364761;
 
-  --ledger-accent: #8fa3d9;
-  --ledger-accent-ink: #14171f;
-  --ledger-accent-soft: #232c42;
+  /* The night accent moves from the desaturated indigo tint to a blue
+     descended from the brand accent (#5b9bff), tamed one step so a
+     filled control reads calm on the navy card. */
+  --ledger-accent: #6f9fe8;
+  --ledger-accent-ink: #0d1626;
+  --ledger-accent-soft: #1a2940;
 
   --ledger-good: #4cc38a;
-  --ledger-good-soft: #1b2f26;
+  --ledger-good-soft: #143024;
   --ledger-warn: #d9a04b;
-  --ledger-warn-soft: #332a1a;
+  --ledger-warn-soft: #2e2718;
   --ledger-crit: #e0716b;
-  --ledger-crit-soft: #362022;
+  --ledger-crit-soft: #342126;
   /* Darker than night `crit` so WHITE button text clears AA (4.65:1 vs the
      3.11:1 that white-on-#e0716b would give). Kept separate from `crit` on
      purpose — see the day block: `crit` stays #e0716b so overdue pills and
@@ -158,8 +174,11 @@
      navy panel and its white mark render identically in both appearances,
      exactly as the logo colours in app/globals.css do. */
 
-  --ledger-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --ledger-shadow-raised: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+  /* Night depth reads as a light inner hairline plus broad darkness —
+     a dark-on-dark drop shadow alone is invisible, the inset top edge
+     is what makes a card read as a raised plate. */
+  --ledger-shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 20px rgba(0, 0, 0, 0.3);
+  --ledger-shadow-raised: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 2px 6px rgba(0, 0, 0, 0.5), 0 14px 36px rgba(0, 0, 0, 0.4);
   --ledger-shadow-float: 0 2px 6px rgba(0, 0, 0, 0.45), 0 18px 40px rgba(0, 0, 0, 0.5);
 }
 
@@ -283,6 +302,12 @@
 
   --radius-control: 0.5rem;
   --radius-card: 0.75rem;
+
+  /* The house curve, as a utility (`ease-ledger`) — the same
+     cubic-bezier the dialog motion below and the marketing sheet's
+     reveals already use, so every transition in the product decelerates
+     the same way. */
+  --ease-ledger: cubic-bezier(0.22, 1, 0.36, 1);
 
   --shadow-card: var(--ledger-shadow-card);
   --shadow-raised: var(--ledger-shadow-raised);

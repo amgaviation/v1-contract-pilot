@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
-import { BRAND } from "@/lib/brand";
-import SiteHeader from "./site-header";
+import type { Metadata, Viewport } from "next";
+import "@/app/design/marketing.css";
+import { BRAND, MARKETING_THEME_COLOR } from "@/lib/brand";
+import SiteNav from "./site-nav";
 import SiteFooter from "./site-footer";
 
 /**
@@ -75,20 +76,34 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * Dark chrome tint for the dark surface — overrides the root layout's
+ * paper-white THEME_COLOR for this route group only, so a phone's address
+ * bar matches the page under it. Next merges viewport per segment the
+ * same way it merges metadata.
+ */
+export const viewport: Viewport = {
+  themeColor: MARKETING_THEME_COLOR,
+};
+
 export default function MarketingLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    // Ledger's softer marketing variant: the same
-    // `bg-canvas font-ledger text-body text-ink` root as the two
-    // client-facing portals (app/vendor/[token], app/packet/[token]) and
-    // the auth/onboarding surfaces this migration groups it with. dvh, not
-    // vh: the app shell's own comment documents why (mobile URL-bar
-    // overhang creates phantom scroll on a fixed 100vh).
-    <div className="flex min-h-dvh flex-col bg-canvas font-ledger text-body text-ink">
-      <SiteHeader />
+    // THE `.mkt` SCOPE — the marketing craft layer hangs off this one
+    // class: app/design/marketing.css declares the .mkt-* component
+    // classes (pill nav, trays, glow, reveals, display sizes) that only
+    // exist inside it. It remaps NO tokens: the surface stands on
+    // Ledger's own day palette, with the navy carried by the brand
+    // tokens exactly where it always was — the owner's call is that the
+    // public site is primarily light. The authenticated product never
+    // renders inside this class.
+    // dvh, not vh: the app shell's own comment documents why (mobile
+    // URL-bar overhang creates phantom scroll on a fixed 100vh).
+    <div className="mkt flex min-h-dvh flex-col bg-canvas font-ledger text-body text-ink">
+      <SiteNav />
       <main className="flex flex-1 flex-col">{children}</main>
       <SiteFooter />
     </div>

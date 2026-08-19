@@ -3,6 +3,7 @@ import { lButtonClass } from "@/components/ledger";
 import { BRAND } from "@/lib/brand";
 import { INTRO_FIRST_MONTH_LABEL } from "@/lib/stripe/server";
 import ProductShot, { type ShotSlug } from "../product-shot";
+import Reveal from "../reveal";
 import { TIER_PRICE_COPY } from "../pricing/pricing-model";
 
 /**
@@ -56,10 +57,14 @@ export const metadata = {
 function Band({
   children,
   tone = "canvas",
+  glow = "top",
   measure = "default",
 }: {
   children: React.ReactNode;
+  /** `brand` is the navy ground with its glow field; `sunk` the grey
+   *  band — see the landing page's Band for the shared reasoning. */
   tone?: "canvas" | "sunk" | "brand";
+  glow?: "top" | "low";
   measure?: "default" | "narrow";
 }) {
   return (
@@ -68,14 +73,17 @@ function Band({
         tone === "sunk"
           ? "bg-sunk"
           : tone === "brand"
-            ? "bg-brand text-brand-ink"
+            ? "relative overflow-hidden bg-brand text-brand-ink"
             : undefined
       }
     >
+      {tone === "brand" ? (
+        <div aria-hidden className={glow === "low" ? "mkt-glow-low" : "mkt-glow"} />
+      ) : null}
       <div
         className={`mx-auto w-full ${
           measure === "narrow" ? "max-w-3xl" : "max-w-5xl"
-        } px-5 py-14 sm:px-6 sm:py-20`}
+        } relative px-5 py-16 sm:px-6 sm:py-24`}
       >
         {children}
       </div>
@@ -150,11 +158,11 @@ export default function HowItWorksPage() {
           earn them, and a seventh figure at the top would just delay the
           thing the reader came for. */}
       <Band tone="brand">
-        <div className="flex max-w-2xl flex-col items-start gap-5">
+        <Reveal className="flex max-w-2xl flex-col items-start gap-5">
           <p className="font-mono text-caption font-medium uppercase tracking-widest text-brand-accent">
             How it works
           </p>
-          <h1 className="font-display text-display font-bold text-brand-ink">
+          <h1 className="mkt-display font-display font-bold text-brand-ink">
             One trip, start to finish
           </h1>
           <p className="text-lead text-brand-ink-2">
@@ -163,7 +171,7 @@ export default function HowItWorksPage() {
             through it. Here's the whole of it, from the day you log it to
             the packet your CPA asks for in January.
           </p>
-        </div>
+        </Reveal>
       </Band>
 
       {/* THE SIX STEPS. Hairline rows on the shared ledger shape the rest
@@ -205,9 +213,9 @@ export default function HowItWorksPage() {
           names no competitor and calls no other tool bad at its own job:
           the cost being described is the seam between three tools that do
           not know about each other. */}
-      <Band tone="sunk" measure="narrow">
-        <div className="flex flex-col gap-4">
-          <h2 className="font-display text-display-s font-bold text-ink">
+      <Band measure="narrow">
+        <Reveal className="mkt-panel flex flex-col gap-4 px-6 py-8 sm:px-9 sm:py-10">
+          <h2 className="mkt-display-s font-display font-bold text-ink">
             Why it assumes you fly for more than one outfit
           </h2>
           <p className="text-body text-ink">
@@ -224,14 +232,14 @@ export default function HowItWorksPage() {
             rate cards in one place, and one set of totals at the end of the
             year that actually covers everybody you flew for.
           </p>
-        </div>
+        </Reveal>
       </Band>
 
       {/* CLOSE. One action, and the price stated once on this page. */}
-      <Band tone="brand">
-        <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
+      <Band tone="brand" glow="low">
+        <Reveal className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
           <div className="flex max-w-xl flex-col gap-3">
-            <h2 className="font-display text-display-s font-bold text-brand-ink">
+            <h2 className="mkt-display-s font-display font-bold text-brand-ink">
               Start with your next trip.
             </h2>
             <p className="text-body text-brand-ink-2">
@@ -242,18 +250,29 @@ export default function HowItWorksPage() {
           <div className="flex shrink-0 flex-wrap gap-3">
             <NextLink
               href="/signup"
-              className={lButtonClass({ size: "lg", variant: "onBrand" })}
+              className={lButtonClass({
+                size: "lg",
+                variant: "onBrand",
+                className: "group rounded-full pr-2",
+              })}
             >
               Try {BRAND.name} — {INTRO_FIRST_MONTH_LABEL} first month
+              <span aria-hidden className="mkt-orb mkt-orb-onlight">
+                ↗
+              </span>
             </NextLink>
             <NextLink
               href="/pricing"
-              className={lButtonClass({ size: "lg", variant: "onBrandOutline" })}
+              className={lButtonClass({
+                size: "lg",
+                variant: "onBrandOutline",
+                className: "rounded-full",
+              })}
             >
               View plans
             </NextLink>
           </div>
-        </div>
+        </Reveal>
       </Band>
     </>
   );
