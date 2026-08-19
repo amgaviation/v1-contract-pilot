@@ -298,6 +298,7 @@ actually reading each — not guessed from the filename.
 
 | File | What's in it |
 |---|---|
+| `database/` | Plain-English reference for every table and column in the `pilot` schema, plus how to change one safely from the SQL Editor — see `database/README.md` |
 | `SETUP.md` | Step-by-step setup for Resend (email) and Stripe Connect — the two integrations that need outside accounts |
 | `BILLING.md` | The three-tier subscription model, signup-to-checkout flow, entitlements as the tier source |
 | `PRICING.md` | A pricing *proposal* (not yet signed off) with competitor research backing it |
