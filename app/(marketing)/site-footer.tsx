@@ -60,21 +60,21 @@ const COLUMNS: { heading: string; links: { href: string; label: string }[] }[] =
 
 export default function SiteFooter() {
   return (
-    <footer className="border-t border-brand-hair bg-brand text-brand-ink">
+    <footer className="border-t border-hair">
       <div className="mx-auto max-w-6xl px-5 sm:px-6">
-        <div className="flex flex-col gap-6 py-8">
+        <div className="flex flex-col gap-8 py-12">
           <nav
             aria-label="Footer"
             className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-5"
           >
             <div className="flex flex-col items-start gap-2">
               <img src="/brand/white.svg" alt="" height={16} width={28} />
-              <p className="text-caption text-brand-ink-2">{BRAND.tagline}</p>
+              <p className="text-caption text-ink-3">{BRAND.tagline}</p>
             </div>
 
             {COLUMNS.map((column) => (
               <div key={column.heading} className="flex flex-col gap-2">
-                <span className="font-mono text-caption font-medium uppercase tracking-widest text-brand-accent">
+                <span className="font-mono text-caption font-medium uppercase tracking-widest text-accent">
                   {column.heading}
                 </span>
                 {column.links.map((link) =>
@@ -86,7 +86,7 @@ export default function SiteFooter() {
                     <a
                       key={link.href}
                       href={link.href}
-                      className="text-caption text-brand-ink-2 hover:text-brand-ink"
+                      className="text-caption text-ink-2 transition-colors hover:text-ink"
                     >
                       {link.label}
                     </a>
@@ -94,7 +94,7 @@ export default function SiteFooter() {
                     <NextLink
                       key={link.href}
                       href={link.href}
-                      className="text-caption text-brand-ink-2 hover:text-brand-ink"
+                      className="text-caption text-ink-2 transition-colors hover:text-ink"
                     >
                       {link.label}
                     </NextLink>
@@ -104,9 +104,9 @@ export default function SiteFooter() {
             ))}
           </nav>
 
-          <hr className="border-0 border-t border-brand-hair" />
+          <hr className="border-0 border-t border-hair" />
 
-          <p className="text-caption text-brand-ink-2">{BRAND.attribution}</p>
+          <p className="text-caption text-ink-3">{BRAND.attribution}</p>
         </div>
       </div>
     </footer>

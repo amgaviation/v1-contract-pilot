@@ -1,0 +1,291 @@
+/**
+ * MARKETING — the signed-out surface's own skin, layered over Ledger.
+ *
+ * Added 2026-08-19 at the owner's direction: the four public pages (and
+ * only those — app/(marketing)/layout.tsx is the single importer) moved
+ * from Ledger's calm paper to a dark instrument register: V1's own navy
+ * pushed to near-black, glow drawn from the two brand blues, hairlines as
+ * white alpha, product screenshots seated in machined trays. The
+ * AUTHENTICATED product keeps Ledger untouched; docs/MARKETING.md's
+ * design note records the decision and its boundary.
+ *
+ * HOW IT WORKS — A SCOPED REMAP, NOT A SECOND SYSTEM. The `.mkt` class
+ * (stamped once, on the marketing layout's root div) redefines the same
+ * --ledger-* custom properties app/design/ledger.css declares. Every
+ * Tailwind utility on the surface (`bg-canvas`, `text-ink-2`,
+ * `border-hair`, `shadow-float`, ...) resolves those vars at paint time,
+ * so the whole existing token vocabulary flips dark inside this subtree
+ * with zero per-callsite dark: variants and zero drift risk against the
+ * product's sheet — there is no parallel palette to keep in step, only
+ * overrides of the one that exists.
+ *
+ * The values here are DERIVED FROM THE BRAND CONSTANTS, not invented:
+ * the canvas is --ledger-brand (#0b1f33) taken down to its floor, the
+ * accent is --ledger-brand-accent (#5b9bff) promoted to the working
+ * accent, the glow orbs are that accent plus the trademark bug blue
+ * (#036bfc, app/globals.css) at low alpha. The navy panel tokens
+ * (--ledger-brand-*) are NOT remapped — they are brand constants and on
+ * this darker ground they read as the lighter, lifted navy step, which
+ * is exactly what the glass panels want.
+ *
+ * This file is on scripts/verify-tokens.mjs's EXEMPT_FILES list (it is a
+ * token sheet — the same exemption ledger.css holds), and its --mkt-*
+ * names are loaded into the verifier's declared-token set. Everything
+ * with a literal value on this surface lives HERE; the TSX keeps to
+ * token utilities and the .mkt-* classes below.
+ *
+ * CONTRAST, checked the way ledger.css checks its own: ink-2 #9fb3c8 is
+ * 9.3:1 on the canvas, ink-3 #708399 is 5.1:1 on canvas and 4.8:1 on
+ * card — everything that renders text clears WCAG AA's 4.5:1.
+ *
+ * MOTION follows the house rules (see ledger.css's dialog block): the
+ * house curve cubic-bezier(0.22, 1, 0.36, 1), transform/opacity only,
+ * and reduced-motion keeps the content while dropping the movement.
+ * Entry reveals are additionally gated behind (scripting: enabled) so a
+ * no-JS visitor gets a fully visible page rather than one hidden waiting
+ * for an IntersectionObserver that will never run.
+ */
+
+.mkt {
+  color-scheme: dark;
+
+  /* Ground — brand navy at its floor. sunk goes DEEPER than canvas
+     (a recess in a dark surface is darker, not lighter). */
+  --ledger-canvas: #060b12;
+  --ledger-card: #0d1522;
+  --ledger-sunk: #04070c;
+
+  /* Ink */
+  --ledger-ink: #eef3f9;
+  --ledger-ink-2: #9fb3c8;
+  --ledger-ink-3: #708399;
+
+  /* Lines — alpha, not opaque: hairlines on glass have to read over
+     whatever glow or panel sits beneath them. */
+  --ledger-hair: rgba(159, 179, 200, 0.14);
+  --ledger-hair-strong: rgba(159, 179, 200, 0.24);
+
+  /* Accent — the brand accent promoted from navy-band duty to the
+     surface's working accent. accent-ink is the dark ground a filled
+     accent control's text sits on (6.6:1). */
+  --ledger-accent: #5b9bff;
+  --ledger-accent-ink: #04111f;
+  --ledger-accent-soft: #0f2138;
+
+  /* Semantics — ledger.css's own night values, unchanged. */
+  --ledger-good: #4cc38a;
+  --ledger-good-soft: #16281f;
+  --ledger-warn: #d9a04b;
+  --ledger-warn-soft: #2b2416;
+  --ledger-crit: #e0716b;
+  --ledger-crit-soft: #2e1c1d;
+  --ledger-crit-fill: #b35a56;
+
+  /* Depth — read against near-black, so the ambient half is broad and
+     soft and the contact half is a light inner hairline, not darkness. */
+  --ledger-shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 1px 2px rgba(0, 0, 0, 0.5);
+  --ledger-shadow-raised: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 2px 6px rgba(0, 0, 0, 0.45), 0 10px 30px rgba(0, 0, 0, 0.35);
+  --ledger-shadow-float: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 2px 8px rgba(0, 0, 0, 0.5), 0 28px 70px rgba(0, 0, 0, 0.55);
+
+  /* This sheet's own knobs. */
+  --mkt-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --mkt-tray-radius: 1.25rem;
+  --mkt-tray-pad: 0.375rem;
+}
+
+/* ── Display sizes ─────────────────────────────────────────────────────
+   ledger.css's --text-display caps at 60px because it also serves the
+   auth column; the marketing hero wants the full billboard. Fluid for the
+   same reason ledger.css's is: honest at 320px without a media query. */
+.mkt-display {
+  font-size: clamp(2.5rem, 1.45rem + 5.2vw, 4.75rem);
+  line-height: 1.02;
+  letter-spacing: -0.022em;
+}
+.mkt-display-s {
+  font-size: clamp(1.85rem, 1.4rem + 2.2vw, 2.85rem);
+  line-height: 1.1;
+  letter-spacing: -0.014em;
+}
+
+/* ── Glow field ────────────────────────────────────────────────────────
+   The two brand blues as low-alpha radial orbs, absolutely positioned
+   behind a section's content. Decoration budget for the whole surface:
+   the hero and the close, nothing between. pointer-events: none so it
+   can never eat a click; overflow lives on the section, not here. */
+.mkt-glow {
+  position: absolute;
+  inset: -20% -10%;
+  pointer-events: none;
+  background:
+    radial-gradient(52rem 32rem at 22% 0%, rgba(3, 107, 252, 0.22), transparent 62%),
+    radial-gradient(46rem 30rem at 82% 12%, rgba(91, 155, 255, 0.14), transparent 65%);
+}
+.mkt-glow-low {
+  position: absolute;
+  inset: -20% -10%;
+  pointer-events: none;
+  background: radial-gradient(60rem 30rem at 50% 115%, rgba(3, 107, 252, 0.17), transparent 65%);
+}
+
+/* ── The floating nav ──────────────────────────────────────────────────
+   A detached glass pill, not an edge-to-edge bar. backdrop-filter only
+   ever appears on fixed/sticky chrome (this, and the phone menu below) —
+   never on scrolling content. */
+.mkt-nav {
+  background: rgba(6, 11, 18, 0.72);
+  border: 1px solid rgba(159, 179, 200, 0.16);
+  border-radius: 999px;
+  backdrop-filter: blur(18px) saturate(1.5);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 8px 30px rgba(0, 0, 0, 0.45);
+}
+
+/* The phone menu: a full-screen glass sheet. Kept in the DOM so the
+   open/close transition can run; visibility flips with [data-open]. */
+.mkt-menu {
+  position: fixed;
+  inset: 0;
+  /* BELOW the nav pill (the header is z-30): the pill — and the burger
+     that has morphed into the X — stays interactive above the sheet.
+     The first build put the sheet on top and the close button under it,
+     which left Escape as the only way out. */
+  z-index: 20;
+  /* Nearly opaque on its own: backdrop-filter is an enhancement, and a
+     sheet that needs the blur to be legible fails wherever the blur
+     doesn't render (headless capture proved it). */
+  background: rgba(4, 7, 12, 0.95);
+  backdrop-filter: blur(26px) saturate(1.4);
+  -webkit-backdrop-filter: blur(26px) saturate(1.4);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 420ms var(--mkt-ease), visibility 0s linear 420ms;
+}
+.mkt-menu[data-open="true"] {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 420ms var(--mkt-ease);
+}
+/* Staggered mask reveal for the menu's links. */
+.mkt-menu .mkt-menu-item {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity 480ms var(--mkt-ease), transform 480ms var(--mkt-ease);
+}
+.mkt-menu[data-open="true"] .mkt-menu-item {
+  opacity: 1;
+  transform: none;
+}
+.mkt-menu[data-open="true"] .mkt-menu-item:nth-child(1) { transition-delay: 60ms; }
+.mkt-menu[data-open="true"] .mkt-menu-item:nth-child(2) { transition-delay: 110ms; }
+.mkt-menu[data-open="true"] .mkt-menu-item:nth-child(3) { transition-delay: 160ms; }
+.mkt-menu[data-open="true"] .mkt-menu-item:nth-child(4) { transition-delay: 210ms; }
+.mkt-menu[data-open="true"] .mkt-menu-item:nth-child(5) { transition-delay: 260ms; }
+.mkt-menu[data-open="true"] .mkt-menu-item:nth-child(6) { transition-delay: 320ms; }
+
+/* The hamburger that morphs to an X — two bars rotating through the
+   middle, not three bars vanishing. */
+.mkt-burger {
+  position: relative;
+  width: 1.125rem;
+  height: 0.875rem;
+}
+.mkt-burger span {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 1.5px;
+  border-radius: 999px;
+  background: currentColor;
+  transition: transform 360ms var(--mkt-ease), top 360ms var(--mkt-ease);
+}
+.mkt-burger span:nth-child(1) { top: 0; }
+.mkt-burger span:nth-child(2) { top: calc(50% - 0.75px); }
+.mkt-burger span:nth-child(3) { top: calc(100% - 1.5px); }
+[aria-expanded="true"] .mkt-burger span:nth-child(1) { top: calc(50% - 0.75px); transform: rotate(45deg); }
+[aria-expanded="true"] .mkt-burger span:nth-child(2) { transform: scaleX(0); }
+[aria-expanded="true"] .mkt-burger span:nth-child(3) { top: calc(50% - 0.75px); transform: rotate(-45deg); }
+
+/* ── The tray (double-bezel) ───────────────────────────────────────────
+   Product screenshots never sit flat on the ground: an outer machined
+   shell, an inner core with its own hairline and concentric radius. The
+   light UI inside reads as a lit screen in a dark panel — which is the
+   honest version of the effect: it IS the product's actual screen. */
+.mkt-tray {
+  background: rgba(159, 179, 200, 0.07);
+  border: 1px solid rgba(159, 179, 200, 0.14);
+  border-radius: var(--mkt-tray-radius);
+  padding: var(--mkt-tray-pad);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.07) inset, 0 2px 8px rgba(0, 0, 0, 0.5), 0 28px 70px rgba(0, 0, 0, 0.55);
+}
+.mkt-tray-core {
+  border-radius: calc(var(--mkt-tray-radius) - var(--mkt-tray-pad));
+  overflow: hidden;
+  border: 1px solid rgba(159, 179, 200, 0.1);
+  background: #0d1522;
+}
+
+/* ── The glass panel ───────────────────────────────────────────────────
+   A section-scale card on the navy step. No backdrop-filter — it sits in
+   scrolling content, so it takes a gradient of the brand navy instead of
+   a live blur (the performance rule, not a style preference). */
+.mkt-panel {
+  background: linear-gradient(180deg, rgba(19, 49, 79, 0.38), rgba(13, 21, 34, 0.62));
+  border: 1px solid rgba(159, 179, 200, 0.14);
+  border-radius: 1.5rem;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 20px 60px rgba(0, 0, 0, 0.35);
+}
+
+/* ── Island CTA orb ────────────────────────────────────────────────────
+   The trailing arrow never sits naked in a button: it rides in its own
+   circular well, which drifts toward the corner on hover. Two grounds:
+   -onlight for the filled white button, -ondark for outline pills. */
+.mkt-orb {
+  width: 1.625rem;
+  height: 1.625rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  transition: transform 500ms var(--mkt-ease);
+}
+.mkt-orb-onlight { background: rgba(11, 31, 51, 0.1); }
+.mkt-orb-ondark { background: rgba(238, 243, 249, 0.1); }
+.group:hover .mkt-orb { transform: translate(2px, -2px); }
+
+/* ── Entry reveals ─────────────────────────────────────────────────────
+   Hidden ONLY where scripting is enabled — a browser that will never run
+   the IntersectionObserver never hides the content. Reduced motion shows
+   everything immediately, movement and all timing dropped. */
+@media (scripting: enabled) {
+  .mkt-reveal {
+    opacity: 0;
+    transform: translateY(26px);
+    transition: opacity 850ms var(--mkt-ease), transform 850ms var(--mkt-ease);
+  }
+}
+.mkt-reveal[data-shown="true"] {
+  opacity: 1;
+  transform: none;
+}
+.mkt-reveal.mkt-d1 { transition-delay: 90ms; }
+.mkt-reveal.mkt-d2 { transition-delay: 180ms; }
+.mkt-reveal.mkt-d3 { transition-delay: 270ms; }
+@media (prefers-reduced-motion: reduce) {
+  .mkt-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .mkt-menu,
+  .mkt-menu .mkt-menu-item,
+  .mkt-burger span,
+  .mkt-orb {
+    transition: none;
+  }
+  .mkt-menu .mkt-menu-item {
+    opacity: 1;
+    transform: none;
+  }
+}

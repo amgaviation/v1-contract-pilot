@@ -90,18 +90,10 @@ const SHOTS: Record<ShotSlug, Shot> = {
 
 export default function ProductShot({
   slug,
-  onBrand = false,
   priority = false,
   className,
 }: {
   slug: ShotSlug;
-  /**
-   * On the navy hero ground. shadow-card's 4% is invisible against a dark
-   * field, so the frame takes shadow-float and drops the hairline; the
-   * caption takes the brand ink. Same reasoning the hero's own comment has
-   * always carried.
-   */
-  onBrand?: boolean;
   /** The hero shot only: it is above the fold, so it must not lazy-load. */
   priority?: boolean;
   className?: string;
@@ -111,30 +103,33 @@ export default function ProductShot({
     // data-mock, exactly as the retired hand-built mock carried it: this
     // subtree is illustrative data rather than copy, and docs/MARKETING.md
     // §6's word-budget measurement drops it. Nothing styles off it.
+    //
+    // THE TRAY (2026-08-19 reskin): every capture sits in the double-bezel
+    // shell from app/design/marketing.css — an outer machined rim, an
+    // inner core with its own hairline and a concentric radius. On the
+    // dark surface the light UI inside reads as a lit screen in a panel,
+    // which is the honest version of the effect: it IS the product's
+    // actual screen. The old onBrand branch (shadow choice against navy
+    // vs paper) died with the light surface — there is one ground now.
     <figure data-mock="product" className={cn("m-0 flex flex-col gap-2", className)}>
-      <div
-        className={cn(
-          "overflow-hidden rounded-card",
-          onBrand ? "shadow-float" : "border border-hair shadow-card"
-        )}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={shot.src}
-          alt={shot.alt}
-          width={shot.width}
-          height={shot.height}
-          loading={priority ? "eager" : "lazy"}
-          decoding="async"
-          // max-w-full is what keeps a 1440px-wide asset from setting the
-          // page's min-content width on a 320px phone — the one way an
-          // image alone can make the whole document scroll sideways.
-          className="block h-auto w-full max-w-full"
-        />
+      <div className="mkt-tray">
+        <div className="mkt-tray-core">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={shot.src}
+            alt={shot.alt}
+            width={shot.width}
+            height={shot.height}
+            loading={priority ? "eager" : "lazy"}
+            decoding="async"
+            // max-w-full is what keeps a 1440px-wide asset from setting the
+            // page's min-content width on a 320px phone — the one way an
+            // image alone can make the whole document scroll sideways.
+            className="block h-auto w-full max-w-full"
+          />
+        </div>
       </div>
-      <figcaption
-        className={cn("text-caption", onBrand ? "text-brand-ink-2" : "text-ink-3")}
-      >
+      <figcaption className="pl-1.5 text-caption text-ink-3">
         Illustrative data.
       </figcaption>
     </figure>

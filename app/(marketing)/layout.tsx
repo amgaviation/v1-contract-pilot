@@ -1,6 +1,7 @@
-import type { Metadata } from "next";
-import { BRAND } from "@/lib/brand";
-import SiteHeader from "./site-header";
+import type { Metadata, Viewport } from "next";
+import "@/app/design/marketing.css";
+import { BRAND, MARKETING_THEME_COLOR } from "@/lib/brand";
+import SiteNav from "./site-nav";
 import SiteFooter from "./site-footer";
 
 /**
@@ -75,20 +76,34 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * Dark chrome tint for the dark surface — overrides the root layout's
+ * paper-white THEME_COLOR for this route group only, so a phone's address
+ * bar matches the page under it. Next merges viewport per segment the
+ * same way it merges metadata.
+ */
+export const viewport: Viewport = {
+  themeColor: MARKETING_THEME_COLOR,
+};
+
 export default function MarketingLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    // Ledger's softer marketing variant: the same
-    // `bg-canvas font-ledger text-body text-ink` root as the two
-    // client-facing portals (app/vendor/[token], app/packet/[token]) and
-    // the auth/onboarding surfaces this migration groups it with. dvh, not
-    // vh: the app shell's own comment documents why (mobile URL-bar
-    // overhang creates phantom scroll on a fixed 100vh).
-    <div className="flex min-h-dvh flex-col bg-canvas font-ledger text-body text-ink">
-      <SiteHeader />
+    // THE `.mkt` SCOPE — the whole marketing reskin hangs off this one
+    // class. app/design/marketing.css remaps the --ledger-* custom
+    // properties inside it (brand navy at its floor, alpha hairlines,
+    // the brand accent promoted to working accent), so every token
+    // utility below — bg-canvas, text-ink, border-hair, shadow-float —
+    // resolves dark with no per-callsite variants and nothing new to
+    // keep in step with the product's sheet. The authenticated product
+    // never renders inside this class and keeps Ledger's paper.
+    // dvh, not vh: the app shell's own comment documents why (mobile
+    // URL-bar overhang creates phantom scroll on a fixed 100vh).
+    <div className="mkt flex min-h-dvh flex-col bg-canvas font-ledger text-body text-ink">
+      <SiteNav />
       <main className="flex flex-1 flex-col">{children}</main>
       <SiteFooter />
     </div>

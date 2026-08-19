@@ -14,6 +14,7 @@ import {
   type PlanTier,
 } from "@/lib/entitlements";
 import ProductShot, { type ShotSlug } from "./product-shot";
+import Reveal from "./reveal";
 import {
   TIER_DISPLAY,
   TIER_ORDER,
@@ -138,13 +139,20 @@ const PRICING_CTA = "Compare plans";
 function Band({
   children,
   tone = "canvas",
+  glow = "top",
   id,
   measure = "default",
 }: {
   children: React.ReactNode;
-  /** `brand` is the navy ground, and it carries its own ink colour so a
-   *  caller cannot half-apply it and leave dark text on dark. */
+  /** On the dark surface (the 2026-08-19 reskin) `brand` no longer paints
+   *  a navy slab on paper — the whole page IS the navy floor. It now marks
+   *  the two glow sections (hero and close), and `sunk` renders as a
+   *  hairline seam rather than a grey band: alternating fills read as
+   *  stripes on near-black, where a seam reads as a ruled ledger. */
   tone?: "canvas" | "sunk" | "brand";
+  /** Which glow field a `brand` section carries: the hero's twin orbs or
+   *  the close's low horizon. Ignored on the other tones. */
+  glow?: "top" | "low";
   id?: string;
   /**
    * `narrow` is the FAQ's reading column. `wide` is the hero's, and it is
@@ -169,13 +177,18 @@ function Band({
       id={id}
       className={
         tone === "sunk"
-          ? "bg-sunk"
+          ? "border-t border-hair"
           : tone === "brand"
-            ? "bg-brand text-brand-ink"
+            ? "relative overflow-hidden"
             : undefined
       }
     >
-      <div className={`mx-auto w-full ${width} px-5 py-14 sm:px-6 sm:py-20`}>
+      {tone === "brand" ? (
+        <div aria-hidden className={glow === "low" ? "mkt-glow-low" : "mkt-glow"} />
+      ) : null}
+      <div
+        className={`relative mx-auto w-full ${width} px-5 py-16 sm:px-6 sm:py-24`}
+      >
         {children}
       </div>
     </section>
@@ -486,22 +499,22 @@ export default async function LandingPage() {
           full-width screenshot. Stacks at lg and below. */}
       <Band tone="brand" measure="wide">
         <div className="grid grid-cols-1 items-center gap-10 xl:grid-cols-12 xl:gap-8">
-          <div className="flex flex-col items-start gap-5 xl:col-span-5">
+          <Reveal className="flex flex-col items-start gap-5 xl:col-span-5">
             {/* Not an LPill: that primitive's whitespace-nowrap is right for
                 a status badge ("Paid") and wrong for a phrase, which on a
                 narrow phone just runs off the edge. */}
-            <p className="font-mono text-caption font-medium tracking-widest text-brand-accent uppercase">
+            <p className="font-mono text-caption font-medium tracking-widest text-accent uppercase">
               For independent contract pilots
             </p>
 
             {/* THE page's only h1, and the only thing on the page set in
                 --text-display. Owner-signed identity claim, docs/MARKETING.md
                 §4: kept verbatim through the 2026-08-18 rewrite. */}
-            <h1 className="font-display text-display font-bold text-brand-ink">
+            <h1 className="mkt-display font-display font-bold text-ink">
               One trip entry drives the rest.
             </h1>
 
-            <p className="text-lead text-brand-ink-2">
+            <p className="text-lead text-ink-2">
               {BRAND.name} is a business management platform we built for
               pilots. You log the trip once and the invoice, the logbook
               drafts and the year-end numbers all come off that one record.
@@ -510,15 +523,26 @@ export default async function LandingPage() {
             <div className="mt-1 flex flex-wrap gap-3">
               <NextLink
                 href="/signup"
-                className={lButtonClass({ size: "lg", variant: "onBrand" })}
+                className={lButtonClass({
+                  size: "lg",
+                  variant: "onBrand",
+                  className: "group rounded-full pr-2",
+                })}
               >
                 {START_CTA}
+                {/* The island orb — the arrow rides in its own well and
+                    drifts toward the corner on hover (.mkt-orb). aria-hidden:
+                    it decorates the label, it does not extend it. */}
+                <span aria-hidden className="mkt-orb mkt-orb-onlight">
+                  ↗
+                </span>
               </NextLink>
               <NextLink
                 href="/how-it-works"
                 className={lButtonClass({
                   size: "lg",
                   variant: "onBrandOutline",
+                  className: "rounded-full",
                 })}
               >
                 {PRICING_CTA}
@@ -534,12 +558,12 @@ export default async function LandingPage() {
                 why that matters: its "An offer change must sweep the SHELL"
                 section exists because imprecise offer copy shipped three
                 false price claims. Both figures interpolated (rule 11). */}
-            <p className="text-caption text-brand-ink-2">
+            <p className="text-caption text-ink-3">
               Plans start at {TIER_PRICE_COPY.solo.monthly}/month; the{" "}
               {INTRO_FIRST_MONTH_LABEL} first month applies to monthly plans.
               Card required.
             </p>
-          </div>
+          </Reveal>
 
           {/* THE PRODUCT VISUAL — a real capture of the real Overview
               screen, with invented data (see ./product-shot.tsx, and the
@@ -547,9 +571,9 @@ export default async function LandingPage() {
               the text column: shadow-float exists because shadow-card's 4%
               is invisible against a dark field. Eager, not lazy — it is the
               fold. */}
-          <div className="xl:col-span-7">
-            <ProductShot slug="overview" onBrand priority />
-          </div>
+          <Reveal delay={1} className="xl:col-span-7">
+            <ProductShot slug="overview" priority />
+          </Reveal>
         </div>
       </Band>
 
@@ -559,8 +583,8 @@ export default async function LandingPage() {
           click rather than to replace it. */}
       <Band>
         <div className="flex flex-col gap-8">
-          <div className="flex max-w-2xl flex-col gap-4">
-            <h2 className="font-display text-display-s font-bold text-ink">
+          <Reveal className="flex max-w-2xl flex-col gap-4">
+            <h2 className="mkt-display-s font-display font-bold text-ink">
               You log the trip once
             </h2>
             <div className="flex items-start gap-3 border-l-2 border-accent pl-4">
@@ -570,7 +594,7 @@ export default async function LandingPage() {
                 day or standby. That's the only time you type any of it.
               </p>
             </div>
-          </div>
+          </Reveal>
 
           {/* Hairline-separated rows, not cards: a ledger of claim and
               detail, which is the shape the product itself uses for money.
@@ -662,7 +686,7 @@ export default async function LandingPage() {
           word for word: one offer, spoken identically. */}
       <Band tone="sunk">
         <div className="flex flex-col gap-8">
-          <h2 className="font-display text-display-s font-bold text-ink">
+          <h2 className="mkt-display-s font-display font-bold text-ink">
             Four promises
           </h2>
 
@@ -675,7 +699,7 @@ export default async function LandingPage() {
           </div>
 
           <div>
-            <NextLink href="/signup" className={lButtonClass({ variant: "outline" })}>
+            <NextLink href="/signup" className={lButtonClass({ variant: "outline", className: "rounded-full" })}>
               {START_CTA}
             </NextLink>
           </div>
@@ -687,7 +711,7 @@ export default async function LandingPage() {
           keyboard- and screen-reader-correct for free. */}
       <Band measure="narrow">
         <div className="flex flex-col gap-5">
-          <h2 className="font-display text-display-s font-bold text-ink">
+          <h2 className="mkt-display-s font-display font-bold text-ink">
             Questions pilots ask us
           </h2>
           <div className="border-t border-hair">
@@ -734,7 +758,7 @@ export default async function LandingPage() {
           </div>
 
           <div>
-            <NextLink href="/how-it-works" className={lButtonClass({ variant: "outline" })}>
+            <NextLink href="/how-it-works" className={lButtonClass({ variant: "outline", className: "rounded-full" })}>
               Walk through a whole trip
             </NextLink>
           </div>
@@ -759,10 +783,10 @@ export default async function LandingPage() {
               DELIBERATELY DOES NOT DO" paragraph, stated here rather than
               left for a pilot to discover. Do not delete it to tidy the
               band; it is the most credible sentence on the page. */}
-      <Band tone="sunk">
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-12">
+      <Band>
+        <Reveal className="mkt-panel grid grid-cols-1 gap-8 px-6 py-10 sm:px-10 sm:py-12 lg:grid-cols-12 lg:gap-12">
           <div className="lg:col-span-5">
-            <h2 className="font-display text-display-s font-bold text-ink">
+            <h2 className="mkt-display-s font-display font-bold text-ink">
               Getting paid runs through your own Stripe account
             </h2>
           </div>
@@ -786,7 +810,7 @@ export default async function LandingPage() {
               it and we're not making it.
             </p>
           </div>
-        </div>
+        </Reveal>
       </Band>
 
       {/* ── 5. THE SPEC BLOCK ────────────────────────────────────────────
@@ -808,7 +832,7 @@ export default async function LandingPage() {
                 is the sticky rail beside it. The price anchor is never
                 something the reader meets after the list. */}
             <div className="lg:sticky lg:top-24">
-              <h2 className="font-display text-display-s font-bold text-ink">
+              <h2 className="mkt-display-s font-display font-bold text-ink">
                 What else is in there
               </h2>
               {/* THE PRICE ANCHOR, qualitative by design: claim rule 11
@@ -837,7 +861,7 @@ export default async function LandingPage() {
                 href="/pricing"
                 className={lButtonClass({
                   variant: "outline",
-                  className: "mt-5",
+                  className: "mt-5 rounded-full",
                 })}
               >
                 {PRICING_CTA}
@@ -880,13 +904,13 @@ export default async function LandingPage() {
           adds instead is the export promise, which is the strongest trust
           claim the product has and is true on every tier (docs/MARKETING.md
           claim rule 6). */}
-      <Band tone="brand">
-        <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
+      <Band tone="brand" glow="low">
+        <Reveal className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
           <div className="flex max-w-xl flex-col gap-3">
-            <h2 className="font-display text-display-s font-bold text-brand-ink">
+            <h2 className="mkt-display-s font-display font-bold text-ink">
               Start with your next trip.
             </h2>
-            <p className="text-body text-brand-ink-2">
+            <p className="text-body text-ink-2">
               {/* The last comma becomes ", and" because a bare .join(", ")
                   rendered "Solo, Pro, Business plans" — a conjunction-less
                   list at the page's final call to action. Still derived
@@ -903,12 +927,15 @@ export default async function LandingPage() {
             className={lButtonClass({
               size: "lg",
               variant: "onBrand",
-              className: "shrink-0",
+              className: "group shrink-0 rounded-full pr-2",
             })}
           >
             {START_CTA}
+            <span aria-hidden className="mkt-orb mkt-orb-onlight">
+              ↗
+            </span>
           </NextLink>
-        </div>
+        </Reveal>
       </Band>
     </>
   );

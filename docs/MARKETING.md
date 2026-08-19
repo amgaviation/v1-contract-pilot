@@ -202,6 +202,31 @@ the public site had never once said a client can pay an invoice.
 
 ---
 
+## 3.2 The visual register (2026-08-19 reskin)
+
+The marketing surface moved from Ledger's paper to a dark instrument
+register, at the owner's direction and scoped to the signed-out pages
+only. The mechanism and its boundary live in `app/design/marketing.css`'s
+header: a `.mkt` class on the marketing layout remaps the `--ledger-*`
+tokens (brand navy at its floor, alpha hairlines, the brand accent
+promoted to working accent), so the whole surface flips with no second
+palette to maintain. The authenticated product keeps Ledger's paper
+untouched.
+
+What stayed constant is the brand: the navy and the two brand blues
+(every dark value derives from them), the mark, the three faces, the real
+product screenshots, and every word of copy — the reskin was a
+zero-copy-change pass. What changed is treatment: screenshots sit in
+machined double-bezel trays, the nav is a detached glass pill with a real
+phone menu (which also fixed two pages being unreachable from a phone's
+navigation), sections enter with a reduced-motion-safe fade-up, and the
+hero type stepped up to a billboard scale (`.mkt-display`).
+
+The signed-out/auth seam: `/signup`, `/login` and the other auth screens
+still render Ledger's light shell, so a visitor crosses from dark
+marketing to light product at the moment they act — it reads as entering
+the tool. Revisit only with the owner.
+
 ## 4. Message hierarchy
 
 Rewritten 2026-08-19 for the landing page's six bands.
