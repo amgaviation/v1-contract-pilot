@@ -160,6 +160,10 @@ component directly.
 
 ## Layout
 
+See `docs/DEV-GUIDE.md` for the fuller, plain-language walkthrough of where
+things are stored and where to look for what. This section is the terse
+version.
+
 ```
 app/(app)/          the authenticated product. One gate — requireAccount()
                     in the route-group layout — covers every screen.
@@ -181,9 +185,10 @@ app/(auth)/         login, signup, password reset, and the post-checkout
                     pieces every screen is built from in auth-parts.tsx.
 app/api/stripe/     the webhook. The only place the service-role client is
                     used, anywhere in the product.
-components/ui/      the Radix defaults barrel (index.tsx — the ONE place a
-                    component default may live) plus the shared primitives
-                    built on it: empty-state.tsx, skeletons.tsx, logo.tsx.
+components/ledger/  the LEDGER design system's primitives (dialog, forms,
+                    page-shell, segmented, tabs, plus empty-state/skeleton
+                    components in index.tsx); components/logo.tsx and
+                    tail-number-field.tsx sit directly under components/.
 lib/supabase/       browser, server and service-role clients, all pinned to
                     the `pilot` schema, plus reauth.ts — a throwaway,
                     cookie-less client used to verify a password without
