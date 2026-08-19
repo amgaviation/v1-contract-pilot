@@ -3,10 +3,12 @@
  * two date sums the billing screen needs to say it.
  *
  * DELIBERATELY PURE, for the same reasons lib/entitlements.ts is: no
- * imports beyond that file's types, no "server-only", no I/O, no Date.now()
- * captured at module scope. `now` is always a parameter, so the unit suite
- * (tests/billing-state.test.mjs) exercises the real module against fixed
- * clocks rather than whatever today happens to be.
+ * "server-only", no I/O, no Date.now() captured at module scope. `now` is
+ * always a parameter, so the unit suite (tests/billing-state.test.mjs)
+ * exercises the real module against fixed clocks rather than whatever today
+ * happens to be. Its only imports are two equally pure sibling modules:
+ * entitlements.ts (the tier vocabulary) and brand.ts (the support address,
+ * which belongs in a sentence a pilot reads and must not be typed here).
  *
  * WHAT LIVES HERE AND WHY IT IS NOT IN entitlements.ts: entitlements.ts is
  * the TIER vocabulary — what a plan includes. This is the SUBSCRIPTION
@@ -21,7 +23,13 @@
  * dates, counts and sentences only.
  */
 
-import { ACCOUNT_WRITABLE_STATUSES, TIER_RANK, type PlanTier } from "./entitlements";
+import { BRAND } from "./brand";
+import {
+  ACCOUNT_WRITABLE_STATUSES,
+  TIER_RANK,
+  accountIsReadOnly,
+  type PlanTier,
+} from "./entitlements";
 
 /**
  * The full `pilot.accounts.status` CHECK, in the order the Phase-1
@@ -135,14 +143,72 @@ export function statusDisplay(status: string): StatusDisplay {
   return {
     label: status,
     tone: "gray",
-    meaning:
-      "Stripe reports this subscription in a state this screen doesn't have a description for. Open the billing portal for the full picture, or get in touch.",
+    meaning: `Stripe reports this subscription in a state this screen doesn't have a description for. Open the billing portal for the full picture, or email ${BRAND.supportEmail}.`,
   };
 }
 
 /** True when this status may still write — the one rule, read from entitlements. */
 export function statusIsWritable(status: string): boolean {
   return (ACCOUNT_WRITABLE_STATUSES as readonly string[]).includes(status);
+}
+
+export type ReadOnlyNotice = {
+  /** The banner sentence — status-specific, never the one-size-fits-all line. */
+  message: string;
+  /** Where the fix lives for THIS state, not a generic destination. */
+  href: string;
+  linkLabel: string;
+};
+
+/**
+ * The every-page read-only banner's content, or null when the account
+ * writes normally.
+ *
+ * WHY THIS EXISTS: the shell used to render one hardcoded sentence —
+ * "Your subscription has ended… Resubscribe" — for every read-only cause.
+ * accountIsReadOnly() is true for six different states, and for most of
+ * them that sentence was FALSE: past_due means Stripe is still retrying
+ * the card (the fix is a card update, and resubscribe() refuses to run),
+ * a hold is the pilot's own deliberate pause, and a deactivation was an
+ * explicit choice made in Settings. The accurate per-status sentences
+ * already lived in STATUS_DISPLAY above and were only ever read by the
+ * Billing page; this function is how the global banner reads them too.
+ *
+ * Precedence mirrors accountIsReadOnly's own reasons: an explicit
+ * deactivation outranks everything (status can still read 'active' in the
+ * webhook gap — see entitlements.ts), then a hold (also 'active' at
+ * Stripe, by pause_collection's design), then whatever the status means.
+ */
+export function readOnlyNotice(account: {
+  status: string;
+  deactivated_at?: string | null;
+  hold_started_at?: string | null;
+}): ReadOnlyNotice | null {
+  if (!accountIsReadOnly(account)) return null;
+
+  if (account.deactivated_at) {
+    return {
+      message:
+        "This account has been deactivated, so it's read-only. Every record stays viewable and exportable.",
+      href: "/settings?tab=account",
+      linkLabel: "Go to Account settings",
+    };
+  }
+
+  if (account.hold_started_at) {
+    return {
+      message:
+        "This account is on hold, so it's read-only and billing is paused. Everything stays viewable and exportable. End the hold to pick up where you left off.",
+      href: "/settings?tab=account",
+      linkLabel: "Go to Account settings",
+    };
+  }
+
+  return {
+    message: statusDisplay(account.status).meaning,
+    href: "/settings/billing",
+    linkLabel: "Go to Billing",
+  };
 }
 
 /**

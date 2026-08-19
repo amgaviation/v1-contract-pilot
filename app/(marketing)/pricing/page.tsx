@@ -351,7 +351,7 @@ function buildFaq(): { q: string; a: string }[] {
   return [
     {
       q: "What does the first month cost?",
-      a: `${INTRO_FIRST_MONTH_LABEL}, on any monthly plan. From the second month your card is charged the regular price for the plan you picked: ${TIER_PRICE_COPY.solo.monthly}, ${TIER_PRICE_COPY.pro.monthly}, or ${TIER_PRICE_COPY.business.monthly} per seat a month. Annual plans bill the plain annual price from day one. Cancel during the first month and nothing more is charged.`,
+      a: `${INTRO_FIRST_MONTH_LABEL}, on any monthly plan. From the second month your card is charged the regular price for the plan you picked: ${TIER_PRICE_COPY.solo.monthly}, ${TIER_PRICE_COPY.pro.monthly}, or ${TIER_PRICE_COPY.business.monthly} per seat a month. Annual plans bill the plain annual price from day one. Cancel during the first month and nothing more is charged: the ${INTRO_FIRST_MONTH_LABEL} you already paid isn't refunded, and the account stays open until that first month ends.`,
     },
     {
       q: "What happens if I downgrade or cancel?",
@@ -383,6 +383,15 @@ function buildFaq(): { q: string; a: string }[] {
     {
       q: "Do the higher plans decide whether I'm current or legal to fly?",
       a: "No plan does, and none will ever present itself that way. The product tracks dates you entered from your own documents so you can see what's coming due. Currency and airworthiness decisions remain yours.",
+    },
+    // LAST, and deliberately so: this page's heading promises to answer
+    // what a reader needs "before you enter a card", and the honest end of
+    // that promise is a way to ask the question this list did not happen to
+    // cover. There is no trial to fall back on, so without it the only way
+    // to resolve a doubt is to pay and find out.
+    {
+      q: "What if my question isn't here?",
+      a: `Email ${BRAND.supportEmail} and a person will answer.`,
     },
   ];
 }

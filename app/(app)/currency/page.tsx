@@ -1,7 +1,7 @@
 import { LAlert } from "@/components/ledger";
 import { LPageShell } from "@/components/ledger/page-shell";
 import { requireAccount } from "@/lib/supabase/account";
-import { CURRENCY_DISCLAIMER } from "@/lib/brand";
+import { BRAND, CURRENCY_DISCLAIMER } from "@/lib/brand";
 import { isCurrencyEngineEnabled } from "@/lib/currency/gate";
 import { evaluateCurrency } from "@/lib/currency";
 import { loadCurrencyInput } from "@/lib/currency/read";
@@ -106,7 +106,7 @@ export default async function CurrencyPage() {
             <span className="text-body-s">
               This is not a statement that you are current, and not a statement that you
               are not. It means this screen could not find out. Reload to try again; if
-              it keeps failing, contact support. Your logbook itself is unaffected.
+              it keeps failing, email {BRAND.supportEmail}. Your logbook itself is unaffected.
             </span>
           </span>
         </LAlert>

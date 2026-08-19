@@ -67,7 +67,7 @@ export default function LogbookScreen() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-h3 font-semibold">Hours by type</h2>
               <NextLink
-                href="/logbook/aircraft"
+                href="/aircraft"
                 className={lButtonClass({ variant: "outline" })}
               >
                 Your aircraft

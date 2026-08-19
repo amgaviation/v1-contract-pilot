@@ -13,6 +13,7 @@ import {
   TIER_DISPLAY,
 } from "@/lib/entitlements";
 import { planChangeIsIncrease } from "@/lib/billing-state";
+import { BRAND } from "@/lib/brand";
 
 /**
  * Plan changes for an EXISTING subscriber, per the platform-billing
@@ -76,7 +77,7 @@ export async function changePlan(
     // subscription to move, and pretending otherwise would be worse.
     return {
       error:
-        "This account isn't billed through Stripe, so its plan is managed for you. Get in touch to change it.",
+        `This account isn't billed through Stripe, so its plan is managed for you. Email ${BRAND.supportEmail} to change it.`,
     };
   }
 
@@ -136,7 +137,7 @@ export async function changePlan(
       err instanceof Error ? err.message : String(err)
     );
     return {
-      error: "Couldn't change the plan. Try again, or get in touch if this keeps happening.",
+      error: `Couldn't change the plan. Try again, or email ${BRAND.supportEmail} if this keeps happening.`,
     };
   }
 
@@ -204,7 +205,7 @@ export async function resubscribe(
   const customerId = account.stripe_customer_id;
   if (!customerId) {
     return {
-      error: "This account isn't billed through Stripe, so it can't be resubscribed here. Get in touch.",
+      error: `This account isn't billed through Stripe, so it can't be resubscribed here. Email ${BRAND.supportEmail}.`,
     };
   }
 
@@ -247,7 +248,7 @@ export async function resubscribe(
       err instanceof Error ? err.message : String(err)
     );
     return {
-      error: "Couldn't start checkout. Try again, or get in touch if this keeps happening.",
+      error: `Couldn't start checkout. Try again, or email ${BRAND.supportEmail} if this keeps happening.`,
     };
   }
 
@@ -305,7 +306,7 @@ export async function setCancelAtPeriodEnd(
   if (!subscriptionId) {
     return {
       error:
-        "This account isn't billed through Stripe, so its plan is managed for you. Get in touch to change it.",
+        `This account isn't billed through Stripe, so its plan is managed for you. Email ${BRAND.supportEmail} to change it.`,
     };
   }
 
@@ -376,7 +377,10 @@ export async function openBillingPortal(
       err instanceof Error ? err.message : String(err)
     );
     return {
-      error: "Couldn't open the billing portal. Try again in a moment.",
+      // Same class as the checkout failure in welcome/actions.ts: a pilot who
+      // cannot open the portal cannot change their card or cancel, and every
+      // route out of that is ours to provide.
+      error: `Couldn't open the billing portal. Try again in a moment, or email ${BRAND.supportEmail}.`,
     };
   }
 

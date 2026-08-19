@@ -13,6 +13,7 @@ import {
   PeriodComparisonBarChart,
   type PeriodComparisonDatum,
 } from "@/components/charts/period-comparison-bar-chart";
+import { BRAND } from "@/lib/brand";
 
 export const metadata = { title: "Profit & loss" };
 
@@ -277,7 +278,7 @@ export default async function ProfitLossReportPage({
                 {report.expensesTruncated ? "deductible expenses" : ""} in
                 this period (or its comparison period) than this page
                 totals. The figures below and the downloaded CSV may both
-                be partial. Contact support if your totals look short.
+                be partial. Email {BRAND.supportEmail} if your totals look short.
               </span>
             </LAlert>
           ) : null}

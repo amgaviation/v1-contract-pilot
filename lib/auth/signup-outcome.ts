@@ -59,6 +59,19 @@ export type SignUpOutcome =
    * address already has an account, and this product does not say which.
    */
   | { kind: "pending-confirmation" }
+  /**
+   * The account row was (very likely) created but the confirmation mail
+   * failed to SEND. Distinct from "retry" because "nothing was saved" is
+   * false here: GoTrue creates the user before it attempts the send, and a
+   * mail-step failure surfaces as a 500/unexpected_failure AFTER the row
+   * exists (observed live during the Resend domain outage; also
+   * supabase/auth#1388). The caller routes to /check-email with honest
+   * copy and lets the resend control carry the recovery. Saying "the email
+   * couldn't be sent" is enumeration-safe: an SMTP/relay failure is a
+   * systemic signal identical for every address attempted during the
+   * incident, not a fact about any one address.
+   */
+  | { kind: "mail-failed" }
   /** A real, actionable failure. The sentence is safe to show. */
   | { kind: "retry"; message: string };
 
@@ -135,11 +148,29 @@ export function classifySignUpError(
     };
   }
 
-  // EVERYTHING ELSE STAYS VISIBLE. An SMTP outage, a 500, a network fault:
-  // these are real failures the person can act on by trying again, and
-  // turning them into a cheerful "check your email" would leave a pilot
-  // waiting for a message that is never coming. The caller logs the raw
-  // Supabase text; this is what the pilot reads.
+  // THE MAIL STEP FAILED AFTER THE ROW WAS CREATED. GoTrue's wording for
+  // this is "Error sending confirmation email" (or "...invite email" /
+  // "...recovery email" for the sibling flows), returned as a 500 with
+  // code "unexpected_failure". The old fallback below told this pilot
+  // "nothing was saved", which is false for exactly this shape (the
+  // account exists, unconfirmed), and a retry with the same address then
+  // silently classified as pending-confirmation, sending them to a screen
+  // claiming a link was sent when none ever was. Both the message match
+  // and the code+status pair are required, so an unrelated 500 keeps the
+  // honest generic sentence below.
+  if (
+    code === "unexpected_failure" &&
+    (status == null || status >= 500) &&
+    /error sending|sending [a-z]* ?email/i.test(text)
+  ) {
+    return { kind: "mail-failed" };
+  }
+
+  // EVERYTHING ELSE STAYS VISIBLE. A 500, a network fault: these are real
+  // failures the person can act on by trying again, and turning them into
+  // a cheerful "check your email" would leave a pilot waiting for a
+  // message that is never coming. The caller logs the raw Supabase text;
+  // this is what the pilot reads.
   return {
     kind: "retry",
     message:

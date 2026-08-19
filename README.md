@@ -71,12 +71,22 @@ skeletons are built on Radix's own `Skeleton` and are `aria-hidden`; the single
 
 `docs/WAVE-PARITY.md` scores all of it against Wave, row by row, with citations.
 
-**One thing blocks real users:** signup returns `Error sending confirmation
-email`. SMTP is configured against Resend, credentials are accepted, and the
-send is rejected with `550 — the sending domain is not verified`. Until
-`amgaviationgroup.com` is verified at resend.com/domains (DKIM + SPF records),
-or the sender is temporarily pointed at `onboarding@resend.dev`, no new pilot
-can complete signup. The same verification gates invoice email delivery.
+**Mail sends, and signup completes.** The long-standing blocker here — signup
+returning `Error sending confirmation email` because Resend rejected the send
+with `550 — the sending domain is not verified` — is resolved. The product
+sends from **`mail.amgaviationgroup.com`** as
+`v1-support@mail.amgaviationgroup.com`, verified at Resend with DKIM and SPF.
+Confirmed working by the product owner on 2026-08-18, and corroborated by a
+recovery email accepted and delivered through the same relay that day.
+
+Two systems send mail and only one of them reads this repo's configuration.
+This is a standing fact about the setup rather than a defect, and it is the
+thing to check first if mail ever half-works again: product mail (invoices,
+receipts, dunning) takes its sender from `INVOICE_FROM_EMAIL`, while the
+signup confirmation and password recovery come from Supabase Auth's own SMTP
+relay, configured in the Supabase dashboard under Auth → SMTP settings. Both
+must name the verified domain; setting one and not the other leaves signup
+broken while invoices work, or the reverse.
 
 ## Stack
 
@@ -150,6 +160,10 @@ component directly.
 
 ## Layout
 
+See `docs/DEV-GUIDE.md` for the fuller, plain-language walkthrough of where
+things are stored and where to look for what. This section is the terse
+version.
+
 ```
 app/(app)/          the authenticated product. One gate — requireAccount()
                     in the route-group layout — covers every screen.
@@ -171,9 +185,10 @@ app/(auth)/         login, signup, password reset, and the post-checkout
                     pieces every screen is built from in auth-parts.tsx.
 app/api/stripe/     the webhook. The only place the service-role client is
                     used, anywhere in the product.
-components/ui/      the Radix defaults barrel (index.tsx — the ONE place a
-                    component default may live) plus the shared primitives
-                    built on it: empty-state.tsx, skeletons.tsx, logo.tsx.
+components/ledger/  the LEDGER design system's primitives (dialog, forms,
+                    page-shell, segmented, tabs, plus empty-state/skeleton
+                    components in index.tsx); components/logo.tsx and
+                    tail-number-field.tsx sit directly under components/.
 lib/supabase/       browser, server and service-role clients, all pinned to
                     the `pilot` schema, plus reauth.ts — a throwaway,
                     cookie-less client used to verify a password without

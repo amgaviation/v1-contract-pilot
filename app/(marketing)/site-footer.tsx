@@ -47,6 +47,15 @@ const COLUMNS: { heading: string; links: { href: string; label: string }[] }[] =
       { href: "/privacy", label: "Privacy Policy" },
     ],
   },
+  // THE ONE WAY TO REACH A PERSON before entering a card. The product had
+  // no contact route at all until now, on a funnel with no trial: a
+  // prospect whose question the two FAQs happen not to answer could either
+  // pay to find out or leave. mailto: rather than a form, because a form is
+  // a surface to build and this is an address that already works.
+  {
+    heading: "Support",
+    links: [{ href: `mailto:${BRAND.supportEmail}`, label: "Email us" }],
+  },
 ];
 
 export default function SiteFooter() {
@@ -56,7 +65,7 @@ export default function SiteFooter() {
         <div className="flex flex-col gap-6 py-8">
           <nav
             aria-label="Footer"
-            className="grid grid-cols-1 gap-6 sm:grid-cols-4"
+            className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-5"
           >
             <div className="flex flex-col items-start gap-2">
               <img src="/brand/white.svg" alt="" height={16} width={28} />
@@ -68,15 +77,29 @@ export default function SiteFooter() {
                 <span className="font-mono text-caption font-medium uppercase tracking-widest text-brand-accent">
                   {column.heading}
                 </span>
-                {column.links.map((link) => (
-                  <NextLink
-                    key={link.href}
-                    href={link.href}
-                    className="text-caption text-brand-ink-2 hover:text-brand-ink"
-                  >
-                    {link.label}
-                  </NextLink>
-                ))}
+                {column.links.map((link) =>
+                  // A mailto: is not a route. next/link would render an
+                  // anchor either way, but it exists to prefetch and
+                  // client-navigate internal paths, and neither is a thing
+                  // a mail client can be asked to do.
+                  link.href.startsWith("mailto:") ? (
+                    <a
+                      key={link.href}
+                      href={link.href}
+                      className="text-caption text-brand-ink-2 hover:text-brand-ink"
+                    >
+                      {link.label}
+                    </a>
+                  ) : (
+                    <NextLink
+                      key={link.href}
+                      href={link.href}
+                      className="text-caption text-brand-ink-2 hover:text-brand-ink"
+                    >
+                      {link.label}
+                    </NextLink>
+                  )
+                )}
               </div>
             ))}
           </nav>

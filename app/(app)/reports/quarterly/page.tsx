@@ -11,6 +11,7 @@ import { friendlyDbError } from "@/lib/db-errors";
 import { currentTaxYear } from "../year-end/db";
 import { loadOptionLabels } from "@/lib/custom-options-read";
 import { loadQuarterlyReport } from "./queries";
+import { BRAND } from "@/lib/brand";
 
 export const metadata = { title: "Quarterly estimated tax" };
 
@@ -144,7 +145,7 @@ export default async function QuarterlyReportPage({
                 {report.paymentsTruncated && report.deductibleTruncated ? " and " : ""}
                 {report.deductibleTruncated ? "deductible expenses" : ""} in {year} than this
                 page totals. The figures below and the downloaded CSV may both be partial.
-                Contact support if your totals look short.
+                Email {BRAND.supportEmail} if your totals look short.
               </span>
             </LAlert>
           ) : null}

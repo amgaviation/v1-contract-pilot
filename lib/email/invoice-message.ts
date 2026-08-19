@@ -63,21 +63,43 @@ export type MessagePlaceholder = {
   key: MessagePlaceholderKey;
   /** Exactly what the pilot types, shown verbatim in the settings panel. */
   token: string;
+  /**
+   * The insert chip's own words — plain language a pilot who has never
+   * seen `{{double_braces}}` syntax before still recognises ("Client
+   * name", not "client_name"). Kept separate from `description` rather
+   * than derived from it: a chip is a two-or-three-word button label, and
+   * `description` is a full sentence written to be read once, not to fit
+   * on a button.
+   */
+  label: string;
   /** What it becomes, in the words the settings panel shows. */
   description: string;
 };
 
 const PLACEHOLDER = (
   key: MessagePlaceholderKey,
+  label: string,
   description: string
-): MessagePlaceholder => ({ key, token: `{{${key}}}`, description });
+): MessagePlaceholder => ({ key, token: `{{${key}}}`, label, description });
 
 /** The four an invoice message may name. */
 export const INVOICE_PLACEHOLDERS: readonly MessagePlaceholder[] = [
-  PLACEHOLDER("client_name", "The contact you address, or the client's name"),
-  PLACEHOLDER("invoice_number", "The invoice number, e.g. INV-0042"),
-  PLACEHOLDER("amount_due", "The balance still owed, e.g. $14,000.00"),
-  PLACEHOLDER("due_date", "The due date, e.g. Sep 10, 2026"),
+  PLACEHOLDER(
+    "client_name",
+    "Client name",
+    "The contact you address, or the client's name"
+  ),
+  PLACEHOLDER(
+    "invoice_number",
+    "Invoice number",
+    "The invoice number, e.g. INV-0042"
+  ),
+  PLACEHOLDER(
+    "amount_due",
+    "Amount due",
+    "The balance still owed, e.g. $14,000.00"
+  ),
+  PLACEHOLDER("due_date", "Due date", "The due date, e.g. Sep 10, 2026"),
 ];
 
 /**
@@ -88,7 +110,7 @@ export const INVOICE_PLACEHOLDERS: readonly MessagePlaceholder[] = [
  */
 export const REMINDER_PLACEHOLDERS: readonly MessagePlaceholder[] = [
   ...INVOICE_PLACEHOLDERS,
-  PLACEHOLDER("days_overdue", "How overdue it is, e.g. 21 days"),
+  PLACEHOLDER("days_overdue", "How overdue", "How overdue it is, e.g. 21 days"),
 ];
 
 /**

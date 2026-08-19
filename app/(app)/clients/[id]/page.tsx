@@ -17,6 +17,8 @@ import PacketPanel from "./packet-panel";
 import VendorPanel, { type ExistingVendorLink } from "./vendor-panel";
 import PaymentInsightPanel from "./payment-insight-panel";
 import CostPanel from "./cost-panel";
+import HistoryPanel from "./history-panel";
+import { loadClientHistory } from "./history-queries";
 
 type ClientRow = Database["pilot"]["Tables"]["clients"]["Row"];
 type DayTypeRow = Database["pilot"]["Tables"]["day_types"]["Row"];
@@ -263,6 +265,15 @@ export default async function EditClientPage({
   // settled, on the one screen a pilot opens to ask what a client owes.
   const linkedRecordsError = openTripsResult.error ?? invoicesResult.error ?? balancesResult.error;
 
+  // Plan 4 — the History panel: every trip, invoice, payment and estimate
+  // ever recorded for this client, not just the queues above. A standalone
+  // read rather than a slot in the Promise.all block above it (own reads,
+  // own file — history-queries.ts) so that block's positional destructure
+  // stays exactly as every other agent editing this page concurrently left
+  // it. See history-queries.ts's header for why it is one read per tab
+  // rather than one page-wide query.
+  const history = await loadClientHistory(supabase, account.id, client.id);
+
   return (
     <LPageShell
       title={client.name}
@@ -408,6 +419,11 @@ export default async function EditClientPage({
       />
 
       <PaymentInsightPanel accountId={account.id} clientId={client.id} />
+
+      {/* Plan 4: the complete record — every trip, invoice, payment and
+          estimate this account has on file for this client, not just the
+          unbilled/outstanding queues above. See history-panel.tsx. */}
+      <HistoryPanel clientId={client.id} history={history} />
 
       {/* F5: cancellation_policy_note had nowhere it would ever actually
           be seen — the invoice draft only surfaces it when a CANCELED

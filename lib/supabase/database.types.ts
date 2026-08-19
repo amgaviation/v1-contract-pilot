@@ -54,6 +54,7 @@
  *   20260813100000_connect_auto_payments.sql          (stripe_connect_events,
  *                                                      invoice_payments.source,
  *                                                      invoice_payments.stripe_payment_intent_id)
+ *   20260818210000_crew_members.sql                   (crew_members)
  *
  * The list above has always been partial — it names the migrations whose
  * shapes this file was updated FOR, not every migration in the tree. Two
@@ -2441,6 +2442,65 @@ export type Database = {
           archived_at?: string | null;
         };
         Relationships: [];
+      };
+      // 20260818210000_crew_members.sql. A per-account roster of the
+      // pilots and crew a tenant flies with or employs -- see that
+      // migration's header for why it archives rather than deletes, and
+      // why unique(account_id, id) exists ahead of anything that
+      // references it. Same full-row-shaped Insert/Update style as
+      // clients above: the database grant is narrower (column-scoped,
+      // withholding id/account_id/created_at/updated_at), and this type
+      // describes the row's shape rather than the grant -- see the
+      // accounts.Update comment above for why that split is deliberate.
+      crew_members: {
+        Row: {
+          id: string;
+          account_id: string;
+          name: string;
+          role: string | null;
+          email: string | null;
+          phone: string | null;
+          certificates: string | null;
+          notes: string | null;
+          archived_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          account_id: string;
+          name: string;
+          role?: string | null;
+          email?: string | null;
+          phone?: string | null;
+          certificates?: string | null;
+          notes?: string | null;
+          archived_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          account_id?: string;
+          name?: string;
+          role?: string | null;
+          email?: string | null;
+          phone?: string | null;
+          certificates?: string | null;
+          notes?: string | null;
+          archived_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "crew_members_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "accounts";
+            referencedColumns: ["id"];
+          },
+        ];
       };
     };
     Views: {

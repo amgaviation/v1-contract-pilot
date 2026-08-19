@@ -20,6 +20,7 @@ import {
   type DayQuantitySource,
   type TripPLPeriod,
 } from "./report-lib";
+import { BRAND } from "@/lib/brand";
 
 export const metadata = { title: "Trip profitability" };
 
@@ -326,7 +327,7 @@ export default async function TripProfitabilityPage({
                 missing, the number comes out too <em>high</em>, which
                 looks like good news. Rather than show that, this report
                 stops, and the CSV export is disabled for the same reason.
-                Contact support with this detail: {report.refusal}
+                Email {BRAND.supportEmail} with this detail: {report.refusal}
               </div>
             </div>
           </LAlert>
@@ -345,7 +346,7 @@ export default async function TripProfitabilityPage({
                   ? "rows"
                   : ""}{" "}
                 in this period than this page totals, so the figures below
-                may be partial. Narrow the date range, or contact support.
+                may be partial. Narrow the date range, or email {BRAND.supportEmail}.
                 The CSV export is disabled while this is true.
               </span>
             </LAlert>

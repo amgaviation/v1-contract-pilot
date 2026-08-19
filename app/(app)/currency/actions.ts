@@ -5,6 +5,7 @@ import { isCurrencyEngineEnabled } from "@/lib/currency/gate";
 import { evaluateCurrency } from "@/lib/currency";
 import { loadCurrencyInput, recordSnapshots } from "@/lib/currency/read";
 import { isNextControlFlowError, utcDateOf } from "./presentation";
+import { BRAND } from "@/lib/brand";
 
 /**
  * The recompute round trip's whole result, echoed back to the form via
@@ -70,7 +71,7 @@ export async function recomputeCurrency(
     return {
       ok: false,
       error:
-        "The recompute didn't complete, so no snapshot was recorded. The board still shows a fresh computation on every page load. Try again, and contact support if this keeps happening.",
+        `The recompute didn't complete, so no snapshot was recorded. The board still shows a fresh computation on every page load. Try again, and email ${BRAND.supportEmail} if this keeps happening.`,
     };
   }
 }

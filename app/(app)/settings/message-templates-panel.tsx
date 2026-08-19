@@ -2,22 +2,47 @@
 
 import { useActionState } from "react";
 import { LButton, LCard, LSeparator } from "@/components/ledger";
-import { LTextarea } from "@/components/ledger/forms";
 import {
   DEFAULT_INVOICE_TEMPLATE,
   DEFAULT_REMINDER_TEMPLATE,
   INVOICE_PLACEHOLDERS,
   MAX_MESSAGE_TEMPLATE_CHARS,
   REMINDER_PLACEHOLDERS,
-  type MessagePlaceholder,
+  type MessagePlaceholderKey,
 } from "@/lib/email/invoice-message";
+import { formatCents } from "@/lib/format";
 import type { MessageTemplates } from "@/lib/message-templates";
+import TemplateEditor from "./template-editor";
 import {
   saveMessageTemplates,
   type CustomizationFormState,
 } from "./customization-actions";
 
 const initialState: CustomizationFormState = { error: null };
+
+/**
+ * The live preview's stand-in invoice. Echoes the SAME figures the
+ * placeholders' own descriptions already use as examples (INV-0042,
+ * $14,000.00, Sep 10, 2026, 21 days — see INVOICE_PLACEHOLDERS /
+ * REMINDER_PLACEHOLDERS) rather than inventing a second set: a pilot who
+ * reads "e.g. $14,000.00" under a chip and then sees a different number in
+ * the preview would reasonably wonder which one is real. `amount_due`
+ * runs through the actual formatter rather than being typed as a string,
+ * for the same reason the preview calls applyTemplate at all — so the
+ * figure shown is provably what the product would print, not a
+ * hand-maintained lookalike that can drift from it.
+ */
+const INVOICE_SAMPLE_VALUES: Partial<Record<MessagePlaceholderKey, string>> = {
+  client_name: "Dana Whitfield",
+  invoice_number: "INV-0042",
+  amount_due: formatCents(1_400_000),
+  due_date: "Sep 10, 2026",
+};
+
+const REMINDER_SAMPLE_VALUES: Partial<Record<MessagePlaceholderKey, string>> = {
+  ...INVOICE_SAMPLE_VALUES,
+  days_overdue: "21 days",
+};
 
 /**
  * MESSAGE WORDING — the opening line of the mail a client receives, saved
@@ -41,11 +66,24 @@ const initialState: CustomizationFormState = { error: null };
  * improvement to the built-in copy would reach nobody. Clearing the box is
  * therefore also the reset control, which is why there isn't one.
  *
- * Uncontrolled fields with `defaultValue`, seeded from the action's echo:
+ * BOTH BOXES ARE TemplateEditor (./template-editor.tsx), NOT A BARE
+ * LTextarea WITH `defaultValue` ANY MORE. That used to be the shape here,
+ * seeded from the action's echo, with a note explaining why:
  * React 19 resets an uncontrolled form on EVERY dispatch including the
- * rejected one, and a rejected save here would otherwise throw away a
- * paragraph the pilot just wrote (settings-form.tsx carries the same note
- * for the same reason).
+ * rejected one, and a rejected save would otherwise throw away a paragraph
+ * the pilot just wrote (settings-form.tsx carries that same note today,
+ * for the same reason — its fields are still plain, uncontrolled
+ * LInputs). TemplateEditor's textarea is CONTROLLED instead, because the
+ * insert chips and the live preview both need the typed text on every
+ * keystroke regardless — and once the value lives in React state rather
+ * than the DOM, the hazard the echo pattern exists to prevent stops
+ * applying to these two fields: a rejected dispatch re-renders
+ * TemplateEditor with the same `defaultValue` prop, which `useState`
+ * ignores after its first render, so the pilot's text simply stays put.
+ * `initial()` below still computes that `defaultValue` from the echo —
+ * it is the correct seed for the first paint (or the rare remount) — it
+ * is just no longer load-bearing on every dispatch the way its siblings'
+ * `defaultValue` still is.
  */
 export default function MessageTemplatesPanel({
   templates,
@@ -75,20 +113,16 @@ export default function MessageTemplatesPanel({
       <LCard>
         <form action={formAction}>
           <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="invoice_template" className="text-body-s font-medium text-ink">
-                When you send an invoice
-              </label>
-              {/* NO maxLength — see the note above LengthNote below. */}
-              <LTextarea
-                id="invoice_template"
-                name="invoice_template"
-                rows={3}
-                disabled={!canEdit}
-                placeholder={DEFAULT_INVOICE_TEMPLATE}
-                defaultValue={initial("invoice_template")}
-              />
-              <PlaceholderKey placeholders={INVOICE_PLACEHOLDERS} />
+            <TemplateEditor
+              id="invoice_template"
+              name="invoice_template"
+              label="When you send an invoice"
+              disabled={!canEdit}
+              builtInTemplate={DEFAULT_INVOICE_TEMPLATE}
+              defaultValue={initial("invoice_template")}
+              placeholders={INVOICE_PLACEHOLDERS}
+              sampleValues={INVOICE_SAMPLE_VALUES}
+            >
               <p className="text-caption text-ink-3">
                 {/* The invoice-side twin of the {{days_overdue}} note under
                     the reminder box. {{due_date}} is the one placeholder an
@@ -101,24 +135,20 @@ export default function MessageTemplatesPanel({
                 An invoice with no due date uses the built-in wording,
                 because {"{{due_date}}"} has nothing to fill in.
               </p>
-            </div>
+            </TemplateEditor>
 
             <LSeparator />
 
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="reminder_template" className="text-body-s font-medium text-ink">
-                When you send a reminder
-              </label>
-              {/* NO maxLength — see the note above LengthNote below. */}
-              <LTextarea
-                id="reminder_template"
-                name="reminder_template"
-                rows={3}
-                disabled={!canEdit}
-                placeholder={DEFAULT_REMINDER_TEMPLATE}
-                defaultValue={initial("reminder_template")}
-              />
-              <PlaceholderKey placeholders={REMINDER_PLACEHOLDERS} />
+            <TemplateEditor
+              id="reminder_template"
+              name="reminder_template"
+              label="When you send a reminder"
+              disabled={!canEdit}
+              builtInTemplate={DEFAULT_REMINDER_TEMPLATE}
+              defaultValue={initial("reminder_template")}
+              placeholders={REMINDER_PLACEHOLDERS}
+              sampleValues={REMINDER_SAMPLE_VALUES}
+            >
               <p className="text-caption text-ink-3">
                 {/* Stated here rather than left to be discovered on the one
                     send where it matters: a template that names how late an
@@ -127,7 +157,7 @@ export default function MessageTemplatesPanel({
                 A reminder sent before the due date uses the built-in wording,
                 because {"{{days_overdue}}"} has nothing to say yet.
               </p>
-            </div>
+            </TemplateEditor>
 
             <LSeparator />
 
@@ -193,30 +223,19 @@ function LengthNote() {
   );
 }
 
-/**
- * The placeholders, spelled exactly as they must be typed.
+/*
+ * THERE IS DELIBERATELY NO PlaceholderKey COMPONENT IN THIS FILE ANY MORE.
  *
- * Rendered from the same list the SUBSTITUTER uses
- * (lib/email/invoice-message.ts), never retyped here — a screen that
- * offers a token the server does not fill in would produce a client-facing
- * message with `{{whatever}}` in it, which is the single worst outcome
- * this feature can have.
+ * It used to render the placeholder list as `{{token}}: description` text
+ * under each box — the same information the owner found "too complicated
+ * to make users do themselves" (see plan-5-message-wording.md's framing).
+ * TemplateEditor's chip row and live preview supersede it entirely: the
+ * chip shows the plain-language label and inserts the token itself, and
+ * the preview shows what the token becomes, so there is nothing left for a
+ * separate spelled-out key to explain. The one invariant PlaceholderKey
+ * protected — a screen must never offer a token the server does not fill
+ * in — is now TemplateEditor's own, by construction: its chips are
+ * rendered from the same `placeholders` array passed in here
+ * (INVOICE_PLACEHOLDERS / REMINDER_PLACEHOLDERS, lib/email/invoice-message.ts),
+ * never retyped.
  */
-function PlaceholderKey({
-  placeholders,
-}: {
-  placeholders: readonly MessagePlaceholder[];
-}) {
-  return (
-    <div className="mt-1 flex flex-col gap-1">
-      {placeholders.map((placeholder) => (
-        <p className="text-caption text-ink-3" key={placeholder.key}>
-          <code className="rounded-control bg-sunk px-1 py-0.5 font-mono text-caption text-ink-2">
-            {placeholder.token}
-          </code>
-          : {placeholder.description}
-        </p>
-      ))}
-    </div>
-  );
-}

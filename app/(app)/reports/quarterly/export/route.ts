@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { loadQuarterlyReport } from "../queries";
 import { csvRow } from "@/lib/csv";
+import { BRAND } from "@/lib/brand";
 
 // Same "right or loudly wrong, never silently partial" discipline as
 // app/(app)/reports/year-end/export/route.ts — this report's queries are
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "There are more payments, deductible expenses, or logged drives in this year than the export can safely total in one file. Contact support. Exporting a silently partial total would misstate your quarterly figures.",
+          `There are more payments, deductible expenses, or logged drives in this year than the export can safely total in one file. Email ${BRAND.supportEmail}. Exporting a silently partial total would misstate your quarterly figures.`,
       },
       { status: 500 }
     );

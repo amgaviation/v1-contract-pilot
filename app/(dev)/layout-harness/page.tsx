@@ -87,7 +87,7 @@ export default async function LayoutHarnessPage() {
       accountName={FIXTURE_ACCOUNT}
       sections={NAV_SECTIONS}
       theme={theme}
-      readOnly={false}
+      readOnlyNotice={null}
       // The real shell takes a server action here. The harness never
       // submits it; it exists so the button renders at its true size.
       signOutAction={async () => {

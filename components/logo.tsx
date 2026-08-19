@@ -1,3 +1,4 @@
+import NextLink from "next/link";
 import { BRAND } from "@/lib/brand";
 
 /**
@@ -22,11 +23,32 @@ import { BRAND } from "@/lib/brand";
  *
  * Per the kit's construction spec: don't recolor anything but the bug,
  * don't move it, don't add graduations below 80px, minimum size 16px.
+ *
+ * `href` makes the mark a link — added for the four tokenized client
+ * surfaces (invoice/estimate/packet/vendor and their 404s), where the mark
+ * was the only brand element on screen and linked nowhere: an operator's
+ * AP desk asked to click "Pay online" had no way, in any number of clicks,
+ * to find out what V1 is. Deliberately opt-in per call site: the in-app
+ * rail's mark stays inert, as before.
  */
-export function Logo({ className }: { className?: string }) {
+export function Logo({ className, href }: { className?: string; href?: string }) {
+  if (href) {
+    return (
+      <NextLink href={href} className={className ? `v1-logo ${className}` : "v1-logo"}>
+        <LogoArt />
+      </NextLink>
+    );
+  }
   return (
     <span className={className ? `v1-logo ${className}` : "v1-logo"}>
-      <svg
+      <LogoArt />
+    </span>
+  );
+}
+
+function LogoArt() {
+  return (
+    <svg
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 153.268 100.000"
         role="img"
@@ -44,6 +66,5 @@ export function Logo({ className }: { className?: string }) {
           <path fill="var(--v1-logo-bug)" d="M 130.554 33.000 L 157.554 21.120 L 157.554 44.880 Z" />
         </g>
       </svg>
-    </span>
   );
 }

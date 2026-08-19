@@ -1064,7 +1064,7 @@ section("D — insufficient_data is the default posture");
     entries: [mkEntry("d8-0", { entryDate: "2026-06-01", dayTakeoffs: 3, dayLandingsFullStop: 3, aircraft: null })] });
   checkResult("D-8", "tail not in pilot.aircraft", d8, { status: "insufficient_data", missing: ["aircraft_unregistered"] });
   var d8remedy = describeResult(d8).remedies.filter(function (m) { return m.missing === "aircraft_unregistered"; })[0];
-  checkField("D-8 remedy href", "points at the real registration route, /logbook/aircraft (see app/(app)/logbook/aircraft)", d8remedy && d8remedy.href, "/logbook/aircraft");
+  checkField("D-8 remedy href", "points at the real registration route, /aircraft (see app/(app)/aircraft)", d8remedy && d8remedy.href, "/aircraft");
 
   var d9entries = threeDated("d9", ["2026-06-01", "2026-06-02", "2026-06-03"], { dayTakeoffs: 1, dayLandingsFullStop: 1 })
     .concat([mkEntry("d9-3", { entryDate: "2026-06-04", aircraft: null, dayTakeoffs: 0, dayLandingsFullStop: 0 })]);
@@ -1187,17 +1187,19 @@ section("Sweeps — D-15, D-17, D-18, M-4, over " + allResults.length + " tracke
     if (r.currencyType === "medical") checkField("M-4 " + tag, "medical never estimated_current or estimated_not_current", r.status, "insufficient_data");
   });
 
-  // Extra due-diligence check, beyond the numbered rows: since D-8 found
-  // the aircraft_unregistered remedy pointing at a route that does not
-  // exist (/aircraft instead of /logbook/aircraft), check whether the
-  // other four aircraft-related remedy codes share the same defect —
+  // Extra due-diligence check, beyond the numbered rows: D-8 found the
+  // aircraft_unregistered remedy pointing at a real route, so check
+  // whether the other four aircraft-related remedy codes agree —
   // "a pilot who fixes one field and watches a second appear" (D-13's own
   // words) should at least land somewhere real when they click through.
+  // The route itself moved once already (/logbook/aircraft -> /aircraft,
+  // 2026-08-18), which is exactly the kind of drift this check exists to
+  // catch on the next move too.
   var aircraftCodes = ["intended_aircraft_absent", "aircraft_unregistered", "aircraft_gear_unrecorded", "aircraft_category_class_unrecorded", "aircraft_type_unrecorded"];
   var sample = describeResult({ status: "insufficient_data", missing: aircraftCodes, currencyType: "passenger_day", ruleBasis: "61.57(a)", window: null, required: {}, observed: {}, counted: [], limitingDate: null, throughDate: null, displayDate: null, notes: [], assumptions: [] });
-  var wrongHrefs = sample.remedies.filter(function (m) { return aircraftCodes.indexOf(m.missing) !== -1 && m.href !== "/logbook/aircraft"; });
-  if (wrongHrefs.length === 0) ok("all five aircraft-related remedies route to /logbook/aircraft");
-  else bad("all five aircraft-related remedies route to /logbook/aircraft", wrongHrefs.length + " of 5 point elsewhere: " + JSON.stringify(wrongHrefs.map(function (m) { return m.missing + " -> " + m.href; })));
+  var wrongHrefs = sample.remedies.filter(function (m) { return aircraftCodes.indexOf(m.missing) !== -1 && m.href !== "/aircraft"; });
+  if (wrongHrefs.length === 0) ok("all five aircraft-related remedies route to /aircraft");
+  else bad("all five aircraft-related remedies route to /aircraft", wrongHrefs.length + " of 5 point elsewhere: " + JSON.stringify(wrongHrefs.map(function (m) { return m.missing + " -> " + m.href; })));
 }
 
 console.log("\\n##HALF_A_SUMMARY## passed=" + passed + " failed=" + failed);

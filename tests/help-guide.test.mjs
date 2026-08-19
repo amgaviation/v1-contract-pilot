@@ -46,7 +46,6 @@ test("every link in the guide points at a route this product actually has", () =
     "/settings/billing",
     "/settings/export",
     "/expenses/import",
-    "/logbook/aircraft",
   ]);
 
   for (const topic of HELP_TOPICS) {

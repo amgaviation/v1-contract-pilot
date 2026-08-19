@@ -21,7 +21,10 @@ import {
   type LogbookFilterArgs,
   type LogbookFilteredTotalsRow,
 } from "./db";
-import type { AircraftRow, TimeByTypeRow } from "./aircraft/db";
+// The aircraft registry moved to app/(app)/aircraft (promoted to a
+// top-level section, 2026-08-18) — was "./aircraft/db" when it lived as a
+// sub-page of this directory.
+import type { AircraftRow, TimeByTypeRow } from "@/app/(app)/aircraft/db";
 import {
   HoursByTypeTable,
   LogbookEntriesTable,
@@ -259,7 +262,7 @@ export default async function LogbookPage({
           <NextLink href="/logbook/drafts" className={lButtonClass({ variant: "outline" })}>
             Trip drafts
           </NextLink>
-          {/* ForeFlight / LogTen Pro / generic CSV import — see
+          {/* ForeFlight / LogTen / generic CSV import — see
               app/(app)/logbook/import. Same draft-confirm boundary as
               Trip drafts: nothing lands here without the pilot reviewing
               a preview and confirming. */}
@@ -346,7 +349,7 @@ export default async function LogbookPage({
               <div className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <h2 className="text-h3 font-semibold">Hours by type</h2>
-                  <NextLink href="/logbook/aircraft" className={lButtonClass({ variant: "outline" })}>
+                  <NextLink href="/aircraft" className={lButtonClass({ variant: "outline" })}>
                     Your aircraft
                   </NextLink>
                 </div>
@@ -378,7 +381,7 @@ export default async function LogbookPage({
                   <p className="text-caption text-ink-3">
                     {`Showing the ${TYPE_ROW_LIMIT} types you have the most time in. `}
                     <NextLink
-                      href="/logbook/aircraft"
+                      href="/aircraft"
                       className="font-medium text-accent underline-offset-2 hover:underline"
                     >
                       See every type
@@ -450,7 +453,7 @@ export default async function LogbookPage({
                         and it renders only when there ARE entries, so a pilot
                         who wanted to set their aircraft up first had no path
                         to it at all. */}
-                    <NextLink href="/logbook/aircraft" className={lButtonClass({ variant: "outline" })}>
+                    <NextLink href="/aircraft" className={lButtonClass({ variant: "outline" })}>
                       Your aircraft
                     </NextLink>
                   </>

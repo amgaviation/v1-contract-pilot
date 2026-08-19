@@ -11,6 +11,7 @@ import { loadOptionLabels } from "@/lib/custom-options-read";
 import { loadYearEndReport } from "./queries";
 import { loadTravelLog } from "./travel-log-queries";
 import TaxFormEditor from "./tax-form-editor";
+import { BRAND } from "@/lib/brand";
 
 export const metadata = { title: "Year-end report" };
 
@@ -124,7 +125,7 @@ export default async function YearEndReportPage({
                 <WarningIcon className="mt-0.5 shrink-0 text-warn" />
                 <span>
                   There are more payments in {year} than this page totals.
-                  The downloaded CSV may also be partial. Contact support if
+                  The downloaded CSV may also be partial. Email {BRAND.supportEmail} if
                   your totals look short.
                 </span>
               </LAlert>
@@ -536,7 +537,7 @@ export default async function YearEndReportPage({
                     <span>
                       There are more trip days in {year} than this page can
                       list. The counts below may be short, and the CSV will
-                      refuse to download. Contact support if your log looks
+                      refuse to download. Email {BRAND.supportEmail} if your log looks
                       incomplete.
                     </span>
                   </LAlert>
