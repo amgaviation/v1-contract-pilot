@@ -138,7 +138,7 @@ export function SubmitButton({
       size="lg"
       variant={variant}
       disabled={pending}
-      className={cn("w-full", className)}
+      className={cn("w-full rounded-full", className)}
       {...rest}
     >
       {pending ? (
@@ -157,6 +157,32 @@ export function SubmitButton({
         idle
       )}
     </LButton>
+  );
+}
+
+/**
+ * THE FORM'S SEAT — the marketing surface's double-bezel tray
+ * (app/design/marketing.css: a machined outer rim, a white inner core
+ * with a concentric radius), replacing the bare LCard every screen used
+ * to render. Same treatment the product screenshots get on the landing
+ * page, which is the point: the form a pilot fills in looks like the
+ * hardware the site has been showing them. Presentation only, no hooks —
+ * compiles into server and client graphs alike, same as everything else
+ * in this file.
+ */
+export function AuthCard({
+  className,
+  children,
+}: {
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="mkt-tray">
+      <div className={cn("mkt-tray-core flex flex-col gap-6 p-6 sm:p-8", className)}>
+        {children}
+      </div>
+    </div>
   );
 }
 

@@ -2,9 +2,9 @@
 
 import { useActionState, useState } from "react";
 import NextLink from "next/link";
-import { LAlert, LCard } from "@/components/ledger";
+import {LAlert} from "@/components/ledger";
 import { LInput } from "@/components/ledger/forms";
-import { AuthFooter, AuthHeading, Field, FormError, SubmitButton } from "../auth-parts";
+import { AuthCard, AuthFooter, AuthHeading, Field, FormError, SubmitButton } from "../auth-parts";
 import { requestPasswordReset, type ForgotPasswordState } from "./actions";
 
 const initialState: ForgotPasswordState = { error: null, sent: false };
@@ -49,7 +49,7 @@ export default function ForgotPasswordForm({
   // screen invites a second submit that would send a second link.
   if (state.sent) {
     return (
-      <LCard className="flex flex-col gap-6 p-6 sm:p-8">
+      <AuthCard>
         <div className="flex flex-col items-start gap-3">
           <MailIcon className="text-accent" />
           <h1 className="text-h1 font-bold text-ink">Check your email</h1>
@@ -64,12 +64,12 @@ export default function ForgotPasswordForm({
             Back to sign in
           </NextLink>
         </AuthFooter>
-      </LCard>
+      </AuthCard>
     );
   }
 
   return (
-    <LCard className="flex flex-col gap-6 p-6 sm:p-8">
+    <AuthCard>
       <AuthHeading title="Reset your password">
         Enter your email and we&rsquo;ll send you a link to set a new one.
       </AuthHeading>
@@ -106,6 +106,6 @@ export default function ForgotPasswordForm({
           Back to sign in
         </NextLink>
       </AuthFooter>
-    </LCard>
+    </AuthCard>
   );
 }

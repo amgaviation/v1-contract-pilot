@@ -1,64 +1,73 @@
-import AuthBrand from "./auth-brand";
-import AuthColumn from "./auth-column";
-import { BRAND } from "@/lib/brand";
+import type { Viewport } from "next";
+import "@/app/design/marketing.css";
+import { BRAND, MARKETING_THEME_COLOR } from "@/lib/brand";
+import { AuthPanel, AuthMobileBar, AuthBackLink } from "./auth-brand";
 
 /**
  * THE SIGNED-OUT SURFACE — /signup, /login, /forgot-password,
  * /reset-password, /check-email, /link-expired, /welcome. Each page still
  * does its own session check; this file is composition only.
  *
- * LEDGER'S SOFTER MARKETING VARIANT (docs/design/LEDGER.md's migration
- * table: "portals get the softer marketing variant"): `min-h-dvh bg-canvas
- * font-ledger text-body text-ink` on the root, one narrow column, no
- * app-shell density.
+ * REDESIGNED 2026-08-19 (owner's direction): the old shell was one
+ * narrow column whose whole brand presence was a 36px badge, and only
+ * /signup carried a brand panel — inside its own component. The shell is
+ * now the marketing site's sibling: a full-height navy brand column
+ * (auth-brand.tsx's AuthPanel, carrying the story the signup panel
+ * carried, strings moved verbatim) beside the form column, folding to a
+ * navy bar on a phone so the form stays first. Forms sit in the
+ * marketing tray (auth-parts.tsx's AuthCard) rather than a bare card.
  *
- * BRANDED, AND WITH A WAY OUT. The previous revision of this file rendered
- * one 28x48 mark, centered, linking home — and that was the entire brand
- * presence and the entire exit from the auth flow. Both were too thin. A
- * pilot who clicks "Sign in" from the marketing site landed on a screen
- * that could have belonged to any product, with no signposted way back to
- * the page they came from; the mark was a link, but nothing said so. The
- * row is now the brand kit's own navy badge (the mark IS the wordmark —
- * the brand is strictly the name, no descriptor) with an explicit "Back
- * to site" link opposite it, and the
- * column is top-aligned rather than vertically centered so that row reads
- * as a header instead of floating. See auth-brand.tsx for why the back
- * link is route-aware.
+ * THE `.mkt` SCOPE is what makes the craft classes (.mkt-glow,
+ * .mkt-tray) resolve here — app/design/marketing.css remaps NO tokens,
+ * so stamping it costs nothing beyond enabling those classes; the
+ * surface still stands on Ledger's own day palette with the navy
+ * carried by the brand tokens.
  *
- * The tagline closes the column, and that plus the marketing footer is the
- * whole of its territory (docs/MARKETING.md: BRAND.tagline is not a
- * headline and never appears in the landing page body). It is deliberately
- * NOT also in the lockup above — one brand line per screen, or the surface
- * starts repeating itself. BRAND.attribution stays off this surface
- * entirely; lib/brand.ts confines it to the app footer and the marketing
- * footer.
+ * The tagline renders once per viewport: the panel's bottom line at lg+,
+ * a quiet close under the form column below it. BRAND.attribution stays
+ * off this surface entirely (lib/brand.ts confines it).
  *
- * .v1-nozoom-fields SURVIVES ON PURPOSE: app-shell.tsx (Phase 2, already
- * migrated) keeps this exact class for the identical reason — it is pure
- * touch-device font-sizing (`@media (pointer: coarse) input,textarea,select
- * { font-size: 16px }`), not a color or a value tokens:verify's VALUE rules
- * police, and every field under this layout benefits from it.
+ * .v1-nozoom-fields SURVIVES ON PURPOSE: pure touch-device font-sizing,
+ * not a value tokens:verify polices — see app/globals.css.
  */
+
+/** The phone's browser chrome meets the navy bar, same as the marketing
+ *  pages — one surface, one tint. */
+export const viewport: Viewport = {
+  themeColor: MARKETING_THEME_COLOR,
+};
+
 export default function AuthLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <div className="v1-nozoom-fields flex min-h-dvh flex-col bg-canvas font-ledger text-body text-ink">
-      {/* Width lives in AuthColumn: max-w-md for every screen except
-          /signup, which carries the brand panel and gets max-w-5xl. */}
-      <AuthColumn>
-        <AuthBrand />
+    <div className="mkt v1-nozoom-fields min-h-dvh bg-canvas font-ledger text-body text-ink lg:grid lg:grid-cols-[minmax(0,4fr)_minmax(0,5fr)]">
+      <AuthPanel />
 
-        {/* The panel takes the leftover height and centers itself in it, so
-            a short form (reset password) sits optically centered while a
-            tall one (signup) simply grows downward instead of pushing the
-            brand row off the top of a 514px-high viewport. */}
-        <div className="flex flex-1 flex-col justify-center">{children}</div>
+      <div className="flex min-h-dvh flex-col lg:min-h-0">
+        <AuthMobileBar />
 
-        <p className="text-caption text-ink-3">{BRAND.tagline}</p>
-      </AuthColumn>
+        <div className="flex flex-1 flex-col gap-4 px-4 py-8 sm:px-8 sm:py-10">
+          <div className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-4">
+            <div className="hidden lg:flex lg:justify-end">
+              <AuthBackLink />
+            </div>
+
+            {/* The form takes the leftover height and centers itself in
+                it, so a short form (reset password) sits optically
+                centered while a tall one (signup) simply grows downward. */}
+            <div className="flex flex-1 flex-col justify-center">
+              {children}
+            </div>
+
+            <p className="text-caption text-ink-3 lg:hidden">
+              {BRAND.tagline}
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

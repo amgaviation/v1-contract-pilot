@@ -2,10 +2,10 @@
 
 import { useActionState, useState } from "react";
 import NextLink from "next/link";
-import { LAlert, LCard, lButtonClass } from "@/components/ledger";
+import {LAlert, lButtonClass} from "@/components/ledger";
 import { LInput } from "@/components/ledger/forms";
 import { RESEND_SENT_MESSAGE } from "@/lib/auth/confirmation";
-import { AuthFooter, Field, FormError, SubmitButton } from "../auth-parts";
+import { AuthCard, AuthFooter, Field, FormError, SubmitButton } from "../auth-parts";
 import { resendConfirmation, type ResendState } from "../resend-actions";
 
 const initialState: ResendState = { error: null, sent: false };
@@ -58,7 +58,7 @@ export default function LinkExpiredView({
    */
   if (flow === "email-change") {
     return (
-      <LCard className="flex flex-col gap-6 p-6 sm:p-8">
+      <AuthCard>
         <div className="flex flex-col items-start gap-3">
           <WarningIcon className="text-warn" />
           <h1 className="text-h1 font-bold text-ink">That link has expired</h1>
@@ -77,12 +77,12 @@ export default function LinkExpiredView({
             Back to sign in
           </NextLink>
         </AuthFooter>
-      </LCard>
+      </AuthCard>
     );
   }
 
   return (
-    <LCard className="flex flex-col gap-6 p-6 sm:p-8">
+    <AuthCard>
       <div className="flex flex-col items-start gap-3">
         <WarningIcon className="text-warn" />
         <h1 className="text-h1 font-bold text-ink">That link has expired</h1>
@@ -134,6 +134,6 @@ export default function LinkExpiredView({
           Back to sign in
         </NextLink>
       </AuthFooter>
-    </LCard>
+    </AuthCard>
   );
 }

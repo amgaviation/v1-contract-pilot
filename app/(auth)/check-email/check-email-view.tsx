@@ -2,10 +2,10 @@
 
 import { useActionState } from "react";
 import NextLink from "next/link";
-import { LAlert, LCard } from "@/components/ledger";
+import {LAlert} from "@/components/ledger";
 import { BRAND } from "@/lib/brand";
 import { RESEND_SENT_MESSAGE } from "@/lib/auth/confirmation";
-import { AuthFooter, FormError, SubmitButton } from "../auth-parts";
+import { AuthCard, AuthFooter, FormError, SubmitButton } from "../auth-parts";
 import { resendConfirmation, type ResendState } from "../resend-actions";
 
 const initialState: ResendState = { error: null, sent: false };
@@ -56,7 +56,7 @@ export default function CheckEmailView({
   );
 
   return (
-    <LCard className="flex flex-col gap-6 p-6 sm:p-8">
+    <AuthCard>
       <div className="flex flex-col items-start gap-3">
         <MailIcon className="text-accent" />
         <h1 className="text-h1 font-bold text-ink">
@@ -109,6 +109,6 @@ export default function CheckEmailView({
           Back to sign in
         </NextLink>
       </AuthFooter>
-    </LCard>
+    </AuthCard>
   );
 }

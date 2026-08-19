@@ -2,9 +2,8 @@
 
 import { useActionState, useState } from "react";
 import NextLink from "next/link";
-import { LCard } from "@/components/ledger";
 import { LInput } from "@/components/ledger/forms";
-import { AuthFooter, AuthHeading, Field, FormError, SubmitButton } from "../auth-parts";
+import { AuthCard, AuthFooter, AuthHeading, Field, FormError, SubmitButton } from "../auth-parts";
 import { signIn, type SignInState } from "./actions";
 
 const initialState: SignInState = { error: null };
@@ -19,7 +18,7 @@ export default function LoginForm({ next }: { next: string }) {
   const [email, setEmail] = useState("");
 
   return (
-    <LCard className="flex flex-col gap-6 p-6 sm:p-8">
+    <AuthCard>
       <AuthHeading title="Sign in">Pick up where your last trip left off.</AuthHeading>
 
       <form action={formAction} className="flex flex-col gap-4">
@@ -69,6 +68,6 @@ export default function LoginForm({ next }: { next: string }) {
           </NextLink>
         </p>
       </AuthFooter>
-    </LCard>
+    </AuthCard>
   );
 }
