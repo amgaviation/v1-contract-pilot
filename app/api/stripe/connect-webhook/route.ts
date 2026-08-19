@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { after, NextResponse, type NextRequest } from "next/server";
 import type Stripe from "stripe";
 import { getStripe, isLiveMode } from "@/lib/stripe/server";
 import { deactivatePaymentLink, readAutopaySetupResult } from "@/lib/stripe/connect";
@@ -7,6 +7,7 @@ import { looksLikeEmail, sendEmail } from "@/lib/email/send";
 import { ownerEmail } from "@/lib/email/owner-email";
 import { buildClientReceipt } from "@/lib/email/payment-receipt";
 import { billToEmail } from "@/lib/invoice-bill-to";
+import { alertOperator } from "@/lib/alerts";
 import {
   AUTOPAY_INTENT_EVENT_TYPE,
   formatCentsPlain,
@@ -106,6 +107,17 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/**
+ * ALERTING SOURCE for this endpoint. Every alert call below is wrapped in
+ * `after()` (next/server), never a bare `await`: this is a Stripe webhook
+ * on a clock, alertOperator does a network mail send, and `after` defers
+ * that send until after the response is already on the wire — backed by
+ * Vercel's `waitUntil`, so the send still completes, it just cannot be the
+ * thing that pushes a response past Stripe's timeout. See
+ * node_modules/next/dist/docs/01-app/03-api-reference/04-functions/after.md.
+ */
+const ALERT_SOURCE = "stripe-connect-webhook";
+
 type EventsInsert = {
   id: string;
   connected_account_id: string;
@@ -162,6 +174,19 @@ export async function POST(request: NextRequest) {
     console.error(
       "STRIPE_CONNECT_WEBHOOK_SECRET is unset. Automatic payment recording is off, refusing this Connect delivery. Set it from the connected-accounts webhook endpoint's signing secret (dashboard.stripe.com/webhooks)."
     );
+    // Unlike the platform webhook's equivalent, this CAN be a legitimate
+    // dormant state (the owner has not yet registered the Connect endpoint
+    // in Stripe, so Stripe never delivers here at all). This branch running
+    // means Stripe DID deliver — the endpoint is registered on Stripe's
+    // side — so the secret going missing locally is a real regression, not
+    // the expected pre-launch quiet: alert.
+    after(() =>
+      alertOperator({
+        source: ALERT_SOURCE,
+        summary: "STRIPE_CONNECT_WEBHOOK_SECRET is unset — refusing a real delivery",
+        detail: "Stripe delivered a Connect event, so the endpoint is registered on Stripe's side, but the local secret is missing. Automatic payment recording is off until it is set.",
+      })
+    );
     return NextResponse.json(
       { error: "Connect webhook not configured" },
       { status: 503 }
@@ -178,6 +203,13 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
     console.error(`Connect signature verification failed: ${message}`);
+    after(() =>
+      alertOperator({
+        source: ALERT_SOURCE,
+        summary: "Signature verification failed",
+        detail: message,
+      })
+    );
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
@@ -248,6 +280,13 @@ export async function POST(request: NextRequest) {
           insertError.code ?? "none"
         }). Refusing to run the handler with no delivery row to record its outcome on.`
       );
+      after(() =>
+        alertOperator({
+          source: ALERT_SOURCE,
+          summary: `stripe_connect_events insert failed for ${event.type}`,
+          detail: `event ${event.id}: ${insertError.message} (code ${insertError.code ?? "none"})`,
+        })
+      );
       return NextResponse.json({ error: "Delivery ledger unavailable" }, { status: 500 });
     }
     const { data: prior, error: priorError } = await supabase
@@ -261,6 +300,13 @@ export async function POST(request: NextRequest) {
       // not a licence to assume it did not.
       console.error(
         `[db] stripe_connect_events.select(${event.id}) after a collision: ${priorError.message}`
+      );
+      after(() =>
+        alertOperator({
+          source: ALERT_SOURCE,
+          summary: `stripe_connect_events select failed after a collision for ${event.type}`,
+          detail: `event ${event.id}: ${priorError.message}`,
+        })
       );
       return NextResponse.json({ error: "Delivery ledger unavailable" }, { status: 500 });
     }
@@ -680,6 +726,13 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown error";
     console.error(`Connect handler failed for ${event.type} (${event.id}): ${message}`);
+    after(() =>
+      alertOperator({
+        source: ALERT_SOURCE,
+        summary: `Handler failed for ${event.type}`,
+        detail: `event ${event.id}: ${message}`,
+      })
+    );
     // processed_at stays NULL, so Stripe's retry is allowed to run the
     // handler again. Safe by construction: the payment-intent unique index
     // makes a second insert impossible.

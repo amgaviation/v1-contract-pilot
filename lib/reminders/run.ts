@@ -3,6 +3,7 @@ import { sendInvoiceEmail } from "@/lib/email/send-invoice";
 import { emailIsConfigured, looksLikeEmail } from "@/lib/email/send";
 import { ownerEmail } from "@/lib/email/owner-email";
 import { friendlyDbError } from "@/lib/db-errors";
+import { alertOperator } from "@/lib/alerts";
 import {
   consumedRungKeys,
   decideReminder,
@@ -52,6 +53,82 @@ import {
  * failure mode this feature owes an answer to is precisely the shape a single
  * unhandled rejection would produce, and it would produce it at the same point
  * every day, for every tenant after the poisoned one, forever.
+ *
+ * EVERY FAILURE BRANCH BELOW ALSO CALLS alertOperator (lib/alerts.ts). Before
+ * this pass, every one of them only ever reached a Vercel function log nobody
+ * tails — the exact "silently not firing" failure mode the paragraph above
+ * describes, just one layer up: the account-isolation try/catch stops one
+ * tenant's poison from reaching the next tenant, but nothing told a human
+ * that any of it happened at all. alertOperator never throws (see its own
+ * header) and is throttled per source+summary, so a hot failure loop costs a
+ * handful of emails, not hundreds.
+ *
+ * ==========================================================================
+ * WHY AUTOPAY GENERATION/CHARGING IS **NOT** IN THIS FILE, even though this
+ * is the obvious place for it and an earlier pass of this remediation was
+ * asked to put it here. READ THIS BEFORE ADDING IT.
+ *
+ * The finding was real: generateRecurringInvoice and
+ * generateAllDueRecurringInvoices (app/(app)/invoices/recurring/actions.ts)
+ * only ever run from a pilot's own click, so an autopay-enabled schedule
+ * collects nothing while the pilot is unreachable. Extending this cron to
+ * also walk autopay-enabled schedules and call generateRecurringInvoice's
+ * logic looked like a same-shape problem to entry point 3's own reminder
+ * pass: take the client as a parameter, re-derive entitlement from the row
+ * instead of a session, keep per-account isolation. That part is genuinely
+ * true and would have worked.
+ *
+ * It is blocked one layer lower, in a place no TypeScript refactor of this
+ * file can reach. pilot.generate_recurring_invoice (SECURITY DEFINER,
+ * 20260809050000) is the ONLY write path that atomically creates the
+ * invoice, its line, and the recurring_invoice_generations ledger row as one
+ * statement — the fix for a real, adversarially-reproduced defect (orphaned
+ * invoices on partial failure, "defect 6" in that migration's header) — and
+ * it authorizes its caller by hand:
+ *
+ *   select * into v_schedule from pilot.recurring_invoice_schedules
+ *     where id = p_schedule_id
+ *       and account_id in (select pilot.current_account_ids());
+ *
+ * pilot.current_account_ids() is `where user_id = auth.uid()`
+ * (20260802190437). auth.uid() reads the request's JWT `sub` claim, and the
+ * service-role client this cron runs as (lib/supabase/service-role.ts,
+ * exactly the client `serviceClient` below already is) carries no such
+ * claim — there is no session to be. Verified live against this project's
+ * own database, not assumed from reading the SQL: outside a PostgREST
+ * request, auth.uid() is null, current_account_ids() returns zero rows for
+ * every account, and — independently, and sufficient on its own —
+ * has_function_privilege('service_role', 'pilot.generate_recurring_invoice(uuid,date)',
+ * 'EXECUTE') is false; only `authenticated` was ever granted EXECUTE
+ * (20260809050000:239). Every call this cron could make to that function
+ * fails, permission-denied or "not found or not yours," on every account,
+ * every day, forever — not a bug to route around, a door that is not there.
+ *
+ * Reimplementing the invoice/line/ledger writes directly against the
+ * service-role client, bypassing the function, is NOT the fix: it would
+ * reopen the exact defect 20260809050000 closed (three separate PostgREST
+ * calls have no shared transaction; a failure between them orphans a draft
+ * invoice or, worse, leaves the period without its idempotency row so a
+ * retry double-generates it), for the one code path in this entire product
+ * where that mistake charges a real card.
+ *
+ * THE ACTUAL FIX, and it is a migration this file's owner cannot write:
+ * pilot.expire_hold (20260818200000) is this exact codebase's own precedent
+ * for a scheduled pass that needs to write past RLS's session assumption —
+ * it takes an explicit `target_account uuid` parameter instead of deriving
+ * one from auth.uid(), and is revoked from `public` AND `authenticated`,
+ * granted to `service_role` alone. The correct next step is a sibling
+ * function — e.g. pilot.generate_recurring_invoice_for_service(target_account
+ * uuid, p_schedule_id uuid, p_period_start date) — that trusts an explicit
+ * account id (checked against the schedule's own account_id, never derived
+ * from auth.uid()) precisely because only the CRON_SECRET-gated route can
+ * ever obtain a client able to call it. Until that migration exists and is
+ * reviewed on its own merits — it is a new privileged write path, which is
+ * exactly the kind of change lib/supabase/service-role.ts's own header says
+ * must be "a paragraph, not a line" — this file does not attempt autopay
+ * generation, and reports that gap rather than papering over it. See the PR
+ * description / task report for the live queries that proved this.
+ * ==========================================================================
  */
 
 /** What could not even be attempted, and why. Written nowhere — see below. */
@@ -150,6 +227,18 @@ const MAX_INVOICES_PER_ACCOUNT = 100;
  */
 const RUN_COOLDOWN_MINUTES = 10;
 
+/**
+ * The real code/message for an operator alert's `detail` — deliberately
+ * NOT friendlyDbError's output, which exists to hide exactly this (schema
+ * names, constraint names) from a pilot. The operator is the one reader
+ * for whom that detail is the useful part.
+ */
+function dbErrorDetail(
+  error: { code?: string | null; message?: string | null } | null | undefined
+): string {
+  return `code=${error?.code ?? "?"} message=${error?.message ?? "unknown error"}`;
+}
+
 type ClientRow = {
   id: string;
   name: string;
@@ -231,6 +320,12 @@ export async function runDueRemindersForAccount(
 
   if (clientError) {
     summary.errors.push(friendlyDbError(clientError, "clients.select"));
+    await alertOperator({
+      source: "reminders-cron",
+      summary: "Reminder pass: clients.select failed",
+      detail: `account ${accountId}: ${dbErrorDetail(clientError)}`,
+      accountId,
+    });
     return summary;
   }
 
@@ -288,6 +383,12 @@ export async function runDueRemindersForAccount(
 
   if (invoiceError) {
     summary.errors.push(friendlyDbError(invoiceError, "invoices.select"));
+    await alertOperator({
+      source: "reminders-cron",
+      summary: "Reminder pass: invoices.select failed",
+      detail: `account ${accountId}: ${dbErrorDetail(invoiceError)}`,
+      accountId,
+    });
     return summary;
   }
   const invoices = (invoiceData ?? []) as InvoiceRow[];
@@ -322,6 +423,12 @@ export async function runDueRemindersForAccount(
     summary.errors.push(
       `${friendlyDbError(sendError, "invoice_reminder_sends.select")} No reminders were sent. Without the record of what has already gone out, sending anything risks sending it twice.`
     );
+    await alertOperator({
+      source: "reminders-cron",
+      summary: "Reminder pass: ledger read failed, no reminders sent",
+      detail: `account ${accountId}: ${dbErrorDetail(sendError)}. The pass refused to send anything this account is due, rather than risk a duplicate.`,
+      accountId,
+    });
     return summary;
   }
 
@@ -380,6 +487,12 @@ export async function runDueRemindersForAccount(
       console.error(
         `[reminders] invoice ${invoice.id} threw during the pass: ${message}`
       );
+      await alertOperator({
+        source: "reminders-cron",
+        summary: "Reminder pass: unexpected error processing an invoice",
+        detail: `account ${accountId}, invoice ${invoice.id} (${invoice.invoice_number ?? "unnumbered"}) for ${entry.row.name}: ${message}`,
+        accountId,
+      });
     }
   }
 
@@ -630,6 +743,12 @@ export async function runDueRemindersForAccount(
           record.conflict ? "unique-index collision" : record.message
         }).`
       );
+      await alertOperator({
+        source: "reminders-cron",
+        summary: "Reminder pass: a reminder was sent but not recorded",
+        detail: `account ${accountId}, invoice ${invoice.id} (${invoice.invoice_number ?? "unnumbered"}) for ${entry.row.name}, rung ${decision.rung.key}: ${reason}. (${record.conflict ? "unique-index collision" : record.message})`,
+        accountId,
+      });
     }
   }
 }
@@ -659,6 +778,11 @@ export async function runAllDueReminders(
 
   if (error) {
     combined.errors.push(friendlyDbError(error, "accounts.select"));
+    await alertOperator({
+      source: "reminders-cron",
+      summary: "Reminder pass: accounts.select failed, no accounts processed",
+      detail: dbErrorDetail(error),
+    });
     return { accounts: 0, summary: combined };
   }
 
@@ -692,6 +816,12 @@ export async function runAllDueReminders(
       console.error(
         `[reminders] account ${account.id} threw during the pass: ${message}`
       );
+      await alertOperator({
+        source: "reminders-cron",
+        summary: "Reminder pass: an account's pass threw an unexpected exception",
+        detail: `account ${account.id}: ${message}`,
+        accountId: account.id,
+      });
     }
   }
 

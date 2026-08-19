@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { timingSafeEqual as nodeTimingSafeEqual } from "node:crypto";
 import { createServiceClient } from "@/lib/supabase/service-role";
+import { alertOperator } from "@/lib/alerts";
 import {
   HOLD_EXPIRY_MAX_PER_RUN,
   HOLD_PURGE_FLAG_ENV,
@@ -127,6 +128,11 @@ async function handle(request: NextRequest) {
 
   if (error) {
     console.error(`hold-expiry: could not read due holds: ${error.message}`);
+    await alertOperator({
+      source: "holds-cron",
+      summary: "hold-expiry: could not read due holds",
+      detail: error.message,
+    });
     return NextResponse.json(
       { ran: false, reason: "Could not read due holds.", error: error.message },
       { status: 500 }
@@ -149,6 +155,11 @@ async function handle(request: NextRequest) {
         `This is far more likely a clock or query fault than a real cohort. Nothing was deleted. ` +
         `Accounts: ${due.map((a) => a.id).join(", ")}`
     );
+    await alertOperator({
+      source: "holds-cron",
+      summary: `hold-expiry: blast-radius cap tripped (${due.length} due > ${HOLD_EXPIRY_MAX_PER_RUN})`,
+      detail: `Nothing was deleted. Accounts: ${due.map((a) => a.id).join(", ")}`,
+    });
     return NextResponse.json(
       {
         ran: false,
@@ -188,11 +199,51 @@ async function handle(request: NextRequest) {
     } as never);
 
     if (purgeError) {
-      // expire_hold refusing is a SUCCESS of the design, not a failure of
-      // the run: it means this row was not actually due and the function
-      // declined to be talked into it. Logged at error level anyway, because
-      // it also means the query above and the function disagree, and that
-      // disagreement is worth a human's attention either way.
+      // SQLSTATE 42501 (insufficient_privilege) is NOT expire_hold refusing
+      // — it is PostgREST refusing to execute the function at all, before
+      // its body (and therefore its due-ness check) ever runs. expire_hold's
+      // own business-rule refusals all raise with errcode 22023 (see the
+      // "account % is not on hold" / "...has not expired" / "...has paid
+      // data retention through %" exceptions in 20260818200000_monthly_
+      // hold.sql) — 42501 means the grant is missing or broken, exactly the
+      // defect fixed by 20260819090000_expire_hold_service_role_grant.sql.
+      // This is a mechanism failure, not a spared account, and every
+      // remaining row in `due` will fail the identical way (it's a
+      // grant-level problem, not a row-level one), so continuing the loop
+      // would only produce more identical 500s. Alert, stop, and say so.
+      if (purgeError.code === "42501") {
+        const message =
+          `hold-expiry: PERMISSION FAILURE calling expire_hold for ${account.id}: ${purgeError.message}. ` +
+          `This is the mechanism refusing to run (42501, insufficient_privilege), not a legitimate business ` +
+          `refusal. ${purged} account(s) purged before this was hit; the remaining ${due.length - purged - 1} ` +
+          `in this run were not attempted.`;
+        console.error(message);
+        await alertOperator({
+          source: "holds-cron",
+          summary: "hold-expiry: expire_hold denied with 42501 (insufficient_privilege) — grant is broken, not a legitimate refusal",
+          detail: message,
+          accountId: account.id,
+        });
+        return NextResponse.json(
+          {
+            ran: false,
+            armed: true,
+            due: due.length,
+            purged,
+            reason:
+              "expire_hold was denied with insufficient_privilege (42501): the EXECUTE grant is missing or broken, not a legitimate refusal. Nothing further was attempted this run.",
+            error: purgeError.message,
+          },
+          { status: 500 }
+        );
+      }
+
+      // Any other error is expire_hold refusing for a business reason — a
+      // SUCCESS of the design, not a failure of the run: it means this row
+      // was not actually due and the function declined to be talked into
+      // it. Logged at error level anyway, because it also means the query
+      // above and the function disagree, and that disagreement is worth a
+      // human's attention either way.
       refused.push(account.id);
       console.error(
         `hold-expiry: expire_hold refused ${account.id}: ${purgeError.message}`

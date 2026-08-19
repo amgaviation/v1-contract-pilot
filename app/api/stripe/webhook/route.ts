@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { after, NextResponse, type NextRequest } from "next/server";
 import type Stripe from "stripe";
 import { getStripe, isLiveMode } from "@/lib/stripe/server";
 import { createServiceClient } from "@/lib/supabase/service-role";
@@ -13,6 +13,21 @@ import {
   buildSubscriptionReceipt,
   buildSubscriptionPaymentFailed,
 } from "@/lib/email/platform-mail";
+import { alertOperator } from "@/lib/alerts";
+
+/**
+ * ALERTING SOURCE for this endpoint. `after()` (next/server) is used at
+ * every call site below rather than a bare `await alertOperator(...)`: this
+ * is a webhook Stripe times out, and alertOperator does a network mail send
+ * under the hood. `after` runs its callback once the response has been sent
+ * — on Vercel that is backed by `waitUntil`, which keeps the function
+ * instance alive for the mail send without making Stripe wait for it — so
+ * the alert can never be the thing that pushes a 500 past Stripe's timeout,
+ * and can never turn a good response bad, while still actually sending
+ * before the instance is frozen. See node_modules/next/dist/docs/01-app/
+ * 03-api-reference/04-functions/after.md.
+ */
+const ALERT_SOURCE = "stripe-webhook";
 
 /**
  * Stripe platform-billing webhook — the only tenant-creation path in the
@@ -64,6 +79,13 @@ export async function POST(request: NextRequest) {
     // refuse rather than trust the payload. 500 (not 400) so Stripe retries
     // once it is configured, instead of treating it as permanently bad.
     console.error("STRIPE_WEBHOOK_SECRET is unset. Refusing webhook.");
+    after(() =>
+      alertOperator({
+        source: ALERT_SOURCE,
+        summary: "STRIPE_WEBHOOK_SECRET is unset — refusing every delivery",
+        detail: "Nothing on this endpoint can be verified until the secret is set. Every checkout, subscription, and invoice event Stripe sends is being turned away.",
+      })
+    );
     return NextResponse.json({ error: "Webhook not configured" }, { status: 500 });
   }
 
@@ -78,6 +100,13 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown";
     console.error(`Stripe signature verification failed: ${message}`);
+    after(() =>
+      alertOperator({
+        source: ALERT_SOURCE,
+        summary: "Signature verification failed",
+        detail: message,
+      })
+    );
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
@@ -126,6 +155,13 @@ export async function POST(request: NextRequest) {
           insertError.code ?? "none"
         }). Refusing to run the handler with no delivery row to mark.`
       );
+      after(() =>
+        alertOperator({
+          source: ALERT_SOURCE,
+          summary: `stripe_events insert failed for ${event.type}`,
+          detail: `event ${event.id}: ${insertError.message} (code ${insertError.code ?? "none"})`,
+        })
+      );
       return NextResponse.json({ error: "Delivery ledger unavailable" }, { status: 500 });
     }
 
@@ -140,6 +176,13 @@ export async function POST(request: NextRequest) {
       // to assume it did — same reasoning as the insert branch above.
       console.error(
         `[db] stripe_events.select(${event.id}) after a collision: ${priorError.message}`
+      );
+      after(() =>
+        alertOperator({
+          source: ALERT_SOURCE,
+          summary: `stripe_events select failed after a collision for ${event.type}`,
+          detail: `event ${event.id}: ${priorError.message}`,
+        })
       );
       return NextResponse.json({ error: "Delivery ledger unavailable" }, { status: 500 });
     }
@@ -161,6 +204,13 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown error";
     console.error(`Handler failed for ${event.type} (${event.id}): ${message}`);
+    after(() =>
+      alertOperator({
+        source: ALERT_SOURCE,
+        summary: `Handler failed for ${event.type}`,
+        detail: `event ${event.id}: ${message}`,
+      })
+    );
     // Leave processed_at NULL and return 500 so Stripe retries. Returning
     // 200 here would silently drop a paid customer's provisioning.
     return NextResponse.json({ error: "Handler failed" }, { status: 500 });
@@ -202,6 +252,13 @@ async function markProcessedOrFailureResponse(eventId: string): Promise<NextResp
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown error";
     console.error(`markProcessed failed for ${eventId}: ${message}`);
+    after(() =>
+      alertOperator({
+        source: ALERT_SOURCE,
+        summary: "markProcessed failed",
+        detail: `event ${eventId}: ${message}`,
+      })
+    );
     return NextResponse.json({ error: "Could not record delivery" }, { status: 500 });
   }
 }

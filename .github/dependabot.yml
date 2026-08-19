@@ -1,0 +1,15 @@
+# This repo deliberately keeps ~11 runtime dependencies (package.json's own
+# convention — see the fixer instructions each PR here is reviewed against).
+# A small dependency set is still a supply chain, and nothing was watching it
+# before this file existed: no advisory for @supabase/supabase-js, stripe, or
+# any transitive package would have surfaced anywhere short of someone
+# running `npm audit` by hand. Weekly, not daily — this product has one
+# small dependency tree, not a monorepo of services each moving on its own
+# schedule, so daily would mean mostly-empty PRs training reviewers to
+# stop reading them.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"

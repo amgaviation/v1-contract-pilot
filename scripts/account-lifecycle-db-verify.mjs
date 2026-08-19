@@ -387,11 +387,30 @@ end $$;
 -- expire_hold REFUSES a hold that has not expired. This is the guard that
 -- stands between a wrong WHERE clause in the scheduled pass and a paying
 -- customer's records, so it is asserted directly rather than trusted.
+--
+-- set local role service_role HERE IS LOAD-BEARING, not decoration to
+-- match the AUTH-* tests' style. expire_hold is granted to service_role
+-- and to NO ONE ELSE (20260818200000 revokes public and authenticated;
+-- 20260819090000 grants service_role — that grant is the fix this test
+-- exists to prove). Without this wrapper the three expire_hold assertions
+-- below run as whatever role this script's own connection defaults to —
+-- the migration owner — and Postgres gives an object's OWNER implicit
+-- EXECUTE regardless of any REVOKE. That is exactly how the missing grant
+-- shipped invisibly: these three tests passed against a schema where
+-- production's actual caller (a service-role PostgREST client, per
+-- app/api/holds/run/route.ts) got 42501 on every single call. Wrapping in
+-- set local role service_role makes this script exercise the same
+-- privilege boundary PostgREST enforces, so this block FAILS on the
+-- pre-20260819090000 schema (expire_hold raises 42501, which is not
+-- sqlstate 22023, so the "if sqlstate <> '22023' then raise" re-raises it
+-- and the do-block's own exception is never reached) and PASSES once the
+-- grant exists.
 do $$
 declare clients_left int;
 begin
   insert into pilot.clients (account_id, name) values ('${A}', 'Held Client Co');
 
+  set local role service_role;
   begin
     perform pilot.expire_hold('${A}');
     raise exception 'HOLD-7 FAILURE: expire_hold purged an account whose hold is still running';
@@ -399,6 +418,7 @@ begin
     if sqlstate <> '22023' then raise; end if;
     raise notice 'PASS (HOLD-7, sqlstate 22023): expire_hold refuses a hold that has not expired';
   end;
+  reset role;
 
   select count(*) into clients_left from pilot.clients where account_id = '${A}';
   if clients_left <> 1 then
@@ -408,7 +428,9 @@ begin
 end $$;
 
 -- Paid retention spares the records even once the window has closed. That is
--- the entire product of the retention fee.
+-- the entire product of the retention fee. Same service_role wrapper, same
+-- reason as HOLD-7 above: this must exercise the real grant, not the
+-- migration owner's implicit one.
 do $$
 declare clients_left int;
 begin
@@ -418,6 +440,7 @@ begin
          retention_paid_until = now() + interval '20 days'
    where id = '${A}';
 
+  set local role service_role;
   begin
     perform pilot.expire_hold('${A}');
     raise exception 'HOLD-8 FAILURE: expire_hold purged an account with paid retention';
@@ -425,6 +448,7 @@ begin
     if sqlstate <> '22023' then raise; end if;
     raise notice 'PASS (HOLD-8, sqlstate 22023): paid retention spares the records past the window';
   end;
+  reset role;
 
   select count(*) into clients_left from pilot.clients where account_id = '${A}';
   if clients_left <> 1 then
@@ -434,7 +458,11 @@ begin
 end $$;
 
 -- And the real expiry: window closed, retention unpaid. Commercial records
--- go; the airman records do not, on this path either.
+-- go; the airman records do not, on this path either. Same service_role
+-- wrapper as HOLD-7/HOLD-8: this is the one call in this file that is
+-- expected to SUCCEED as service_role rather than raise, so on the
+-- pre-grant schema it fails loudly with an unhandled 42501 instead of
+-- silently purging nothing (the exact production symptom).
 do $$
 declare clients_left int; logbook_left int; docs_left int; still_held timestamptz;
 begin
@@ -448,7 +476,9 @@ begin
          retention_paid_until = null
    where id = '${A}';
 
+  set local role service_role;
   perform pilot.expire_hold('${A}');
+  reset role;
 
   select count(*) into clients_left from pilot.clients         where account_id = '${A}';
   select count(*) into logbook_left from pilot.logbook_entries where account_id = '${A}';

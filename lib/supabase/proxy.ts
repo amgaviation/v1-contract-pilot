@@ -286,7 +286,31 @@ async function refreshSession(
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.search = "";
-    loginUrl.searchParams.set("next", path);
+    // `next` carries the ORIGINAL REQUEST'S QUERY STRING, not just its path.
+    // lib/safe-next.ts's own contract comment is explicit: "next" must
+    // return "the path with its query and fragment intact, because a
+    // redirect back to /invoices?status=overdue after signing in is the
+    // point of the feature." Passing bare `path` here silently broke that
+    // contract — concretely, app/api/stripe/connect/callback/route.ts
+    // redirects a session-less caller to
+    // /settings?tab=payments&warning=..., which re-enters this proxy; with
+    // only `path` forwarded that became /login?next=%2Fsettings, and the
+    // pilot who signs in lands on bare /settings with no indication their
+    // Stripe Connect attempt failed. `path`/`normalizedPath` above stay
+    // pathname-only on purpose — the allow-list matching has no business
+    // caring about query strings — so the search string is appended only
+    // here, at the one place it needs to survive.
+    //
+    // This cannot become an open redirect: every consumer of a `next` value
+    // (app/(auth)/login/{page,actions}.tsx, app/auth/confirm/route.ts,
+    // app/(app)/settings/billing/upgrade/page.tsx) resolves it through
+    // safeNextPath(), which re-parses the candidate against a placeholder
+    // origin and discards anything that resolves off-origin — see that
+    // file's own header comment for the backslash-based bypass this
+    // already defends against. Appending the query string here changes
+    // what gets preserved, not what gets trusted.
+    const nextTarget = path + request.nextUrl.search;
+    loginUrl.searchParams.set("next", nextTarget);
     return NextResponse.redirect(loginUrl);
   }
 
