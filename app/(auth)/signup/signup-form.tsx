@@ -55,6 +55,13 @@ export default function SignUpForm({ introLabel }: { introLabel: string }) {
         ones. The trust line is claim rule 6 plus the downgrade promise,
         stated where a sceptic is deciding whether to hand over a card.
 
+        REWRITTEN 2026-08-19 with the landing page, which is the moment
+        docs/MARKETING.md warns this panel historically falls out of step:
+        the heading is the landing H1 and the three lines are section 2's
+        rows in the same order and the same voice. Line 3 still carries
+        claim rule 1 — the PILOT marks the receipt rebill, and that tag is
+        what puts it on the invoice. A trip never creates an expense.
+
         order-last / lg:order-first: DOM order keeps the FORM first on a
         phone — a visitor who tapped "Get started" gets the fields, not a
         billboard — while desktop reads brand left, form right.
@@ -74,18 +81,18 @@ export default function SignUpForm({ introLabel }: { introLabel: string }) {
           id="signup-brand-heading"
           className="font-display text-display-s font-bold text-brand-ink"
         >
-          Flying is the job. This is the business.
+          One trip entry drives the rest.
         </h2>
         <p className="text-body text-brand-ink-2">
-          {BRAND.name} keeps the books for your flying business. Set up
-          takes about two minutes, and the books start with the first trip
-          you log.
+          {BRAND.name} is a business management platform we built for
+          pilots. Set up takes about two minutes and it starts working on
+          the first trip you log.
         </p>
         <ul className="flex flex-col divide-y divide-brand-hair border-t border-brand-hair">
           {[
-            "Log a trip, review its invoice lines, and send a numbered PDF invoice with a payment link.",
-            "Every leg becomes a logbook draft, PIC and SIC kept separate, for you to review.",
-            "Scan receipts at the FBO and file them against the trip: client reimbursement or your own expense records.",
+            "Log a trip, read the invoice lines it priced off your client's rate card, and send a numbered PDF with a payment link on it.",
+            "Every leg comes back as a logbook draft with PIC and SIC kept apart, waiting for you to approve it.",
+            "Photograph receipts at the FBO and mark each one rebill or keep. The rebills go on that client's invoice.",
           ].map((line, i) => (
             <li key={line} className="flex items-baseline gap-3 py-3">
               <span className="font-mono tnum-l text-body-s font-semibold text-brand-accent">

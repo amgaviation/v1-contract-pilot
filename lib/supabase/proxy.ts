@@ -114,17 +114,29 @@ async function refreshSession(
   // login redirect. "/" has no trailing slash to strip.
   const normalizedPath = path.length > 1 ? path.replace(/\/$/, "") : path;
   const isAuthSurface =
-    // The signed-out marketing surface: app/(marketing)/{page,pricing,
-    // terms,privacy}.tsx. All four are exact matches, not prefixes — none
-    // of the four has a planned subroute, and a stray prefix match here
-    // would silently wave through anything a future route nests under one
-    // of them. "/" itself moved out of the (app) route group precisely so
-    // it could be public; app/(marketing)/page.tsx does the further
-    // signed-in-vs-signed-out branch once it's actually rendering (the
-    // Overview dashboard now lives at /overview, gated the normal way
+    // The signed-out marketing surface: app/(marketing)/{page,how-it-works,
+    // pricing,your-data,terms,privacy}.tsx. All six are exact matches, not
+    // prefixes — none of the six has a planned subroute, and a stray prefix
+    // match here would silently wave through anything a future route nests
+    // under one of them. "/" itself moved out of the (app) route group
+    // precisely so it could be public; app/(marketing)/page.tsx does the
+    // further signed-in-vs-signed-out branch once it's actually rendering
+    // (the Overview dashboard now lives at /overview, gated the normal way
     // below, not on this list).
+    //
+    // ADDING A MARKETING PAGE MEANS ADDING IT HERE. /how-it-works and
+    // /your-data shipped in the 2026-08-19 restructure and 307'd to /login
+    // on the first run against a built server, because a page rendering
+    // fine in the (marketing) route group tells you nothing about whether
+    // this proxy lets a stranger reach it. The build output listing the
+    // route, and typecheck, and the unit suite were all green while both
+    // new pages were unreachable. There are now four places a new public
+    // page has to be named: here, app/sitemap.ts, app/robots.ts, and the
+    // header/footer nav.
     normalizedPath === "/" ||
+    normalizedPath === "/how-it-works" ||
     normalizedPath === "/pricing" ||
+    normalizedPath === "/your-data" ||
     normalizedPath === "/terms" ||
     normalizedPath === "/privacy" ||
     normalizedPath === "/login" ||

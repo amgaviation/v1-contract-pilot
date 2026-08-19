@@ -1,8 +1,17 @@
 # Marketing — positioning, message hierarchy, claim rules
 
 The approved strategy for the signed-out surface, written down once so
-future copy has a source. Signed off in the 2026-08 rewrite, and
-**repositioned 2026-08-17 at the owner's direction**: the workflow wedge
+future copy has a source. Signed off in the 2026-08 rewrite, repositioned
+2026-08-17, and **rewritten again 2026-08-19 at the owner's direction** —
+that last pass changed the VOICE, the message ORDER and the site's
+INFORMATION ARCHITECTURE, and it is recorded in §3.1, §4 and §4.1. §5's
+claim rules are unchanged and still absolute.
+
+The 2026-08-17 entry below is kept because it explains why the money beats
+exist and where they went, not because the arrangement it describes is
+current. Where the two disagree, 2026-08-19 wins.
+
+**The 2026-08-17 note, for context.** It read: the workflow wedge
 ("log the trip once" / "stop entering the same trip three times") is
 retired everywhere — page, tagline, metadata, OG card, tier blurb, in-app
 empty states — and this document now records the money position that
@@ -50,9 +59,16 @@ independent contract pilots"), never as part of the name.
 
 ## 1. The one-liner
 
-> V1 is the books for a flying business of one: who owes you, what you
-> earned, what you spent, and the year-end packet your CPA asks for —
-> every figure off the trips the pilot flies.
+> V1 is a business management platform built for pilots. You log the trip
+> once and the invoice, the per-leg logbook drafts and the year-end numbers
+> all come off that one record.
+
+The 2026-08-17 one-liner ("the books for a flying business of one: who owes
+you, what you earned, what you spent, and the year-end packet your CPA asks
+for") is retired as the LEAD, not as content. Those four money beats are the
+payoff of the landing page's section 2 and the whole of /how-it-works step
+06. `BRAND.tagline` still says "The books for your flying business." and
+still renders only in the footer, the auth column and metadata.
 
 ## 2. Who it is for
 
@@ -73,25 +89,34 @@ buys nothing.
 
 ## 3. The position
 
-**Money, not workflow.** The retired wedge sold single-entry — a mechanism
-nobody wakes up wanting. The position sells what the pilot already wants:
-to know what they're owed, get paid for every day they flew, and put a
-real set of books behind a 1099 business. The product was always built
-this way — the Overview leads with Unbilled work / Awaiting payment / Paid
-this year, and LEDGER.md chose the fintech register "because this product
-is, above all, how they get paid" — the copy has simply caught up with the
-product's own picture.
+**The category is a business management platform, and the mechanic is the
+headline** (2026-08-19). The owner's own post opens with the category
+sentence and then the mechanic, and the site now does the same. The H1 is
+"One trip entry drives the rest." and the subhead carries both the category
+claim and what the one record produces.
 
-**The category is books, not workflow software.** Pilots already pay for
-the category (QuickBooks, Wave, a CPA); V1 is the version of it that knows
-what a trip, a leg, a day rate and a travel day are. Positioning in an
-existing category means never having to sell the problem — only why the
-generic answer fits a flying business badly.
+This supersedes the 2026-08-17 arrangement, in which the money beats led and
+the mechanic was demoted to proof. What changed is ORDER, not content. The
+money is still the payoff and it is now stated in more places than before,
+because the 2026-08-19 pass also put the Stripe Connect answer on the site
+for the first time (§3.1).
 
-**The mechanic is proof, not headline.** Trip-native — invoice lines
-generated, a per-leg logbook draft, receipts filed against the trip — is
-the reason to believe, stated in section 2 as the three questions a trip
-answers: what am I owed, what did I fly, what did it cost.
+**Why the mechanic can lead now when it could not before.** The retired
+2026-08 wedge sold single-entry as a saving ("stop entering the same trip
+three times"), which is a mechanism nobody wakes up wanting. "One trip entry
+drives the rest" is the same architecture sold as a CAPABILITY, and every row
+under it ends on something the pilot wanted anyway, meaning an invoice that
+is already priced, a logbook that is already drafted, and a year that is
+already written. The difference is what the sentence promises, not which
+feature it describes.
+
+**The money is still the reason to buy.** The Overview leads with Unbilled
+work / Awaiting payment / Paid this year, LEDGER.md chose the fintech
+register "because this product is, above all, how they get paid", and the
+landing page's section 3 is now entirely about getting paid. Pilots already
+pay for this category (QuickBooks, Wave, a CPA), so the argument is never
+that the problem exists, only that the generic answer fits a flying business
+badly.
 
 **Belonging is still proved by vocabulary and defaults**, never by an
 unsigned boast that pilots built it:
@@ -105,42 +130,162 @@ identifiers) and this message now stay consistent for years, not quarters;
 the next person who wants to reposition should have to argue against this
 paragraph.
 
+## 3.1 The voice, and the post it comes from (2026-08-19)
+
+The owner posted this from the V1 account and told us to write the site the
+same way. It is the register of record. When a future draft and this block
+disagree, this block wins.
+
+> V1 is a business management platform we built for pilots. One trip entry
+> drives the rest.
+>
+> You log the trip once. Your client, the a/c tail #, the legs you flew and
+> which days were duty, commuting, or cancellation. After that the invoice
+> is already built and priced off the custom configured client profile &
+> your preferences. Logbook entries already drafted, waiting for approval.
+> Receipts from the trip attach to the invoice automatically if desired.
+>
+> Not flying for a bit? Set your subscription hold date, it'll unpause by
+> itself.
+>
+> Come tax season everything's already in your P&L and your quarterly
+> totals. Payment processing integrated directly through our platform via
+> your stripe account.
+>
+> No more spreadsheets gentlemen. You're Welcome.
+>
+> Solo starting at $29 a month, first month $5 on any plan.
+
+**What the site takes from it.** Plain declaratives. Second person
+throughout. Ordinary contractions. Clauses joined with *and* / *so* / *then*
+rather than stacked on commas, roughly one comma a sentence, and a short
+line only where one is earned. The category sentence first, the mechanic
+second, the money as the payoff. No colon-lists. No em dashes. No
+rule-of-three pileups. None of "streamline", "purpose-built", "seamless",
+"all-in-one", "take control of".
+
+**What the site deliberately did NOT take, and why.**
+
+- **"No more spreadsheets"** is on the banned-phrase list this repo's
+  aviation-marketing skill keeps, for the same reason "say goodbye to" is:
+  it is the shape of the claim rather than a claim, and this audience reads
+  it as agency copy. The idea survives on /how-it-works, stated as the
+  actual situation ("you're the integration between those three").
+- **"gentlemen"** addresses part of this audience and excludes the rest. A
+  closing joke that lands in one Facebook group is not the front door of
+  the business, and the cost of being wrong about it is a screenshot. Cut,
+  along with "You're Welcome.", which reads as swagger in a post and as
+  smugness on a homepage.
+- **"duty, commuting, or cancellation"** is not what the product seeds. A
+  new account gets Flight day, Travel day and Standby day
+  (`20260807000000_phase9_day_types_and_trip_days.sql`) and the taxonomy is
+  the tenant's own after that. The site names the seeded three and says the
+  list is yours, which is both accurate and a better claim.
+- **"Receipts ... attach to the invoice automatically"** is true but needs
+  its trigger stated, or it breaks claim rule 1. The pilot tags an expense
+  `rebill`, and `createInvoiceDraft` then carries the tagged ones onto the
+  invoice as `reimbursable_expense` lines. Every place the site says this,
+  the pilot's tag is in the sentence.
+
+**Three things in that post were true, shipped, and had never appeared on
+the public site at all.** All three are on it now:
+
+| Claim | Implementation | Where it landed |
+|---|---|---|
+| Payment processing through the pilot's own Stripe account | `lib/stripe/connect.ts` (Standard Connect, direct charges, no application fee), `lib/stripe/connect-payments.ts` | Landing §3, /how-it-works step 05, /pricing FAQ, /your-data |
+| Subscription hold that resumes on its own date | `lib/stripe/hold.ts`, `app/(app)/settings/account-actions.ts` | Landing FAQ, /your-data |
+| Receipt pages going out attached to the invoice PDF | `app/(app)/invoices/actions.ts` | Landing §2 row 03, /how-it-works step 03 |
+
+The Stripe one is the significant omission. Chasing payment is the pain
+this audience actually names, the product has shipped an answer to it, and
+the public site had never once said a client can pay an invoice.
+
 ---
 
 ## 4. Message hierarchy
 
+Rewritten 2026-08-19 for the landing page's six bands.
+
 | Rank | Beat | Where it lives |
 |---|---|---|
-| 1 | The identity claim: flying is the job, this is the business | Hero H1 |
-| 2 | What the books hold: owed, earned, spent, year-end | Hero subhead |
-| 3 | The mechanic as proof: the three questions a trip answers | Section 2 |
-| 4 | Depth as evidence of belonging | Section 3 spec block |
-| 5 | The three barriers left | Section 4 FAQ |
-| 6 | Cost, and the promise that outlives the card | Section 5 close |
+| 1 | The mechanic as the claim: one trip entry drives the rest | Hero H1 |
+| 2 | The category, and what the one record produces | Hero subhead |
+| 3 | The four things it drives, ending on the year | Section 2 |
+| 4 | Getting paid, through the pilot's own Stripe account | Section 3 |
+| 5 | Depth as evidence of belonging | Section 4 spec block |
+| 6 | The four barriers left, and a door to the long answers | Section 5 FAQ |
+| 7 | Cost, and the promise that outlives the card | Section 6 close |
 
 **Hero copy, verbatim:**
 
 - **Eyebrow** — For independent contract pilots
-- **H1** — Flying is the job. This is the business.
-- **Subhead** — V1 keeps the books for your flying business: who owes
-  you, what you earned, what you spent, and the year-end packet your CPA
-  asks for. All of it comes off the trips you fly.
+- **H1** — One trip entry drives the rest.
+- **Subhead** — V1 is a business management platform we built for pilots.
+  You log the trip once and the invoice, the logbook drafts and the
+  year-end numbers all come off that one record.
+- **Fine line** — Plans start at $29/month, and the first month is $5 on any
+  of them. Card required.
 
-The subhead's opening phrase is the tagline verbatim — one phrase, spoken
-identically everywhere the brand speaks, which is the whole of how a small
-brand builds a memory structure. Section 3's heading deliberately does NOT
-use it a third time.
-- **Fine line** — Plans start at $29/month. Card required.
+**"We built" is the voice, and it is deliberate.** V1 speaks as a company
+throughout the site, never as a founder. "We built V1 for pilots" is in;
+"I built this because I fly" is out, and so is any unsigned boast that
+pilots built it (claim rule 8). Belonging is proved by vocabulary and
+defaults instead:
 
-`BRAND.tagline` ("The books for your flying business.") stays in the
-footer, the auth column and metadata. The H1 says who the reader is
-becoming; the subhead says what the product holds; neither asks a slogan
-to do that work.
+> "flight day or travel day or standby" · "PIC and SIC kept apart" · "mark
+> it rebill or keep"
 
-**Section 2 no longer contains a comparison.** The old "Today: retyped
-into an invoicing tool" column existed to serve the duplicate-entry
-argument and left with it (§7). Claim rule 7 still binds any comparison a
-future edit reintroduces.
+`BRAND.tagline` ("The books for your flying business.") stays in the footer,
+the auth column and metadata, and is never repeated in a page body.
+
+**Section 2 contains no comparison.** The old "Today: retyped into an
+invoicing tool" column existed to serve the duplicate-entry argument and
+left with it (§7). Claim rule 7 still binds any comparison a future edit
+reintroduces — the one position the site does take, on /how-it-works, names
+no competitor and calls no other tool bad at its own job.
+
+## 4.1 The information architecture (2026-08-19)
+
+The public site was four pages, two of which were counsel-gated legal
+placeholders. Everything the product had to say lived on `/` and everything
+a sceptic wanted lived inside collapsed `<details>` rows. "How it works" in
+the header and the footer was an ANCHOR, `/#how-it-works`, which is what a
+site does when it has one page and four sections.
+
+```
+/                    Landing. What it is, the mechanic, getting paid, the
+                     spec block, four questions, the price.
+/how-it-works        One trip start to finish, in six steps, plus the one
+                     position the site takes (the multi-client inversion).
+/pricing             Three plans, the generated matrix, six FAQ answers.
+/your-data           Export, hold, cancel, and what AMG can and cannot read.
+/terms  /privacy     Counsel-gated placeholders. noindex, footer only.
+```
+
+**Header nav**, in priority order: How it works · Pricing · Your data · Log
+in · Get started. Five items plus the mark, inside the 4–7 guidance. "How it
+works" hides below `sm` and "Your data" below `md` so the CTA never wraps to
+a second row on a phone.
+
+**Footer**: Product (How it works, Pricing, Your data) · Account · Legal.
+
+**Why these two pages and no others.** `/how-it-works` because the owner's
+direction was to explain the system more clearly and a first-time reader
+found the old page confusing, and because a walkthrough is the highest-intent
+page a product like this can own. `/your-data` because export on every plan
+is the strongest claim this product has (claim rule 6) and it was hidden
+behind an accordion, and because a pilot who has been burned by an app that
+lost their data goes looking for exactly that page.
+
+Deliberately NOT added: a blog, `/about`, `/contact`, per-feature pages, or
+comparison pages. There are no customers yet, no content to hub, and nothing
+to say on an about page that claim rule 8 permits. Three marketing pages that
+are all worth reading beats eight that are not.
+
+**Indexation follows the structure.** `app/sitemap.ts` and `app/robots.ts`
+both list all four indexable paths, and both still fail closed off
+production (`VERCEL_ENV`). /terms and /privacy stay off both lists and keep
+their own noindex.
 
 ---
 
@@ -255,14 +400,40 @@ The `data-mock` attribute on `product-shot.tsx` exists for this and nothing
 else. Measuring the DOM rather than the source is what lets the derived
 tier badges and the interpolated figures be counted as a reader meets them.
 
+Re-budgeted 2026-08-19 for the six-band landing page. Two things moved the
+total: section 2 gained a fourth row (the year), and section 3 is new. The
+FAQ grew by one item and lost nothing, because the hold is a real question a
+pilot asks and the site had never answered it outside a /pricing accordion.
+
 | # | Section | Budget | Shipped |
 |---|---|---|---|
-| 1 | Hero, navy — identity H1, money subhead, mock | 70 | 55 |
-| 2 | What a trip is worth — three question rows | 110 | 102 |
-| 3 | The rest of the books — spec block | 100 | 82 |
-| 4 | Questions pilots ask us — three FAQ items | 120 | 117 |
-| 5 | Close, navy — plans line and one action | 30 | 28 |
-| | **Total** | **430** | **384** |
+| 1 | Hero, navy — mechanic H1, category subhead, mock | 75 | — |
+| 2 | You log the trip once — four rows | 175 | — |
+| 3 | Getting paid — Stripe Connect, with its limit | 115 | — |
+| 4 | What else is in there — spec block | 110 | — |
+| 5 | Questions pilots ask us — four FAQ items | 190 | — |
+| 6 | Close, navy — plans line and one action | 35 | — |
+| | **Total** | **700** | — |
+
+**Shipped is unmeasured on this revision** and the dashes say so rather than
+carrying the previous version's numbers forward as if they still described
+the page. Re-measure with the method above (render, open every `<details>`,
+drop `[data-mock]`, count per `main > section`) and fill the column in. An
+invented figure in this table is worse than an empty one: the whole point of
+keeping both columns is that a future editor can tell budget from fact.
+
+**The total roughly doubled, deliberately.** The 430-word budget was written
+for a page that was the entire site. It is now the front door of four pages,
+and the depth it used to have to carry alone lives on /how-it-works and
+/your-data. The ten-seconds-on-FBO-wifi standard is unchanged and still met
+by the hero: what it is, who it is for, what it costs.
+
+**Page budgets for the two new pages**, on the same standard:
+
+| Page | Budget |
+|---|---|
+| /how-it-works — six steps, the position, the close | 900 |
+| /your-data — four sections, the limitation, the close | 700 |
 
 Re-budgeted at the 2026-08-17 repositioning: these are fresh numbers for
 the money position, not the old wedge's budgets carried over. Section 2's

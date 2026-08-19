@@ -1,7 +1,9 @@
 import type { MetadataRoute } from "next";
 
 /**
- * Only "/" and "/pricing" are indexable — see app/(marketing)/layout.tsx.
+ * The four indexable marketing pages — see app/(marketing)/layout.tsx.
+ * /how-it-works and /your-data joined the list at the 2026-08-19
+ * restructure, when both stopped being sections of "/" and became pages.
  * /terms and /privacy carry their own noindex (counsel-gated placeholders
  * that say so in their own bodies) and are intentionally left off this
  * list.
@@ -11,6 +13,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
 
   return [
     { url: baseUrl },
+    { url: `${baseUrl}/how-it-works` },
     { url: `${baseUrl}/pricing` },
+    { url: `${baseUrl}/your-data` },
   ];
 }

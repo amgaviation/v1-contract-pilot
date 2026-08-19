@@ -25,8 +25,10 @@ import {
  * rules. The three that a well-meaning edit breaks most often:
  *
  *   TWO GENERATED, ONE ORGANISED. A trip GENERATES invoice lines and a
- *   logbook draft. Receipts are ORGANISED by it — nothing in this product
- *   creates an expense from a trip. Never claim three generated.
+ *   logbook draft. Receipts are ORGANISED by it — the pilot creates the
+ *   expense and tags it `rebill`, and createInvoiceDraft then picks the
+ *   tagged ones up as reimbursable_expense lines. Section 2 row 03 says
+ *   exactly that and no more. Never claim a trip creates an expense.
  *
  *   NOTHING BEYOND SHIPPED CODE. Every feature line below is tied to a
  *   FeatureId in lib/entitlements.ts, so its tier tag is derived rather
@@ -35,44 +37,51 @@ import {
  *   disappears from this page mechanically. See specGroups() below.
  *
  *   THE TAGLINE IS NOT A HEADLINE. BRAND.tagline stays in the footer, the
- *   auth column and metadata. The hero names the product and the work it
- *   handles instead of repeating a slogan.
+ *   auth column and metadata.
  *
- * Figures are interpolated, never typed: the trial is the SAME constant the
- * checkout passes to Stripe (lib/stripe/server.ts), and the amounts come
- * from ./pricing-model, the one marketing source for docs/PRICING.md §3.2.
+ * Figures are interpolated, never typed: the intro month is the SAME
+ * constant the checkout passes to Stripe (lib/stripe/server.ts), and the
+ * amounts come from ./pricing/pricing-model, the one marketing source for
+ * docs/PRICING.md §3.2.
  *
- * ── DESIGN, 2026-08-17 (unchanged by the angle change below) ─────────
+ * ── THE VOICE, 2026-08-19 (owner's direction) ─────────────────────────
  *
- * The page's structure is the redesign that shipped that morning: a navy
- * hero (--ledger-brand, the kit's own ground) with the mock beside the
- * argument, a hairline record ledger, an asymmetric spec block with a
- * sticky heading column, a narrow FAQ, and a navy close bookending the
- * hero. Display sizes (--text-display/-s) and the display/mono faces are
- * that redesign's too. One section is a grid, and it earns it.
+ * The owner posted from the V1 account and told us to write the site the
+ * same way. That post is quoted in full in docs/MARKETING.md §3.1 and it
+ * is the register of record: plain declaratives, second person, ordinary
+ * contractions, clauses joined with `and`/`so`/`then` rather than stacked
+ * on commas, and a short line only where one is earned. No colon-lists.
+ * No em dashes. No "streamline", no "purpose-built", no rule-of-three
+ * pileups.
  *
- * ── THE ANGLE CHANGE, 2026-08-17 (same day, owner's direction) ─────────
+ * TWO THINGS IN THAT POST DELIBERATELY DID NOT COME ACROSS. "No more
+ * spreadsheets" is on the banned-phrase list this repo's marketing skill
+ * keeps, and "gentlemen" addresses roughly half of this audience and
+ * excludes the rest — a closing joke that works in one Facebook group is
+ * not the front door of the business. Both are recorded in §3.1 so the
+ * omission reads as a decision rather than an oversight.
  *
- * The workflow wedge is retired. The page no longer argues "log the trip
- * once" / "stop entering the same trip three times" — the owner pulled
- * that positioning entirely. The page now argues the MONEY POSITION:
- * BRAND.name is the books for a flying business of one, and the hero
- * leads with what the books hold (who owes you, what you earned, what
- * you spent, the year-end packet) instead of with data entry saved. The
- * trip-native mechanic did not go anywhere — it is the product — but it
- * moved from headline to proof: section 2 frames the three records as the
- * three money questions a trip answers. This is also the page's words
- * finally agreeing with its own picture: the mock has always led with
- * Unbilled work / Awaiting payment / Paid this year.
+ * ── THE ANGLE, 2026-08-19 ─────────────────────────────────────────────
  *
- * The old middle column ("Today: retyped into an invoicing tool…") is
- * GONE, not reworded — it existed to serve the duplicate-entry argument.
- * Claim rule 7 (any comparison is workflow-only, no competitor named)
- * stays binding on whatever comparison a future edit might add.
+ * The H1 is the mechanic again ("One trip entry drives the rest"), with
+ * the category sentence and the money payoff carried by the subhead, in
+ * the same order the owner's own post puts them. This supersedes the
+ * 2026-08-17 arrangement where money led and the mechanic was demoted to
+ * proof. The money beats did NOT leave: they are the payoff of section 2
+ * and the whole of section 3. See docs/MARKETING.md §3.
  *
- * docs/MARKETING.md was rewritten the same day and is the authority for
- * this copy; §5's claim rules carried forward UNCHANGED — they are
- * honesty constraints, not positioning choices.
+ * ── THE INFORMATION ARCHITECTURE, 2026-08-19 ──────────────────────────
+ *
+ * "How it works" used to be an ANCHOR on this page (/#how-it-works) in
+ * the header and the footer, which is what a site does when it has one
+ * page and four sections. It is now a real page, /how-it-works, and it
+ * carries the long walkthrough this page only summarises. The trust
+ * material that used to live entirely inside collapsed FAQ rows — export,
+ * hold, cancel, what AMG can and cannot read — is a page too, /your-data.
+ *
+ * That gives this page one job again: say what V1 is, show the mechanic,
+ * name the price, and hand a reader who wants depth a door to it. Both new
+ * pages are in the header nav, the footer, sitemap.ts and robots.ts.
  */
 
 /** A full-bleed band with the page's one shared measure inside it. */
@@ -96,10 +105,6 @@ function Band({
    * legible. That is why the hero's grid engages at `xl` and not at `lg`:
    * between 1024 and 1280 the stacked layout gives the shot the full
    * container, which is wider than the 7-of-12 track would be there.
-   *
-   * (The old floor this comment recorded — a 42rem min-width on the
-   * hand-built mock, which would have sliced the panel down the middle
-   * below it — is gone with the mock. An image simply scales.)
    */
   measure?: "default" | "narrow" | "wide";
 }) {
@@ -120,9 +125,7 @@ function Band({
             : undefined
       }
     >
-      <div
-        className={`mx-auto w-full ${width} px-5 py-14 sm:px-6 sm:py-20`}
-      >
+      <div className={`mx-auto w-full ${width} px-5 py-14 sm:px-6 sm:py-20`}>
         {children}
       </div>
     </section>
@@ -130,53 +133,58 @@ function Band({
 }
 
 /**
- * THE THREE QUESTIONS a trip answers, in the order a business asks them.
- * Two generated, one organised (see the file header): invoice lines are
- * GENERATED, the logbook draft is DRAFTED per leg, receipts are FILED by
- * the pilot — the bodies below say exactly that and nothing more. The old
- * "Today: retyped into…" comparison column is gone with the angle that
- * needed it; claim rule 7 (workflow only, no competitor named) binds any
- * comparison a future edit reintroduces.
- */
-/**
- * TWO OF THE THREE CARRY A SCREENSHOT, and only where the picture answers
- * the same question the words do: the invoice screen beside "What am I
- * owed?", the logbook beside "What did I fly?". Row 03 deliberately has
- * none — a receipt-scanning screen next to copy about filing receipts adds
- * nothing the sentence does not already say, and a third figure in one band
- * would turn a ledger of question-and-answer into a gallery.
+ * WHAT THE ONE TRIP ENTRY DRIVES, in the order the work actually happens.
  *
- * They render inside the answer column, at a constrained measure. These are
- * supporting figures, not heroes: the hero is the hero.
+ * Two generated, one organised (see the file header) governs rows 01–03.
+ * Row 03's "you mark it rebill or keep" is the load-bearing half of the
+ * sentence: the pilot creates the expense and sets the treatment, and
+ * createInvoiceDraft (app/(app)/invoices/actions.ts, the
+ * `reimbursable_expense` loop) then carries the rebill-tagged ones onto
+ * the client's invoice. That is a real automatic step and it is claimable
+ * BECAUSE the pilot's tag is what triggers it.
+ *
+ * Row 04 describes reports. It must never acquire a tax OUTCOME — see
+ * docs/MARKETING.md claim rule 10. "Nothing gets rebuilt in January"
+ * describes the software. "Saves you money at tax time" does not.
+ *
+ * TWO OF THE FOUR CARRY A SCREENSHOT, and only where the picture answers
+ * the same thing the words do. Rows 03 and 04 have none: a receipt screen
+ * beside copy about tagging receipts adds nothing, and four figures in one
+ * band turns a ledger into a gallery.
  */
-const RECORDS: { step: string; q: string; body: string; shot?: ShotSlug }[] = [
+const DRIVES: { step: string; q: string; body: string; shot?: ShotSlug }[] = [
   {
     step: "01",
-    q: "What am I owed?",
-    body: "Your client’s rate and billable days are already filled in. Review the lines, then send a numbered PDF invoice with a payment link.",
+    q: "The invoice is already built.",
+    body:
+      "It priced itself off the rate card you set up for that client, so the flight days and the travel days are already on it at the right number. You read the lines and send it, and it goes out as a numbered PDF.",
     shot: "invoice",
   },
   {
     step: "02",
-    q: "What did I fly?",
+    q: "The logbook entries are already drafted.",
     // ONE DRAFT PER LEG, not one per trip: draftPayloadForLeg() in
-    // app/(app)/logbook/db.ts is per-leg, the queue is titled "Trip drafts —
-    // legs from completed trips", and one entry per flight is the only form
-    // 14 CFR 61.51 recognises. "The legs … a draft entry" read as a merge.
-    body: "One draft per leg, with PIC and SIC kept separate. You review every draft before anything reaches your logbook.",
+    // app/(app)/logbook/db.ts is per-leg, the queue is titled "Trip drafts
+    // — legs from completed trips", and one entry per flight is the only
+    // form 14 CFR 61.51 recognises.
+    body:
+      "One draft per leg, with PIC and SIC kept apart. They sit in a queue and nothing reaches your logbook until you approve it.",
     shot: "logbook",
   },
   {
     step: "03",
-    q: "What did it cost?",
-    // "deductible expense records" DESCRIBES THE SOFTWARE. It must never
-    // become "lowers your taxable income" or "is deductible": `deduct` is
-    // an expense treatment enum (app/(app)/expenses/actions.ts), and the
-    // product's own mileage screen says in as many words that it records
-    // drives rather than determining what is deductible. This is the one
-    // signed-out surface carrying no disclaimer, so a tax outcome asserted
-    // here is asserted naked. See docs/MARKETING.md §5 rule 10.
-    body: "Scan a receipt at the FBO and attach it to the trip. Mark it for client reimbursement or keep it with your deductible expense records.",
+    q: "The receipts are already on the trip.",
+    // "you mark it rebill or keep" is the claim-rule-1 guard. Do not
+    // rewrite this into the trip creating the expense.
+    body:
+      "Photograph a receipt at the FBO and mark it rebill or keep. Anything you marked rebill lands on that client's invoice as its own line, and the receipt pages can go out with the PDF.",
+  },
+  {
+    step: "04",
+    q: "Come tax season, nothing gets rebuilt.",
+    // Describes reports. Never a tax outcome — claim rule 10.
+    body:
+      "That same trip is already in your profit and loss and your quarterly totals and the year-end packet your CPA asks for. You don't go back in January and reconstruct the year.",
   },
 ];
 
@@ -200,39 +208,43 @@ type SpecGroup = { title: string; items: readonly SpecItem[] };
 
 const SPEC: readonly SpecGroup[] = [
   {
-    title: "The trip",
+    title: "The flying",
     items: [
-      { text: "Clients, aircraft, legs, and day types", features: ["trips"] },
+      { text: "Clients, aircraft, legs, and your own day types", features: ["trips"] },
       { text: "Client rate cards and W-9 status", features: ["clients"] },
       {
-        text: "Numbered invoice PDFs, email delivery, and view tracking",
-        features: ["invoices"],
+        text: "Logbook with PIC and SIC kept apart, plus CSV import and export",
+        features: ["logbook"],
       },
       {
-        text: "Estimates, recurring invoices, and client statements",
-        features: ["estimates", "recurring_invoices", "client_statements"],
+        text: "Medical, flight review, passport, and insurance dates",
+        features: ["documents"],
       },
     ],
   },
   {
-    title: "Your records",
+    title: "The money",
     items: [
       {
-        text: "Logbook with separate PIC and SIC time, plus CSV import and export",
-        features: ["logbook"],
+        // The Connect payment link is part of the invoices feature —
+        // there is no separate FeatureId for it, and inventing one to
+        // decorate this line would break the derivation this block runs
+        // on. lib/stripe/connect.ts is the implementation.
+        text: "Numbered invoice PDFs, email delivery, view tracking, and card or bank payment links through your own Stripe account",
+        features: ["invoices"],
       },
       {
         // "the rate you set" is load-bearing. lib/mileage.ts stores that
-        // year's rate in cents per mile AS THE PILOT ENTERED IT, and a year
-        // with no rate on file renders miles with no dollar figure. The
-        // product ships no rate table; dropping the qualifier turns an
+        // year's rate in cents per mile AS THE PILOT ENTERED IT, and a
+        // year with no rate on file renders miles with no dollar figure.
+        // The product ships no rate table; dropping the qualifier turns an
         // input field into an advertised capability.
         text: "Receipt scanning and mileage records using the annual rate you set",
         features: ["expenses"],
       },
       {
-        text: "Medical, flight review, passport, and insurance dates",
-        features: ["documents"],
+        text: "Estimates, recurring invoices, and client statements",
+        features: ["estimates", "recurring_invoices", "client_statements"],
       },
       { text: "CSV and OFX bank-statement imports", features: ["bank_import"] },
     ],
@@ -291,24 +303,35 @@ function specGroups(): {
 }
 
 /**
- * THREE QUESTIONS. Only the ones that remove a real barrier and are
- * answered nowhere else on the page. The second is non-negotiable: it
- * carries the substance of lib/brand.ts's counsel-reviewed
- * CURRENCY_DISCLAIMER — this product never presents itself as deciding
- * whether a pilot is legal to fly.
+ * FOUR QUESTIONS. Only the ones that remove a real barrier before a card
+ * is entered. The second is non-negotiable: it carries the substance of
+ * lib/brand.ts's counsel-reviewed CURRENCY_DISCLAIMER — this product never
+ * presents itself as deciding whether a pilot is legal to fly.
+ *
+ * The third is the hold, which the owner's post raised and this site had
+ * never mentioned outside a /pricing accordion. Its wording tracks
+ * app/(app)/settings/account-actions.ts and docs/PRICING.md §5: two months,
+ * read-only while it runs, resumes on the date you set, and the airman
+ * records are kept whatever happens. The clearing caveat stays in — a hold
+ * that quietly deletes the business side would be the single worst thing
+ * this page could fail to mention.
  */
 const FAQ: { q: string; a: string }[] = [
   {
     q: "I already keep a logbook. Do I have to start over?",
-    a: "No. Import a ForeFlight or LogTen Pro export, or any CSV through the column mapper, and carry on from there.",
+    a: "No. Bring in a ForeFlight or LogTen Pro export, or any CSV through the column mapper, and carry on from where you left off.",
   },
   {
     q: "Does it decide whether I'm current or legal to fly?",
-    a: "No, and it will never present itself that way. It tracks the expiry dates you entered off your own documents so you can see what's coming. Currency and airworthiness decisions stay yours.",
+    a: "No, and it will never present itself that way. It tracks the dates you entered off your own documents so you can see what's coming due. Currency and airworthiness decisions stay yours.",
   },
   {
-    q: "What happens if I cancel or downgrade?",
-    a: "Nothing is deleted. Downgrading stops new work on the screens your plan no longer includes; cancelling puts the account in read-only. A pilot's logbook is a legal record; a lapsed card will never be the thing that destroys one.",
+    q: "What if I'm not flying for a while?",
+    a: "Put the account on hold and set the date it comes back. Billing pauses for up to two months and it resumes on that date by itself, and your records go read-only in the meantime with nothing deleted. If a hold runs the full two months and isn't resumed, the business side is cleared, but your logbook, your documents, your aircraft and your operator qualifications are kept whatever happens.",
+  },
+  {
+    q: "What happens to my records if I cancel?",
+    a: "Nothing is deleted. The account goes read-only and the export keeps working. A pilot's logbook is a legal record, and a lapsed card will never be the thing that destroys one.",
   },
 ];
 
@@ -330,8 +353,7 @@ export default async function LandingPage() {
       {/* ── 1. HERO ──────────────────────────────────────────────────────
           Navy, and asymmetric: the argument holds a 5-of-12 column and the
           product holds 7, rather than the headline sitting centered above a
-          full-width screenshot. Stacks at lg and below, where the mock goes
-          under the buttons the way it always did. */}
+          full-width screenshot. Stacks at lg and below. */}
       <Band tone="brand" measure="wide">
         <div className="grid grid-cols-1 items-center gap-10 xl:grid-cols-12 xl:gap-8">
           <div className="flex flex-col items-start gap-5 xl:col-span-5">
@@ -345,13 +367,13 @@ export default async function LandingPage() {
             {/* THE page's only h1, and the only thing on the page set in
                 --text-display. */}
             <h1 className="font-display text-display font-bold text-brand-ink">
-              Flying is the job. This is the business.
+              One trip entry drives the rest.
             </h1>
 
             <p className="text-lead text-brand-ink-2">
-              {BRAND.name} keeps the books for your flying business: who owes
-              you, what you earned, what you spent, and the year-end packet
-              your CPA asks for. All of it comes off the trips you fly.
+              {BRAND.name} is a business management platform we built for
+              pilots. You log the trip once and the invoice, the logbook
+              drafts and the year-end numbers all come off that one record.
             </p>
 
             <div className="mt-1 flex flex-wrap gap-3">
@@ -362,66 +384,60 @@ export default async function LandingPage() {
                 Try {BRAND.name} — {INTRO_FIRST_MONTH_LABEL} first month
               </NextLink>
               <NextLink
-                href="/pricing"
+                href="/how-it-works"
                 className={lButtonClass({
                   size: "lg",
                   variant: "onBrandOutline",
                 })}
               >
-                View plans
+                See how it works
               </NextLink>
             </div>
 
             <p className="text-caption text-brand-ink-2">
-              Plans start at {TIER_PRICE_COPY.solo.monthly}/month. Card
+              Plans start at {TIER_PRICE_COPY.solo.monthly}/month, and the
+              first month is {INTRO_FIRST_MONTH_LABEL} on any of them. Card
               required.
             </p>
           </div>
 
           {/* THE PRODUCT VISUAL — a real capture of the real Overview
               screen, with invented data (see ./product-shot.tsx, and the
-              harness it names). It replaced a hand-built approximation of
-              the same dashboard: same panels, same figures, but drawn
-              rather than photographed, and therefore free to drift from
-              the product the moment either changed.
-
-              Floated on the navy rather than boxed into the text column:
-              shadow-float exists because shadow-card's 4% is invisible
-              against a dark field. Eager, not lazy — it is the fold. */}
+              harness it names). Floated on the navy rather than boxed into
+              the text column: shadow-float exists because shadow-card's 4%
+              is invisible against a dark field. Eager, not lazy — it is the
+              fold. */}
           <div className="xl:col-span-7">
             <ProductShot slug="overview" onBrand priority />
           </div>
         </div>
       </Band>
 
-      {/* ── 2. WHAT A TRIP IS WORTH ──────────────────────────────────────
-          The mechanic as proof: three money questions, answered off the
-          trip record. Two generated, one organised still governs every
-          body below. Anchor target for the header's "How it works". */}
-      <Band id="how-it-works">
+      {/* ── 2. WHAT THE ONE ENTRY DRIVES ─────────────────────────────────
+          The mechanic, in four rows, ending on the year. The long-form
+          version of this is /how-it-works; this band exists to earn the
+          click rather than to replace it. */}
+      <Band>
         <div className="flex flex-col gap-8">
           <div className="flex max-w-2xl flex-col gap-4">
             <h2 className="font-display text-display-s font-bold text-ink">
-              What a trip is worth
+              You log the trip once
             </h2>
             <div className="flex items-start gap-3 border-l-2 border-accent pl-4">
               <p className="text-body text-ink-2">
-                <span className="font-semibold text-ink">
-                  Start with the trip.
-                </span>{" "}
-                Add the client, aircraft, legs, and your flight, travel,
-                standby, or off days. The three answers below come from that
-                record.
+                Put in the client, the tail number, the legs you flew and how
+                each day counted, whether that was a flight day or a travel
+                day or standby. That's the only time you type any of it.
               </p>
             </div>
           </div>
 
-          {/* Hairline-separated rows, not cards: a ledger of question and
-              answer, which is the shape the product itself uses for money.
-              Three bordered boxes side by side is the template shape this
+          {/* Hairline-separated rows, not cards: a ledger of claim and
+              detail, which is the shape the product itself uses for money.
+              Four bordered boxes side by side is the template shape this
               page deliberately does not have. */}
           <div className="divide-y divide-hair border-t border-hair">
-            {RECORDS.map((row) => (
+            {DRIVES.map((row) => (
               <div
                 key={row.q}
                 className="grid grid-cols-1 gap-x-8 gap-y-3 py-6 md:grid-cols-12 md:items-baseline"
@@ -437,7 +453,7 @@ export default async function LandingPage() {
                 <div className="flex flex-col gap-5 md:col-span-8">
                   <p className="text-body text-ink">{row.body}</p>
                   {/* max-w-2xl, not the full 8-of-12 track: the figure is
-                      the answer's evidence, so it sits inside the answer
+                      the claim's evidence, so it sits inside the claim
                       rather than taking the row. */}
                   {row.shot ? (
                     <ProductShot slug={row.shot} className="max-w-2xl" />
@@ -446,20 +462,74 @@ export default async function LandingPage() {
               </div>
             ))}
           </div>
+
+          <div>
+            <NextLink href="/how-it-works" className={lButtonClass({ variant: "outline" })}>
+              Walk through a whole trip
+            </NextLink>
+          </div>
         </div>
       </Band>
 
-      {/* ── 3. THE SPEC BLOCK ────────────────────────────────────────────
+      {/* ── 3. GETTING PAID ──────────────────────────────────────────────
+          NEW at the 2026-08-19 rewrite, and overdue: Stripe Connect has
+          been shipped since lib/stripe/connect.ts and the public site had
+          never once mentioned that a client can pay an invoice. Chasing
+          payment is the pain this audience actually names.
+
+          EVERY SENTENCE HERE IS LOAD-BEARING AND CHECKED:
+            - Standard Connect, DIRECT charges, no application fee — the
+              money settles in the pilot's own Stripe account and never
+              touches AMG's (lib/stripe/connect.ts's verified-against-docs
+              header).
+            - We hold the acct_… id and never a key of theirs. Same header.
+            - Auto-recording on settlement, and the ACH middle state, are
+              lib/stripe/connect-payments.ts's whole subject.
+            - The refund limitation is that file's "WHAT THIS MODULE
+              DELIBERATELY DOES NOT DO" paragraph, stated here rather than
+              left for a pilot to discover. Do not delete it to tidy the
+              band; it is the most credible sentence on the page. */}
+      <Band tone="sunk">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-12 lg:gap-12">
+          <div className="lg:col-span-5">
+            <h2 className="font-display text-display-s font-bold text-ink">
+              Getting paid runs through your own Stripe account
+            </h2>
+          </div>
+          <div className="flex flex-col gap-4 lg:col-span-7">
+            <p className="text-body text-ink">
+              Connect your Stripe account and every invoice can go out with a
+              payment link on it, so the client pays by card or bank debit
+              from the invoice itself. The money settles into your account
+              rather than ours, and we never hold a key to it.
+            </p>
+            <p className="text-body text-ink">
+              When a payment clears, it records itself against that invoice
+              and the balance moves without you typing it in. A bank debit
+              takes a few days to settle, so {BRAND.name} tells you it's in
+              flight instead of going quiet on you for a week.
+            </p>
+            <p className="text-body-s text-ink-2">
+              What it won't do is move money back out. Refunds and disputes
+              you handle in Stripe, then correct the payment here yourself.
+              Reversing money automatically is a bigger claim than recording
+              it and we're not making it.
+            </p>
+          </div>
+        </div>
+      </Band>
+
+      {/* ── 4. THE SPEC BLOCK ────────────────────────────────────────────
           Asymmetric and sticky: the heading holds a 4-of-12 column and stays
           put on a tall screen while the list moves, so the reader always
           knows what the list is answering. Every Pro/Business tag is derived
           from lib/entitlements.ts — see specGroups(). */}
-      <Band tone="sunk">
+      <Band>
         <div className="grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-12">
           <div className="lg:col-span-4">
             <div className="lg:sticky lg:top-24">
               <h2 className="font-display text-display-s font-bold text-ink">
-                The rest of the books
+                What else is in there
               </h2>
               <NextLink
                 href="/pricing"
@@ -500,10 +570,11 @@ export default async function LandingPage() {
         </div>
       </Band>
 
-      {/* ── 4. BEFORE YOU SIGN UP ────────────────────────────────────────
+      {/* ── 5. BEFORE YOU SIGN UP ────────────────────────────────────────
           Native <details>/<summary> — works with no JavaScript, and is
-          keyboard- and screen-reader-correct for free. */}
-      <Band measure="narrow">
+          keyboard- and screen-reader-correct for free. The two data answers
+          are summaries; /your-data is where they are answered properly. */}
+      <Band tone="sunk" measure="narrow">
         <div className="flex flex-col gap-5">
           <h2 className="font-display text-display-s font-bold text-ink">
             Questions pilots ask us
@@ -529,26 +600,32 @@ export default async function LandingPage() {
               </details>
             ))}
           </div>
+          <p className="text-body-s text-ink-2">
+            The longer answers on holds, cancelling and what we can and
+            can't read are on{" "}
+            <NextLink href="/your-data" className="font-medium text-accent underline underline-offset-2">
+              your data
+            </NextLink>
+            .
+          </p>
         </div>
       </Band>
 
-      {/* ── 5. CLOSE ─────────────────────────────────────────────────────
-          Navy again, bookending the hero, and carrying what used to be a
-          plans band of its own. The price is stated once on this page, in
-          the hero; repeating it here would be the third statement of a fact
-          nobody disputed. What this adds instead is the export promise,
-          which is the strongest trust claim the product has and is true on
-          every tier (docs/MARKETING.md claim rule 6). */}
+      {/* ── 6. CLOSE ─────────────────────────────────────────────────────
+          Navy again, bookending the hero. The price is stated once on this
+          page, in the hero; what this adds is the export promise, which is
+          the strongest trust claim the product has and is true on every
+          tier (docs/MARKETING.md claim rule 6). */}
       <Band tone="brand">
         <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
           <div className="flex max-w-xl flex-col gap-3">
             <h2 className="font-display text-display-s font-bold text-brand-ink">
-              Start the books with your next trip.
+              Start with your next trip.
             </h2>
             <p className="text-body text-brand-ink-2">
               {TIER_ORDER.map((tier) => TIER_DISPLAY[tier].name).join(", ")}{" "}
               plans, every one of them {INTRO_FIRST_MONTH_LABEL} for the first
-              month, with a full account export.
+              month, and a full account export on all three.
             </p>
           </div>
           <NextLink

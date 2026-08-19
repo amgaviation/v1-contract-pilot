@@ -2,7 +2,8 @@ import type { MetadataRoute } from "next";
 import { NAV_SECTIONS, NAV_SETTINGS, NAV_HELP } from "@/lib/nav";
 
 /**
- * Only "/" and "/pricing" are indexable — see app/(marketing)/layout.tsx.
+ * The four indexable marketing pages ("/", "/how-it-works", "/pricing",
+ * "/your-data") — see app/(marketing)/layout.tsx.
  * /terms and /privacy carry their own noindex (counsel-gated placeholders
  * that say so in their own bodies) and are intentionally left off this
  * list. Everything else is the authenticated product, noindex product-wide
@@ -39,7 +40,7 @@ export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: "*",
-      allow: ["/$", "/pricing"],
+      allow: ["/$", "/how-it-works", "/pricing", "/your-data"],
       disallow: [
         // EVERY SIGNED-IN SECTION, derived rather than retyped. This list used
         // to spell all nine out, which made it a second copy of lib/nav.ts
