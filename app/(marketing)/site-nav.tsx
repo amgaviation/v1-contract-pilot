@@ -6,8 +6,8 @@ import { lButtonClass } from "@/components/ledger";
 import { BRAND } from "@/lib/brand";
 
 /**
- * The public site's nav — a detached glass pill (.mkt-nav), not an
- * edge-to-edge bar, since the 2026-08-19 marketing reskin. This replaced
+ * The public site's nav — a detached paper glass pill (.mkt-nav), not an
+ * edge-to-edge bar, since the 2026-08-19 marketing polish. This replaced
  * site-header.tsx and is the surface's ONE client component besides the
  * reveal primitive; everything below the fold stays server-rendered.
  *
@@ -19,8 +19,8 @@ import { BRAND } from "@/lib/brand";
  * (.mkt-menu / .mkt-burger in app/design/marketing.css; reduced motion
  * drops all of it there too).
  *
- * The mark stays public/brand/white.svg — same kit, same geometry as the
- * old header, for the same two-marks-one-flow reason its comment carried.
+ * The mark is public/brand/navy.svg — the kit's mark for a light ground
+ * (the pill is near-opaque paper), same geometry the old header carried.
  *
  * Body scroll locks while the menu is open via an effect assigning
  * document.body.style.overflow — imperative on purpose: an inline JSX
@@ -61,7 +61,7 @@ export default function SiteNav() {
             onClick={() => setOpen(false)}
             className="flex items-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
           >
-            <img src="/brand/white.svg" alt="" height={18} width={31} />
+            <img src="/brand/navy.svg" alt="" height={18} width={31} />
           </NextLink>
 
           <nav aria-label="Primary" className="hidden items-center gap-5 md:flex">
@@ -87,7 +87,6 @@ export default function SiteNav() {
               href="/signup"
               className={lButtonClass({
                 size: "sm",
-                variant: "onBrand",
                 className: "rounded-full",
               })}
             >
@@ -149,7 +148,6 @@ export default function SiteNav() {
             onClick={() => setOpen(false)}
             className={lButtonClass({
               size: "lg",
-              variant: "onBrand",
               className: "mkt-menu-item mt-6 w-max rounded-full",
             })}
           >

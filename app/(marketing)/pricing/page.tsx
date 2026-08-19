@@ -64,9 +64,7 @@ function Band({
   narrow?: boolean;
 }) {
   return (
-    // Dark-surface semantics since the 2026-08-19 reskin: `sunk` renders
-    // as a hairline seam, not a grey band — see the landing page's Band.
-    <section className={tone === "sunk" ? "border-t border-hair" : undefined}>
+    <section className={tone === "sunk" ? "bg-sunk" : undefined}>
       <div
         className={
           narrow
@@ -300,12 +298,11 @@ export default function PricingPage() {
               href="/signup"
               className={lButtonClass({
                 size: "lg",
-                variant: "onBrand",
                 className: "group shrink-0 rounded-full pr-2",
               })}
             >
               Start for {INTRO_FIRST_MONTH_LABEL}
-              <span aria-hidden className="mkt-orb mkt-orb-onlight">
+              <span aria-hidden className="mkt-orb mkt-orb-onaccent">
                 ↗
               </span>
             </NextLink>

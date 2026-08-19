@@ -49,8 +49,8 @@ function Band({
   glow = "top",
 }: {
   children: React.ReactNode;
-  /** Dark-surface semantics since the 2026-08-19 reskin: `sunk` is a
-   *  hairline seam, `brand` a glow section — see the landing page's Band. */
+  /** `brand` is the navy ground with its glow field; `sunk` the grey
+   *  band — see the landing page's Band for the shared reasoning. */
   tone?: "canvas" | "sunk" | "brand";
   glow?: "top" | "low";
 }) {
@@ -58,9 +58,9 @@ function Band({
     <section
       className={
         tone === "sunk"
-          ? "border-t border-hair"
+          ? "bg-sunk"
           : tone === "brand"
-            ? "relative overflow-hidden"
+            ? "relative overflow-hidden bg-brand text-brand-ink"
             : undefined
       }
     >
@@ -116,13 +116,13 @@ export default function YourDataPage() {
     <>
       <Band tone="brand">
         <Reveal className="flex flex-col items-start gap-5">
-          <p className="font-mono text-caption font-medium uppercase tracking-widest text-accent">
+          <p className="font-mono text-caption font-medium uppercase tracking-widest text-brand-accent">
             Your data
           </p>
-          <h1 className="mkt-display font-display font-bold text-ink">
+          <h1 className="mkt-display font-display font-bold text-brand-ink">
             It's yours, and you can take it with you
           </h1>
-          <p className="text-lead text-ink-2">
+          <p className="text-lead text-brand-ink-2">
             You're putting your logbook and your client list and your year's
             money into something new, from a company you hadn't heard of last
             week. Here's exactly what happens to all of it, including the one
@@ -166,10 +166,10 @@ export default function YourDataPage() {
       <Band tone="brand" glow="low">
         <Reveal className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
           <div className="flex max-w-lg flex-col gap-3">
-            <h2 className="mkt-display-s font-display font-bold text-ink">
+            <h2 className="mkt-display-s font-display font-bold text-brand-ink">
               Start with your next trip.
             </h2>
-            <p className="text-body text-ink-2">
+            <p className="text-body text-brand-ink-2">
               Plans start at {TIER_PRICE_COPY.solo.monthly} a month and the
               first month is {INTRO_FIRST_MONTH_LABEL} on any of them.
             </p>

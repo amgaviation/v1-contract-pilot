@@ -61,8 +61,8 @@ function Band({
   measure = "default",
 }: {
   children: React.ReactNode;
-  /** Dark-surface semantics since the 2026-08-19 reskin: `sunk` is a
-   *  hairline seam, `brand` a glow section — see the landing page's Band. */
+  /** `brand` is the navy ground with its glow field; `sunk` the grey
+   *  band — see the landing page's Band for the shared reasoning. */
   tone?: "canvas" | "sunk" | "brand";
   glow?: "top" | "low";
   measure?: "default" | "narrow";
@@ -71,9 +71,9 @@ function Band({
     <section
       className={
         tone === "sunk"
-          ? "border-t border-hair"
+          ? "bg-sunk"
           : tone === "brand"
-            ? "relative overflow-hidden"
+            ? "relative overflow-hidden bg-brand text-brand-ink"
             : undefined
       }
     >
@@ -159,13 +159,13 @@ export default function HowItWorksPage() {
           thing the reader came for. */}
       <Band tone="brand">
         <Reveal className="flex max-w-2xl flex-col items-start gap-5">
-          <p className="font-mono text-caption font-medium uppercase tracking-widest text-accent">
+          <p className="font-mono text-caption font-medium uppercase tracking-widest text-brand-accent">
             How it works
           </p>
-          <h1 className="mkt-display font-display font-bold text-ink">
+          <h1 className="mkt-display font-display font-bold text-brand-ink">
             One trip, start to finish
           </h1>
-          <p className="text-lead text-ink-2">
+          <p className="text-lead text-brand-ink-2">
             {BRAND.name} is a business management platform we built for
             pilots, and the easiest way to explain it is to walk one trip
             through it. Here's the whole of it, from the day you log it to
@@ -239,10 +239,10 @@ export default function HowItWorksPage() {
       <Band tone="brand" glow="low">
         <Reveal className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
           <div className="flex max-w-xl flex-col gap-3">
-            <h2 className="mkt-display-s font-display font-bold text-ink">
+            <h2 className="mkt-display-s font-display font-bold text-brand-ink">
               Start with your next trip.
             </h2>
-            <p className="text-body text-ink-2">
+            <p className="text-body text-brand-ink-2">
               Plans start at {TIER_PRICE_COPY.solo.monthly} a month and the
               first month is {INTRO_FIRST_MONTH_LABEL} on any of them.
             </p>

@@ -92,14 +92,14 @@ export default function MarketingLayout({
   children: React.ReactNode;
 }) {
   return (
-    // THE `.mkt` SCOPE — the whole marketing reskin hangs off this one
-    // class. app/design/marketing.css remaps the --ledger-* custom
-    // properties inside it (brand navy at its floor, alpha hairlines,
-    // the brand accent promoted to working accent), so every token
-    // utility below — bg-canvas, text-ink, border-hair, shadow-float —
-    // resolves dark with no per-callsite variants and nothing new to
-    // keep in step with the product's sheet. The authenticated product
-    // never renders inside this class and keeps Ledger's paper.
+    // THE `.mkt` SCOPE — the marketing craft layer hangs off this one
+    // class: app/design/marketing.css declares the .mkt-* component
+    // classes (pill nav, trays, glow, reveals, display sizes) that only
+    // exist inside it. It remaps NO tokens: the surface stands on
+    // Ledger's own day palette, with the navy carried by the brand
+    // tokens exactly where it always was — the owner's call is that the
+    // public site is primarily light. The authenticated product never
+    // renders inside this class.
     // dvh, not vh: the app shell's own comment documents why (mobile
     // URL-bar overhang creates phantom scroll on a fixed 100vh).
     <div className="mkt flex min-h-dvh flex-col bg-canvas font-ledger text-body text-ink">

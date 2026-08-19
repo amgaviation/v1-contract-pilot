@@ -90,10 +90,14 @@ const SHOTS: Record<ShotSlug, Shot> = {
 
 export default function ProductShot({
   slug,
+  onBrand = false,
   priority = false,
   className,
 }: {
   slug: ShotSlug;
+  /** On the navy band: the tray's rim reads in white alpha and its shadow
+   *  goes deep (.mkt-tray-onbrand), and the caption takes the brand ink. */
+  onBrand?: boolean;
   /** The hero shot only: it is above the fold, so it must not lazy-load. */
   priority?: boolean;
   className?: string;
@@ -104,15 +108,14 @@ export default function ProductShot({
     // subtree is illustrative data rather than copy, and docs/MARKETING.md
     // §6's word-budget measurement drops it. Nothing styles off it.
     //
-    // THE TRAY (2026-08-19 reskin): every capture sits in the double-bezel
+    // THE TRAY (2026-08-19 polish): every capture sits in the double-bezel
     // shell from app/design/marketing.css — an outer machined rim, an
-    // inner core with its own hairline and a concentric radius. On the
-    // dark surface the light UI inside reads as a lit screen in a panel,
-    // which is the honest version of the effect: it IS the product's
-    // actual screen. The old onBrand branch (shadow choice against navy
-    // vs paper) died with the light surface — there is one ground now.
+    // inner core with its own hairline and a concentric radius. The
+    // effect is the honest version of itself: it IS the product's actual
+    // screen, seated in hardware. onBrand switches rim, shadow and
+    // caption for the navy bands.
     <figure data-mock="product" className={cn("m-0 flex flex-col gap-2", className)}>
-      <div className="mkt-tray">
+      <div className={cn("mkt-tray", onBrand && "mkt-tray-onbrand")}>
         <div className="mkt-tray-core">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -129,7 +132,9 @@ export default function ProductShot({
           />
         </div>
       </div>
-      <figcaption className="pl-1.5 text-caption text-ink-3">
+      <figcaption
+        className={cn("pl-1.5 text-caption", onBrand ? "text-brand-ink-2" : "text-ink-3")}
+      >
         Illustrative data.
       </figcaption>
     </figure>

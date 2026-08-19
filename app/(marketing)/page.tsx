@@ -144,11 +144,10 @@ function Band({
   measure = "default",
 }: {
   children: React.ReactNode;
-  /** On the dark surface (the 2026-08-19 reskin) `brand` no longer paints
-   *  a navy slab on paper — the whole page IS the navy floor. It now marks
-   *  the two glow sections (hero and close), and `sunk` renders as a
-   *  hairline seam rather than a grey band: alternating fills read as
-   *  stripes on near-black, where a seam reads as a ruled ledger. */
+  /** `brand` is the navy ground, and it carries its own ink colour so a
+   *  caller cannot half-apply it and leave dark text on dark. Since the
+   *  2026-08-19 polish it also carries a glow field — the two brand blues
+   *  as low-alpha orbs behind the content (see `glow`). */
   tone?: "canvas" | "sunk" | "brand";
   /** Which glow field a `brand` section carries: the hero's twin orbs or
    *  the close's low horizon. Ignored on the other tones. */
@@ -177,9 +176,9 @@ function Band({
       id={id}
       className={
         tone === "sunk"
-          ? "border-t border-hair"
+          ? "bg-sunk"
           : tone === "brand"
-            ? "relative overflow-hidden"
+            ? "relative overflow-hidden bg-brand text-brand-ink"
             : undefined
       }
     >
@@ -503,18 +502,18 @@ export default async function LandingPage() {
             {/* Not an LPill: that primitive's whitespace-nowrap is right for
                 a status badge ("Paid") and wrong for a phrase, which on a
                 narrow phone just runs off the edge. */}
-            <p className="font-mono text-caption font-medium tracking-widest text-accent uppercase">
+            <p className="font-mono text-caption font-medium tracking-widest text-brand-accent uppercase">
               For independent contract pilots
             </p>
 
             {/* THE page's only h1, and the only thing on the page set in
                 --text-display. Owner-signed identity claim, docs/MARKETING.md
                 §4: kept verbatim through the 2026-08-18 rewrite. */}
-            <h1 className="mkt-display font-display font-bold text-ink">
+            <h1 className="mkt-display font-display font-bold text-brand-ink">
               One trip entry drives the rest.
             </h1>
 
-            <p className="text-lead text-ink-2">
+            <p className="text-lead text-brand-ink-2">
               {BRAND.name} is a business management platform we built for
               pilots. You log the trip once and the invoice, the logbook
               drafts and the year-end numbers all come off that one record.
@@ -558,7 +557,7 @@ export default async function LandingPage() {
                 why that matters: its "An offer change must sweep the SHELL"
                 section exists because imprecise offer copy shipped three
                 false price claims. Both figures interpolated (rule 11). */}
-            <p className="text-caption text-ink-3">
+            <p className="text-caption text-brand-ink-2">
               Plans start at {TIER_PRICE_COPY.solo.monthly}/month; the{" "}
               {INTRO_FIRST_MONTH_LABEL} first month applies to monthly plans.
               Card required.
@@ -572,7 +571,7 @@ export default async function LandingPage() {
               is invisible against a dark field. Eager, not lazy — it is the
               fold. */}
           <Reveal delay={1} className="xl:col-span-7">
-            <ProductShot slug="overview" priority />
+            <ProductShot slug="overview" onBrand priority />
           </Reveal>
         </div>
       </Band>
@@ -907,10 +906,10 @@ export default async function LandingPage() {
       <Band tone="brand" glow="low">
         <Reveal className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
           <div className="flex max-w-xl flex-col gap-3">
-            <h2 className="mkt-display-s font-display font-bold text-ink">
+            <h2 className="mkt-display-s font-display font-bold text-brand-ink">
               Start with your next trip.
             </h2>
-            <p className="text-body text-ink-2">
+            <p className="text-body text-brand-ink-2">
               {/* The last comma becomes ", and" because a bare .join(", ")
                   rendered "Solo, Pro, Business plans" — a conjunction-less
                   list at the page's final call to action. Still derived
