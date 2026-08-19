@@ -164,7 +164,7 @@ export async function alertOperator(event: AlertEvent): Promise<void> {
     }
 
     const timestamp = new Date(now).toISOString();
-    const subject = `[V1 ALERT] ${event.source}: ${subjectSafe(event.summary)}`;
+    const subject = `[${BRAND.name} ALERT] ${event.source}: ${subjectSafe(event.summary)}`;
 
     const lines = [
       `Source: ${event.source}`,
