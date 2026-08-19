@@ -44,12 +44,15 @@ export default function SiteHeader() {
           </NextLink>
 
           <div className="flex flex-wrap items-center gap-5">
-            {/* Anchor into the landing page's mechanic section — an absolute
-                path so it works from /pricing too. Hidden on the narrowest
-                screens so the four header items never push the CTA to a
-                second row on a phone. */}
+            {/* REAL PAGES, not anchors. "How it works" pointed at
+                /#how-it-works until the 2026-08-19 restructure, which is
+                what a site does when it has one page and four sections;
+                it and /your-data are now pages of their own, so the nav
+                is navigation rather than scroll positions. Both are
+                hidden on the narrowest screens so the five header items
+                never push the CTA onto a second row on a phone. */}
             <NextLink
-              href="/#how-it-works"
+              href="/how-it-works"
               className="hidden text-body-s text-brand-ink-2 hover:text-brand-ink sm:inline"
             >
               How it works
@@ -59,6 +62,12 @@ export default function SiteHeader() {
               className="text-body-s text-brand-ink-2 hover:text-brand-ink"
             >
               Pricing
+            </NextLink>
+            <NextLink
+              href="/your-data"
+              className="hidden text-body-s text-brand-ink-2 hover:text-brand-ink md:inline"
+            >
+              Your data
             </NextLink>
             <NextLink
               href="/login"

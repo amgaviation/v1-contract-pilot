@@ -26,8 +26,11 @@ const COLUMNS: { heading: string; links: { href: string; label: string }[] }[] =
   {
     heading: "Product",
     links: [
-      { href: "/#how-it-works", label: "How it works" },
+      // Real pages since the 2026-08-19 restructure. This column used to
+      // point at /#how-it-works, an anchor into the landing page.
+      { href: "/how-it-works", label: "How it works" },
       { href: "/pricing", label: "Pricing" },
+      { href: "/your-data", label: "Your data" },
     ],
   },
   {

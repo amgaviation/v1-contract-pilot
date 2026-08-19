@@ -120,8 +120,10 @@ export default function PricingPage() {
           <p className="text-caption font-semibold uppercase tracking-wide text-ink-3">Pricing</p>
           <h1 className="font-display text-h1 font-bold tracking-tight text-ink">Three plans. One record.</h1>
           <p className="text-lead text-ink-2">
-            The higher plans add business depth. Your logbook, your
-            documents and your export are in all three.
+            Every plan runs the same trip record, so the invoice, the
+            logbook drafts and the year-end numbers work the same on all
+            three. The higher plans add business depth on top of that, and
+            your logbook, your documents and your export are in all of them.
           </p>
           <p className="text-caption text-ink-3">
             {INTRO_FIRST_MONTH_LABEL} for your first month, on every plan.
@@ -361,7 +363,18 @@ function buildFaq(): { q: string; a: string }[] {
     },
     {
       q: "Can I get my data out?",
-      a: "On every plan. The account-wide export in Settings writes one CSV per record type: clients, trips, trip days, trip legs, estimates, invoices, payments, expenses, mileage, and documents. The logbook exports in full, every report downloads, and uploaded receipt and document files download from their own pages.",
+      a: "On every plan. The account-wide export in Settings writes one CSV per record type, so you get a file each for clients, trips, trip days and trip legs, and the same again for estimates, invoices, payments, expenses, mileage and documents. The logbook exports in full, every report downloads, and the receipt and document files you uploaded download from their own pages.",
+    },
+    {
+      // NEW 2026-08-19. Stripe Connect has shipped since lib/stripe/connect.ts
+      // and no public surface had ever said a client can pay an invoice.
+      // Standard Connect with DIRECT charges: no application fee, no
+      // on_behalf_of, no transfer_data — the money never touches AMG's
+      // account and we hold the acct_… id rather than any key of theirs.
+      // The refund limitation is lib/stripe/connect-payments.ts's own
+      // "WHAT THIS MODULE DELIBERATELY DOES NOT DO" paragraph and stays in.
+      q: "How do clients actually pay me?",
+      a: "You connect your own Stripe account, on any plan, and your invoices go out with a card or bank payment link on them. The money settles into your Stripe account rather than ours, and we never hold a key to it. When a payment clears it records itself against the invoice on its own, and a bank debit that is still settling says so rather than going quiet. Refunds and disputes you handle in Stripe and then correct here yourself, because reversing money automatically is a larger claim than recording it.",
     },
     {
       q: "I subscribed when there was one plan. What changes for me?",
