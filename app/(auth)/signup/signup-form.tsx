@@ -2,11 +2,9 @@
 
 import { useActionState, useState } from "react";
 import NextLink from "next/link";
-import { LCard } from "@/components/ledger";
-import { BRAND } from "@/lib/brand";
 import { LSegmented } from "@/components/ledger/segmented";
 import { LInput } from "@/components/ledger/forms";
-import { AuthFooter, AuthHeading, Field, FormError, SubmitButton } from "../auth-parts";
+import { AuthCard, AuthFooter, AuthHeading, Field, FormError, SubmitButton } from "../auth-parts";
 import { signUp, type SignUpState } from "./actions";
 
 const initialState: SignUpState = { error: null };
@@ -44,71 +42,22 @@ export default function SignUpForm({ introLabel }: { introLabel: string }) {
   // reload, which an action state does not. signUp redirects there.
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[10fr_11fr] lg:items-start lg:gap-8">
+    <>
       {/*
-        THE BRAND PANEL — the signup screen's half of the landing page's
-        argument, restated where the decision actually happens. Everything
-        on it is bound by docs/MARKETING.md §5 exactly as hard as the
-        landing page (the §intro warning exists because THIS screen has
-        overclaimed twice): the three lines below are the pilot's own verbs
-        — review, send, scan, file — and the mechanics are the shipped
-        ones. The trust line is claim rule 6 plus the downgrade promise,
-        stated where a sceptic is deciding whether to hand over a card.
+        THE BRAND PANEL MOVED TO THE SHELL (2026-08-19 redesign): the
+        section that lived here — heading, three story rows, trust line —
+        is now auth-brand.tsx's AuthPanel, rendered by ../layout.tsx for
+        EVERY screen in this group, strings verbatim. Its claim-rule
+        history (this screen has overclaimed twice; §5 binds it harder
+        than the landing page) is preserved there and in the comment
+        block below, which still guards the heading line this form keeps.
 
-        REWRITTEN 2026-08-19 with the landing page, which is the moment
-        docs/MARKETING.md warns this panel historically falls out of step:
-        the heading is the landing H1 and the three lines are section 2's
-        rows in the same order and the same voice. Line 3 still carries
-        claim rule 1 — the PILOT marks the receipt rebill, and that tag is
-        what puts it on the invoice. A trip never creates an expense.
-
-        order-last / lg:order-first: DOM order keeps the FORM first on a
-        phone — a visitor who tapped "Get started" gets the fields, not a
-        billboard — while desktop reads brand left, form right.
-
-        A <section>, deliberately NOT an <aside>: scripts/layout-verify.mjs
-        detects the app shell by the presence of an <aside> and then holds
-        the page to the shell's invariants (a section nav, a visible Sign
-        out) — an <aside> here fails 32 viewport checks for chrome this
-        page correctly does not have.
+        The old order-last decision — a phone visitor gets the fields,
+        not a billboard — survives structurally: the panel's phone fold
+        is a slim navy bar above the form (AuthMobileBar).
       */}
-      <section
-        aria-labelledby="signup-brand-heading"
-        className="order-last flex flex-col gap-5 rounded-card bg-brand p-6 text-brand-ink shadow-card sm:p-8 lg:order-first lg:sticky lg:top-8"
-      >
-        <img src="/brand/white.svg" alt="" height={20} width={35} className="self-start" />
-        <h2
-          id="signup-brand-heading"
-          className="font-display text-display-s font-bold text-brand-ink"
-        >
-          One trip entry drives the rest.
-        </h2>
-        <p className="text-body text-brand-ink-2">
-          {BRAND.name} is a business management platform we built for
-          pilots. Set up takes about two minutes and it starts working on
-          the first trip you log.
-        </p>
-        <ul className="flex flex-col divide-y divide-brand-hair border-t border-brand-hair">
-          {[
-            "Log a trip, read the invoice lines it priced off your client's rate card, and send a numbered PDF with a payment link on it.",
-            "Every leg comes back as a logbook draft with PIC and SIC kept apart, waiting for you to approve it.",
-            "Photograph receipts at the FBO and mark each one rebill or keep. The rebills go on that client's invoice.",
-          ].map((line, i) => (
-            <li key={line} className="flex items-baseline gap-3 py-3">
-              <span className="font-mono tnum-l text-body-s font-semibold text-brand-accent">
-                {String(i + 1).padStart(2, "0")}
-              </span>
-              <span className="text-body-s text-brand-ink-2">{line}</span>
-            </li>
-          ))}
-        </ul>
-        <p className="text-caption text-brand-ink-2">
-          Account-wide export on every plan. Cancelling puts the account in
-          read-only; nothing is deleted.
-        </p>
-      </section>
 
-      <LCard className="flex flex-col gap-6 p-6 sm:p-8">
+      <AuthCard>
       {/*
         NOT "your next trip bills itself". Nothing bills itself: an invoice
         exists only when the pilot invokes createInvoiceDraft from
@@ -264,7 +213,7 @@ export default function SignUpForm({ introLabel }: { introLabel: string }) {
           </NextLink>
         </p>
       </AuthFooter>
-      </LCard>
-    </div>
+      </AuthCard>
+    </>
   );
 }

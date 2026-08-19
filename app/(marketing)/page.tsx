@@ -671,10 +671,78 @@ export default async function LandingPage() {
               </div>
             </div>
           </div>
+
+          {/* The section's one action: the long-form version of the story
+              this band just summarised. It lives HERE, not under the FAQ —
+              "walk through a whole trip" continues the mechanic, and the
+              FAQ now ends on the support row, which is the right closing
+              note for an objections section (unanswered question → a
+              person answers). */}
+          <div>
+            <NextLink href="/how-it-works" className={lButtonClass({ variant: "outline", className: "rounded-full" })}>
+              Walk through a whole trip
+            </NextLink>
+          </div>
         </div>
       </Band>
 
-      {/* ── 3. FOUR PROMISES ─────────────────────────────────────────────
+      {/* ── 3. GETTING PAID ──────────────────────────────────────────────
+          MOVED HERE 2026-08-19 (UX structural pass). This band merged in
+          after the 2026-08-18 section order was decided and was appended
+          BELOW the FAQ — a core value beat stranded after the objections,
+          with two adjacent canvas bands breaking the recorded alternation
+          and a stale section number proving nobody placed it. It now
+          follows the mechanic directly: one entry drives the rest, and
+          this is how the money lands — the same order the owner's own
+          post tells it. The white panel keeps it reading as its own
+          surface between two neighbours. Originally added because: Stripe Connect has
+          been shipped since lib/stripe/connect.ts and the public site had
+          never once mentioned that a client can pay an invoice. Chasing
+          payment is the pain this audience actually names.
+
+          EVERY SENTENCE HERE IS LOAD-BEARING AND CHECKED:
+            - Standard Connect, DIRECT charges, no application fee — the
+              money settles in the pilot's own Stripe account and never
+              touches AMG's (lib/stripe/connect.ts's verified-against-docs
+              header).
+            - We hold the acct_… id and never a key of theirs. Same header.
+            - Auto-recording on settlement, and the ACH middle state, are
+              lib/stripe/connect-payments.ts's whole subject.
+            - The refund limitation is that file's "WHAT THIS MODULE
+              DELIBERATELY DOES NOT DO" paragraph, stated here rather than
+              left for a pilot to discover. Do not delete it to tidy the
+              band; it is the most credible sentence on the page. */}
+      <Band>
+        <Reveal className="mkt-panel grid grid-cols-1 gap-8 px-6 py-10 sm:px-10 sm:py-12 lg:grid-cols-12 lg:gap-12">
+          <div className="lg:col-span-5">
+            <h2 className="mkt-display-s font-display font-bold text-ink">
+              Getting paid runs through your own Stripe account
+            </h2>
+          </div>
+          <div className="flex flex-col gap-4 lg:col-span-7">
+            <p className="text-body text-ink">
+              Connect your Stripe account and every invoice can go out with a
+              payment link on it, so the client pays by card or bank debit
+              from the invoice itself. The money settles into your account
+              rather than ours, and we never hold a key to it.
+            </p>
+            <p className="text-body text-ink">
+              When a payment clears, it records itself against that invoice
+              and the balance moves without you typing it in. A bank debit
+              takes a few days to settle, so {BRAND.name} tells you it's in
+              flight instead of going quiet on you for a week.
+            </p>
+            <p className="text-body-s text-ink-2">
+              What it won't do is move money back out. Refunds and disputes
+              you handle in Stripe, then correct the payment here yourself.
+              Reversing money automatically is a bigger claim than recording
+              it and we're not making it.
+            </p>
+          </div>
+        </Reveal>
+      </Band>
+
+      {/* ── 4. FOUR PROMISES ─────────────────────────────────────────────
           The trust band, and the page's mid-point conversion action. See
           PROMISES above for what enforces each line. Sunk ground, hairline
           rows, no icons: four sentences a reader can check, which is the
@@ -705,7 +773,7 @@ export default async function LandingPage() {
         </div>
       </Band>
 
-      {/* ── 4. QUESTIONS PILOTS ASK US ───────────────────────────────────
+      {/* ── 5. QUESTIONS PILOTS ASK US ───────────────────────────────────
           Native <details>/<summary> — works with no JavaScript, and is
           keyboard- and screen-reader-correct for free. */}
       <Band measure="narrow">
@@ -755,64 +823,10 @@ export default async function LandingPage() {
               and a person will answer.
             </p>
           </div>
-
-          <div>
-            <NextLink href="/how-it-works" className={lButtonClass({ variant: "outline", className: "rounded-full" })}>
-              Walk through a whole trip
-            </NextLink>
-          </div>
         </div>
       </Band>
 
-      {/* ── 3. GETTING PAID ──────────────────────────────────────────────
-          NEW at the 2026-08-19 rewrite, and overdue: Stripe Connect has
-          been shipped since lib/stripe/connect.ts and the public site had
-          never once mentioned that a client can pay an invoice. Chasing
-          payment is the pain this audience actually names.
-
-          EVERY SENTENCE HERE IS LOAD-BEARING AND CHECKED:
-            - Standard Connect, DIRECT charges, no application fee — the
-              money settles in the pilot's own Stripe account and never
-              touches AMG's (lib/stripe/connect.ts's verified-against-docs
-              header).
-            - We hold the acct_… id and never a key of theirs. Same header.
-            - Auto-recording on settlement, and the ACH middle state, are
-              lib/stripe/connect-payments.ts's whole subject.
-            - The refund limitation is that file's "WHAT THIS MODULE
-              DELIBERATELY DOES NOT DO" paragraph, stated here rather than
-              left for a pilot to discover. Do not delete it to tidy the
-              band; it is the most credible sentence on the page. */}
-      <Band>
-        <Reveal className="mkt-panel grid grid-cols-1 gap-8 px-6 py-10 sm:px-10 sm:py-12 lg:grid-cols-12 lg:gap-12">
-          <div className="lg:col-span-5">
-            <h2 className="mkt-display-s font-display font-bold text-ink">
-              Getting paid runs through your own Stripe account
-            </h2>
-          </div>
-          <div className="flex flex-col gap-4 lg:col-span-7">
-            <p className="text-body text-ink">
-              Connect your Stripe account and every invoice can go out with a
-              payment link on it, so the client pays by card or bank debit
-              from the invoice itself. The money settles into your account
-              rather than ours, and we never hold a key to it.
-            </p>
-            <p className="text-body text-ink">
-              When a payment clears, it records itself against that invoice
-              and the balance moves without you typing it in. A bank debit
-              takes a few days to settle, so {BRAND.name} tells you it's in
-              flight instead of going quiet on you for a week.
-            </p>
-            <p className="text-body-s text-ink-2">
-              What it won't do is move money back out. Refunds and disputes
-              you handle in Stripe, then correct the payment here yourself.
-              Reversing money automatically is a bigger claim than recording
-              it and we're not making it.
-            </p>
-          </div>
-        </Reveal>
-      </Band>
-
-      {/* ── 5. THE SPEC BLOCK ────────────────────────────────────────────
+      {/* ── 6. THE SPEC BLOCK ────────────────────────────────────────────
           Asymmetric and sticky: the heading holds a 4-of-12 column and stays
           put on a tall screen while the list moves, so the reader always
           knows what the list is answering. Every Pro/Business tag is derived
@@ -895,7 +909,7 @@ export default async function LandingPage() {
         </div>
       </Band>
 
-      {/* ── 6. CLOSE ─────────────────────────────────────────────────────
+      {/* ── 7. CLOSE ─────────────────────────────────────────────────────
           Navy again, bookending the hero, and carrying what used to be a
           plans band of its own. The price is stated once on this page, in
           the hero; the close used to repeat the intro offer as well, which

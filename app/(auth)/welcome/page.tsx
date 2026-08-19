@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation";
-import { LAlert, LButton, LCard, lButtonClass } from "@/components/ledger";
+import {LAlert, LButton, lButtonClass} from "@/components/ledger";
 import { getSessionContext } from "@/lib/supabase/account";
 import { DASHBOARD_PATH } from "@/lib/nav";
 import { PLAN_TIERS, TIER_DISPLAY } from "@/lib/entitlements";
 import { tierPriceLabels } from "@/lib/stripe/prices";
 import { INTRO_FIRST_MONTH_LABEL } from "@/lib/stripe/server";
-import { AuthFooter, AuthHeading } from "../auth-parts";
+import { AuthCard, AuthFooter, AuthHeading } from "../auth-parts";
 import { signOut } from "./actions";
 import { PlanPicker, type PlanOption } from "./welcome-actions";
 import { TestBypass } from "./test-bypass";
@@ -47,7 +47,7 @@ export default async function WelcomePage({
   // pitch again to someone who just paid, which would read as a failure.
   if (checkout === "complete") {
     return (
-      <LCard className="flex flex-col gap-6 p-6 sm:p-8">
+      <AuthCard>
         <AuthHeading title="Setting up your account">
           Payment confirmed. We&rsquo;re provisioning now, which usually takes
           a few seconds.
@@ -58,7 +58,7 @@ export default async function WelcomePage({
         <a href="/welcome" className={lButtonClass({ size: "lg", className: "w-full" })}>
           Refresh
         </a>
-      </LCard>
+      </AuthCard>
     );
   }
 
@@ -82,7 +82,7 @@ export default async function WelcomePage({
   }));
 
   return (
-    <LCard className="flex flex-col gap-6 p-6 sm:p-8">
+    <AuthCard>
       <AuthHeading title="Pick your plan">
         Your account starts the moment checkout completes. You can change
         plans any time from Settings.
@@ -106,6 +106,6 @@ export default async function WelcomePage({
           is set on this deployment. See test-bypass-actions.ts for the
           gates and the argument for why this doesn't break decision #7. */}
       {process.env.ONBOARDING_TEST_PIN ? <TestBypass /> : null}
-    </LCard>
+    </AuthCard>
   );
 }

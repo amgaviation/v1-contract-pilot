@@ -1,9 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { LCard } from "@/components/ledger";
 import { LInput } from "@/components/ledger/forms";
-import { AuthHeading, Field, FormError, SubmitButton } from "../auth-parts";
+import { AuthCard, AuthHeading, Field, FormError, SubmitButton } from "../auth-parts";
 import { setNewPassword, type ResetPasswordState } from "./actions";
 
 const initialState: ResetPasswordState = { error: null };
@@ -15,7 +14,7 @@ export default function ResetPasswordForm() {
   );
 
   return (
-    <LCard className="flex flex-col gap-6 p-6 sm:p-8">
+    <AuthCard>
       <AuthHeading title="Choose a new password">
         You&rsquo;re signed in from the emailed link. Set a password and
         you&rsquo;re back in.
@@ -50,6 +49,6 @@ export default function ResetPasswordForm() {
 
         <SubmitButton pending={pending} idle="Save password" busy="Saving…" />
       </form>
-    </LCard>
+    </AuthCard>
   );
 }
