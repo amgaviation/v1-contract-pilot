@@ -690,5 +690,5 @@ if (violations.length > 0) {
 console.log(
   `tokens:verify passed — no visual values hardcoded outside the ${EXEMPT_FILES.size} ` +
     `documented files, and every var() reference names something ` +
-    `${join("app", "design", "ledger.css")} or ${join("app", "globals.css")} actually declares.`
+    `${join("app", "design", "ledger.css")}, ${join("app", "design", "marketing.css")} or ${join("app", "globals.css")} actually declares.`
 );
