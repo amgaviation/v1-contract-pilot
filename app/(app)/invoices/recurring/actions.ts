@@ -5,8 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { parseDollarsToCents } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
-import { chargeAutopayInvoice } from "@/lib/stripe/connect";
-import { isLiveMode } from "@/lib/stripe/server";
+import { issueAndChargeAutopayInvoice } from "@/lib/autopay/charge";
 import type { Database } from "@/lib/supabase/database.types";
 
 type ScheduleRow = Database["pilot"]["Tables"]["recurring_invoice_schedules"]["Row"];
@@ -541,12 +540,13 @@ export async function generateRecurringInvoice(
  * Issues the freshly generated invoice and charges the client's saved
  * method for it. Returns the sentence for the pilot; never throws.
  *
- * THE ORDER IS ISSUE-THEN-CHARGE, and it matters: the draft→sent
- * transition is what assigns the invoice its number and due date
- * (pilot.invoices_assign_number_on_issue), and the number goes into the
- * charge's own metadata and Stripe description. It also means a client is
- * only ever charged for an ISSUED document — the webhook refuses payments
- * against drafts outright, so charging first would record nothing.
+ * THE SEQUENCE ITSELF NOW LIVES IN lib/autopay/charge.ts, because the
+ * scheduled pass (lib/autopay/run.ts, added 20260819) needs the identical
+ * issue-then-charge steps with a service-role client and no session. This
+ * product's only off-session card-charging sequence must exist once, not
+ * twice — see that module's header for the full reasoning. This wrapper
+ * stays so every existing call site and every sentence the pilot reads is
+ * unchanged: the strings are produced there, verbatim, and returned here.
  *
  * Not exported: "use server" would make it a public endpoint, and this
  * must only ever run right after a generation this module just validated.
@@ -557,76 +557,8 @@ async function attemptAutopayCharge(
   clientId: string,
   invoiceId: string
 ): Promise<string> {
-  if (!account.connectAccountId) {
-    return "Autopay is on for this schedule, but Stripe isn't connected, so the invoice was created as a draft to send yourself.";
-  }
-
-  const { data: clientData, error: clientError } = await supabase
-    .from("clients")
-    .select(
-      "autopay_stripe_customer_id, autopay_stripe_payment_method_id, autopay_method_label, autopay_livemode"
-    )
-    .eq("id", clientId)
-    .eq("account_id", account.id)
-    .maybeSingle();
-  if (clientError || !clientData) {
-    return "Autopay is on for this schedule, but the client's autopay details couldn't be read, so the invoice was created as a draft to send yourself.";
-  }
-  const enrolled = clientData as {
-    autopay_stripe_customer_id: string | null;
-    autopay_stripe_payment_method_id: string | null;
-    autopay_method_label: string | null;
-    autopay_livemode: boolean | null;
-  };
-  if (!enrolled.autopay_stripe_customer_id || !enrolled.autopay_stripe_payment_method_id) {
-    return "Autopay is on for this schedule, but the client hasn't saved a card yet — send them your vendor page link to set it up. The invoice was created as a draft to send yourself.";
-  }
-  if (enrolled.autopay_livemode !== isLiveMode()) {
-    // A card saved under the other Stripe mode. Refused here rather than
-    // erroring at Stripe with a message nobody could act on.
-    return "Autopay is on, but the client's card was saved under a different Stripe mode (test vs live). Ask them to set autopay up again from your vendor page. The invoice was created as a draft to send yourself.";
-  }
-
-  // ISSUE. Same transition the invoice screen's own send performs; the
-  // status trigger assigns the number and due date. The update grant on
-  // `status` is the one every send path already uses.
-  const { error: sendError, count: sendCount } = await supabase
-    .from("invoices")
-    .update({ status: "sent" } as never, { count: "exact" })
-    .eq("id", invoiceId)
-    .eq("account_id", account.id);
-  if (sendError || sendCount === 0) {
-    return "Autopay is on, but the invoice couldn't be issued, so nothing was charged. It was created as a draft to send yourself.";
-  }
-
-  const [{ data: invoiceRow }, { data: totalsRow }] = await Promise.all([
-    supabase.from("invoices").select("invoice_number").eq("id", invoiceId).eq("account_id", account.id).maybeSingle(),
-    supabase.from("invoice_totals").select("total_cents").eq("invoice_id", invoiceId).maybeSingle(),
-  ]);
-  const invoiceNumber =
-    (invoiceRow as { invoice_number: string | null } | null)?.invoice_number ?? null;
-  const totalCents = (totalsRow as { total_cents: number } | null)?.total_cents ?? null;
-  if (!invoiceNumber || totalCents === null || totalCents <= 0) {
-    return "Autopay is on and the invoice was issued, but its total couldn't be read, so nothing was charged. Send it with a payment link instead.";
-  }
-
-  const charge = await chargeAutopayInvoice({
-    connectAccountId: account.connectAccountId,
-    accountId: account.id,
-    invoiceId,
-    invoiceNumber,
-    amountCents: totalCents,
-    customerId: enrolled.autopay_stripe_customer_id,
-    paymentMethodId: enrolled.autopay_stripe_payment_method_id,
-  });
-  if (!charge.ok) {
-    return `Invoice ${invoiceNumber} was issued, but the autopay charge failed: ${charge.reason}`;
-  }
-  const label = enrolled.autopay_method_label ?? "the client's saved card";
-  return `Invoice ${invoiceNumber} was issued and ${label} was charged ${(totalCents / 100).toLocaleString(
-    "en-US",
-    { style: "currency", currency: "USD" }
-  )}. The payment is recorded automatically when Stripe confirms it.`;
+  const outcome = await issueAndChargeAutopayInvoice(supabase, account, clientId, invoiceId);
+  return outcome.message;
 }
 
 export type GenerateAllResult = {
