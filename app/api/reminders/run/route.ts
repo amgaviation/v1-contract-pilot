@@ -5,6 +5,7 @@ import {
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service-role";
 import { runAllDueReminders } from "@/lib/reminders/run";
+import { runAllDueAutopay } from "@/lib/autopay/run";
 import { alertOperator } from "@/lib/alerts";
 
 /**
@@ -101,6 +102,39 @@ async function handle(request: NextRequest) {
     console.log(
       `[reminders] pass over ${accounts} account(s): ${summary.sent} sent, ${summary.failed} failed, ${summary.unknown} unknown, ${summary.skipped} skipped, ${summary.blocked.length} blocked, ${summary.errors.length} error(s), ${summary.notices.length} notice(s)`
     );
+
+    // THE AUTOPAY PASS RIDES THIS CRON RATHER THAN GETTING ITS OWN.
+    //
+    // Both are "once a day, per account, sequentially" and both already need
+    // the same service-role client, so a second vercel.json entry would buy a
+    // second cold start and a second CRON_SECRET surface for no isolation
+    // that matters: they share an invocation budget either way.
+    //
+    // AFTER the reminders, deliberately. Chasing an unpaid invoice is the
+    // cheaper and more time-sensitive of the two; if this invocation is going
+    // to run out of its 300s ceiling, the work that gets cut should be the
+    // generation that safely resumes tomorrow (the ledger makes it
+    // idempotent) rather than a reminder whose rung would go unconsumed.
+    //
+    // Its own try/catch: runAllDueAutopay does not throw by design, so a
+    // throw here is structural — and it must not turn a reminder pass that
+    // already succeeded into a 500 that hides it.
+    let autopay: Awaited<ReturnType<typeof runAllDueAutopay>> | null = null;
+    try {
+      autopay = await runAllDueAutopay(supabase);
+      console.log(
+        `[autopay] pass over ${autopay.accountsConsidered} eligible account(s) (${autopay.accountsSkipped} skipped): ${autopay.generated} generated, ${autopay.charged} charged, ${autopay.issuedNotCharged} issued-not-charged, ${autopay.notIssued} left as drafts, ${autopay.alreadyGenerated} already generated, ${autopay.refusedByDatabase} refused, ${autopay.errors.length} error(s)`
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "unknown error";
+      console.error(`[autopay] pass failed: ${message}`);
+      await alertOperator({
+        source: "autopay-cron",
+        summary: "Autopay pass failed outright (the reminder pass had already completed)",
+        detail: message,
+      });
+    }
+
     return NextResponse.json({
       ran: true,
       accounts,
@@ -111,6 +145,20 @@ async function handle(request: NextRequest) {
       blocked: summary.blocked.length,
       errors: summary.errors,
       notices: summary.notices,
+      autopay: autopay
+        ? {
+            accountsConsidered: autopay.accountsConsidered,
+            accountsSkipped: autopay.accountsSkipped,
+            generated: autopay.generated,
+            charged: autopay.charged,
+            issuedNotCharged: autopay.issuedNotCharged,
+            notIssued: autopay.notIssued,
+            alreadyGenerated: autopay.alreadyGenerated,
+            refusedByDatabase: autopay.refusedByDatabase,
+            errors: autopay.errors,
+            notices: autopay.notices,
+          }
+        : { failed: true },
     });
   } catch (err) {
     // runDueRemindersForAccount does not throw by design, so reaching here
