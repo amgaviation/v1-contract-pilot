@@ -581,31 +581,46 @@ export default async function LandingPage() {
           version of this is /how-it-works; this band exists to earn the
           click rather than to replace it. */}
       <Band>
-        <div className="flex flex-col gap-8">
-          <Reveal className="flex max-w-2xl flex-col gap-4">
-            <h2 className="mkt-display-s font-display font-bold text-ink">
-              You log the trip once
-            </h2>
-            <div className="flex items-start gap-3 border-l-2 border-accent pl-4">
-              <p className="text-body text-ink-2">
-                Put in the client, the tail number, the legs you flew and how
-                each day counted, whether that was a flight day or a travel
-                day or standby. That's the only time you type any of it.
-              </p>
-            </div>
-          </Reveal>
+        {/* THE RAIL ARCHITECTURE (2026-08-19 second structural pass).
+            This section, the FAQ and the spec block now share one shape:
+            a 4-of-12 rail that holds the section's identity — heading,
+            framing, its one action — and stays put on a tall screen
+            while the 8-of-12 content track scrolls beside it. One
+            recurring architecture instead of three one-off layouts is
+            what makes the page read as designed; the spec block already
+            worked this way, so the system is its, extended. Below lg
+            everything stacks, rail first, exactly as before. */}
+        <div className="grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-12">
+          <div className="lg:col-span-4">
+            <Reveal className="flex flex-col items-start gap-4 lg:sticky lg:top-24">
+              <h2 className="mkt-display-s font-display font-bold text-ink">
+                You log the trip once
+              </h2>
+              <div className="flex items-start gap-3 border-l-2 border-accent pl-4">
+                <p className="text-body text-ink-2">
+                  Put in the client, the tail number, the legs you flew and how
+                  each day counted, whether that was a flight day or a travel
+                  day or standby. That's the only time you type any of it.
+                </p>
+              </div>
+              {/* The section's one action, on the rail with the identity
+                  it belongs to: the long-form version of the story the
+                  rows beside it summarise. */}
+              <NextLink href="/how-it-works" className={lButtonClass({ variant: "outline", className: "rounded-full" })}>
+                Walk through a whole trip
+              </NextLink>
+            </Reveal>
+          </div>
 
           {/* Hairline-separated rows, not cards: a ledger of claim and
               detail, which is the shape the product itself uses for money.
-              Four bordered boxes side by side is the template shape this
-              page deliberately does not have. */}
-          <div className="divide-y divide-hair border-t border-hair">
+              Inside the 8-col track each row stacks its own number, claim
+              and evidence — the old internal 4/8 split died with the rail,
+              which now does that job for the whole section. */}
+          <div className="divide-y divide-hair border-t border-hair lg:col-span-8">
             {DRIVES.map((row) => (
-              <div
-                key={row.q}
-                className="grid grid-cols-1 gap-x-8 gap-y-3 py-6 md:grid-cols-12 md:items-baseline"
-              >
-                <div className="flex items-baseline gap-3 md:col-span-4">
+              <div key={row.q} className="flex flex-col gap-4 py-7">
+                <div className="flex items-baseline gap-3">
                   <span className="font-mono tnum-l text-body-s font-semibold text-accent">
                     {row.step}
                   </span>
@@ -613,15 +628,8 @@ export default async function LandingPage() {
                     {row.q}
                   </h3>
                 </div>
-                <div className="flex flex-col gap-5 md:col-span-8">
-                  <p className="text-body text-ink">{row.body}</p>
-                  {/* max-w-2xl, not the full 8-of-12 track: the figure is
-                      the claim's evidence, so it sits inside the claim
-                      rather than taking the row. */}
-                  {row.shot ? (
-                    <ProductShot slug={row.shot} className="max-w-2xl" />
-                  ) : null}
-                </div>
+                <p className="max-w-2xl text-body text-ink">{row.body}</p>
+                {row.shot ? <ProductShot slug={row.shot} /> : null}
               </div>
             ))}
 
@@ -652,36 +660,17 @@ export default async function LandingPage() {
                 is the target of the operator-led hero variant kept in
                 docs/reviews/10-landing-page-copy.md §1 Variant B. Renaming
                 it breaks those. */}
-            <div
-              id="for-operators"
-              className="grid scroll-mt-24 grid-cols-1 gap-x-8 gap-y-3 py-6 md:grid-cols-12 md:items-baseline"
-            >
-              <div className="md:col-span-4">
-                <h3 className="font-display text-h3 font-semibold text-ink">
-                  What your clients get
-                </h3>
-              </div>
-              <div className="md:col-span-8">
-                <p className="text-body text-ink">
-                  Nothing for them to sign up for. The owners and operators you
-                  bill get numbered invoices, estimates they can accept online,
-                  and your current credentials and insurance, all as browser
-                  links.
-                </p>
-              </div>
+            <div id="for-operators" className="flex scroll-mt-24 flex-col gap-4 py-7">
+              <h3 className="font-display text-h3 font-semibold text-ink">
+                What your clients get
+              </h3>
+              <p className="max-w-2xl text-body text-ink">
+                Nothing for them to sign up for. The owners and operators you
+                bill get numbered invoices, estimates they can accept online,
+                and your current credentials and insurance, all as browser
+                links.
+              </p>
             </div>
-          </div>
-
-          {/* The section's one action: the long-form version of the story
-              this band just summarised. It lives HERE, not under the FAQ —
-              "walk through a whole trip" continues the mechanic, and the
-              FAQ now ends on the support row, which is the right closing
-              note for an objections section (unanswered question → a
-              person answers). */}
-          <div>
-            <NextLink href="/how-it-works" className={lButtonClass({ variant: "outline", className: "rounded-full" })}>
-              Walk through a whole trip
-            </NextLink>
           </div>
         </div>
       </Band>
@@ -753,22 +742,33 @@ export default async function LandingPage() {
           word for word: one offer, spoken identically. */}
       <Band tone="sunk">
         <div className="flex flex-col gap-8">
-          <h2 className="mkt-display-s font-display font-bold text-ink">
-            Four promises
-          </h2>
-
-          <div className="divide-y divide-hair border-t border-hair">
-            {PROMISES.map((promise) => (
-              <p key={promise} className="max-w-3xl py-5 text-body text-ink">
-                {promise}
-              </p>
-            ))}
-          </div>
-
-          <div>
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <h2 className="mkt-display-s font-display font-bold text-ink">
+              Four promises
+            </h2>
             <NextLink href="/signup" className={lButtonClass({ variant: "outline", className: "rounded-full" })}>
               {START_CTA}
             </NextLink>
+          </div>
+
+          {/* A 2×2 matrix at sm+ rather than four stacked full-width
+              paragraphs (2026-08-19 second structural pass): four short
+              statements of equal rank are a grid's natural shape, and the
+              stack read as one long paragraph with rules through it. Each
+              cell keeps its own numbered mono marker — the same identifier
+              voice the mechanic rows use — and the hairline rhythm stays;
+              nothing here became a card. The CTA moved beside the heading
+              so the band still carries its mid-page action without a
+              dangling single-button row beneath the grid. */}
+          <div className="grid grid-cols-1 border-t border-hair sm:grid-cols-2 sm:gap-x-12">
+            {PROMISES.map((promise, i) => (
+              <div key={promise} className="flex items-baseline gap-3 border-b border-hair py-6 sm:pr-4">
+                <span aria-hidden className="font-mono tnum-l text-body-s font-semibold text-accent">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <p className="text-body text-ink">{promise}</p>
+              </div>
+            ))}
           </div>
         </div>
       </Band>
@@ -776,12 +776,41 @@ export default async function LandingPage() {
       {/* ── 5. QUESTIONS PILOTS ASK US ───────────────────────────────────
           Native <details>/<summary> — works with no JavaScript, and is
           keyboard- and screen-reader-correct for free. */}
-      <Band measure="narrow">
-        <div className="flex flex-col gap-5">
-          <h2 className="mkt-display-s font-display font-bold text-ink">
-            Questions pilots ask us
-          </h2>
-          <div className="border-t border-hair">
+      <Band>
+        {/* The rail architecture again (see section 2): the heading and
+            the one line that reaches a person hold the 4-col rail, the
+            questions hold the track. The band left its narrow measure
+            with the split — the rail supplies the reading-width restraint
+            the narrow column used to. */}
+        <div className="grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-12">
+          <div className="flex flex-col gap-5 lg:col-span-4">
+            <div className="lg:sticky lg:top-24 flex flex-col gap-5">
+              <h2 className="mkt-display-s font-display font-bold text-ink">
+                Questions pilots ask us
+              </h2>
+
+              {/* THE ONE LINE ON THIS PAGE THAT REACHES A PERSON. On the
+                  rail beside the questions rather than under them: it is
+                  not a fifth question, it is what to do when the five
+                  did not cover yours, and on the rail it is visible the
+                  whole time the list is. It is the site's only support
+                  channel; it should not read like a footnote. */}
+              <div className="rounded-lg border border-hair bg-sunk px-4 py-3">
+                <p className="text-body text-ink-2">
+                  Something we didn&apos;t answer?{" "}
+                  <a
+                    href={`mailto:${BRAND.supportEmail}`}
+                    className="font-medium text-accent hover:underline"
+                  >
+                    Email {BRAND.supportEmail}
+                  </a>{" "}
+                  and a person will answer.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-hair lg:col-span-8">
             {FAQ.map((item) => (
               <details key={item.q} className="group border-b border-hair">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-4 marker:content-none [&::-webkit-details-marker]:hidden">
@@ -801,27 +830,6 @@ export default async function LandingPage() {
                 <p className="pb-4 pr-8 text-body-s text-ink-2">{item.a}</p>
               </details>
             ))}
-          </div>
-
-          {/* THE ONE LINE ON THIS PAGE THAT REACHES A PERSON. It sits under
-              the FAQ rather than inside it because it is not a question a
-              pilot asks: it is what to do when the four above did not cover
-              theirs. Before BRAND.supportEmail existed the answer was to pay
-              and find out, on a funnel with no trial — which is why it is
-              set as its own bordered row at body size rather than as
-              caption-grade fine print. It is the site's only support
-              channel; it should not read like a footnote. */}
-          <div className="rounded-lg border border-hair bg-sunk px-4 py-3">
-            <p className="text-body text-ink-2">
-              Something we didn&apos;t answer?{" "}
-              <a
-                href={`mailto:${BRAND.supportEmail}`}
-                className="font-medium text-accent hover:underline"
-              >
-                Email {BRAND.supportEmail}
-              </a>{" "}
-              and a person will answer.
-            </p>
           </div>
         </div>
       </Band>
