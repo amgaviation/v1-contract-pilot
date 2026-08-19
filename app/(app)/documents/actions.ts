@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import { friendlyDbError } from "@/lib/db-errors";
+import { looksLikeDeclaredType } from "@/lib/file-signature";
 import { DOCUMENT_KINDS } from "./kinds";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -145,38 +146,13 @@ function parseDocumentForm(formData: FormData): {
   };
 }
 
-/**
- * Checks the file's actual leading bytes against its declared type.
- *
- * Same rationale as expenses/actions.ts: `file.type` and the bucket's
- * `allowed_mime_types` both trust the browser-declared Content-Type, so
- * neither layer looks at the bytes. Sniffing the magic number closes that
- * gap for the formats accepted here.
- */
-function looksLikeDeclaredType(bytes: Uint8Array, type: string): boolean {
-  const startsWith = (...sig: number[]) =>
-    sig.every((byte, index) => bytes[index] === byte);
-
-  switch (type) {
-    case "image/jpeg":
-      return startsWith(0xff, 0xd8, 0xff);
-    case "image/png":
-      return startsWith(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
-    case "application/pdf":
-      return startsWith(0x25, 0x50, 0x44, 0x46); // %PDF
-    case "image/webp":
-      // "RIFF" .... "WEBP"
-      return (
-        startsWith(0x52, 0x49, 0x46, 0x46) &&
-        [0x57, 0x45, 0x42, 0x50].every((byte, i) => bytes[8 + i] === byte)
-      );
-    case "image/heic":
-      // "ftyp" at offset 4.
-      return [0x66, 0x74, 0x79, 0x70].every((byte, i) => bytes[4 + i] === byte);
-    default:
-      return false;
-  }
-}
+// Magic-number check against the declared Content-Type — see
+// lib/file-signature.ts for the full rationale, shared with
+// expenses/actions.ts (which used to carry its own hand-copied version of
+// the same function). NOTE: FILE_TYPES above accepts image/heic but not
+// image/heif, unlike expenses/actions.ts's RECEIPT_TYPES — the shared
+// function itself handles both, but only the type actually declared and
+// present in FILE_TYPES ever reaches it here.
 
 /**
  * Uploads the scan/photo, if one was attached, and returns its object

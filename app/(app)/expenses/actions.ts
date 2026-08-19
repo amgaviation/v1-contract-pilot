@@ -7,6 +7,7 @@ import { requireAccount } from "@/lib/supabase/account";
 import { parseDollarsToCents } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import { clientIdForStorage } from "@/lib/expense-client";
+import { looksLikeDeclaredType } from "@/lib/file-signature";
 import type { Database } from "@/lib/supabase/database.types";
 
 type ExpenseInsert = Database["pilot"]["Tables"]["expenses"]["Insert"];
@@ -195,48 +196,13 @@ async function settleTripAndClient(
   return { values: { ...values, client_id: null }, error: null };
 }
 
-/**
- * Checks the file's actual leading bytes against its declared type.
- *
- * WHY: `file.type` is whatever the browser said, and the bucket's
- * `allowed_mime_types` validates the same client-declared header — so
- * neither layer looks at the bytes. That is not a tenant-isolation hole
- * (Storage serves from a different origin than the app, so a mislabelled
- * HTML payload cannot reach app cookies), but it does mean arbitrary
- * content can sit in the bucket labelled `image/png`. Sniffing the magic
- * number closes the gap for the formats we accept.
- *
- * HEIC is checked loosely — it is an ISO-BMFF container whose brand
- * varies (`heic`, `heix`, `mif1`, …) — so this asserts the `ftyp` box
- * rather than enumerating brands and rejecting a valid photo.
- */
-function looksLikeDeclaredType(bytes: Uint8Array, type: string): boolean {
-  const startsWith = (...sig: number[]) =>
-    sig.every((byte, index) => bytes[index] === byte);
-
-  switch (type) {
-    case "image/jpeg":
-      return startsWith(0xff, 0xd8, 0xff);
-    case "image/png":
-      return startsWith(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a);
-    case "application/pdf":
-      return startsWith(0x25, 0x50, 0x44, 0x46); // %PDF
-    case "image/webp":
-      // "RIFF" .... "WEBP"
-      return (
-        startsWith(0x52, 0x49, 0x46, 0x46) &&
-        [0x57, 0x45, 0x42, 0x50].every((byte, i) => bytes[8 + i] === byte)
-      );
-    case "image/heic":
-    case "image/heif":
-      // "ftyp" at offset 4. One case for both: they are the same ISOBMFF
-      // container, and which of the two a browser reports for the same
-      // iPhone photo is not something this app gets to decide.
-      return [0x66, 0x74, 0x79, 0x70].every((byte, i) => bytes[4 + i] === byte);
-    default:
-      return false;
-  }
-}
+// Magic-number check against the declared Content-Type — see
+// lib/file-signature.ts for the full rationale (why neither `file.type`
+// nor the bucket's `allowed_mime_types` looks at a single byte) and, in
+// particular, why the HEIC/HEIF branch checks the ISOBMFF major_brand and
+// not just the `ftyp` box tag every ISOBMFF file shares. Shared with
+// documents/actions.ts, which used to carry its own hand-copied version of
+// the same function.
 
 /**
  * Uploads the receipt, if one was attached, and returns its object path.

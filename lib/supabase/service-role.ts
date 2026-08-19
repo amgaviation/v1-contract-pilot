@@ -13,12 +13,41 @@ import type { Database } from "@/lib/supabase/database.types";
  * because there's no live database to test it against). Until that exists,
  * the only control is: read this comment before you import this function.
  *
- * It exists for exactly FIVE entry points, and that list IS the control —
- * adding one is a security decision, not a refactor. (It said TWO until
- * 20260813130000 added the scheduled reminder pass, which is written up as
- * entry point 3 below with the argument for why it earns its place, and
- * FOUR until the hold-expiry pass was added as entry point 5. Adding one is
- * meant to feel like this: a paragraph, not a line.)
+ * It exists for exactly NINE entry points across TEN call sites (entry
+ * points 1 and 2 each cover a route plus the helper module it calls this
+ * client from, counted as one operation — see their paragraphs), and that
+ * list IS the control — adding one is a security decision, not a refactor.
+ * (It said TWO until 20260813130000 added the scheduled reminder pass,
+ * written up as entry point 3 below with the argument for why it earns its
+ * place, and FOUR until the hold-expiry pass was added as entry point 5.
+ * Adding one is meant to feel like this: a paragraph, not a line.)
+ *
+ * THE LIST DRIFTED, AND THIS IS THE RECORD OF IT, BECAUSE THE NEXT DRIFT
+ * SHOULD NOT NEED AN AUDIT TO FIND. The commit that added entry point 5
+ * (3c32eae, 2026-08-18 03:57 UTC) called this list's count FOUR-becoming-
+ * FIVE. It was wrong when it was written: THREE other files had already
+ * been calling this function, unregistered, for up to a day —
+ * demo-actions.ts (a9da1b8, 2026-08-17 07:54 UTC), the autopay start/stop
+ * routes (05280e4, 2026-08-17 16:09 UTC) and test-bypass-actions.ts
+ * (e8d4a83, 2026-08-17 19:54 UTC). Two of those files even said otherwise:
+ * demo-actions.ts's own header called itself "a fifth entry point," and
+ * test-bypass-actions.ts's repeated the claim — both false, because the
+ * paragraph they meant to join here was never written. The true count was
+ * never five; it was six before entry point 5 existed, and eight by the
+ * time the third of those three files landed. They are entry points 6
+ * through 9 below, added on this pass (2026-08-19).
+ *
+ * A CI CHECK SHOULD MAKE THIS SELF-ENFORCING. The exhaustive list of
+ * callers, re-derived by grep rather than trusted from this comment:
+ *
+ *   grep -rln 'createServiceClient(' --include='*.ts' --include='*.tsx' \
+ *     app lib | grep -v '^lib/supabase/service-role\.ts$' | sort
+ *
+ * That must return exactly the ten paths named in entry points 1-9 below,
+ * byte for byte. A path appearing that isn't named here, or named here
+ * that no longer appears, is this exact failure mode happening again —
+ * fail the build on the diff, don't wait for the next person to read this
+ * comment before they trust it.
  *
  *   1. THE STRIPE WEBHOOK that provisions a new tenant on checkout
  *      completion (Phase 2 — app/api/stripe/webhook/route.ts and
@@ -116,9 +145,65 @@ import type { Database } from "@/lib/supabase/database.types";
  *      qualification record on any code path, and
  *      scripts/account-lifecycle-db-verify.mjs asserts that by executing it.
  *
+ *   6. DEMO BILLING FOR COMPED ACCOUNTS
+ *      (app/(app)/settings/billing/demo-actions.ts), because
+ *      pilot.accounts.plan_tier and demo_cancel_at_period_end are both in
+ *      accounts_protect_billing_columns' protected list
+ *      (20260817090000_comp_account_demo_billing.sql) — a normal session
+ *      client cannot write either, full stop, regardless of RLS. That
+ *      protection exists so entitlement state can only ever arrive from
+ *      Stripe's own webhook (entry point 1); this is the one narrow,
+ *      named exception, for the one case Stripe never bills: an account
+ *      with no Stripe customer at all. Narrowed the same way entry point 3
+ *      is: every write first re-reads the account through requireAccount
+ *      (a session client, RLS-scoped to the caller) and refuses unless
+ *      stripe_customer_id IS NULL on THAT read, never on client-supplied
+ *      input — a real subscriber's row always has a Stripe customer id, so
+ *      this can never reach one. This client is constructed only after
+ *      that check passes, and only to write the two columns this file
+ *      owns.
+ *
+ *   7. AUTOPAY CONSENT — START (app/api/autopay/start/route.ts), because
+ *      the caller is the pilot's CLIENT's AP desk: someone with no
+ *      account, no session and no Supabase identity here, holding a
+ *      vendor-link token instead. The anon Postgres role has no read on
+ *      pilot.client_vendor_links (only the SECURITY DEFINER page
+ *      functions do), and this route additionally needs
+ *      accounts.connect_account_id and the client's existing autopay
+ *      customer id — neither belongs in an anon-executable SQL function's
+ *      return value. The token is validated (unrevoked, unexpired) FIRST,
+ *      before this client reads anything, and every read after that is
+ *      scoped to the account/client ids the token itself resolved to —
+ *      there is no caller-supplied account or client id anywhere in the
+ *      route.
+ *
+ *   8. AUTOPAY CONSENT — STOP (app/api/autopay/stop/route.ts), the mirror
+ *      of entry point 7: same anonymous caller, same vendor-link token
+ *      boundary, same reason a session client cannot do this — there is no
+ *      session to scope one to. A client who cannot revoke a mandate they
+ *      gave is not a feature but a dispute waiting to happen (card-network
+ *      rules require a cancellation path for saved-card charging), so
+ *      revoking consent needed the same access granting it did.
+ *
+ *   9. THE ONBOARDING TEST BYPASS (app/(auth)/welcome/test-bypass-actions.ts),
+ *      because it provisions a comped account — the same NULL-
+ *      stripe_customer_id shape entry point 6 manages — for a signed-in
+ *      user who has no account yet, and tenant creation has no
+ *      session-scoped path at all (decision #7: only the webhook creates
+ *      one). Three gates keep this from being entry point 1 with a side
+ *      door, detailed in that file's own header: dormant unless
+ *      ONBOARDING_TEST_PIN is set to a long, non-numeric value; a hard
+ *      `NODE_ENV !== "development"` refusal that runs before any of that
+ *      is even checked, so it cannot fire on any deployed environment —
+ *      production or preview — no matter what the var is set to; and a
+ *      timing-safe PIN comparison. Like entry point 6, every write here
+ *      only ever INSERTS a brand-new account and membership row for the
+ *      caller's own user id — it has no path to an account that already
+ *      exists.
+ *
  * It must never be imported into a Client Component, never used to read or
  * write tenant business data on a pilot's behalf outside the narrow, fixed
- * operations described in entry points 3 and 4, and never become a
+ * operations described in entry points 3 through 8, and never become a
  * general-purpose "admin" escape hatch — there is no support tooling in
  * this product that reads across tenants by design. Entry point 2 does not
  * soften that: it reads one BLOB, for one invoice, for a bearer the

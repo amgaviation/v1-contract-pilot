@@ -148,13 +148,24 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
-  // No file in this app imports next/image today (verified by grep — the
-  // two <img> call sites are deliberate: SVGs, and the invoice share
-  // page's data: URI receipts, whose own comment explains why next/image
-  // is intentionally not used there). This block is forward-provisioning,
-  // not live optimisation. Before the first next/image use on a remote
-  // (Supabase Storage) receipt URL, this also needs `images.remotePatterns`
-  // for that host.
+  // No file in this app imports next/image today (verified by grep). Every
+  // plain <img> call site is expected to carry its own LOCAL comment
+  // explaining why next/image doesn't apply there (a small already-optimised
+  // SVG, or — app/invoice/[token]/page.tsx — a data: URI receipt with no
+  // remote URL for next/image to optimise). Deliberately not enumerated or
+  // counted here: a hardcoded list or count in this file drifts the moment a
+  // call site is added, edited, or gets its justification comment written
+  // later than the call site itself, and a stale count reads as verified
+  // when it no longer is (caught happening exactly that way on 2026-08-19 —
+  // this comment cited "two" call sites against a codebase that by then had
+  // eight, three of them uncommented). The standing rule is what has to stay
+  // true, not a snapshot of it: run `grep -rn '<img' app/` before relying on
+  // this being current, and if you add an <img>, add its justification next
+  // to it, not here.
+  //
+  // This block itself is forward-provisioning, not live optimisation. Before
+  // the first next/image use on a remote (Supabase Storage) receipt URL,
+  // this also needs `images.remotePatterns` for that host.
   images: {
     formats: ["image/avif", "image/webp"],
   },
