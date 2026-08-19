@@ -14,7 +14,7 @@ export const BRAND = {
   wordmark: "V1",
   lockup: "V1: powered by AMG Aviation",
   attribution: "powered by AMG Aviation",
-  tagline: "The books for your flying business.",
+  tagline: "V1, we make the decision simple",
 } as const;
 
 export type Brand = typeof BRAND;
