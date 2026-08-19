@@ -314,6 +314,16 @@
   --shadow-float: var(--ledger-shadow-float);
 }
 
+/* Anchor jumps glide instead of teleporting — the marketing pages' one
+   in-page anchor (#for-operators) and any future ones inherit it. Guarded
+   the way every motion in this sheet is: reduced-motion users keep the
+   instant jump. */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
 @layer utilities {
   /* Ledger's tabular-figures class. Named apart from INSTRUMENT's `tnum`
      so the verifier's dead-class check (which owns that exact name) keeps
