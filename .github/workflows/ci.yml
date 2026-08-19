@@ -26,6 +26,44 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# NOT WIRED HERE, ON PURPOSE: billing:verify, trip:verify, customisation:verify.
+# All three were orphaned npm scripts (no CI job, no verify:all entry) and
+# the fix looked like "add a step" until each was actually read.
+#   - trip:verify and customisation:verify drive real signed-in Supabase
+#     clients (admin.auth.admin.createUser, session.auth.signInWithPassword,
+#     .from(...) over PostgREST) — that needs a live Supabase Auth + REST
+#     API, not a bare Postgres. The `database` job below stands up
+#     postgres:16 and talks to it with psql; there is no GoTrue or
+#     PostgREST anywhere in this repo's CI, and supabase/config.toml says
+#     outright this project "doesn't run `supabase start` locally yet — no
+#     live project exists." Wiring these two needs that stack stood up
+#     first (`supabase/setup-cli` + `supabase start`, migrations applied
+#     automatically from supabase/migrations, NEXT_SUPABASE_URL/
+#     NEXT_SUPABASE_PUBLISHABLE_KEY/NEXT_SUPABASE_SECRET_KEY exported from
+#     `supabase status`) — a real, separate piece of infrastructure this
+#     repo has explicitly deferred, not a step to bolt on here.
+#   - billing:verify looks lighter (it only needs a running server, which
+#     the `layout` job below already boots) until you read
+#     app/api/stripe/webhook/route.ts: signature verification and the
+#     livemode gate return before touching the database, but every other
+#     section — idempotency, out-of-order delivery, retry safety, plan-tier
+#     mapping — writes pilot.stripe_events through the SAME service-role
+#     Supabase client, over the SAME missing PostgREST endpoint. Pointing it
+#     at a placeholder NEXT_SUPABASE_URL (the way the `layout` job's dev
+#     server already does, safely, because nothing on that job's path ever
+#     queries it) would not skip those sections here — billing-verify.mjs's
+#     own SKIP guard only covers the checks ITS OWN script-level db client
+#     makes, not the route's. The route would attempt the write, get a
+#     connection failure, and return 500 where the script expects 200 —
+#     failing for an infrastructure reason having nothing to do with
+#     whether the webhook handler is correct. A red check that means
+#     nothing is worse than no check.
+# Same root cause, all three: this repo has no live Supabase API anywhere
+# in CI. Fixing it is one piece of infrastructure, not three, and it wants
+# the owner's sign-off (a new job, a real image pull and boot cost, and a
+# CLI-version decision) before it lands, not a silent add alongside a
+# dependency-scanning task.
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -39,6 +77,46 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # lib/supabase/service-role.ts's header enumerates every call site
+      # allowed to construct the RLS-bypassing client, and that enumeration
+      # IS the security control — the header says so directly. It has
+      # already drifted four times silently (three files calling the
+      # function unregistered for up to a day, two of them even miscounting
+      # their own entry point number in their own header). This does not
+      # try to diff the actual path list against the header's prose — a
+      # markdown-parsing check is itself a maintenance burden and a new
+      # source of false negatives if the header's wording shifts. It only
+      # compares a COUNT, which is cheap, does not care about unrelated
+      # refactors (renames, reformatting, reordering entries), and is
+      # exactly the number the header already asserts in its own grep
+      # command. Bumping this number is a required, visible part of adding
+      # or removing a call site — the same way the header's own count is.
+      - name: Service-role call-site count (drift check)
+        run: |
+          set -euo pipefail
+          EXPECTED=10
+          # The trailing `; true` matters under `pipefail`: grep exits 1 on
+          # zero matches, which is a legitimate (if very unlikely) count of
+          # zero, not a script bug — without it, that case would abort here
+          # with a bare pipefail error instead of the clear message below.
+          ACTUAL=$(grep -rl 'createServiceClient(' --include='*.ts' --include='*.tsx' app lib \
+            | grep -v '^lib/supabase/service-role\.ts$' | wc -l | tr -d ' '; true)
+          if [ "$ACTUAL" -ne "$EXPECTED" ]; then
+            echo "::error::lib/supabase/service-role.ts's header claims $EXPECTED createServiceClient() call sites, but grep now finds $ACTUAL. This number moved because a call site was added or removed — not on its own a bug, but the header's numbered entry-point list (the actual security control) did not necessarily move with it. Re-read the header, add or remove the matching paragraph for your change, run the header's own grep command to confirm the new list is exhaustive, then update EXPECTED in this step to $ACTUAL."
+            exit 1
+          fi
+          echo "service-role call sites: $ACTUAL (matches lib/supabase/service-role.ts's header)"
+
+      # `npm test` already covers everything else; this is dependency supply
+      # chain, not application code, so it is its own step rather than
+      # folded into that one. --omit=dev: a dev-only advisory (a build tool,
+      # a linter) cannot ship to a pilot's browser or the deployed server —
+      # blocking the pipeline on one would train everyone to reach for
+      # --force on a real advisory later. Verified before wiring this in:
+      # `npm audit --omit=dev --audit-level=high` reports 0 vulnerabilities
+      # today (2026-08-19), so this does not turn CI red on landing.
+      - run: npm audit --omit=dev --audit-level=high
 
       - run: npm test
 
@@ -197,7 +275,7 @@ jobs:
             psql -X -q -v ON_ERROR_STOP=1 "$U" -f "$m"
           done
 
-      - name: Two-tenant isolation, Connect, the public invoice share, the credential-packet share, and bank import
+      - name: Two-tenant isolation, Connect, the public invoice share, the credential-packet share, autopay, and bank import
         env:
           DATABASE_URL: postgresql://postgres@127.0.0.1:55432/v1verify
         run: |
@@ -224,6 +302,16 @@ jobs:
           # deactivate_account writing a column the protect trigger reserves
           # for service_role on its very first run.
           node scripts/account-lifecycle-db-verify.mjs
+
+          # Autopay's authorization boundary (20260817160000_autopay.sql):
+          # the five autopay_* columns on pilot.clients withheld from every
+          # authenticated grant, service_role's own write path, the
+          # half-saved-mandate CHECK constraint, client_autopay_disable's
+          # owner-only gate, and connect_account_unlink clearing enrollment.
+          # Previously had zero coverage anywhere — no verify script existed
+          # for this feature at all until now, on a feature whose whole
+          # premise is charging a card with nobody confirming it that day.
+          node scripts/autopay-verify.mjs
 
           # PART 1 (lib/bank-import/* parsing + fingerprint stability) needs
           # nothing; PART 2 (the bank schema contract) reads DATABASE_URL,

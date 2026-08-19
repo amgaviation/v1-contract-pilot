@@ -5,6 +5,7 @@ import {
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/service-role";
 import { runAllDueReminders } from "@/lib/reminders/run";
+import { alertOperator } from "@/lib/alerts";
 
 /**
  * THE DAILY DUE-REMINDER PASS — the product's only scheduled entry point.
@@ -114,9 +115,16 @@ async function handle(request: NextRequest) {
   } catch (err) {
     // runDueRemindersForAccount does not throw by design, so reaching here
     // means something structural (the service key missing, the database
-    // unreachable). 500 so the platform's own retry and alerting see it.
+    // unreachable). 500 so the platform's own retry and alerting see it —
+    // and, since nobody tails this route's logs, alertOperator is the thing
+    // that actually reaches a human the same day (lib/alerts.ts).
     const message = err instanceof Error ? err.message : "unknown error";
     console.error(`[reminders] pass failed: ${message}`);
+    await alertOperator({
+      source: "reminders-cron",
+      summary: "Reminder pass failed outright",
+      detail: message,
+    });
     return NextResponse.json({ error: "Reminder pass failed" }, { status: 500 });
   }
 }
