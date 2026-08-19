@@ -270,10 +270,17 @@ export default function PricingPage() {
       </Band>
 
       {/* FAQ — the questions a card is entered against, and nothing else. */}
-      <Band narrow>
-        <div className="flex flex-col gap-4">
-          <h2 className="font-display text-h2 font-bold tracking-tight text-ink">Before you enter a card</h2>
-          <div>
+      <Band>
+        {/* The rail architecture the landing page's sections share
+            (2026-08-19 second structural pass): the heading holds a
+            sticky 4-col rail, the questions the 8-col track. The band
+            left its narrow measure with the split — the rail supplies
+            the reading-width restraint the narrow column used to. */}
+        <div className="grid grid-cols-1 gap-x-12 gap-y-4 lg:grid-cols-12">
+          <div className="lg:col-span-4">
+            <h2 className="font-display text-h2 font-bold tracking-tight text-ink lg:sticky lg:top-24">Before you enter a card</h2>
+          </div>
+          <div className="lg:col-span-8">
             {buildFaq().map((item) => (
               <details key={item.q} className="border-b border-hair">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 py-4 marker:content-none [&::-webkit-details-marker]:hidden">

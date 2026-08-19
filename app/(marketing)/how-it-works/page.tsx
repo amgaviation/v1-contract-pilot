@@ -199,7 +199,7 @@ export default function HowItWorksPage() {
                   </p>
                 ) : null}
                 {row.shot ? (
-                  <ProductShot slug={row.shot} className="max-w-2xl" />
+                  <ProductShot slug={row.shot} />
                 ) : null}
               </div>
             </div>
@@ -213,11 +213,17 @@ export default function HowItWorksPage() {
           names no competitor and calls no other tool bad at its own job:
           the cost being described is the seam between three tools that do
           not know about each other. */}
-      <Band measure="narrow">
-        <Reveal className="mkt-panel flex flex-col gap-4 px-6 py-8 sm:px-9 sm:py-10">
-          <h2 className="mkt-display-s font-display font-bold text-ink">
+      <Band>
+        {/* The panel splits internally at lg (2026-08-19 second
+            structural pass): the claim holds the left track, the argument
+            the right — the same statement-and-support shape the landing
+            page's rails established, inside the one framed surface this
+            page has. Stacks below lg exactly as before. */}
+        <Reveal className="mkt-panel grid grid-cols-1 gap-x-10 gap-y-4 px-6 py-8 sm:px-9 sm:py-10 lg:grid-cols-12">
+          <h2 className="mkt-display-s font-display font-bold text-ink lg:col-span-5">
             Why it assumes you fly for more than one outfit
           </h2>
+          <div className="flex flex-col gap-4 lg:col-span-7">
           <p className="text-body text-ink">
             Every client you fly for runs a system built to look at their own
             crew, and that's the right thing for them to have. What none of
@@ -232,6 +238,7 @@ export default function HowItWorksPage() {
             rate cards in one place, and one set of totals at the end of the
             year that actually covers everybody you flew for.
           </p>
+          </div>
         </Reveal>
       </Band>
 

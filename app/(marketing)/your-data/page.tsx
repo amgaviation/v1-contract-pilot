@@ -47,12 +47,18 @@ function Band({
   children,
   tone = "canvas",
   glow = "top",
+  measure = "narrow",
 }: {
   children: React.ReactNode;
   /** `brand` is the navy ground with its glow field; `sunk` the grey
    *  band — see the landing page's Band for the shared reasoning. */
   tone?: "canvas" | "sunk" | "brand";
   glow?: "top" | "low";
+  /** `narrow` is the reading column the page always had; `wide` exists
+   *  for the sections' ledger grid (2026-08-19 second structural pass),
+   *  whose 4-col title rail supplies the reading-width restraint the
+   *  narrow column used to. */
+  measure?: "narrow" | "wide";
 }) {
   return (
     <section
@@ -67,7 +73,11 @@ function Band({
       {tone === "brand" ? (
         <div aria-hidden className={glow === "low" ? "mkt-glow-low" : "mkt-glow"} />
       ) : null}
-      <div className="relative mx-auto w-full max-w-3xl px-5 py-16 sm:px-6 sm:py-24">
+      <div
+        className={`relative mx-auto w-full ${
+          measure === "wide" ? "max-w-6xl" : "max-w-3xl"
+        } px-5 py-16 sm:px-6 sm:py-24`}
+      >
         {children}
       </div>
     </section>
@@ -131,18 +141,25 @@ export default function YourDataPage() {
         </Reveal>
       </Band>
 
-      <Band>
-        <div className="flex flex-col gap-10">
+      <Band measure="wide">
+        <div className="flex flex-col">
           {SECTIONS.map((section) => (
-            <div key={section.title} className="flex flex-col gap-3">
-              <h2 className="font-display text-h2 font-bold text-ink">
-                {section.title}
-              </h2>
-              {section.paras.map((para) => (
-                <p key={para.slice(0, 40)} className="text-body text-ink">
-                  {para}
-                </p>
-              ))}
+            <div
+              key={section.title}
+              className="grid grid-cols-1 gap-x-12 gap-y-4 border-t border-hair py-10 first:border-t-0 first:pt-0 last:pb-0 lg:grid-cols-12"
+            >
+              <div className="lg:col-span-4">
+                <h2 className="font-display text-h2 font-bold text-ink lg:sticky lg:top-24">
+                  {section.title}
+                </h2>
+              </div>
+              <div className="flex max-w-2xl flex-col gap-4 lg:col-span-8">
+                {section.paras.map((para) => (
+                  <p key={para.slice(0, 40)} className="text-body text-ink">
+                    {para}
+                  </p>
+                ))}
+              </div>
             </div>
           ))}
         </div>
