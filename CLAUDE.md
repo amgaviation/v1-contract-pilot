@@ -32,6 +32,17 @@ Before asking the user to do anything by hand:
 2. Confirm their specific setup and use case if it is not already known.
 3. Then state precisely what you need from them.
 
+# Model routing
+
+The session default is Sonnet 5 (pinned in `.claude/settings.json`). Route work to the cheapest model that can do it by delegating to the subagents in `.claude/agents/` instead of doing everything in the main conversation:
+
+- **Searches, lookups, "where is X"** → `scout` (Haiku). Never burn main-loop context reading files broadly.
+- **Fully-specified mechanical edits** (renames, boilerplate, pattern application, lint fixes) → `mechanic` (Haiku).
+- **Reviewing a non-trivial diff before commit** → `reviewer` (Sonnet).
+- **Hard debugging, cross-cutting design, migrations** → `architect` (Opus). Sparingly - only when a direct attempt has failed or the blast radius is large.
+
+Main-loop work is orchestration, judgement, and edits that need conversation context. Keep it lean: delegate read-heavy work, don't re-read what a subagent already summarized, and don't spawn multi-agent fan-outs unless explicitly asked.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
