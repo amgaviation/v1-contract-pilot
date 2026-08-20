@@ -188,7 +188,11 @@ export async function buildInvoiceDocument(
     supabase
       .from("accounts")
       .select(
-        "legal_name, logo_url, address_line1, address_line2, city, state, postal_code, country"
+        // invoice_footer (20260820100000) rides this same read: it is
+        // boilerplate rendered at the foot of the page, and reading it
+        // HERE rather than snapshotting it onto the invoice is what makes
+        // a typo fix show up on every invoice instead of only new ones.
+        "legal_name, logo_url, address_line1, address_line2, city, state, postal_code, country, invoice_footer"
       )
       .eq("id", accountId)
       .maybeSingle(),
@@ -205,7 +209,11 @@ export async function buildInvoiceDocument(
   ]);
 
   const accountInfo = accountRow as
-    | (AddressFields & { legal_name: string; logo_url: string | null })
+    | (AddressFields & {
+        legal_name: string;
+        logo_url: string | null;
+        invoice_footer: string | null;
+      })
     | null;
   const clientInfo = clientResult.data as
     | (AddressFields & { name: string; contact_name: string | null })

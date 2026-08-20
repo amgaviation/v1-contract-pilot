@@ -324,6 +324,7 @@ jobs:
       - name: Schema-contract suites
         env:
           AIRCRAFT_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
+          INVOICE_SETTINGS_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
           PAYMENT_REVERSAL_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
           ESTIMATES_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
           LOGBOOK_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
@@ -333,6 +334,7 @@ jobs:
         run: |
           set -euo pipefail
           npm run aircraft:verify
+          npm run invoice-settings:verify
           npm run payment-reversal:verify
           npm run estimates:verify
           npm run logbook:verify

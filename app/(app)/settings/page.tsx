@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/database.types";
 import { centsToInput, formatDate } from "@/lib/format";
 import SettingsForm, { type SettingsValues } from "./settings-form";
+import InvoicingPanel, { type InvoicingValues } from "./invoicing-panel";
 import ProfileDefaultsForm, {
   type ProfileDefaultsValues,
 } from "./profile-defaults-form";
@@ -109,7 +110,7 @@ export default async function SettingsPage({
       // path, and the RSC-payload reasoning above holds for them too. One
       // literal string, not a concatenation — supabase-js derives the row
       // type from the literal, and `"a" + "b"` widens to plain `string`.
-      "legal_name, address_line1, address_line2, city, state, postal_code, country, invoice_prefix, dba_name, phone, home_base, certificate_type, certificate_number, ratings, default_day_rate_cents, default_travel_day_rate_cents, default_per_diem_cents, default_payment_terms_days"
+      "legal_name, address_line1, address_line2, city, state, postal_code, country, invoice_prefix, invoice_number_pad, invoice_number_include_year, default_tax_rate_bps, default_invoice_notes, invoice_footer, dba_name, phone, home_base, certificate_type, certificate_number, ratings, default_day_rate_cents, default_travel_day_rate_cents, default_per_diem_cents, default_payment_terms_days"
     )
     .eq("id", account.id)
     .maybeSingle();
@@ -123,6 +124,24 @@ export default async function SettingsPage({
   // one holding the invoice address did not.
   const settingsValues: SettingsValues = settingsValuesData ?? {};
   const profileRow = settingsValuesData as ProfileDefaultsRow | null;
+  // The Invoicing tab's six columns, off the SAME guarded read — so the
+  // failed-read reasoning above covers them, and a read that failed cannot
+  // render an empty form whose first save wipes the pilot's footer.
+  const invoicingValues: InvoicingValues = (settingsValuesData ?? {}) as InvoicingValues;
+
+  // THE CURRENT COUNT, for the numbering preview and the "Currently N"
+  // hint. Its own read because it is a different table
+  // (pilot.invoice_number_sequences) and because it is genuinely optional:
+  // an error here degrades the preview to a count of 1 and says so, rather
+  // than taking the whole tab down. `authenticated` has SELECT on the table
+  // and RLS scopes it to this account.
+  const { data: sequenceData } = await supabase
+    .from("invoice_number_sequences")
+    .select("next_number")
+    .eq("account_id", account.id)
+    .maybeSingle();
+  const nextInvoiceCount =
+    (sequenceData as { next_number: number } | null)?.next_number ?? null;
 
   // Same shape discipline as onboarding/page.tsx building OnboardingValues:
   // money through centsToInput (a raw cents integer would render a $1,200
@@ -299,6 +318,29 @@ export default async function SettingsPage({
               <LogoPanel hasLogo={Boolean(account.logo_url)} canEdit={canEdit} />
             </div>
           </div>
+        }
+        // EVERYTHING THAT DECIDES WHAT AN INVOICE LOOKS LIKE, on its own
+        // tab. invoice_prefix used to sit on the Business tab beside the
+        // postal address, which is where it happened to be added rather
+        // than where it belongs — it is one third of the number format,
+        // and the other two thirds arrived with this panel.
+        invoicing={
+          settingsValuesError ? (
+            <LAlert tone="crit" className="flex flex-col gap-1">
+              <p className="font-semibold">Couldn&rsquo;t load your invoice settings</p>
+              <p className="text-body-s text-ink-2">
+                They&rsquo;re not shown because we couldn&rsquo;t read them, not
+                because they&rsquo;re empty. Don&rsquo;t save from this screen
+                until it loads. Reload in a moment.
+              </p>
+            </LAlert>
+          ) : (
+            <InvoicingPanel
+              values={invoicingValues}
+              nextNumber={nextInvoiceCount}
+              canEdit={canEdit}
+            />
+          )
         }
         payments={
           <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">

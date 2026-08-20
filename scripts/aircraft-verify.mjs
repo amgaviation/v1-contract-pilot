@@ -447,17 +447,55 @@ note("\nTenancy");
     "42501"
   );
 
-  // Two independent controls say no here — there is no DELETE grant, and
-  // the DELETE policy is `using (false)` behind it. The grant is what
-  // fires, so 42501 is what a pilot's client would see. Three years of
-  // entries get their type from this row; deleting it would silently
-  // retype them, which is why retiring an airframe is archived_at.
-  refuses(
-    "deleting an airframe is not how you retire it — archived_at is",
+  // DELETE USED TO BE REFUSED OUTRIGHT — no grant, and a `using (false)`
+  // policy behind it — on the grounds that three years of entries get their
+  // type from this row. 20260820100000 narrows that to the rows it was
+  // actually about: the policy is now ordinary tenancy, and the "has this
+  // tail flown?" half moved to deleteAircraft, which is the only layer that
+  // CAN enforce it (the logbook joins this table on a normalised tail key
+  // computed at read time, so there is no foreign key for Postgres to
+  // restrict on).
+  //
+  // A SCRATCH TAIL, not the fleet's own: N447SP has three logbook entries
+  // and the hours-by-type assertions below read them. That is also the
+  // shape of the risk this whole change carries — the database WILL delete
+  // a flown airframe if asked, which is exactly why the application must
+  // ask the two counts first.
+  const scratchDelete = asTenant(
     A.user,
-    `delete from pilot.aircraft where account_id = '${A.account}';`,
-    "42501"
+    `insert into pilot.aircraft (account_id, tail_number) values ('${A.account}', 'N999ZZ');
+     delete from pilot.aircraft where account_id = '${A.account}' and tail_key = 'N999ZZ';
+     select count(*) from pilot.aircraft where account_id = '${A.account}' and tail_key = 'N999ZZ';`
   );
+  equals("a tail nothing references can now be deleted", scratchDelete.out, "0");
+
+  // The tenancy half of the new policy, asserted by execution rather than
+  // by reading it: A aiming a delete at B's fleet must match zero rows.
+  // RLS makes this a silent no-op rather than an error, which is precisely
+  // why counting is the only honest check — "no error" is not "nothing
+  // happened."
+  //
+  // THE WHOLE CASE IN ONE asTenant CALL, deliberately: each call is its own
+  // transaction and ends in ROLLBACK, so a fixture written by one call is
+  // not there for the next. The claim swaps below are the same set_config
+  // asTenant itself performs — B writes the row, A tries to delete it, B
+  // counts.
+  //
+  // AND B DOES THE COUNTING. A's SELECT is RLS-scoped exactly like A's
+  // DELETE, so asking A whether B's row survived returns 0 either way — an
+  // assertion that would pass just as happily against a policy with no
+  // tenancy predicate at all.
+  const claims = (user) =>
+    `do $$ begin perform set_config('request.jwt.claims', '{"sub":"${user}","role":"authenticated"}', true); end $$;`;
+  const survived = asTenant(
+    B.user,
+    `insert into pilot.aircraft (account_id, tail_number) values ('${B.account}', 'N321BB');
+     ${claims(A.user)}
+     delete from pilot.aircraft where tail_key = 'N321BB';
+     ${claims(B.user)}
+     select count(*) from pilot.aircraft where tail_key = 'N321BB';`
+  );
+  equals("and one tenant still cannot delete another's airframe", survived.out, "1");
 
   const archived = asTenant(
     A.user,

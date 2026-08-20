@@ -199,3 +199,39 @@ export async function setCrewArchived(
   revalidatePath(`/crew/${id}`);
   return { error: null };
 }
+
+/**
+ * DELETE, alongside archive rather than instead of it.
+ *
+ * Archive is still the right default and stays: a crew member who flew
+ * with you last year belongs in your records even after they stop showing
+ * up in pickers. Delete is for the other case — the duplicate row, the
+ * name typed into the wrong form — where keeping it is not history, it is
+ * clutter, and archiving it just moves the clutter one click away.
+ *
+ * Safe to offer here in a way it is not for aircraft or clients: nothing
+ * in the schema references pilot.crew_members, so this removes exactly
+ * the row asked for and nothing else. The DELETE policy and grant arrive
+ * in 20260820100000.
+ */
+export async function deleteCrewMember(id: string): Promise<{ error: string | null }> {
+  if (!UUID_RE.test(id)) return { error: "That crew member no longer exists." };
+
+  const { account } = await requireAccount("/crew");
+
+  const supabase = await createClient();
+  const { error, count } = await supabase
+    .from("crew_members")
+    .delete({ count: "exact" })
+    .eq("id", id)
+    .eq("account_id", account.id);
+
+  if (error) return { error: friendlyDbError(error, "crew_members.delete") };
+  // Zero rows matched: not the caller's row, or already gone. Reporting
+  // success here would be a lie.
+  if (count === 0) return { error: "That crew member no longer exists." };
+
+  revalidatePath("/crew");
+  revalidatePath(`/crew/${id}`);
+  return { error: null };
+}

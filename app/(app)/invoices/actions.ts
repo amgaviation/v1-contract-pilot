@@ -387,10 +387,17 @@ export async function createInvoiceDraft(
 
   const supabase = await createClient();
 
+  // THE ACCOUNT'S INVOICE DEFAULTS (20260820100000), applied ONLY where the
+  // pilot left the field alone. `taxBps` is null when the tax field was
+  // blank and a number when it was filled — including a deliberate 0 — so
+  // `??` is the whole rule: a typed 0 beats the default, an untouched field
+  // takes it. Notes have no input on this form at all, so the default is
+  // simply the starting text the invoice screen then lets them edit.
   const invoicePayload: InvoiceInsert = {
     account_id: account.id,
     ...billTo.payload,
-    tax_rate_bps: taxBps ?? 0,
+    tax_rate_bps: taxBps ?? account.default_tax_rate_bps ?? 0,
+    notes: account.default_invoice_notes ?? null,
   };
   const { data: invoiceData, error: invoiceError } = await supabase
     .from("invoices")
@@ -2626,4 +2633,73 @@ export async function correctPayment(
   revalidatePath("/invoices");
   revalidatePath("/reports");
   return { error: null, saved: true, notice: linkNotice };
+}
+
+/**
+ * DISCARD A DRAFT.
+ *
+ * The comment this file already carries about rolling an issued invoice
+ * back is unchanged and is the reason this is drafts-only:
+ * invoices_protect_issued permits no sent→draft edge, so the "rollback"
+ * would have to be a void, which burns the number and is far more
+ * destructive. A number, once minted, is a document a client has.
+ *
+ * A DRAFT IS THE OPPOSITE OF THAT. It has no number (the trigger assigns
+ * one on the way out of draft), no payments, no reminder history and no
+ * public share — nobody outside this account has ever seen it. Voiding one
+ * left a permanent "cancelled invoice" in the list for a piece of paper
+ * that never existed, which is why the list kept filling up with them.
+ *
+ * THE DRAFT RULE IS ENFORCED IN THE POLICY, NOT HERE (20260820100000):
+ * `invoices_delete` uses `status = 'draft' and invoice_number is null`, so
+ * an issued invoice is undeletable through any path, including a raw
+ * PostgREST call with this tenant's own token. The status read below is for
+ * the SENTENCE, not the safety — without it, deleting a sent invoice would
+ * come back as the indistinguishable "no longer exists."
+ *
+ * The lines go with it: pilot.invoice_lines references the invoice with ON
+ * DELETE CASCADE, which also releases the `unique (account_id, expense_id)`
+ * hold that would otherwise make a rebilled expense permanently un-rebillable
+ * — the same cleanup voidInvoice has to perform by hand, here done by the
+ * foreign key.
+ */
+export async function deleteInvoice(id: string): Promise<{ error: string | null }> {
+  if (!UUID_RE.test(id)) return { error: "That invoice no longer exists." };
+
+  const { account } = await requireAccount(`/invoices/${id}`);
+  const supabase = await createClient();
+
+  const { data: statusData } = await supabase
+    .from("invoices")
+    .select("status, invoice_number")
+    .eq("id", id)
+    .eq("account_id", account.id)
+    .maybeSingle();
+  const current = statusData as { status: string; invoice_number: string | null } | null;
+  if (!current) return { error: "That invoice no longer exists." };
+  if (current.status !== "draft" || current.invoice_number) {
+    return {
+      error: `Invoice ${
+        current.invoice_number ?? "this one"
+      } has already been issued, so it can't be deleted — void it instead, which cancels it while keeping the number on the record.`,
+    };
+  }
+
+  const { error, count } = await supabase
+    .from("invoices")
+    .delete({ count: "exact" })
+    .eq("id", id)
+    .eq("account_id", account.id);
+
+  if (error) return { error: friendlyDbError(error, "invoices.delete") };
+  // Zero rows: the policy refused (it was issued between the read above and
+  // now) or the row is gone. Either way there is nothing to report as done.
+  if (count === 0) return { error: "That invoice no longer exists." };
+
+  revalidatePath("/invoices");
+  // The trip and any rebilled expenses this draft was holding are free
+  // again, which is what those two screens display.
+  revalidatePath("/trips");
+  revalidatePath("/expenses");
+  return { error: null };
 }

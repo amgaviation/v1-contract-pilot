@@ -10,6 +10,8 @@ import { updateExpense } from "../actions";
 import { loadClientOptions, loadTripOptions } from "../trip-options";
 import { loadOptionChoices } from "@/lib/custom-options-read";
 import DeleteExpenseButton from "./delete-expense-button";
+import DeleteRecordButton from "@/components/delete-record-button";
+import { removeExpenseReceipt } from "../actions";
 import ReceiptLink from "./receipt-link";
 
 export const metadata = { title: "Expense" };
@@ -66,7 +68,21 @@ export default async function ExpensePage({
               A receipt is attached. It&rsquo;s stored privately. The link
               below works for one minute.
             </span>
-            <ReceiptLink path={expense.receipt_path} />
+            <div className="flex flex-wrap items-center gap-2">
+              <ReceiptLink path={expense.receipt_path} />
+              {/* "Delete the receipt" as distinct from "delete the
+                  expense", which is the button in the page header. There
+                  is no receipt record in this product — receipt_path IS
+                  the receipt — so this clears the column and destroys the
+                  stored scan while the money stays on the books. No
+                  redirect: this page is still valid afterwards. */}
+              <DeleteRecordButton
+                action={removeExpenseReceipt.bind(null, expense.id)}
+                label="Delete receipt"
+                title="Delete this receipt?"
+                description="The scan is removed for good and this expense keeps its amount, date and category. It can’t be undone."
+              />
+            </div>
           </div>
         </LCard>
       ) : null}

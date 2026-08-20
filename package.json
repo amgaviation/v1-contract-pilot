@@ -25,6 +25,7 @@
     "receipt-ocr:verify": "node scripts/receipt-ocr-verify.mjs",
     "estimates:verify": "node scripts/estimates-verify.mjs",
     "aircraft:verify": "node scripts/aircraft-verify.mjs",
+    "invoice-settings:verify": "node scripts/invoice-settings-verify.mjs",
     "payment-reversal:verify": "node scripts/payment-reversal-verify.mjs",
     "logbook:verify": "node scripts/logbook-verify.mjs",
     "currency:verify": "node scripts/currency-verify.mjs",
