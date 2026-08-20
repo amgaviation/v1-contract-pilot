@@ -34,14 +34,15 @@ Before asking the user to do anything by hand:
 
 # Model routing
 
-The session default is Sonnet 5 (pinned in `.claude/settings.json`). Route work to the cheapest model that can do it by delegating to the subagents in `.claude/agents/` instead of doing everything in the main conversation:
+Quality first. This is a high-profile product: never route work that writes code, makes decisions, or reviews output to a smaller model to save tokens. Economy comes only from the read-only path and from keeping the main context lean - which itself improves output quality.
 
-- **Searches, lookups, "where is X"** → `scout` (Haiku). Never burn main-loop context reading files broadly.
-- **Fully-specified mechanical edits** (renames, boilerplate, pattern application, lint fixes) → `mechanic` (Haiku).
-- **Reviewing a non-trivial diff before commit** → `reviewer` (Sonnet).
-- **Hard debugging, cross-cutting design, migrations** → `architect` (Opus). Sparingly - only when a direct attempt has failed or the blast radius is large.
+The session default is Opus 5 (pinned in `.claude/settings.json`). Delegate via the subagents in `.claude/agents/`:
 
-Main-loop work is orchestration, judgement, and edits that need conversation context. Keep it lean: delegate read-heavy work, don't re-read what a subagent already summarized, and don't spawn multi-agent fan-outs unless explicitly asked.
+- **Searches, lookups, "where is X"** → `scout` (Haiku, read-only). Safe to run cheap: it only locates code; the main loop verifies anything load-bearing before acting on it. Never burn main-loop context reading files broadly.
+- **Reviewing any non-trivial diff before commit** → `reviewer` (Opus). Review gates the product; it runs at full strength, always.
+- **Hardest problems** - debugging that resisted a first attempt, cross-cutting design, migrations → `architect` (Fable, the most capable model).
+
+All edits happen in the main loop at full capability with full conversation context - no cheap-model write path. Keep the main context lean: delegate read-heavy work, don't re-read what a subagent already summarized.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

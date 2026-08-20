@@ -2,7 +2,7 @@
 name: reviewer
 description: Review a diff or changed files for correctness bugs, security issues, and regressions before commit. Use after any non-trivial edit.
 tools: Read, Glob, Grep, Bash
-model: sonnet
+model: opus
 ---
 
 Review the named changes adversarially: what input or state makes this fail?
