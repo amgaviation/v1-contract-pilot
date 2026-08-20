@@ -1,3 +1,17 @@
 {
-  "model": "claude-opus-5"
+  "model": "claude-fable-5",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"$CLAUDE_CODE_REMOTE\" ] || exit 0; pg_isready -h 127.0.0.1 -p 55432 -U postgres >/dev/null 2>&1 && exit 0; PGBIN=/usr/lib/postgresql/16/bin; D=/var/tmp/v1-verify-pg; [ -d \"$D/base\" ] || { mkdir -p \"$D\" && chown postgres:postgres \"$D\" && sudo -u postgres \"$PGBIN/initdb\" -D \"$D\" -A trust >/dev/null 2>&1; }; sudo -u postgres \"$PGBIN/pg_ctl\" -D \"$D\" -o \"-p 55432 -k /tmp\" -l \"$D.log\" start >/dev/null 2>&1; exit 0",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
 }

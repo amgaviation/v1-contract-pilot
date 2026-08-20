@@ -34,15 +34,30 @@ Before asking the user to do anything by hand:
 
 # Model routing
 
-Quality first. This is a high-profile product: never route work that writes code, makes decisions, or reviews output to a smaller model to save tokens. Economy comes only from the read-only path and from keeping the main context lean - which itself improves output quality.
+Quality first. This product moves real money (Stripe Connect, autopay), holds FAA records, and its tenant isolation is load-bearing. No Haiku anywhere in this repo, ever.
 
-The session default is Opus 5 (pinned in `.claude/settings.json`). Delegate via the subagents in `.claude/agents/`:
+The session default is Fable 5 (pinned in `.claude/settings.json`): the main conversation is the coordinator. It plans, decomposes, delegates, and personally implements only the extreme problems - cross-cutting design, debugging that resisted a first attempt, anything where a wrong approach is expensive to unwind. Bulk implementation is delegated:
 
-- **Searches, lookups, "where is X"** → `scout` (Haiku, read-only). Safe to run cheap: it only locates code; the main loop verifies anything load-bearing before acting on it. Never burn main-loop context reading files broadly.
-- **Reviewing any non-trivial diff before commit** → `reviewer` (Opus). Review gates the product; it runs at full strength, always.
-- **Hardest problems** - debugging that resisted a first attempt, cross-cutting design, migrations → `architect` (Fable, the most capable model).
+- **`engineer` (Opus)** - moderate coding and ALL high-stakes implementation: money paths (`lib/stripe/`, `lib/autopay/`, invoicing/payments, bank import, ledger), RLS/tenancy, `supabase/migrations/`, auth gates (`lib/supabase/account.ts`, `lib/entitlements.ts`), crons, token routes.
+- **`coder` (Sonnet)** - only under explicit coordinator direction, for well-scoped routine work: UI/LEDGER, ordinary feature code, fixes. It is barred from every high-stakes path listed above and will hand back any task that touches them.
+- **`reviewer` (Opus)** - mandatory before EVERY push. No diff reaches GitHub without its PASS. Findings block the push until fixed.
 
-All edits happen in the main loop at full capability with full conversation context - no cheap-model write path. Keep the main context lean: delegate read-heavy work, don't re-read what a subagent already summarized.
+# Verify gate (mandatory before push)
+
+Cloud sessions auto-start Postgres 16 on 127.0.0.1:55432 (trust auth) via the SessionStart hook in `.claude/settings.json` - the exact shape `verify:all` expects. Run the suites the diff maps to, plus `npm test` for any code change:
+
+| Touched | Run |
+| --- | --- |
+| `supabase/migrations/**`, anything RLS/GRANT | `npm run verify:all` (full migration replay + tenancy sweep) |
+| `lib/stripe/**`, `app/api/stripe/**` | `connect:verify`, `payment-reversal:verify` |
+| `lib/autopay/**`, `app/api/autopay/**` | `autopay:verify` |
+| Invoice/estimate actions or views | `estimates:verify`, `adhoc-invoice:verify`, `payment-reversal:verify` |
+| `lib/bank-import/**` | `bank-import:verify` |
+| Reminders, holds, account lifecycle | `reminders:verify`, `account-lifecycle-db:verify` |
+| Logbook, FAA currency | `logbook:verify`, `currency:verify` |
+| Docs/marketing only | `npm run typecheck` |
+
+Individual DB suites need the bootstrap env vars exactly as `verify:all` sets them (see `package.json`). Report verify output as it is - failures verbatim.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
