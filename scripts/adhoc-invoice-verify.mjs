@@ -281,20 +281,67 @@ equals(
   ).out,
   "0"
 );
-// All three (select, insert, update). An INSERT policy has no USING clause at
-// all, so qual is null for it and with_check carries the predicate; checking
-// only one column would silently under-count and read as a pass.
-equals(
-  "all three invoice policies are still scoped by account_id alone",
-  psql(
+// EVERY policy on pilot.invoices is scoped by account_id — asserted as a
+// comparison against the live policy count, not against a hardcoded number.
+//
+// This used to read "all three ... expected 3", and 20260820100000 added a
+// fourth (invoices_delete) without updating it, so the suite failed over a
+// policy that is in fact correctly scoped. Deriving both sides means the
+// assertion keeps testing what it is actually for — that no policy on this
+// table escapes tenant scoping — instead of needing a hand-bump every time
+// a policy is added, which is how a control quietly stops controlling
+// anything.
+//
+// An INSERT policy has no USING clause at all, so qual is null for it and
+// with_check carries the predicate; checking only one column would silently
+// under-count and read as a pass.
+// Deriving both sides removes one failure mode and introduces two, so both
+// are closed before the comparison runs. `psql()` returns out:"" on ANY
+// error, so a typo or a dead connection would otherwise compare "" to "" and
+// read as a pass; and a migration that dropped every policy without adding
+// one back would compare 0 to 0 and do the same. Either would be this file's
+// own header sin (":15-23", "Treating 'no rows' as proof"), so the count is
+// asserted present and non-zero first, and only then compared.
+{
+  const scopedR = psql(
     DB_URL(),
     `select count(*) from pg_policies
       where schemaname = 'pilot' and tablename = 'invoices'
         and (coalesce(qual, '') like '%current_account_ids%'
              or coalesce(with_check, '') like '%current_account_ids%');`
-  ).out,
-  "3"
-);
+  );
+  const totalR = psql(
+    DB_URL(),
+    `select count(*) from pg_policies
+      where schemaname = 'pilot' and tablename = 'invoices';`
+  );
+
+  if (!scopedR.ok || !totalR.ok) {
+    bad(
+      "invoice policy scoping could not be read",
+      `psql failed, so this assertion proved nothing: ${
+        (scopedR.stderr ?? totalR.stderr ?? "").slice(0, 300)
+      }`
+    );
+  } else {
+    const total = String(totalR.out).trim();
+    const scoped = String(scopedR.out).trim();
+    // pilot.invoices has carried policies since 20260805090000. Zero here
+    // means they were dropped, not that they are all scoped.
+    if (!/^[0-9]+$/.test(total) || Number(total) === 0) {
+      bad(
+        "invoice policy scoping could not be read",
+        `expected at least one policy on pilot.invoices, got ${JSON.stringify(total)}`
+      );
+    } else {
+      equals(
+        `every invoice policy is still scoped by account_id alone (${total} on the table)`,
+        scoped,
+        total
+      );
+    }
+  }
+}
 
 note("\nThe check constraint: exactly one bill-to source, never zero\n");
 

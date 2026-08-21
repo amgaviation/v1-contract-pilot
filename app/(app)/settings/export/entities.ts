@@ -1203,6 +1203,7 @@ export type OperatorQualificationExportRow = Pick<
   Tables["operator_qualifications"]["Row"],
   | "id"
   | "client_id"
+  | "operator_name"
   | "completed_on"
   | "expires_on"
   | "type_designator"
@@ -1239,7 +1240,18 @@ export function operatorQualificationValues(
   lookups: Lookups
 ): CsvValue[] {
   return [
-    clientName(lookups, row.client_id),
+    // WHO THIS WAS HELD UNDER. A qualification whose client was purged by the
+    // account lifecycle keeps the row and clears client_id
+    // (20260821120000_operator_qualifications_purge_safe.sql), so the live
+    // lookup returns nothing for it — but the row itself still carries the
+    // operator's name, which is the entire reason that column exists. Falling
+    // back to it means a detached row exports as the operator it was recorded
+    // under rather than as a blank. For an attached row the two are identical
+    // (a database trigger keeps operator_name equal to pilot.clients.name,
+    // rename included), so this changes nothing for the normal case. The
+    // Client ID column below stays blank for a detached row, which is the
+    // honest answer to "which client row is this" — there isn't one any more.
+    row.client_id ? clientName(lookups, row.client_id) : row.operator_name,
     OPERATOR_QUALIFICATION_REQUIREMENT_LABEL[row.requirement] ?? row.requirement,
     row.type_designator,
     OPERATOR_QUALIFICATION_STATUS_LABEL[row.status] ?? row.status,
@@ -1942,7 +1954,7 @@ export const EXPORT_ENTITIES: Record<string, EntitySpec> = {
     key: "operator-qualifications",
     table: "operator_qualifications",
     select:
-      "id, client_id, requirement, completed_on, status, expires_on, type_designator, notes, document_id, created_at",
+      "id, client_id, operator_name, requirement, completed_on, status, expires_on, type_designator, notes, document_id, created_at",
     orderBy: [
       { column: "created_at", ascending: true },
       { column: "id", ascending: true },

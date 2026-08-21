@@ -68,6 +68,12 @@ const TL = "00000000-0000-0000-0000-000000007112"; // A's trip leg (PURGED)
 const CL2 = "00000000-0000-0000-0000-00000000c222";
 const TR2 = "00000000-0000-0000-0000-000000007221";
 const TL2 = "00000000-0000-0000-0000-000000007222";
+// The operator qualifications that must OUTLIVE their operator (20260821120000).
+// One per path, same reason as the documents above: an unlinked qualification
+// survives any FK declaration, so a fixture that never cites a purged client
+// asserts nothing about the CASCADE this migration removed.
+const OQ = "00000000-0000-0000-0000-000000009111";
+const OQ2 = "00000000-0000-0000-0000-000000009222";
 
 const sql = `
 begin;
@@ -127,6 +133,62 @@ values ('${A}', '${UA}', 'trip', '2026-03-04', 2.4, 'PIC', '${TR}', '${TL}');
 insert into pilot.documents (account_id, kind, label, client_id)
 values ('${A}', 'insurance', 'Certificate of insurance', '${CL}');
 insert into pilot.aircraft (account_id, tail_number) values ('${A}', 'N412SP');
+
+-- A client-linked OPERATOR QUALIFICATION. pilot.operator_qualifications is
+-- RETAINED; pilot.clients is PURGED. Until 20260821120000 this FK was
+-- ON DELETE CASCADE over a NOT NULL client_id, so a lapsed billing hold
+-- destroyed a pilot's entire Part 135 qualification history — the same defect
+-- pilot.documents carried, and the one BOUNDARY-1 carried as a named exemption
+-- until the denormalized operator_name made SET NULL possible.
+-- ipc_135_297 deliberately: it is one of the four requirement kinds whose
+-- expires_on is DERIVED by pilot.compute_operator_qualification_expiry(), so
+-- the assertions below can also prove that detaching the row (and renaming the
+-- client) never perturbs that derivation.
+insert into pilot.operator_qualifications
+  (id, account_id, client_id, requirement, type_designator, status, completed_on)
+values ('${OQ}', '${A}', '${CL}', 'ipc_135_297', 'CE-560XL', 'current', '2026-01-15');
+
+-- QUAL-RENAME: the denormalized name is MAINTAINED, not merely snapshotted at
+-- insert. This is the property that makes operator_name trustworthy at purge
+-- time — the purge runs from a cron with no session, long after any rename,
+-- and a stale name would be engraved permanently.
+--
+-- It doubles as the proof that writing operator_name cannot perturb expires_on:
+-- pilot.propagate_client_name_to_qualifications() issues a real UPDATE against
+-- this table, which re-fires pilot.compute_operator_qualification_expiry();
+-- that function's H1 idempotency gate (old.completed_on is not distinct from
+-- new.completed_on) must copy expires_on through unchanged rather than
+-- re-running the 135.301(a) early/late comparison against its own prior output.
+do $$
+declare before_expiry date; after_expiry date; nm text;
+begin
+  select expires_on, operator_name into before_expiry, nm
+    from pilot.operator_qualifications where id = '${OQ}';
+  if nm <> 'Northlight Air Partners' then
+    raise exception 'QUAL-RENAME FAILURE: operator_name was not resolved on INSERT (got %)', nm;
+  end if;
+  if before_expiry is distinct from date '2026-07-31' then
+    raise exception 'QUAL-RENAME FAILURE: the 135.297 derivation did not run on INSERT (expires_on=%, expected 2026-07-31)', before_expiry;
+  end if;
+
+  update pilot.clients set name = 'Northlight Air Partners LLC' where id = '${CL}';
+
+  select expires_on, operator_name into after_expiry, nm
+    from pilot.operator_qualifications where id = '${OQ}';
+  if nm <> 'Northlight Air Partners LLC' then
+    raise exception 'QUAL-RENAME FAILURE: a client rename did not reach operator_name (got %)', nm;
+  end if;
+  if after_expiry is distinct from before_expiry then
+    raise exception
+      'QUAL-RENAME FAILURE: writing operator_name moved expires_on (% -> %). The H1 idempotency gate in pilot.compute_operator_qualification_expiry() is not holding for this path.',
+      before_expiry, after_expiry;
+  end if;
+  raise notice 'PASS (QUAL-RENAME): a client rename reaches operator_name, and expires_on is untouched by it';
+
+  -- Put the name back, so the detached-row assertions below read the value a
+  -- reader of the fixtures above would expect.
+  update pilot.clients set name = 'Northlight Air Partners' where id = '${CL}';
+end $$;
 
 -- The number sequence is seeded by trigger on account insert; prove it is
 -- there before anything runs, so "it survived" is a real observation.
@@ -239,7 +301,7 @@ end $$;
 do $$
 declare
   clients_left int; logbook_left int; docs_left int; aircraft_left int; seq_left int;
-  orphaned_ok int;
+  orphaned_ok int; quals_left int;
 begin
   set local role authenticated;
   perform set_config('request.jwt.claims', '{"sub":"${UA}"}', true);
@@ -251,6 +313,7 @@ begin
   select count(*) into docs_left     from pilot.documents          where account_id = '${A}';
   select count(*) into aircraft_left from pilot.aircraft           where account_id = '${A}';
   select count(*) into seq_left      from pilot.invoice_number_sequences where account_id = '${A}';
+  select count(*) into quals_left    from pilot.operator_qualifications where account_id = '${A}';
 
   if clients_left <> 0 then
     raise exception 'PURGE-1 FAILURE: the purge did not delete business records (clients=%)', clients_left;
@@ -258,12 +321,12 @@ begin
   raise notice 'PASS (PURGE-1): the owner''s purge deleted the commercial records';
 
   -- THE ONE THAT MATTERS. A billing event may not destroy an airman record.
-  if logbook_left <> 1 or docs_left <> 1 or aircraft_left <> 1 then
+  if logbook_left <> 1 or docs_left <> 1 or aircraft_left <> 1 or quals_left <> 1 then
     raise exception
-      'PURGE-2 FAILURE: a hold expiry destroyed airman records (logbook=%, documents=%, aircraft=%)',
-      logbook_left, docs_left, aircraft_left;
+      'PURGE-2 FAILURE: a hold expiry destroyed airman records (logbook=%, documents=%, aircraft=%, operator_qualifications=%)',
+      logbook_left, docs_left, aircraft_left, quals_left;
   end if;
-  raise notice 'PASS (PURGE-2): logbook, documents and aircraft survived the purge — a billing event cannot destroy a 14 CFR 61.51 record';
+  raise notice 'PASS (PURGE-2): logbook, documents, aircraft and operator qualifications survived the purge — a billing event cannot destroy a 14 CFR 61.51 record or a Part 135 qualification history';
 
   -- PURGE-2b: they survived DETACHED, not mangled. The links to the purged
   -- rows must be null and account_id must still be the account's — the
@@ -289,6 +352,28 @@ begin
       orphaned_ok;
   end if;
   raise notice 'PASS (PURGE-2c): the client-linked document outlived its client with account_id intact and client_id cleared';
+
+  -- PURGE-2d: the same three properties for the operator qualification, PLUS
+  -- the one that is specific to it — the operator is still NAMED. A detached
+  -- qualification that cannot say whose certificate it was held under is
+  -- worthless, which is the entire reason operator_name exists; asserting only
+  -- "the row survived" would pass against a schema that kept an anonymous
+  -- husk. expires_on is checked too: neither the detach nor the operator_name
+  -- write may disturb the 135.297 derivation.
+  select count(*) into orphaned_ok from pilot.operator_qualifications
+   where id = '${OQ}'
+     and account_id = '${A}'
+     and client_id is null
+     and operator_name = 'Northlight Air Partners'
+     and expires_on = date '2026-07-31';
+  if orphaned_ok <> 1 then
+    raise exception
+      'PURGE-2d FAILURE: the operator qualification did not outlive its operator intact, detached and still attributable (matching rows=%). Row now: %',
+      orphaned_ok,
+      (select row(account_id, client_id, operator_name, expires_on)::text
+         from pilot.operator_qualifications where id = '${OQ}');
+  end if;
+  raise notice 'PASS (PURGE-2d): the operator qualification outlived its purged operator — account_id intact, client_id cleared, operator_name still readable, expires_on unmoved';
 
   if seq_left <> 1 then
     raise exception 'PURGE-3 FAILURE: the invoice number sequence was destroyed; a future invoice could re-mint an issued number';
@@ -527,7 +612,7 @@ end $$;
 -- pre-grant schema it fails loudly with an unhandled 42501 instead of
 -- silently purging nothing (the exact production symptom).
 do $$
-declare clients_left int; logbook_left int; docs_left int; still_held timestamptz; detached_ok int;
+declare clients_left int; logbook_left int; docs_left int; still_held timestamptz; detached_ok int; quals_left int;
 begin
   -- Linked across the retain/delete boundary, exactly as the PART 1 fixtures
   -- are and for the same reason: an unlinked document survives any FK
@@ -544,6 +629,9 @@ begin
   values ('${A}', '${UA}', 'trip', '2026-04-01', 1.8, 'PIC', '${TR2}', '${TL2}');
   insert into pilot.documents (account_id, kind, label, client_id)
   values ('${A}', 'passport', 'Passport', '${CL2}');
+  insert into pilot.operator_qualifications
+    (id, account_id, client_id, requirement, type_designator, status, completed_on)
+  values ('${OQ2}', '${A}', '${CL2}', 'ipc_135_297', 'CE-680', 'current', '2026-02-10');
 
   update pilot.accounts
      set hold_started_at      = now() - interval '40 days',
@@ -558,6 +646,7 @@ begin
   select count(*) into clients_left from pilot.clients         where account_id = '${A}';
   select count(*) into logbook_left from pilot.logbook_entries where account_id = '${A}';
   select count(*) into docs_left    from pilot.documents       where account_id = '${A}';
+  select count(*) into quals_left  from pilot.operator_qualifications where account_id = '${A}';
   select hold_started_at into still_held from pilot.accounts   where id = '${A}';
 
   if clients_left <> 0 then
@@ -565,12 +654,12 @@ begin
   end if;
   raise notice 'PASS (HOLD-9): an expired, unpaid hold purged the commercial records';
 
-  if logbook_left <> 1 or docs_left <> 1 then
+  if logbook_left <> 1 or docs_left <> 1 or quals_left <> 1 then
     raise exception
-      'HOLD-10 FAILURE: hold expiry destroyed airman records (logbook=%, documents=%)',
-      logbook_left, docs_left;
+      'HOLD-10 FAILURE: hold expiry destroyed airman records (logbook=%, documents=%, operator_qualifications=%)',
+      logbook_left, docs_left, quals_left;
   end if;
-  raise notice 'PASS (HOLD-10): the logbook and documents survived the expiry — the promise holds on the automated path too';
+  raise notice 'PASS (HOLD-10): the logbook, documents and operator qualifications survived the expiry — the promise holds on the automated path too';
 
   -- And survived DETACHED with account_id intact, on the automated path too.
   select count(*) into detached_ok from pilot.logbook_entries
@@ -587,7 +676,23 @@ begin
       'HOLD-10c FAILURE: the client-linked document did not survive the automated expiry detached (matching rows=%)',
       detached_ok;
   end if;
-  raise notice 'PASS (HOLD-10b/c): both retained rows kept their account_id and cleared only the link to the purged parent';
+  -- HOLD-10d: and the qualification, on the AUTOMATED path — the one that
+  -- actually runs in production, with no session and no owner. Same four
+  -- properties as PURGE-2d, including that the operator is still named.
+  select count(*) into detached_ok from pilot.operator_qualifications
+   where id = '${OQ2}'
+     and account_id = '${A}'
+     and client_id is null
+     and operator_name = 'Held Client Co'
+     and expires_on = date '2026-08-31';
+  if detached_ok <> 1 then
+    raise exception
+      'HOLD-10d FAILURE: the operator qualification did not survive the automated expiry detached and attributable (matching rows=%). Row now: %',
+      detached_ok,
+      (select row(account_id, client_id, operator_name, expires_on)::text
+         from pilot.operator_qualifications where id = '${OQ2}');
+  end if;
+  raise notice 'PASS (HOLD-10b/c/d): all three retained rows kept their account_id and cleared only the link to the purged parent, and the qualification still names its operator';
 
   if still_held is not null then
     raise exception 'HOLD-11 FAILURE: the hold was not cleared, so the next pass would purge again';
@@ -767,18 +872,14 @@ begin
          -- and must die with it — leaving a working token pointing at a
          -- deleted client would be the worse outcome. The DOCUMENTS the
          -- share exposes are untouched; only the link goes.
-         'document_shares_account_id_client_id_fkey',
-         -- pilot.operator_qualifications.client_id is NOT NULL and CASCADE
-         -- here is a REAL, UNFIXED BUG — a lapsed hold destroys operator
-         -- qualifications that 20260818090000:105-106 and
-         -- 20260818200000:140-146 both promise are spared. SET NULL is
-         -- unavailable: the column's own comment holds that a qualification
-         -- with no operator is a contradiction in terms. Resolving it means
-         -- deciding whether such a row is purged with the client or kept
-         -- detached, which is a PRODUCT DECISION the owner has not made.
-         -- Exempted so the rest of the boundary is enforced today, and
-         -- named loudly below so it cannot be forgotten. STILL OPEN.
-         'operator_qualifications_account_id_client_id_fkey'
+         'document_shares_account_id_client_id_fkey'
+         -- pilot.operator_qualifications.client_id WAS the second exemption
+         -- here and is not one any more. 20260821120000 denormalized the
+         -- operator's name onto the row (operator_name, non-blank on every
+         -- row), which made client_id safe to nullify and the FK safe to
+         -- declare ON DELETE SET NULL (client_id) like every other crossing.
+         -- The guard enforces it now; PURGE-2d and HOLD-10d above prove the
+         -- runtime behaviour the declaration promises.
        )
   ) as bad;
 
@@ -796,7 +897,7 @@ begin
     'PASS (BOUNDARY-1): % table(s) purged; % FK(s) cross the retain/delete boundary, and every one not named as an exemption is SET NULL (<col>) with an explicit column list',
     cardinality(purged), n_checked;
   raise notice
-    'NOTE (BOUNDARY-1): 2 named exemptions — document_shares.client_id (CASCADE is correct: a bearer token cannot outlive its subject) and operator_qualifications.client_id (STILL OPEN: a purge destroys retained qualifications; needs a product decision, SET NULL is unavailable on a NOT NULL column)';
+    'NOTE (BOUNDARY-1): 1 named exemption — document_shares.client_id (CASCADE is correct: a bearer token cannot outlive its subject). operator_qualifications.client_id was the second until 20260821120000 gave the row a denormalized operator_name; it is now enforced like every other crossing.';
 end $$;
 
 

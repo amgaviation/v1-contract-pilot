@@ -1769,12 +1769,27 @@ export type Database = {
       // line_check_135_299 only, including the 135.301(a) one-month-
       // early/one-month-late provision; every other requirement kind
       // leaves it as whatever was submitted (nullable, pilot-entered).
+      //
+      // 20260821120000_operator_qualifications_purge_safe.sql: client_id
+      // is NULLABLE and operator_name exists. Null client_id is a real,
+      // terminal state — the account-lifecycle purge deleted the client
+      // and left this row behind as archived history (the FK is now
+      // ON DELETE SET NULL (client_id), not CASCADE). operator_name is
+      // the denormalized operator name that keeps such a row
+      // attributable; it is DERIVED by two database triggers and appears
+      // on Row only — never on Insert or Update, because `authenticated`
+      // holds no column grant to write it.
       // -----------------------------------------------------------------
       operator_qualifications: {
         Row: {
           id: string;
           account_id: string;
-          client_id: string;
+          // Nullable since 20260821120000: null means the operator was
+          // purged and this row is detached, read-only history.
+          client_id: string | null;
+          // Denormalized pilot.clients.name, non-blank on every row.
+          // Trigger-owned; read-only from the app's point of view.
+          operator_name: string;
           requirement:
             | "basic_indoc"
             | "initial_training"
@@ -1819,10 +1834,14 @@ export type Database = {
           notes?: string | null;
           document_id?: string | null;
         };
-        // client_id/requirement/type_designator are NOT updatable — the
-        // three together identify the row (unique(account_id, client_id,
-        // requirement, type_designator)); re-pointing any of them is a
-        // delete-and-insert, matching client_rates/guarantee_periods.
+        // client_id/requirement are NOT updatable — with type_designator
+        // they identify the row (20260807110000's two partial unique
+        // indexes); re-pointing any of them is a delete-and-insert,
+        // matching client_rates/guarantee_periods. client_id staying out
+        // of this list is also what makes a detached row (client_id null,
+        // 20260821120000) permanently read-only: nothing can re-attach
+        // it. operator_name is absent for the same reason — the database
+        // owns it.
         Update: {
           completed_on?: string | null;
           status?: "not_started" | "in_progress" | "current" | "lapsed" | "n_a";

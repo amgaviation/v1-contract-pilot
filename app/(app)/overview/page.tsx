@@ -166,7 +166,15 @@ type ExpirationRow = {
 // attention" comment below), so a second lookup resolves it.
 type OperatorQualClientRow = {
   id: string;
-  client_id: string;
+  // Nullable since 20260821120000: a qualification whose operator was purged
+  // by the account lifecycle keeps the row and clears client_id. Such a row
+  // is excluded from pilot.expirations entirely (the view's operator-
+  // qualification branches require client_id is not null — archived history
+  // must not raise a permanent "overdue" for an operator the pilot no longer
+  // flies for), so it should never reach this lookup; typing it honestly
+  // means the "no client id, no link" guard below is a real check rather than
+  // a formality the compiler thinks is dead.
+  client_id: string | null;
 };
 
 /** Ordered ICAO chain from a trip's legs, e.g. "KFXE → KTEB → KFXE". */
@@ -935,10 +943,13 @@ export default async function OverviewPage() {
   // item_label already reads "<operator name> — <requirement>[ (type)]"
   // (pilot.expirations' own union, 20260807060000), so no separate
   // client-name join is needed for the label — only for the href, via
-  // operatorQualClientId resolved in Phase 2. A row whose client lookup
-  // came back empty (shouldn't happen — the FK is NOT NULL — but a
-  // partial/truncated read is still possible) is dropped rather than
-  // linked to nothing.
+  // operatorQualClientId resolved in Phase 2. A row with no client id is
+  // dropped rather than linked to nothing. Two ways that can happen: a
+  // partial/truncated read, or a qualification detached by the lifecycle
+  // purge (client_id null, 20260821120000). The second cannot actually reach
+  // here — pilot.expirations excludes detached rows — but the guard is what
+  // makes that a belt-and-braces rather than an assumption, and "Open client"
+  // has no client to open either way.
   const operatorQualItemsAll = operatorQualExpirations.flatMap((row) => {
     const clientId = operatorQualClientId.get(row.source_id);
     if (!clientId) return [];
