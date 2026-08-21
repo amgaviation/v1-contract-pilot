@@ -25,6 +25,8 @@ import { friendlyDbError } from "@/lib/db-errors";
 // the unbilled queue and the needs-attention list below.
 import { billToListLabel } from "@/lib/invoice-bill-to";
 import { isInvoicedCounterparty } from "@/lib/counterparty";
+import { fetchMetar } from "@/lib/weather/metar";
+import { WeatherCard } from "./weather-card";
 import { EXPIRY_LADDER_BADGE, type ExpiryBadge, type ExpiryTone } from "../documents/expiry-badge";
 import {
   clientLabel,
@@ -263,6 +265,7 @@ export default async function OverviewPage() {
     anyTripCountRes,
     anyInvoiceCountRes,
     reminderFailuresRes,
+    metarResult,
   ] = await Promise.all([
     // ---------------------------------------------------------------
     // THE UNBILLED SURFACE — three reads, ONE definition.
@@ -460,6 +463,13 @@ export default async function OverviewPage() {
       .in("outcome", ["failed", "unknown"])
       .order("created_at", { ascending: false })
       .limit(10),
+    // WEATHER — deliberately NOT pushed onto the `errors` array below. A
+    // NOAA outage is its own, self-contained failure state (see
+    // weather-card.tsx's error branches); joining `errors` would hide
+    // unrelated invoicing data behind a weather API hiccup, which is the
+    // opposite of what that array exists to do. null when there's no home
+    // base to look up — the card shows its own "no home base set" state.
+    account.home_base ? fetchMetar(account.home_base) : Promise.resolve(null),
   ]);
 
   const unbilledSummary =
@@ -1392,6 +1402,8 @@ export default async function OverviewPage() {
           </span>
         </LAlert>
       ) : null}
+
+      <WeatherCard homeBase={account.home_base} initial={metarResult} />
 
       {/* Row 1 — the money, in two named groups rather than one flat row
           of four identical cards. See KPI_GROUPS above for the reasoning;

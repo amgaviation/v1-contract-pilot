@@ -59,6 +59,7 @@ test("safety records and the working core are never gated", () => {
     "expenses",
     "clients",
     "reports_core",
+    "weather",
   ];
   for (const feature of everyTier) {
     assert.equal(
