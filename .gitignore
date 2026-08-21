@@ -60,3 +60,6 @@ next-env.d.ts.bak
 # .next/ and now no next-env.d.ts. If some future change makes Next's ambient
 # types load-bearing for tsc, that job fails immediately rather than quietly.
 next-env.d.ts
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
