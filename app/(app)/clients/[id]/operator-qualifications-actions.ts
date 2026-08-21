@@ -264,10 +264,13 @@ export async function deleteOperatorQualification(
  *
  * THE SEQUENCE THIS EXISTS FOR. A contract pilot completes basic indoc for
  * an operator weeks before flying for them, and sometimes for one that
- * never sends a trip at all. pilot.operator_qualifications.client_id is
- * `not null` and correctly so (a qualification is held under a specific
- * operator's certificate), so recording that indoc has always needed a
- * pilot.clients row to point at. What was wrong was the ROUTE to one:
+ * never sends a trip at all. Every qualification a pilot CREATES is held
+ * under a specific operator's certificate, so recording that indoc needs a
+ * pilot.clients row to point at. (pilot.operator_qualifications.client_id is
+ * nullable as of 20260821120000, but only as the terminal state of a
+ * lifecycle purge — the row is detached, read-only history and this action
+ * can never produce one: client_id is required on every insert here and is
+ * not in the UPDATE grant at all.) What was wrong was the ROUTE to one:
  * leave this screen, go to Clients, fill in a billing form with rates,
  * payment terms, a W-9 status and a chase schedule, then come back. Every
  * one of those fields is a question about billing somebody the pilot is

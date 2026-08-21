@@ -50,6 +50,10 @@ const RETAINED = {
   documents: "Medical, certificates, passport, insurance. Airman records.",
   document_shares: "Revocable client links to kept documents.",
   document_share_items: "Which kept documents a share exposes.",
+  // True as of 20260821120000, not merely aspirational: the FK to
+  // pilot.clients is ON DELETE SET NULL (client_id) and the row carries a
+  // denormalized operator_name, so a purge leaves the qualification in place,
+  // detached and still naming the operator it was held under.
   operator_qualifications: "Standing under an operator's 135 certificate.",
   currency_snapshots: "Computed from the kept logbook.",
 

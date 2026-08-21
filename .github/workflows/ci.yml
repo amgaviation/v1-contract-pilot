@@ -331,6 +331,7 @@ jobs:
           CURRENCY_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
           ACCOUNTING_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
           REMINDERS_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
+          ADHOC_INVOICE_VERIFY_BOOTSTRAP: scripts/lib/verify-bootstrap.sql
         run: |
           set -euo pipefail
           npm run aircraft:verify
@@ -341,3 +342,9 @@ jobs:
           npm run currency:verify
           npm run accounting:verify
           npm run reminders:verify
+          # This one ran in `npm run verify:all` but NOT here, so when
+          # 20260820100000 added a fourth pilot.invoices policy and left this
+          # suite's hardcoded "expected 3" behind, CI stayed green while the
+          # gate CLAUDE.md calls mandatory was red on main. Every suite
+          # verify:all runs must run here too, or the two disagree in silence.
+          npm run adhoc-invoice:verify
