@@ -55,6 +55,20 @@ const UA = "00000000-0000-0000-0000-0000000aa777"; // owner of A
 const UM = "00000000-0000-0000-0000-0000000mm777".replace(/m/g, "d"); // member of A
 const UB = "00000000-0000-0000-0000-0000000bb777"; // owner of B
 
+// Fixed ids for the rows that must LINK ACROSS the retain/delete boundary.
+// Fixtures that do not link prove nothing: this file passed for weeks over a
+// schema where pilot.documents cascade-deleted off pilot.clients and a trip
+// delete aborted on pilot.logbook_entries, purely because nothing here ever
+// set documents.client_id or logbook_entries.trip_id. See PART 6.
+const CL = "00000000-0000-0000-0000-00000000c111"; // A's client (PURGED)
+const TR = "00000000-0000-0000-0000-000000007111"; // A's trip (PURGED)
+const TL = "00000000-0000-0000-0000-000000007112"; // A's trip leg (PURGED)
+// The same three again for the AUTOMATED (expire_hold) path in PART 4b, which
+// runs after PART 3's reset has cleared the first set.
+const CL2 = "00000000-0000-0000-0000-00000000c222";
+const TR2 = "00000000-0000-0000-0000-000000007221";
+const TL2 = "00000000-0000-0000-0000-000000007222";
+
 const sql = `
 begin;
 
@@ -83,12 +97,35 @@ values ('${A}', '${UA}', 'owner'),
        ('${A}', '${UM}', 'member'),
        ('${B}', '${UB}', 'owner');
 
--- One row in a PURGED table, and one in each of three RETAINED ones.
-insert into pilot.clients (account_id, name) values ('${A}', 'Northlight Air Partners');
-insert into pilot.logbook_entries (account_id, airman_user_id, source, entry_date, total_time, role)
-values ('${A}', '${UA}', 'manual', '2026-03-04', 2.4, 'PIC');
-insert into pilot.documents (account_id, kind, label)
-values ('${A}', 'medical', 'First-class medical');
+-- Rows in PURGED tables, and rows in each of three RETAINED ones — WITH THE
+-- LINKS BETWEEN THEM SET. The linking is the point. A retained row that
+-- points at nothing survives a purge no matter how its foreign keys are
+-- declared, so unlinked fixtures make PURGE-2 and HOLD-10 assert nothing at
+-- all: this file was green for weeks against a schema where a lapsed hold
+-- cascade-deleted every client-linked document and where the purge's
+-- 'delete from pilot.trips' aborted outright on a trip-derived logbook
+-- entry. Both bugs are invisible to a fixture that never crosses the
+-- boundary. Every retained fixture below therefore cites a purged parent.
+insert into pilot.clients (id, account_id, name)
+values ('${CL}', '${A}', 'Northlight Air Partners');
+
+insert into pilot.trips (id, account_id, client_id, starts_on, ends_on)
+values ('${TR}', '${A}', '${CL}', '2026-03-03', '2026-03-04');
+insert into pilot.trip_legs (id, account_id, trip_id, leg_date)
+values ('${TL}', '${A}', '${TR}', '2026-03-04');
+
+-- The trip-derived logbook entry — source 'trip', citing BOTH the trip and
+-- the leg it was confirmed from. This is the confirm-from-leg flow, and it
+-- is the row that made purge_business_data_rows raise 23502 forever.
+insert into pilot.logbook_entries
+  (account_id, airman_user_id, source, entry_date, total_time, role, trip_id, trip_leg_id)
+values ('${A}', '${UA}', 'trip', '2026-03-04', 2.4, 'PIC', '${TR}', '${TL}');
+
+-- A client-linked document. pilot.documents is RETAINED; pilot.clients is
+-- PURGED. Under the old ON DELETE CASCADE this row was destroyed by a
+-- billing event, which is the thing three migrations promise cannot happen.
+insert into pilot.documents (account_id, kind, label, client_id)
+values ('${A}', 'insurance', 'Certificate of insurance', '${CL}');
 insert into pilot.aircraft (account_id, tail_number) values ('${A}', 'N412SP');
 
 -- The number sequence is seeded by trigger on account insert; prove it is
@@ -202,6 +239,7 @@ end $$;
 do $$
 declare
   clients_left int; logbook_left int; docs_left int; aircraft_left int; seq_left int;
+  orphaned_ok int;
 begin
   set local role authenticated;
   perform set_config('request.jwt.claims', '{"sub":"${UA}"}', true);
@@ -226,6 +264,31 @@ begin
       logbook_left, docs_left, aircraft_left;
   end if;
   raise notice 'PASS (PURGE-2): logbook, documents and aircraft survived the purge — a billing event cannot destroy a 14 CFR 61.51 record';
+
+  -- PURGE-2b: they survived DETACHED, not mangled. The links to the purged
+  -- rows must be null and account_id must still be the account's — the
+  -- specific thing a bare composite ON DELETE SET NULL gets wrong, and the
+  -- reason every such constraint in this schema now carries a column list.
+  -- (A bare form would not reach here at all: it raises 23502 and aborts the
+  -- purge. This asserts the end state anyway, because a future edit could
+  -- restore the abort or, worse, re-point account_id.)
+  select count(*) into orphaned_ok from pilot.logbook_entries
+   where account_id = '${A}' and trip_id is null and trip_leg_id is null;
+  if orphaned_ok <> 1 then
+    raise exception
+      'PURGE-2b FAILURE: the trip-derived logbook entry did not survive detached (matching rows=%)',
+      orphaned_ok;
+  end if;
+  raise notice 'PASS (PURGE-2b): the trip-derived entry outlived its trip with account_id intact and trip_id/trip_leg_id cleared';
+
+  select count(*) into orphaned_ok from pilot.documents
+   where account_id = '${A}' and client_id is null;
+  if orphaned_ok <> 1 then
+    raise exception
+      'PURGE-2c FAILURE: the client-linked document was destroyed or kept a dangling client (matching rows=%)',
+      orphaned_ok;
+  end if;
+  raise notice 'PASS (PURGE-2c): the client-linked document outlived its client with account_id intact and client_id cleared';
 
   if seq_left <> 1 then
     raise exception 'PURGE-3 FAILURE: the invoice number sequence was destroyed; a future invoice could re-mint an issued number';
@@ -408,7 +471,7 @@ end $$;
 do $$
 declare clients_left int;
 begin
-  insert into pilot.clients (account_id, name) values ('${A}', 'Held Client Co');
+  insert into pilot.clients (id, account_id, name) values ('${CL2}', '${A}', 'Held Client Co');
 
   set local role service_role;
   begin
@@ -464,11 +527,23 @@ end $$;
 -- pre-grant schema it fails loudly with an unhandled 42501 instead of
 -- silently purging nothing (the exact production symptom).
 do $$
-declare clients_left int; logbook_left int; docs_left int; still_held timestamptz;
+declare clients_left int; logbook_left int; docs_left int; still_held timestamptz; detached_ok int;
 begin
-  insert into pilot.logbook_entries (account_id, airman_user_id, source, entry_date, total_time, role)
-  values ('${A}', '${UA}', 'manual', '2026-04-01', 1.8, 'PIC');
-  insert into pilot.documents (account_id, kind, label) values ('${A}', 'passport', 'Passport');
+  -- Linked across the retain/delete boundary, exactly as the PART 1 fixtures
+  -- are and for the same reason: an unlinked document survives any FK
+  -- declaration, so HOLD-10 would assert nothing. This is the AUTOMATED
+  -- path — no session, no owner — which is the one that actually runs in
+  -- production, so it gets the same trip-derived entry and client-linked
+  -- document rather than free-floating rows.
+  insert into pilot.trips (id, account_id, client_id, starts_on, ends_on)
+  values ('${TR2}', '${A}', '${CL2}', '2026-03-31', '2026-04-01');
+  insert into pilot.trip_legs (id, account_id, trip_id, leg_date)
+  values ('${TL2}', '${A}', '${TR2}', '2026-04-01');
+  insert into pilot.logbook_entries
+    (account_id, airman_user_id, source, entry_date, total_time, role, trip_id, trip_leg_id)
+  values ('${A}', '${UA}', 'trip', '2026-04-01', 1.8, 'PIC', '${TR2}', '${TL2}');
+  insert into pilot.documents (account_id, kind, label, client_id)
+  values ('${A}', 'passport', 'Passport', '${CL2}');
 
   update pilot.accounts
      set hold_started_at      = now() - interval '40 days',
@@ -496,6 +571,23 @@ begin
       logbook_left, docs_left;
   end if;
   raise notice 'PASS (HOLD-10): the logbook and documents survived the expiry — the promise holds on the automated path too';
+
+  -- And survived DETACHED with account_id intact, on the automated path too.
+  select count(*) into detached_ok from pilot.logbook_entries
+   where account_id = '${A}' and trip_id is null and trip_leg_id is null;
+  if detached_ok <> 1 then
+    raise exception
+      'HOLD-10b FAILURE: the trip-derived entry did not survive the automated expiry detached (matching rows=%)',
+      detached_ok;
+  end if;
+  select count(*) into detached_ok from pilot.documents
+   where account_id = '${A}' and client_id is null;
+  if detached_ok <> 1 then
+    raise exception
+      'HOLD-10c FAILURE: the client-linked document did not survive the automated expiry detached (matching rows=%)',
+      detached_ok;
+  end if;
+  raise notice 'PASS (HOLD-10b/c): both retained rows kept their account_id and cleared only the link to the purged parent';
 
   if still_held is not null then
     raise exception 'HOLD-11 FAILURE: the hold was not cleared, so the next pass would purge again';
@@ -555,6 +647,158 @@ begin
   end if;
   raise notice 'PASS (ISOLATION): the unrelated tenant is untouched';
 end $$;
+
+-- ===========================================================================
+-- PART 6 — THE RETAIN/DELETE BOUNDARY, ASSERTED FROM THE CATALOG.
+--
+-- Everything above this line tests the purge by RUNNING it against fixtures,
+-- which only ever proves the boundary for the rows somebody remembered to
+-- insert. That is exactly how two critical bugs lived here undetected: the
+-- fixtures never linked a retained row to a purged one, so the retained rows
+-- survived for the trivial reason that nothing pointed at anything. The
+-- fixtures are now linked (see the top of this file), but a fixture can only
+-- cover the tables it names, and the schema keeps growing.
+--
+-- So this block asserts the property itself, over the WHOLE catalog, with no
+-- fixtures involved:
+--
+--   NO TABLE ON THE RETAIN LIST MAY HOLD A FOREIGN KEY TO A TABLE ON THE
+--   DELETE LIST UNLESS THAT KEY IS 'on delete set null (<col>)' WITH AN
+--   EXPLICIT COLUMN LIST.
+--
+-- The two ways to get this wrong are the two bugs this file now covers, and
+-- the assertion catches both by construction:
+--
+--   * ON DELETE CASCADE (or SET DEFAULT) — the purge silently DESTROYS a
+--     retained record. pilot.documents.client_id was this, and a lapsed
+--     billing hold deleted every client-linked document while three
+--     migrations promised it could not (fixed by 20260821091000).
+--   * A BARE COMPOSITE ON DELETE SET NULL — Postgres nulls every column of
+--     the referencing key, account_id included, and account_id is NOT NULL
+--     everywhere in this schema, so the purge ABORTS with 23502 and the
+--     account is stuck on a hold that can never expire. This has now shipped
+--     four times (20260810030000, 20260815130000, 20260818230000,
+--     20260821090000). 'confdelsetcols' is how the catalog tells the two
+--     forms apart: null/empty means the bare form.
+--
+--   * RESTRICT / NO ACTION also fails here, and should: it blocks the purge
+--     rather than performing it, which is the same stuck hold with a
+--     different sqlstate (that was 20260818230000's aircraft bug).
+--
+-- THE DELETE LIST IS READ FROM pilot.purge_business_data_rows' OWN SOURCE,
+-- never restated here — a restated list is a second source of truth that
+-- drifts, which is the failure this whole file exists to catch. The retain
+-- list is then simply "every other table in schema pilot", so a new table
+-- needs no edit here to be covered.
+-- ===========================================================================
+
+do $$
+declare
+  purged text[];
+  offenders text;
+  n_checked int;
+begin
+  -- The delete list, parsed out of the function that owns it.
+  select array_agg(distinct m[1]) into purged
+    from pg_proc p,
+         lateral regexp_matches(
+           p.prosrc, 'delete[[:space:]]+from[[:space:]]+pilot[.]([a-z_]+)', 'gi') as m
+   where p.pronamespace = 'pilot'::regnamespace
+     and p.proname = 'purge_business_data_rows';
+
+  -- The failure mode of a completeness check is that it stops finding the
+  -- thing it is completing. An empty parse would make every assertion below
+  -- pass vacuously, so refuse it outright — same guard, same reasoning, as
+  -- scripts/account-lifecycle-verify.mjs' own zero-delete refusal.
+  if purged is null or cardinality(purged) = 0 then
+    raise exception
+      'BOUNDARY-0 FAILURE: parsed ZERO deletes out of pilot.purge_business_data_rows. '
+      'Every boundary assertion below would pass vacuously — the function was probably '
+      'renamed or its body reshaped; fix this parse before trusting anything here.';
+  end if;
+
+  select count(*) into n_checked
+    from pg_constraint c
+    join pg_class child  on child.oid  = c.conrelid
+    join pg_class parent on parent.oid = c.confrelid
+   where c.contype = 'f'
+     and child.relnamespace  = 'pilot'::regnamespace
+     and parent.relnamespace = 'pilot'::regnamespace
+     and parent.relname = any(purged)
+     and not (child.relname = any(purged));
+
+  select string_agg(line, chr(10) order by line) into offenders from (
+    select format(
+             '    %s  —  pilot.%s (%s) -> pilot.%s, on delete %s',
+             c.conname, child.relname,
+             (select string_agg(a.attname, ', ' order by k.ord)
+                from unnest(c.conkey) with ordinality as k(attnum, ord)
+                join pg_attribute a
+                  on a.attrelid = c.conrelid and a.attnum = k.attnum),
+             parent.relname,
+             case c.confdeltype
+               when 'c' then 'cascade (DESTROYS a retained record)'
+               when 'r' then 'restrict (BLOCKS the purge)'
+               when 'a' then 'no action (BLOCKS the purge)'
+               when 'd' then 'set default'
+               when 'n' then 'set null with NO column list (nulls account_id; ABORTS the purge with 23502)'
+               else c.confdeltype::text
+             end) as line
+      from pg_constraint c
+      join pg_class child  on child.oid  = c.conrelid
+      join pg_class parent on parent.oid = c.confrelid
+     where c.contype = 'f'
+       and child.relnamespace  = 'pilot'::regnamespace
+       and parent.relnamespace = 'pilot'::regnamespace
+       -- Parent is PURGED, child is RETAINED: the boundary.
+       and parent.relname = any(purged)
+       and not (child.relname = any(purged))
+       -- The one acceptable shape.
+       and not (c.confdeltype = 'n'
+                and coalesce(cardinality(c.confdelsetcols), 0) > 0)
+       -- ── NAMED EXEMPTIONS. Each one is a decision, not an oversight, and
+       -- each is listed WITH ITS REASON so the next reader can tell the
+       -- difference. Adding a name here is how you say "this crosses the
+       -- boundary on purpose"; leaving one off is how the check works.
+       and c.conname not in (
+         -- pilot.document_shares.client_id is NOT NULL, and CASCADE is the
+         -- RIGHT answer: a packet share is a live bearer token minted FOR
+         -- one client. When that client is purged the link has no subject
+         -- and must die with it — leaving a working token pointing at a
+         -- deleted client would be the worse outcome. The DOCUMENTS the
+         -- share exposes are untouched; only the link goes.
+         'document_shares_account_id_client_id_fkey',
+         -- pilot.operator_qualifications.client_id is NOT NULL and CASCADE
+         -- here is a REAL, UNFIXED BUG — a lapsed hold destroys operator
+         -- qualifications that 20260818090000:105-106 and
+         -- 20260818200000:140-146 both promise are spared. SET NULL is
+         -- unavailable: the column's own comment holds that a qualification
+         -- with no operator is a contradiction in terms. Resolving it means
+         -- deciding whether such a row is purged with the client or kept
+         -- detached, which is a PRODUCT DECISION the owner has not made.
+         -- Exempted so the rest of the boundary is enforced today, and
+         -- named loudly below so it cannot be forgotten. STILL OPEN.
+         'operator_qualifications_account_id_client_id_fkey'
+       )
+  ) as bad;
+
+  if offenders is not null then
+    raise exception 'BOUNDARY-1 FAILURE: foreign key(s) cross the purge''s retain/delete boundary in a shape that either destroys a retained record or aborts the purge:%',
+      chr(10) || offenders || chr(10) ||
+      'Every FK from a RETAINED table to a PURGED one must be ON DELETE SET NULL (<col>) WITH an explicit column list. ' ||
+      'A bare composite SET NULL nulls account_id (NOT NULL) and aborts the purge with 23502; CASCADE destroys an airman ' ||
+      'record a billing event may never touch; RESTRICT/NO ACTION blocks the purge forever. See 20260821090000 and ' ||
+      '20260821091000 for the seven constraints this rule was written from. If a crossing is genuinely deliberate, add ' ||
+      'the constraint name to the exemption list in this file WITH THE REASON.';
+  end if;
+
+  raise notice
+    'PASS (BOUNDARY-1): % table(s) purged; % FK(s) cross the retain/delete boundary, and every one not named as an exemption is SET NULL (<col>) with an explicit column list',
+    cardinality(purged), n_checked;
+  raise notice
+    'NOTE (BOUNDARY-1): 2 named exemptions — document_shares.client_id (CASCADE is correct: a bearer token cannot outlive its subject) and operator_qualifications.client_id (STILL OPEN: a purge destroys retained qualifications; needs a product decision, SET NULL is unavailable on a NOT NULL column)';
+end $$;
+
 
 rollback;
 `;

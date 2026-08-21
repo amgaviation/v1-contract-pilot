@@ -224,6 +224,21 @@ async function refreshSession(
     // See the comment above `const path` on this one: a link truncated
     // down to the bare stem, token and all, has nowhere else to match.
     normalizedPath === "/invoice" ||
+    // The client-facing estimate/quote (app/estimate/[token]/page.tsx),
+    // same shape and same reasoning as /invoice/ above: authenticated by
+    // an unguessable 256-bit token in the URL (pilot.estimate_shares,
+    // supabase/migrations/20260814111000_estimate_share.sql), opened by a
+    // pilot's client who has no account here. This line was MISSING when
+    // the feature shipped, and it failed in BOTH directions at once: the
+    // page 307'd every anonymous visitor to /login, so the share feature
+    // was inert in production — Accept/Decline post from
+    // respond-actions.ts to this same blocked path — and the redirect put
+    // the 43-character bearer token into a /login?next= query string,
+    // where it lands in access logs, browser history and the Referer of
+    // every subsequent request. Same silent failure /vendor/'s comment
+    // records, with a token leak on top.
+    path.startsWith("/estimate/") ||
+    normalizedPath === "/estimate" ||
     // The client-facing credential packet (app/packet/[token]/page.tsx),
     // same shape and same reasoning as /invoice/ above: authenticated by
     // an unguessable 256-bit token in the URL, opened by someone who has
