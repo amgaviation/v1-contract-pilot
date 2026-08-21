@@ -11,6 +11,8 @@ import type { Database } from "@/lib/supabase/database.types";
 import ClientForm from "../client-form";
 import { updateClientRecord } from "../actions";
 import ArchiveButton from "./archive-button";
+import DeleteRecordButton from "@/components/delete-record-button";
+import { deleteClient } from "../actions";
 import RateOverridesPanel from "./rate-overrides-panel";
 import OperatorQualificationsPanel from "./operator-qualifications-panel";
 import PacketPanel from "./packet-panel";
@@ -303,6 +305,19 @@ export default async function EditClientPage({
             </NextLink>
           ) : null}
           <ArchiveButton id={client.id} archived={Boolean(client.archived_at)} />
+          {/* Offered unconditionally rather than hidden behind a
+              has-no-history check computed here. Four tables reference a
+              client with ON DELETE RESTRICT and deleteClient names the one
+              in the way — a button that quietly disappears once a client
+              has a trip teaches nothing, while a refusal that says "this
+              client has 3 trips on file" is the answer. */}
+          <DeleteRecordButton
+            action={deleteClient.bind(null, client.id)}
+            label="Delete client"
+            title="Delete this client?"
+            description="This works only for a client with no trips, invoices, estimates or recurring schedules. Their rate card, tax forms and vendor page go with them. It can’t be undone."
+            redirectTo="/clients"
+          />
         </>
       }
     >

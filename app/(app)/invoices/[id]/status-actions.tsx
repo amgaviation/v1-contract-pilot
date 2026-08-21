@@ -5,7 +5,8 @@ import { LButton, LCard } from "@/components/ledger";
 import { LConfirmDialog, LDialog } from "@/components/ledger/dialog";
 import { LCheckbox, LField, LSelect, LTextarea } from "@/components/ledger/forms";
 import { MAX_CUSTOM_MESSAGE_CHARS } from "@/lib/email/invoice-message";
-import { sendInvoice, sendInvoiceReminder, voidInvoice } from "../actions";
+import { sendInvoice, sendInvoiceReminder, voidInvoice, deleteInvoice } from "../actions";
+import DeleteRecordButton from "@/components/delete-record-button";
 
 type InvoiceForActions = {
   id: string;
@@ -166,8 +167,14 @@ export default function StatusActions({
 
   const canSend = invoice.status === "draft";
   const canRemind = invoice.status === "sent" || invoice.status === "partial";
-  const canVoid =
-    invoice.status === "draft" || invoice.status === "sent" || invoice.status === "partial";
+  // DRAFTS ARE DISCARDED, NOT VOIDED, and that is a change from what this
+  // screen used to offer. Voiding a draft left a permanent "cancelled
+  // invoice" in the list for a document that had no number, no payments and
+  // no reader — the void existed to say "this numbered invoice is
+  // cancelled", and a draft has nothing to say that about. Delete is the
+  // honest operation and it is what canDiscard offers below.
+  const canVoid = invoice.status === "sent" || invoice.status === "partial";
+  const canDiscard = invoice.status === "draft";
 
   return (
     <LCard>
@@ -512,6 +519,17 @@ export default function StatusActions({
             }}
           />
         </>
+      ) : null}
+
+      {canDiscard ? (
+        <DeleteRecordButton
+          action={deleteInvoice.bind(null, invoice.id)}
+          label="Discard draft"
+          title="Discard this draft?"
+          description="It has no number and nobody has seen it, so nothing is left on the record. Its lines are released, so the trip and any rebilled expenses can be invoiced again. This can’t be undone."
+          confirmLabel="Discard draft"
+          redirectTo="/invoices"
+        />
       ) : null}
 
       {error ? (

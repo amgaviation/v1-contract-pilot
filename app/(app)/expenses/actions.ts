@@ -600,3 +600,65 @@ export async function receiptUrl(path: string): Promise<string | null> {
   }
   return data?.signedUrl ?? null;
 }
+
+/**
+ * DELETE THE RECEIPT, KEEP THE EXPENSE.
+ *
+ * "Delete a receipt" needs saying out loud, because there is no receipt
+ * record in this product to delete: pilot.expenses.receipt_path IS the
+ * receipt (the receipts screen's own header says so). So the two things a
+ * pilot could mean are deleteExpense, which throws away the money as well
+ * as the paper, and this — detach and destroy the scan while the expense
+ * stays on the books.
+ *
+ * ROW FIRST, THEN OBJECT, and never the other way round. Clearing the
+ * column is the operation that must succeed; if it fails, the object is
+ * still there and still reachable, which is the recoverable outcome.
+ * Removing the object first and then failing to clear the column leaves an
+ * expense pointing at a file that 404s, which nothing in the app can fix.
+ *
+ * The storage failure is logged rather than surfaced, matching deleteExpense
+ * and deleteDocument: the receipt IS detached, which is what was asked for.
+ * An orphaned object is a cleanup problem, not a failure to report back.
+ */
+export async function removeExpenseReceipt(
+  id: string
+): Promise<{ error: string | null }> {
+  if (!UUID_RE.test(id)) return { error: "That expense no longer exists." };
+
+  const { account } = await requireAccount("/expenses");
+
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from("expenses")
+    .select("receipt_path")
+    .eq("id", id)
+    .eq("account_id", account.id)
+    .maybeSingle();
+  const path = (data as { receipt_path: string | null } | null)?.receipt_path;
+  if (!path) {
+    // Not an error worth a red sentence — the state the pilot asked for is
+    // the state they are in. Said plainly so a stale tab does not look like
+    // it worked on a receipt that was already gone.
+    return { error: "That expense doesn't have a receipt attached." };
+  }
+
+  const { error, count } = await supabase
+    .from("expenses")
+    .update({ receipt_path: null } satisfies ExpenseUpdate as never, { count: "exact" })
+    .eq("id", id)
+    .eq("account_id", account.id);
+
+  if (error) return { error: friendlyDbError(error, "expenses.receipt_clear") };
+  // No error and no rows is not success — and it also means we never owned
+  // the path read above, so the object must NOT be removed.
+  if (count === 0) return { error: "That expense no longer exists." };
+
+  await removeReceiptObject(supabase, path, "detached receipt remove");
+
+  revalidatePath("/expenses");
+  revalidatePath("/receipts");
+  revalidatePath(`/expenses/${id}`);
+  return { error: null };
+}

@@ -71,8 +71,17 @@ export default function DraftForm({
   tripsError,
   unmarkedTripCount = 0,
   unmarkedTripCountFailed = false,
+  defaultTaxRate = "",
 }: {
   action: (state: InvoiceFormState, formData: FormData) => Promise<InvoiceFormState>;
+  /**
+   * The account's default tax rate as a percent string, or "" for none
+   * (Settings → Invoicing). Seeded into the field so the pilot SEES what
+   * will be applied and can clear it — createInvoiceDraft applies the same
+   * default server-side for anything that reaches it without the field,
+   * and a typed 0 beats it in both places.
+   */
+  defaultTaxRate?: string;
   clients: ClientOption[];
   selectedClientId: string;
   trips: TripOption[];
@@ -108,7 +117,7 @@ export default function DraftForm({
   // back into the URL every time pickClient navigates, so it survives the
   // exact remount that used to erase it.
   const [taxRate, setTaxRate] = useState(
-    () => state.values?.tax_rate_percent ?? searchParams.get("tax_rate") ?? ""
+    () => state.values?.tax_rate_percent ?? searchParams.get("tax_rate") ?? defaultTaxRate
   );
 
   // WHO THIS BILLS. Seeded from the URL (which is what the page's trip read

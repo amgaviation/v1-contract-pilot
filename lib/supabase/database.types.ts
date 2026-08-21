@@ -167,6 +167,14 @@ export type Database = {
           default_travel_day_rate_cents: number | null;
           default_per_diem_cents: number | null;
           default_payment_terms_days: number | null;
+          // Invoice document settings (20260820100000). The two number
+          // format columns are NOT NULL with defaults in the database, so
+          // they are non-nullable here.
+          invoice_number_pad: number;
+          invoice_number_include_year: boolean;
+          default_tax_rate_bps: number | null;
+          default_invoice_notes: string | null;
+          invoice_footer: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -224,6 +232,11 @@ export type Database = {
           default_travel_day_rate_cents?: number | null;
           default_per_diem_cents?: number | null;
           default_payment_terms_days?: number | null;
+          invoice_number_pad?: number;
+          invoice_number_include_year?: boolean;
+          default_tax_rate_bps?: number | null;
+          default_invoice_notes?: string | null;
+          invoice_footer?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -289,6 +302,11 @@ export type Database = {
           default_travel_day_rate_cents?: number | null;
           default_per_diem_cents?: number | null;
           default_payment_terms_days?: number | null;
+          invoice_number_pad?: number;
+          invoice_number_include_year?: boolean;
+          default_tax_rate_bps?: number | null;
+          default_invoice_notes?: string | null;
+          invoice_footer?: string | null;
           created_at?: string;
           updated_at?: string;
         };

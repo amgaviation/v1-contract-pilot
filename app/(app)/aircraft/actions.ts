@@ -3,12 +3,21 @@
 /**
  * The pilot's fleet: register an airframe, correct it, retire it.
  *
- * A PILOT CANNOT DELETE ONE. pilot.aircraft has no DELETE grant and a
- * `using (false)` policy behind it, because a registry row is what gives
- * three years of logbook entries their type — deleting one would silently
- * retype history that the pilot never touched. Retiring is `archived_at`,
- * which takes the airframe out of the pickers and leaves the join alone.
- * See the migration header.
+ * A PILOT CANNOT DELETE ONE THAT HAS FLOWN. pilot.aircraft used to carry
+ * no DELETE grant at all and a `using (false)` policy behind it, because a
+ * registry row is what gives three years of logbook entries their type —
+ * deleting one would silently retype history that the pilot never touched.
+ * Retiring is `archived_at`, which takes the airframe out of the pickers
+ * and leaves the join alone, and it is still the right answer for a tail
+ * that has been anywhere.
+ *
+ * 20260820100000 narrows that blanket refusal to the rows it was actually
+ * about. The policy is now ordinary tenancy, and deleteAircraft below
+ * carries the other half of the rule — no logbook entry, no trip — because
+ * the database CANNOT carry it: the logbook joins this table on a
+ * normalised tail key computed at read time, not through a foreign key, so
+ * there is no reference for Postgres to restrict on. A tail typed wrong
+ * and registered five minutes ago can now simply go.
  *
  * That is a statement about tenants, NOT about the row. The account FK is
  * `on delete cascade`, and referential-integrity actions bypass both RLS
@@ -306,4 +315,82 @@ export async function setAircraftArchived(formData: FormData): Promise<void> {
 
   revalidatePath("/aircraft");
   revalidatePath("/logbook");
+}
+
+/**
+ * Remove a registry row — only when nothing points at the tail.
+ *
+ * THE TWO COUNTS ARE THE WHOLE SAFETY ARGUMENT, and they are read from
+ * views rather than computed here because the link they check is a
+ * normalised-text join: 'N-123AB' in the logbook and 'N123AB' in the
+ * registry are the same airframe, and no `ilike` this code could write
+ * says so. pilot.aircraft_time_by_tail.entry_count answers the logbook;
+ * pilot.aircraft_trip_usage.trip_count (20260820100000) answers trips.
+ * Both are security_invoker, so they see only the caller's own rows.
+ *
+ * FAIL CLOSED ON AN UNREADABLE COUNT, which is the opposite of what
+ * deleteClient does with its pre-check, and the difference is the point:
+ * there, the count is a courtesy and the database's ON DELETE RESTRICT is
+ * the real guard, so falling through costs nothing. Here there IS no
+ * database guard — the view is the only thing that knows — so a count we
+ * could not read is a reference we cannot rule out.
+ *
+ * Returned, not thrown, and not a redirect: this runs from a button inside
+ * a useTransition, same as setAircraftArchived's neighbours elsewhere.
+ */
+export async function deleteAircraft(id: string): Promise<{ error: string | null }> {
+  if (!UUID_RE.test(id)) return { error: "That aircraft no longer exists." };
+
+  const { account } = await requireAccount("/aircraft");
+  if (!account) return { error: "That aircraft no longer exists." };
+
+  const supabase = await createClient();
+
+  const [{ data: logbookUse, error: logbookError }, { data: tripUse, error: tripError }] =
+    await Promise.all([
+      logbookFrom(supabase, "aircraft_time_by_tail")
+        .select("entry_count")
+        .eq("aircraft_id", id)
+        .eq("account_id", account.id)
+        .maybeSingle(),
+      logbookFrom(supabase, "aircraft_trip_usage")
+        .select("trip_count")
+        .eq("aircraft_id", id)
+        .eq("account_id", account.id)
+        .maybeSingle(),
+    ]);
+
+  if (logbookError || tripError) {
+    return {
+      error:
+        "Couldn't check whether anything still uses this tail, so it wasn't deleted. Try again in a moment.",
+    };
+  }
+  // Both views LEFT JOIN from pilot.aircraft, so a registered airframe
+  // always has a row. No row means the id is not this account's — say the
+  // same thing a zero-row delete would.
+  if (!logbookUse || !tripUse) return { error: "That aircraft no longer exists." };
+
+  const entries = Number((logbookUse as { entry_count: number | string }).entry_count ?? 0);
+  const trips = Number((tripUse as { trip_count: number | string }).trip_count ?? 0);
+  if (entries > 0 || trips > 0) {
+    const parts: string[] = [];
+    if (entries > 0) parts.push(`${entries} logbook ${entries === 1 ? "entry" : "entries"}`);
+    if (trips > 0) parts.push(`${trips} ${trips === 1 ? "trip" : "trips"}`);
+    return {
+      error: `This tail is on ${parts.join(" and ")}, so it can't be deleted — deleting it would strip the type off those records. Retire it instead to take it out of your pickers.`,
+    };
+  }
+
+  const { error, count } = await logbookFrom(supabase, "aircraft")
+    .delete({ count: "exact" })
+    .eq("id", id)
+    .eq("account_id", account.id);
+
+  if (error) return { error: friendlyDbError(error, "aircraft.delete") };
+  if (count === 0) return { error: "That aircraft no longer exists." };
+
+  revalidatePath("/aircraft");
+  revalidatePath("/logbook");
+  return { error: null };
 }

@@ -44,6 +44,13 @@ export type InvoicePdfProps = {
     state: string | null;
     postal_code: string | null;
     country: string | null;
+    /**
+     * Boilerplate for the foot of the page. Optional in the TYPE because
+     * two other callers build this prop from their own reads and neither
+     * has a footer to give — an invoice rendered without one must not stop
+     * rendering.
+     */
+    invoice_footer?: string | null;
   };
   client: {
     name: string;
@@ -124,6 +131,14 @@ const styles = StyleSheet.create({
   totalLabel: { color: PDF_PALETTE.muted },
   totalStrong: { fontFamily: "Helvetica-Bold" },
   notes: { marginTop: 24, paddingTop: 12, borderTopWidth: 0.5, borderTopColor: PDF_PALETTE.hairline },
+  footer: {
+    marginTop: 16,
+    paddingTop: 10,
+    borderTopWidth: 0.5,
+    borderTopColor: PDF_PALETTE.hairline,
+    fontSize: 8,
+    color: PDF_PALETTE.muted,
+  },
   // Bounded box, not a fixed size: `objectFit: contain` keeps a wide
   // wordmark and a square badge both legible without distorting either.
   logo: { maxWidth: 160, maxHeight: 48, objectFit: "contain", marginBottom: 6 },
@@ -237,6 +252,18 @@ export function InvoicePdf({
           <View style={styles.notes}>
             <Text style={styles.label}>Notes</Text>
             <Text>{invoice.notes}</Text>
+          </View>
+        ) : null}
+
+        {/* The account's footer, below the invoice's own notes and visibly
+            quieter than them. The distinction is worth keeping: notes are
+            about THIS invoice and the pilot typed them for this client;
+            the footer is standing boilerplate that appears on all of them,
+            and giving it the same weight would make every invoice look
+            like it carried a special instruction. */}
+        {account.invoice_footer ? (
+          <View style={styles.footer}>
+            <Text>{account.invoice_footer}</Text>
           </View>
         ) : null}
       </Page>

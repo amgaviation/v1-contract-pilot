@@ -48,8 +48,14 @@ const SETTINGS_FIELDS = [
   "state",
   "postal_code",
   "country",
-  "invoice_prefix",
 ] as const;
+
+// invoice_prefix USED TO BE IN THIS LIST and is now owned by the Invoicing
+// panel (settings/invoicing-actions.ts), where it sits with the rest of the
+// number format it is one third of. It had to MOVE rather than be
+// duplicated: this action rebuilds the whole payload from the submitted
+// form, so a second form that also carries the field would have reset the
+// prefix to 'INV' every time the pilot saved their address.
 
 /**
  * Every field the "Profile & billing defaults" panel edits — the rest of
@@ -120,22 +126,6 @@ export async function updateSettings(
     };
   }
 
-  // The invoice prefix is baked into already-issued invoice numbers by
-  // pilot.next_invoice_number(). Changing it does NOT rewrite history —
-  // past invoices keep the number they were issued under — but it does
-  // mean a pilot's numbering changes series mid-stream, which an
-  // accountant will ask about. Constrained to a short, uppercase,
-  // alphanumeric token so it cannot become something that reads as part
-  // of the number itself.
-  const prefixRaw = String(formData.get("invoice_prefix") ?? "").trim().toUpperCase();
-  const prefix = prefixRaw === "" ? "INV" : prefixRaw;
-  if (!/^[A-Z0-9]{1,8}$/.test(prefix)) {
-    return {
-      error: "Invoice prefix must be 1 to 8 letters or digits, such as INV.",
-      values: echo(formData, SETTINGS_FIELDS),
-    };
-  }
-
   const supabase = await createClient();
 
   const payload: AccountUpdate = {
@@ -146,7 +136,6 @@ export async function updateSettings(
     state: optional(formData, "state"),
     postal_code: optional(formData, "postal_code"),
     country: optional(formData, "country"),
-    invoice_prefix: prefix,
   };
 
   // No billing column appears above, and none may: `plan`, `status`,

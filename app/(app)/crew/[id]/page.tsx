@@ -8,6 +8,8 @@ import type { Database } from "@/lib/supabase/database.types";
 import CrewForm from "../crew-form";
 import { updateCrewMember } from "../actions";
 import ArchiveButton from "./archive-button";
+import DeleteRecordButton from "@/components/delete-record-button";
+import { deleteCrewMember } from "../actions";
 
 type CrewRow = Database["pilot"]["Tables"]["crew_members"]["Row"];
 
@@ -45,7 +47,22 @@ export default async function EditCrewMemberPage({
     <LPageShell
       title={crew.name}
       subtitle={crew.archived_at ? "Archived" : "Crew member"}
-      action={<ArchiveButton id={crew.id} archived={Boolean(crew.archived_at)} />}
+      action={
+        <div className="flex flex-wrap items-start gap-2">
+          <ArchiveButton id={crew.id} archived={Boolean(crew.archived_at)} />
+          {/* Archive stays first and stays the default. Delete sits beside
+              it for the duplicate row and the name typed into the wrong
+              form — nothing in the schema references a crew member, so
+              this removes exactly this row. See deleteCrewMember. */}
+          <DeleteRecordButton
+            action={deleteCrewMember.bind(null, crew.id)}
+            label="Delete crew member"
+            title="Delete this crew member?"
+            description="This removes them completely, not just from your pickers. It can’t be undone — archive them instead if you want to keep the record."
+            redirectTo="/crew"
+          />
+        </div>
+      }
     >
       {crew.archived_at ? (
         <LCard>

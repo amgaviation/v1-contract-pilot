@@ -275,6 +275,11 @@ export default async function NewInvoicePage({
         tripsError={tripsErrorMessage}
         unmarkedTripCount={unmarkedTripCount ?? 0}
         unmarkedTripCountFailed={unmarkedTripCountFailed}
+        defaultTaxRate={
+          account.default_tax_rate_bps === null || account.default_tax_rate_bps === undefined
+            ? ""
+            : String(account.default_tax_rate_bps / 100)
+        }
       />
     </LPageShell>
   );

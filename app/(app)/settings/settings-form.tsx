@@ -13,7 +13,6 @@ export type SettingsValues = {
   state?: string | null;
   postal_code?: string | null;
   country?: string | null;
-  invoice_prefix?: string | null;
 };
 
 const initialState: SettingsFormState = { error: null };
@@ -44,7 +43,10 @@ export default function SettingsForm({
           <h2 className="text-h3 font-semibold">Your business</h2>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
-            <div className="md:col-span-8">
+            {/* Full width now that the invoice prefix has moved to the
+                Invoicing tab, where it sits beside the rest of the number
+                format it is one third of. */}
+            <div className="md:col-span-12">
               <LField
                 label="Business name"
                 htmlFor="legal_name"
@@ -59,21 +61,6 @@ export default function SettingsForm({
                 />
               </LField>
             </div>
-            <div className="md:col-span-4">
-              <LField
-                label="Invoice prefix"
-                htmlFor="invoice_prefix"
-                hint="Numbers already issued keep their old prefix"
-              >
-                <LInput
-                  id="invoice_prefix"
-                  name="invoice_prefix"
-                  disabled={!canEdit}
-                  defaultValue={initial("invoice_prefix", "INV")}
-                />
-              </LField>
-            </div>
-
             <div className="md:col-span-6">
               <LField label="Address" htmlFor="address_line1">
                 <LInput

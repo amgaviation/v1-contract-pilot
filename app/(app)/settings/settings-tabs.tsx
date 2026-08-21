@@ -42,6 +42,7 @@ import {
 const TAB_KEYS = [
   "business",
   "payments",
+  "invoicing",
   "billing",
   "day-types",
   "mileage",
@@ -66,6 +67,7 @@ function isTabKey(value: string | undefined): value is TabKey {
 const TAB_LABEL: Record<TabKey, string> = {
   business: "Your business",
   payments: "Payments",
+  invoicing: "Invoicing",
   billing: "Billing",
   "day-types": "Day types",
   mileage: "Mileage",
@@ -93,7 +95,7 @@ const TAB_LABEL: Record<TabKey, string> = {
  * its own — see the header comment.
  */
 const TAB_GROUPS: { label: string; keys: TabKey[] }[] = [
-  { label: "Business", keys: ["business", "payments", "billing"] },
+  { label: "Business", keys: ["business", "payments", "invoicing", "billing"] },
   { label: "Rates & categories", keys: ["day-types", "mileage", "categories"] },
   { label: "Communication", keys: ["messages", "reminders"] },
   { label: "Workspace", keys: ["appearance", "layout"] },
@@ -130,6 +132,7 @@ const TAB_GROUPS: { label: string; keys: TabKey[] }[] = [
 export default function SettingsTabs({
   business,
   payments,
+  invoicing,
   billing,
   dayTypes,
   mileage,
@@ -144,6 +147,7 @@ export default function SettingsTabs({
 }: {
   business: ReactNode;
   payments: ReactNode;
+  invoicing: ReactNode;
   billing: ReactNode;
   dayTypes: ReactNode;
   mileage: ReactNode;
@@ -172,6 +176,7 @@ export default function SettingsTabs({
   const panels: { key: TabKey; content: ReactNode }[] = [
     { key: "business", content: business },
     { key: "payments", content: payments },
+    { key: "invoicing", content: invoicing },
     { key: "billing", content: billing },
     { key: "day-types", content: dayTypes },
     { key: "mileage", content: mileage },

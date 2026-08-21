@@ -570,3 +570,82 @@ export async function setClientArchived(
   revalidatePath(`/clients/${id}`);
   return { error: null };
 }
+
+/**
+ * The four tables that reference a client with ON DELETE RESTRICT, and the
+ * word to use in the sentence when one of them holds a row. The DATABASE is
+ * the boundary — this list exists only so the pilot reads "this client has
+ * 3 trips" instead of a raw 23503 rendered as "Some of those values aren't
+ * valid together."
+ *
+ * Kept deliberately short: these are exactly the tables whose FK is
+ * RESTRICT. Everything else pointing at pilot.clients is CASCADE (rate
+ * cards, tax forms, the vendor page, the credential packet — configuration
+ * that belongs to the client and is meaningless without it) or SET NULL
+ * (expenses, mileage, the aircraft link), and is intended to go or clear
+ * with the client rather than to block the delete.
+ */
+const CLIENT_BLOCKERS = [
+  { table: "trips", label: "trip" },
+  { table: "invoices", label: "invoice" },
+  { table: "estimates", label: "estimate" },
+  { table: "recurring_invoice_schedules", label: "recurring schedule" },
+] as const;
+
+/**
+ * DELETE, for a client that has never been billed.
+ *
+ * WHY THIS IS NOT A REPLACEMENT FOR setClientArchived, which stays and is
+ * still what the list offers first. A client with trips or invoices CANNOT
+ * be deleted — pilot.trips, pilot.invoices, pilot.estimates and
+ * pilot.recurring_invoice_schedules all reference it with ON DELETE
+ * RESTRICT, so the database refuses, correctly: removing it would orphan
+ * the billing history that says where the money came from. Archive is the
+ * answer there and always was.
+ *
+ * The case this covers is the other one — the client added twice, the name
+ * typed to test the form — where there is no history to protect and
+ * archiving just hides a mistake instead of undoing it.
+ *
+ * THE PRE-CHECK IS NOT THE GUARD. It races (a trip could be created between
+ * the count and the delete) and that is fine, because losing the race means
+ * Postgres raises 23503 and friendlyDbError reports it. The check is here
+ * to turn the common refusal into a sentence naming what is in the way.
+ */
+export async function deleteClient(id: string): Promise<{ error: string | null }> {
+  if (!UUID_RE.test(id)) return { error: "That client no longer exists." };
+
+  const { account } = await requireAccount("/clients");
+
+  const supabase = await createClient();
+
+  for (const blocker of CLIENT_BLOCKERS) {
+    const { count, error } = await supabase
+      .from(blocker.table)
+      .select("id", { count: "exact", head: true })
+      .eq("account_id", account.id)
+      .eq("client_id", id);
+    // A failed COUNT is not a refusal: fall through and let the delete
+    // itself decide. Refusing here would let a transient read error look
+    // like "this client has history" and send the pilot hunting for it.
+    if (error) continue;
+    if (count && count > 0) {
+      return {
+        error: `This client has ${count} ${blocker.label}${count === 1 ? "" : "s"} on file, so it can't be deleted — archive it instead to take it out of your pickers while keeping the history.`,
+      };
+    }
+  }
+
+  const { error, count } = await supabase
+    .from("clients")
+    .delete({ count: "exact" })
+    .eq("id", id)
+    .eq("account_id", account.id);
+
+  if (error) return { error: friendlyDbError(error, "clients.delete") };
+  if (count === 0) return { error: "That client no longer exists." };
+
+  revalidatePath("/clients");
+  revalidatePath(`/clients/${id}`);
+  return { error: null };
+}

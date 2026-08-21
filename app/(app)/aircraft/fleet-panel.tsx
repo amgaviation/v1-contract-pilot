@@ -4,7 +4,8 @@ import { useState } from "react";
 import { LButton, LCard, LPill, LTable, LTd, LTh } from "@/components/ledger";
 import { formatDate } from "@/lib/format";
 import AircraftForm, { type AircraftClientOption } from "./aircraft-form";
-import { createAircraft, updateAircraft, setAircraftArchived } from "./actions";
+import { createAircraft, updateAircraft, setAircraftArchived, deleteAircraft } from "./actions";
+import DeleteRecordButton from "@/components/delete-record-button";
 import { GEAR_LABEL, type AircraftGear } from "./db";
 
 /**
@@ -299,6 +300,21 @@ export default function FleetPanel({
                           {item.archived_at ? "Bring back" : "Retire"}
                         </LButton>
                       </form>
+                      {/* Retire stays first: it is right for any tail that
+                          has been anywhere, and it leaves the logbook's
+                          normalised-tail join alone. Delete is for the row
+                          that has flown nothing — deleteAircraft counts
+                          logbook entries and trips and refuses with the
+                          number if either is non-zero. */}
+                      <DeleteRecordButton
+                        action={deleteAircraft.bind(null, item.id)}
+                        label="Delete"
+                        title={`Delete ${item.tail_number}?`}
+                        description="This only works for a tail with no logbook entries and no trips. It can’t be undone — retire it instead to take it out of your pickers."
+                        confirmLabel="Delete aircraft"
+                        variant="quiet"
+                        size="sm"
+                      />
                     </div>
                   </LTd>
                 </tr>

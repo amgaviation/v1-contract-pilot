@@ -41,6 +41,9 @@ export type LogbookTableName =
   | "aircraft"
   | "logbook_time_by_type"
   | "aircraft_time_by_tail"
+  // pilot.aircraft_trip_usage (20260820100000) — the trips-side twin of
+  // aircraft_time_by_tail, read by deleteAircraft. Same gap, same door.
+  | "aircraft_trip_usage"
   | "aircraft_unregistered_idents";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
