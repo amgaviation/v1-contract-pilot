@@ -99,6 +99,30 @@ const STATUS_BADGE: Record<string, StatusBadge> = {
   void: { tone: "neutral", label: "Void" },
 };
 
+/**
+ * THE HOUSE RULE, applied here: every list read carries an explicit
+ * .limit(). Quoted from reports/year-end/queries.ts:9-13 — "Supabase's Data
+ * API caps and silently truncates an unbounded select" — and the same
+ * "1000, NOT a larger number" caveat applies: the server's own db-max-rows
+ * is 1000, so a limit above it can never be reached.
+ *
+ * Two of the three are set well below that cap on purpose, because the
+ * schema's own constraints put a real ceiling far under it and a limit that
+ * describes the actual shape is more honest than one that describes
+ * PostgREST's:
+ *
+ *  - LINES_LIMIT: one invoice's lines. A hand-built invoice with 500 lines
+ *    does not exist; a runaway that produced one is a bug worth seeing.
+ *  - PAYMENTS_LIMIT: one invoice's payments, including the append-only
+ *    reversal rows (a correction is a second row, never an edit), so the
+ *    count is "payments plus corrections", not "payments".
+ *  - CLIENTS_LIMIT: the header form's client picker, the same 1000 every
+ *    other client list in this app uses.
+ */
+const LINES_LIMIT = 500;
+const PAYMENTS_LIMIT = 500;
+const CLIENTS_LIMIT = 1000;
+
 // invoice PDF route is owned elsewhere; this screen only links to it.
 export default async function InvoicePage({
   params,
@@ -123,18 +147,45 @@ export default async function InvoicePage({
     { data: shareData },
     { data: connectNoticeData },
   ] = await Promise.all([
-    supabase.from("invoices").select("*").eq("id", id).maybeSingle(),
+    // EXPLICIT COLUMN LISTS, not select("*"), on all four. The lists are not
+    // a new decision: InvoiceRow and TotalsRow above, and LineRow/PaymentRow
+    // in lines-editor.tsx / payment-panel.tsx, are already hand-written
+    // narrowings that name exactly what this screen renders. The queries just
+    // said "*" and then threw the rest away over the wire. Naming them makes
+    // the two agree — but the read below is cast to these types rather than
+    // inferred from the select, so TypeScript does NOT enforce that they stay
+    // in sync. Dropping a column from a select list here fails silently at
+    // render (undefined), not at compile time. Keep them matched by hand.
+    supabase
+      .from("invoices")
+      .select(
+        "id, client_id, bill_to_name, bill_to_contact_name, bill_to_email, bill_to_address_line1, bill_to_address_line2, bill_to_city, bill_to_state, bill_to_postal_code, bill_to_country, invoice_number, status, issued_on, due_on, sent_at, tax_rate_bps, delivery_method, notes, stripe_payment_link_url, stripe_payment_link_livemode, stripe_payment_link_amount_cents, reminders_suppressed"
+      )
+      .eq("id", id)
+      .maybeSingle(),
     supabase
       .from("invoice_lines")
-      .select("*")
+      .select(
+        "id, invoice_id, line_type, description, quantity, unit_amount_cents, amount_cents, taxable, trip_id, expense_id"
+      )
       .eq("invoice_id", id)
-      .order("sort_order", { ascending: true }),
+      .order("sort_order", { ascending: true })
+      .limit(LINES_LIMIT),
     supabase
       .from("invoice_payments")
-      .select("*")
+      .select(
+        "id, paid_on, amount_cents, method, notes, reverses_payment_id, reversal_reason, source"
+      )
       .eq("invoice_id", id)
-      .order("paid_on", { ascending: false }),
-    supabase.from("invoice_totals").select("*").eq("invoice_id", id).maybeSingle(),
+      .order("paid_on", { ascending: false })
+      .limit(PAYMENTS_LIMIT),
+    supabase
+      .from("invoice_totals")
+      .select(
+        "subtotal_cents, tax_cents, total_cents, amount_paid_cents, last_paid_on, balance_due_cents"
+      )
+      .eq("invoice_id", id)
+      .maybeSingle(),
     supabase.from("invoices_overdue").select("invoice_id").eq("invoice_id", id),
     // Not filtered to active-only: an issued invoice may bill a client
     // that has since been archived, and the picker still needs to show it.
@@ -156,7 +207,8 @@ export default async function InvoicePage({
       .from("clients")
       .select("id, name, contact_email, billing_email")
       .eq(YOU_INVOICE_COLUMN, true)
-      .order("name", { ascending: true }),
+      .order("name", { ascending: true })
+      .limit(CLIENTS_LIMIT),
     // A share row is best-effort read: its own error is not folded into
     // moneyError below, because a failed read here degrades to "no share
     // link shown yet" (the pilot can just try Share again), never to a
