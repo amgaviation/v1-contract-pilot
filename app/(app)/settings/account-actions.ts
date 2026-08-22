@@ -245,6 +245,22 @@ export async function deactivateAccount(
  * The redirect at the end is not cosmetic: the session's account is gone,
  * so every authenticated page would now fail its own gate. Signing out is
  * the honest end of the flow.
+ *
+ * WHY /login?deleted=1 AND NOT "/". This used to land on "/?deleted=1" and
+ * nothing anywhere read that parameter, so the pilot pressed "Delete
+ * account permanently" and arrived on the ordinary marketing hero with no
+ * confirmation of any kind — which reads as "it didn't work". Worse, the
+ * marketing page sniffs for an auth cookie and re-derives the session, so
+ * that landing could bounce a second time. /login is the right end of this
+ * flow and needs no new route: it is already on the proxy allow-list
+ * (lib/supabase/proxy.ts), already noindex, already the signed-out
+ * surface, and it has no session left to bounce on. app/(auth)/login/page.tsx
+ * reads `deleted` and renders the confirmation.
+ *
+ * THE auth.users ROW SURVIVES ON PURPOSE (see 20260818090000's header on
+ * pilot.delete_account) so the confirmation copy on /login and the delete
+ * card's own copy both say that signing in again starts a new account.
+ * If that ever changes, both strings change with it.
  */
 export async function deleteAccount(
   _prev: AccountActionState,
@@ -274,7 +290,7 @@ export async function deleteAccount(
   // other devices to reach either, and a global sign-out here would be a
   // second Supabase call that can fail after the account is already gone.
   await supabase.auth.signOut({ scope: "local" });
-  redirect("/?deleted=1");
+  redirect("/login?deleted=1");
 }
 
 export { OK as INITIAL_ACCOUNT_ACTION_STATE };
