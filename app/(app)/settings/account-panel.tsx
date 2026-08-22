@@ -292,7 +292,9 @@ export default function AccountPanel({
           <h2 className="text-h3 font-semibold text-ink">Delete this account</h2>
           <p className="text-body-s text-ink-2">
             Ends your subscription and removes the account and every record in
-            it. You are signed out and there is nothing to sign back in to.
+            it. You are signed out. Your sign-in email still works, but it
+            won&rsquo;t bring any of this back, and starting over means picking
+            a plan again.
           </p>
         </div>
 

@@ -53,8 +53,6 @@ import {
 
 export type AccountActionState = { error: string | null; notice: string | null };
 
-const OK: AccountActionState = { error: null, notice: null };
-
 function fail(error: string): AccountActionState {
   return { error, notice: null };
 }
@@ -245,6 +243,22 @@ export async function deactivateAccount(
  * The redirect at the end is not cosmetic: the session's account is gone,
  * so every authenticated page would now fail its own gate. Signing out is
  * the honest end of the flow.
+ *
+ * WHY /login?deleted=1 AND NOT "/". This used to land on "/?deleted=1" and
+ * nothing anywhere read that parameter, so the pilot pressed "Delete
+ * account permanently" and arrived on the ordinary marketing hero with no
+ * confirmation of any kind — which reads as "it didn't work". Worse, the
+ * marketing page sniffs for an auth cookie and re-derives the session, so
+ * that landing could bounce a second time. /login is the right end of this
+ * flow and needs no new route: it is already on the proxy allow-list
+ * (lib/supabase/proxy.ts), already noindex, already the signed-out
+ * surface, and it has no session left to bounce on. app/(auth)/login/page.tsx
+ * reads `deleted` and renders the confirmation.
+ *
+ * THE auth.users ROW SURVIVES ON PURPOSE (see 20260818090000's header on
+ * pilot.delete_account) so the confirmation copy on /login and the delete
+ * card's own copy both say that signing in again starts a new account.
+ * If that ever changes, both strings change with it.
  */
 export async function deleteAccount(
   _prev: AccountActionState,
@@ -274,10 +288,37 @@ export async function deleteAccount(
   // other devices to reach either, and a global sign-out here would be a
   // second Supabase call that can fail after the account is already gone.
   await supabase.auth.signOut({ scope: "local" });
-  redirect("/?deleted=1");
+  redirect("/login?deleted=1");
 }
 
-export { OK as INITIAL_ACCOUNT_ACTION_STATE };
+/*
+ * `export { OK as INITIAL_ACCOUNT_ACTION_STATE }` used to sit here, and it
+ * took every action in this file down with it.
+ *
+ * A "use server" module may export ASYNC FUNCTIONS AND NOTHING ELSE — every
+ * export becomes a callable server reference, so a plain object has no
+ * meaning and Next refuses the module outright. It does not refuse it at
+ * build time: `next build` passes, typecheck passes, and the settings page
+ * renders fine, because the failure happens when the module is EVALUATED on
+ * the server. The pilot only meets it at the moment they press a button.
+ *
+ * What that cost, live, from 2026-08-18T16:42:36Z until this line went:
+ * pressing "Delete account permanently" spun to "Deleting…" and then
+ * replaced the panel with the error boundary's "Something went wrong",
+ * having deleted nothing. Vercel logged
+ * `Error: A "use server" file can only export async functions, found object.`
+ * on /settings for every attempt. Reset, deactivate, the hold and the
+ * resume were dead the same way for the same reason — one bad export is
+ * the whole module, not one action.
+ *
+ * Nothing imported the constant. account-panel.tsx declares its own
+ * `initialState` local, which is why this survived review: it was dead code
+ * that happened to be fatal.
+ *
+ * tests/use-server-exports.test.mjs now asserts this mechanically across
+ * every module-level "use server" file in the repo. Put shared constants in
+ * a plain module and import them; they cannot live here.
+ */
 
 /**
  * ===========================================================================
