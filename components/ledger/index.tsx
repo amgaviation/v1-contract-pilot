@@ -339,10 +339,12 @@ export function LTable({
 export function LTh({
   className,
   numeric,
+  scope = "col",
   ...props
 }: React.ThHTMLAttributes<HTMLTableCellElement> & { numeric?: boolean }) {
   return (
     <th
+      scope={scope}
       className={cn(
         "border-b border-hair px-3 py-2 text-left text-caption font-semibold text-ink-3 first:pl-0 last:pr-0",
         numeric && "text-right",

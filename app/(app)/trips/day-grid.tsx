@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useActionState, useEffect, useMemo, useState } from "react";
+import NextLink from "next/link";
 import { LAlert, LButton, LCard, LTable, LTd, LTh } from "@/components/ledger";
 import { LCheckbox, LField, LInput, LSelect } from "@/components/ledger/forms";
 import { formatDateWithWeekday, formatCents, centsToInput, parseDollarsToCents } from "@/lib/format";
@@ -126,6 +127,7 @@ export default function DayGrid({
   endsOn,
   locked,
   billedOn,
+  billedInvoiceId,
   dayTypes,
   existingDays,
   clientRates,
@@ -138,6 +140,9 @@ export default function DayGrid({
   locked: boolean;
   /** The invoice number (or "a draft invoice") locking it, when `locked`. */
   billedOn?: string | null;
+  /** That same invoice's id, so the "remove it from the invoice" step below
+   * links to the invoice it names. Null when the page couldn't resolve it. */
+  billedInvoiceId?: string | null;
   dayTypes: DayTypeOption[];
   existingDays: TripDayRow[];
   clientRates: ClientRateOption[];
@@ -408,10 +413,30 @@ export default function DayGrid({
     return (
       <div>
         <div className="mb-3">
+          {/* The removal step names an invoice, so it links to one — the
+              same href the settlement panel and the page's own freeze card
+              use. Plain text when the id didn't resolve. */}
           <p className="text-caption text-ink-3">
-            {billedOn
-              ? `This trip is billed on ${billedOn}. Its day rows are frozen here. Correcting them would leave the trip and that invoice disagreeing about what was flown. Remove it from the invoice first.`
-              : "This trip is on an invoice. Its day rows are frozen here. Correcting them would leave the trip and the invoice that has already gone out disagreeing about what was flown."}
+            {billedOn ? (
+              <>
+                This trip is billed on {billedOn}. Its day rows are frozen
+                here. Correcting them would leave the trip and that invoice
+                disagreeing about what was flown. Remove it from{" "}
+                {billedInvoiceId ? (
+                  <NextLink
+                    href={`/invoices/${billedInvoiceId}`}
+                    className="text-accent underline"
+                  >
+                    the invoice
+                  </NextLink>
+                ) : (
+                  "the invoice"
+                )}{" "}
+                first.
+              </>
+            ) : (
+              "This trip is on an invoice. Its day rows are frozen here. Correcting them would leave the trip and the invoice that has already gone out disagreeing about what was flown."
+            )}
           </p>
         </div>
         <ReadOnlyGrid dates={dates} existingByDate={existingByDate} dayTypeById={dayTypeById} allDayTypes={dayTypes} />

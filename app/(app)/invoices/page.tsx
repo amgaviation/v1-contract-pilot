@@ -96,19 +96,47 @@ const FILTERS = [
 ] as const;
 type FilterKey = (typeof FILTERS)[number]["key"];
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Builds an /invoices link that keeps every OTHER active narrowing and
+ * sets (or, for `null`, clears) the one named here — same shape as
+ * trips/page.tsx's tripsFilterHref, so a pilot who arrived from a client's
+ * page on ?client= and then picks "Drafts" is not silently dropped back
+ * into every client's drafts.
+ */
+function invoicesFilterHref(
+  current: { show?: string; client?: string },
+  patch: Partial<{ show: string | null; client: string | null }>
+): string {
+  const merged = { ...current, ...patch };
+  const params = new URLSearchParams();
+  if (merged.show) params.set("show", merged.show);
+  if (merged.client) params.set("client", merged.client);
+  const qs = params.toString();
+  return qs ? `/invoices?${qs}` : "/invoices";
+}
+
 export default async function InvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ show?: string }>;
+  // ?client= is the deep link clients/[id]/page.tsx sends its capped
+  // "Outstanding invoices" card to — that page inlined its own 10-row list
+  // precisely because this one could not be narrowed to a client.
+  searchParams: Promise<{ show?: string; client?: string }>;
 }) {
   await requireAccount("/invoices");
-  const { show } = await searchParams;
+  const { show, client } = await searchParams;
   // "Outstanding" is the default view, not "all". A contract pilot opens
   // this screen to find out who owes them money — the reference calls
   // chasing payment a top-three pain — and a reverse-chronological list of
   // every invoice they have ever issued is not that answer.
   const filter: FilterKey =
     (FILTERS.find((f) => f.key === show)?.key as FilterKey) ?? "outstanding";
+  // Unrecognized values are ignored rather than rejected — a stale or
+  // hand-edited query string degrades to "show everything", not a page
+  // error, the same way trips/page.tsx treats its own ?client=.
+  const clientFilter = client && UUID_RE.test(client) ? client : null;
 
   const supabase = await createClient();
   // invoice_totals/invoices_overdue are the one source for money and
@@ -194,7 +222,15 @@ export default async function InvoicesPage({
     }
   }
 
-  const invoices = (invoiceData ?? []) as InvoiceListRow[];
+  const loadedInvoices = (invoiceData ?? []) as InvoiceListRow[];
+  // Narrowed in memory rather than as a second query: the read above is
+  // already capped at LIST_LIMIT and the truncation check below has to
+  // measure that full read, not the filtered slice. An invoice billing
+  // typed bill-to details carries no client_id, so a client filter
+  // deliberately excludes every clientless invoice.
+  const invoices = clientFilter
+    ? loadedInvoices.filter((invoice) => invoice.client_id === clientFilter)
+    : loadedInvoices;
   const totalsByInvoice = new Map(
     ((totalsData ?? []) as TotalsRow[]).map((t) => [t.invoice_id, t])
   );
@@ -207,7 +243,7 @@ export default async function InvoicesPage({
     overdueRows.map((o) => [o.invoice_id, o.days_overdue])
   );
   const truncated =
-    invoices.length === LIST_LIMIT || (totalsData ?? []).length === LIST_LIMIT;
+    loadedInvoices.length === LIST_LIMIT || (totalsData ?? []).length === LIST_LIMIT;
   // Resolved in memory rather than a PostgREST embed — same reason as
   // trips/page.tsx: the embed's return type resolves to `never` against
   // the hand-authored types file, and a pilot's client list is small.
@@ -220,7 +256,11 @@ export default async function InvoicesPage({
       .filter((invoiceId): invoiceId is string => invoiceId !== null)
   );
 
-  const overdueCount = overdueIds.size;
+  // Counted off the invoices this page is listing rather than off the
+  // overdue view's own size, so the subtitle's "N past due" scopes with an
+  // active client filter instead of quoting the whole account's figure
+  // beside a narrowed table.
+  const overdueCount = invoices.filter((invoice) => overdueIds.has(invoice.id)).length;
 
   // RECEIVABLES. Balance owed, bucketed by how late it is. Only invoices
   // that can still be paid count — a draft has not been sent and a void
@@ -262,6 +302,27 @@ export default async function InvoicesPage({
         return true;
     }
   });
+
+  // THE OVERDUE VIEW IS ORDERED BY LATENESS, not by the created_at the
+  // single .order above gives every other view. A pilot on this filter is
+  // chasing money and the 90-day invoice is the one to chase first;
+  // reverse-chronological buries it among fresher ones. days_overdue comes
+  // from invoices_overdue (the one source for past-due-ness) and is already
+  // in memory, so this re-orders rather than re-reads.
+  if (filter === "overdue") {
+    visible.sort(
+      (a, b) => (daysOverdueById.get(b.id) ?? 0) - (daysOverdueById.get(a.id) ?? 0)
+    );
+  }
+
+  const filterHrefBase = {
+    show: filter === "outstanding" ? undefined : filter,
+    client: clientFilter ?? undefined,
+  };
+  // A client with nothing on file at all — distinct from "this status
+  // filter hides everything they have", because the way out of it is
+  // dropping the client, not widening the status.
+  const noneForClient = clientFilter !== null && invoices.length === 0;
 
   return (
     <LPageShell
@@ -367,19 +428,42 @@ export default async function InvoicesPage({
         </LCard>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
-        {FILTERS.map((f) => (
-          <NextLink
-            key={f.key}
-            href={f.key === "outstanding" ? "/invoices" : `/invoices?show=${f.key}`}
-            className={lButtonClass({
-              variant: filter === f.key ? "primary" : "outline",
-              size: "sm",
-            })}
-          >
-            {f.label}
-          </NextLink>
-        ))}
+      {/* The active client, named and clearable — the same row trips/page.tsx
+          shows for its own ?client= deep link. Every chip below carries the
+          client through, so narrowing by status never drops it. */}
+      <div className="flex flex-col gap-2">
+        {clientFilter ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-body-s text-ink-2">
+              Client:{" "}
+              <span className="font-medium text-ink">
+                {clientNames.get(clientFilter) ?? "Unknown client"}
+              </span>
+            </span>
+            <NextLink
+              href={invoicesFilterHref(filterHrefBase, { client: null })}
+              className="text-body-s text-accent hover:underline"
+            >
+              Clear
+            </NextLink>
+          </div>
+        ) : null}
+        <div className="flex flex-wrap gap-2">
+          {FILTERS.map((f) => (
+            <NextLink
+              key={f.key}
+              href={invoicesFilterHref(filterHrefBase, {
+                show: f.key === "outstanding" ? null : f.key,
+              })}
+              className={lButtonClass({
+                variant: filter === f.key ? "primary" : "outline",
+                size: "sm",
+              })}
+            >
+              {f.label}
+            </NextLink>
+          ))}
+        </div>
       </div>
 
       <LCard>
@@ -391,8 +475,9 @@ export default async function InvoicesPage({
         ) : visible.length === 0 ? (
           // "No invoices yet" is only true when there are none at all.
           // Saying it while a filter is hiding forty of them is the same
-          // class of lie the trips screens used to tell.
-          invoices.length === 0 ? (
+          // class of lie the trips screens used to tell — which is why this
+          // measures the whole loaded read and not the client-narrowed one.
+          loadedInvoices.length === 0 ? (
             <LEmpty
               title="No invoices yet"
               action={
@@ -411,24 +496,34 @@ export default async function InvoicesPage({
             // apart visually and reading as two different screens.
             <LEmpty
               title={
-                filter === "outstanding"
-                  ? "Nothing outstanding"
-                  : filter === "overdue"
-                    ? "Nothing past due"
-                    : "Nothing here"
+                noneForClient
+                  ? "Nothing for this client"
+                  : filter === "outstanding"
+                    ? "Nothing outstanding"
+                    : filter === "overdue"
+                      ? "Nothing past due"
+                      : "Nothing here"
               }
               action={
                 <NextLink
-                  href="/invoices?show=all"
+                  href={
+                    noneForClient
+                      ? invoicesFilterHref(filterHrefBase, { show: "all", client: null })
+                      : invoicesFilterHref(filterHrefBase, { show: "all" })
+                  }
                   className={lButtonClass({ variant: "outline" })}
                 >
-                  Show all invoices
+                  {clientFilter && !noneForClient
+                    ? "Show all their invoices"
+                    : "Show all invoices"}
                 </NextLink>
               }
             >
-              {filter === "outstanding"
-                ? `Every invoice you've sent has been paid. You have ${invoices.length} in total.`
-                : `None of your ${invoices.length} invoices match this filter.`}
+              {noneForClient
+                ? "No invoice bills this client. One that bills typed details instead of a saved client isn't listed under them."
+                : filter === "outstanding"
+                  ? `Every invoice you've sent has been paid. You have ${invoices.length} in total.`
+                  : `None of your ${invoices.length} invoices match this filter.`}
             </LEmpty>
           )
         ) : (
@@ -470,7 +565,21 @@ export default async function InvoicesPage({
                       </NextLink>
                     </th>
                     <LTd>
-                      <span className="text-ink-2">{billToListLabel(invoice, clientNames)}</span>
+                      {/* Resting colour stays text-ink-2, accent only on
+                          hover: the row-header number above is this row's one
+                          accent-coloured link, and a second one would read as
+                          a competing primary action. A typed bill-to has no
+                          client record to open, so it stays plain text. */}
+                      {invoice.client_id !== null ? (
+                        <NextLink
+                          href={`/clients/${invoice.client_id}`}
+                          className="text-ink-2 hover:text-accent hover:underline"
+                        >
+                          {billToListLabel(invoice, clientNames)}
+                        </NextLink>
+                      ) : (
+                        <span className="text-ink-2">{billToListLabel(invoice, clientNames)}</span>
+                      )}
                     </LTd>
                     <LTd>
                       <span className="text-ink-2">{formatDate(invoice.issued_on)}</span>

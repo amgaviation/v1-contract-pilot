@@ -1,16 +1,17 @@
 import NextLink from "next/link";
-import { LAlert, LCard, LTable, LTh, lButtonClass } from "@/components/ledger";
+import { LAlert, LCard, lButtonClass } from "@/components/ledger";
 import { LPageShell } from "@/components/ledger/page-shell";
 import { createClient } from "@/lib/supabase/server";
 import { requireEntitlement } from "@/lib/supabase/entitlements";
 import { formatDateRange } from "@/lib/format";
 import { friendlyDbError } from "@/lib/db-errors";
 import { loadOptionChoices } from "@/lib/custom-options-read";
-import TransactionRow, {
-  type DuplicateCandidate,
-  type TransactionRowData,
-  type TripOption,
+import type {
+  DuplicateCandidate,
+  TransactionRowData,
+  TripOption,
 } from "./transaction-row";
+import ReviewQueue from "./review-queue";
 import DismissedQueue, { type DismissedRow } from "./dismissed-queue";
 
 export const metadata = { title: "Review transactions" };
@@ -43,8 +44,18 @@ const TXN_LIMIT = 1000;
  * once a pilot confirms or dismisses one, it drops off this list
  * (confirmTransaction/ignoreTransaction move it out of 'unreviewed' and
  * this page reads only that state). Nothing on this page writes to
- * pilot.expenses directly; TransactionRow's "Confirm as expense" button
- * is the one path, and it goes through ./actions.ts's confirmTransaction.
+ * pilot.expenses directly: every confirm — the expanded form's, the
+ * collapsed row's one-click "Confirm as deduction", and the bulk pass in
+ * ./review-queue.tsx — goes through ./actions.ts's confirmOne, which is
+ * the single boundary. The bulk actions are loops over it, not a way
+ * round it.
+ *
+ * The duplicate flags computed below are what the QUEUE shows and what
+ * the one-click and bulk buttons hide themselves over. They are not the
+ * gate: both of those paths re-probe
+ * pilot.bank_transaction_duplicate_candidates server-side per row before
+ * writing anything, because this snapshot goes stale the moment another
+ * tab files a receipt — and reads as "none" when the probe below failed.
  */
 export default async function TransactionsPage() {
   await requireEntitlement("bank_import", "/expenses/transactions");
@@ -263,23 +274,8 @@ export default async function TransactionsPage() {
           </NextLink>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <LTable>
-            <thead>
-              <tr>
-                <LTh>Date</LTh>
-                <LTh>Description</LTh>
-                <LTh numeric>Amount</LTh>
-                <LTh />
-                <LTh />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((t) => (
-                <TransactionRow key={t.id} txn={t} trips={trips} categories={categories} />
-              ))}
-            </tbody>
-          </LTable>
+        <div>
+          <ReviewQueue rows={rows} trips={trips} categories={categories} />
           {rows.length === TXN_LIMIT ? (
             <p className="text-caption text-ink-3">
               Showing the first {TXN_LIMIT.toLocaleString()} unreviewed transactions.

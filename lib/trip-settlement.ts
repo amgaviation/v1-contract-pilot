@@ -76,6 +76,12 @@ export type TripSettlementPaymentRow = {
   amount_cents: number;
 };
 
+/** One carrying invoice, id included so a screen naming it can link to it. */
+export type TripSettlementBilledInvoice = {
+  id: string;
+  invoice_number: string | null;
+};
+
 export type TripSettlement = {
   /** What the day grid (or the pre-grid scalars) says this trip's flight +
    *  travel days are worth, today — lib/trip-value.ts's own figure. */
@@ -104,10 +110,15 @@ export type TripSettlement = {
    *  paid/balance figures above are invoice-level facts that are not
    *  exclusively this trip's. */
   invoiceHasOtherCharges: boolean;
-  /** A label for the invoice this trip is billed on — the sent invoice's
-   *  number when one exists, else "a draft invoice" — mirroring
-   *  pilot.trip_committed_invoice's own preference order. Null when
-   *  nothing has been invoiced. */
+  /** The same invoices as invoiceIds, carrying their numbers and ordered
+   *  sent-first (a numbered invoice before a still-unnumbered draft), so a
+   *  screen that names the invoice this trip is billed on can also link to
+   *  it rather than sending the pilot to hunt the number down. */
+  billedInvoices: TripSettlementBilledInvoice[];
+  /** A label for the invoice this trip is billed on — the head of
+   *  billedInvoices, i.e. the sent invoice's number when one exists, else
+   *  "a draft invoice" — mirroring pilot.trip_committed_invoice's own
+   *  preference order. Null when nothing has been invoiced. */
   invoiceLabel: string | null;
 };
 
@@ -164,16 +175,23 @@ export function computeTripSettlement(input: {
   const unpaidBalanceCents = Math.max(invoicedCents - paidCents, 0);
 
   const invoiceIds = [...invoiceIdSet];
-  let invoiceLabel: string | null = null;
-  if (invoiceIds.length > 0) {
-    // Prefer a sent invoice's number, same order trip_committed_invoice
-    // orders by (`order by (i.invoice_number is null)`); fall back to the
-    // generic draft label when every carrying invoice is still a draft.
-    const withNumber = invoiceIds
-      .map((id) => invoicesById.get(id))
-      .find((inv) => inv?.invoice_number != null);
-    invoiceLabel = withNumber?.invoice_number ?? "a draft invoice";
-  }
+  // Prefer a sent invoice's number, same order trip_committed_invoice
+  // orders by (`order by (i.invoice_number is null)`). Sorted once, so the
+  // label below and any link a screen builds from this list name the same
+  // invoice rather than two independently-picked ones.
+  const billedInvoices: TripSettlementBilledInvoice[] = invoiceIds
+    .map((id) => invoicesById.get(id))
+    .filter((inv): inv is TripSettlementInvoiceRow => inv !== undefined)
+    .sort(
+      (a, b) =>
+        Number(a.invoice_number === null) - Number(b.invoice_number === null)
+    )
+    .map((inv) => ({ id: inv.id, invoice_number: inv.invoice_number }));
+  // The generic draft label when every carrying invoice is still a draft.
+  const [primaryInvoice] = billedInvoices;
+  const invoiceLabel = primaryInvoice
+    ? primaryInvoice.invoice_number ?? "a draft invoice"
+    : null;
 
   return {
     expectedCents,
@@ -185,6 +203,7 @@ export function computeTripSettlement(input: {
     unpaidBalanceCents,
     invoiceIds,
     invoiceHasOtherCharges: otherChargeCents !== 0,
+    billedInvoices,
     invoiceLabel,
   };
 }

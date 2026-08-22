@@ -50,6 +50,12 @@ export type TripFormState = {
   saved?: boolean;
   values?: Record<string, string>;
   /**
+   * Keyed by input name, one entry per failing field — see parseTripForm.
+   * `error` still carries a short summary ("Fix the N highlighted
+   * fields.") for the top-of-form alert.
+   */
+  fieldErrors?: Record<string, string>;
+  /**
    * How many trip_days rows were removed because updateTrip narrowed
    * starts_on/ends_on out from under them. See the pruning step below —
    * removing billable days silently is not acceptable, so this rides
@@ -271,50 +277,67 @@ async function findOverlappingTrip(
   return data as { starts_on: string; ends_on: string };
 }
 
-type ParsedTrip = { values: TripFields | null; error: string | null };
+type ParsedTrip = {
+  values: TripFields | null;
+  error: string | null;
+  fieldErrors?: Record<string, string>;
+};
 
+/**
+ * F: every check below used to return on its first failure. Each now
+ * records its message on `fieldErrors`, keyed by input name, and parsing
+ * continues — nothing about which values are ACCEPTED changes, only
+ * where the resulting message ends up. A date-dependent check (the span
+ * check, and end-before-start) only runs once both dates parsed, exactly
+ * as the old early-return order already implied. `values` is only built,
+ * and only returned for writing, once every check has passed.
+ */
 function parseTripForm(formData: FormData): ParsedTrip {
+  const fieldErrors: Record<string, string> = {};
+
   const startsOn = String(formData.get("starts_on") ?? "").trim();
   const endsOn = String(formData.get("ends_on") ?? "").trim();
 
-  if (!startsOn || !endsOn) {
-    return { values: null, error: "A trip needs a start and end date." };
-  }
-  if (!isDate(startsOn) || !isDate(endsOn)) {
-    return { values: null, error: "Those dates aren't valid." };
-  }
-  if (endsOn < startsOn) {
-    return { values: null, error: "The end date can't be before the start date." };
-  }
+  if (!startsOn) fieldErrors.starts_on = "A trip needs a start and end date.";
+  if (!endsOn) fieldErrors.ends_on = "A trip needs a start and end date.";
 
-  // A typo'd end-date YEAR (2026 -> 2062) still passes the check above and
-  // then renders a several-thousand-row day grid (enumerateDates has no
-  // cap of its own, and saveTripDays re-enumerates and diffs that same
-  // list on every save). Contract trips run days to weeks; nothing
-  // legitimate needs a range over a year. Catching the typo here, where it
-  // was made, matches this file's parseTenth-style philosophy elsewhere
-  // rather than letting it surface downstream as a frozen page.
-  const tripSpanDays =
-    Math.round(
-      (new Date(`${endsOn}T00:00:00Z`).getTime() -
-        new Date(`${startsOn}T00:00:00Z`).getTime()) /
-        86_400_000
-    ) + 1;
-  if (tripSpanDays > 370) {
-    return {
-      values: null,
-      error: `That's a ${tripSpanDays}-day trip. Check the end date's year.`,
-    };
+  const startsOnValid = startsOn !== "" && isDate(startsOn);
+  const endsOnValid = endsOn !== "" && isDate(endsOn);
+  if (startsOn !== "" && !startsOnValid) fieldErrors.starts_on = "Those dates aren't valid.";
+  if (endsOn !== "" && !endsOnValid) fieldErrors.ends_on = "Those dates aren't valid.";
+
+  if (startsOnValid && endsOnValid) {
+    if (endsOn < startsOn) {
+      fieldErrors.ends_on = "The end date can't be before the start date.";
+    } else {
+      // A typo'd end-date YEAR (2026 -> 2062) still passes the check
+      // above and then renders a several-thousand-row day grid
+      // (enumerateDates has no cap of its own, and saveTripDays
+      // re-enumerates and diffs that same list on every save). Contract
+      // trips run days to weeks; nothing legitimate needs a range over a
+      // year. Catching the typo here, where it was made, matches this
+      // file's parseTenth-style philosophy elsewhere rather than letting
+      // it surface downstream as a frozen page.
+      const tripSpanDays =
+        Math.round(
+          (new Date(`${endsOn}T00:00:00Z`).getTime() -
+            new Date(`${startsOn}T00:00:00Z`).getTime()) /
+            86_400_000
+        ) + 1;
+      if (tripSpanDays > 370) {
+        fieldErrors.ends_on = `That's a ${tripSpanDays}-day trip. Check the end date's year.`;
+      }
+    }
   }
 
   const clientId = optionalUuid(formData, "client_id");
   if (clientId === undefined) {
-    return { values: null, error: "That client isn't valid." };
+    fieldErrors.client_id = "That client isn't valid.";
   }
 
   const dayRate = parseDollarsToCents(String(formData.get("day_rate") ?? ""));
   if (dayRate === undefined) {
-    return { values: null, error: "Day rate must be an amount like 1500 or 1500.00." };
+    fieldErrors.day_rate = "Day rate must be an amount like 1500 or 1500.00.";
   }
 
   // Travel days bill at their own rate and draft their own invoice line
@@ -325,11 +348,16 @@ function parseTripForm(formData: FormData): ParsedTrip {
     String(formData.get("travel_day_rate") ?? "")
   );
   if (travelRate === undefined) {
-    return { values: null, error: "Travel day rate must be an amount like 900 or 900.00." };
+    fieldErrors.travel_day_rate = "Travel day rate must be an amount like 900 or 900.00.";
   }
 
-  if ((dayRate ?? 0) < 0 || (travelRate ?? 0) < 0) {
-    return { values: null, error: "Rates can't be negative." };
+  // Only checked against a value that actually parsed — see the client
+  // form's identical note.
+  if (dayRate !== undefined && (dayRate ?? 0) < 0) {
+    fieldErrors.day_rate = "Rates can't be negative.";
+  }
+  if (travelRate !== undefined && (travelRate ?? 0) < 0) {
+    fieldErrors.travel_day_rate = "Rates can't be negative.";
   }
 
   // numeric(5,1): one decimal place, and Postgres would silently round a
@@ -338,16 +366,13 @@ function parseTripForm(formData: FormData): ParsedTrip {
     max: 999,
   });
   if (dayCount === undefined || dayCount === null) {
-    return {
-      values: null,
-      error: "Days must be a number with at most one decimal place, like 2 or 2.5.",
-    };
+    fieldErrors.day_count = "Days must be a number with at most one decimal place, like 2 or 2.5.";
   }
 
   const travelCountRaw = String(formData.get("travel_day_count") ?? "").trim();
   const travelCount = travelCountRaw === "" ? 0 : Number(travelCountRaw);
   if (!Number.isInteger(travelCount) || travelCount < 0 || travelCount > 999) {
-    return { values: null, error: "Travel days must be a whole number." };
+    fieldErrors.travel_day_count = "Travel days must be a whole number.";
   }
 
   // 20260807070000: nullable, unlike status/trip_kind — "no notice source
@@ -358,7 +383,16 @@ function parseTripForm(formData: FormData): ParsedTrip {
     cancellationNoticeFrom !== null &&
     !(CANCELLATION_NOTICE_FROM as readonly string[]).includes(cancellationNoticeFrom)
   ) {
-    return { values: null, error: "That cancellation notice source isn't valid." };
+    fieldErrors.cancellation_notice_from = "That cancellation notice source isn't valid.";
+  }
+
+  const failing = Object.keys(fieldErrors).length;
+  if (failing > 0) {
+    return {
+      values: null,
+      error: `Fix the ${failing} highlighted field${failing === 1 ? "" : "s"}.`,
+      fieldErrors,
+    };
   }
 
   return {
@@ -379,7 +413,12 @@ function parseTripForm(formData: FormData): ParsedTrip {
       aircraft_ident: optional(formData, "aircraft_ident"),
       aircraft_type: optional(formData, "aircraft_type"),
       day_rate_cents: dayRate ?? 0,
-      day_count: dayCount,
+      // `failing === 0` at this point guarantees dayCount parsed to a real
+      // number — the cast tells TS what the runtime check above already
+      // established, since accumulating errors (rather than returning on
+      // the first one) loses the control-flow narrowing a sequence of
+      // early returns would have given for free.
+      day_count: dayCount as number,
       travel_day_count: travelCount,
       travel_day_rate_cents: travelRate,
       cancellation_notice_from:
@@ -395,10 +434,11 @@ export async function createTrip(
   formData: FormData
 ): Promise<TripFormState> {
   const { account } = await requireAccount("/trips/new");
-  const { values, error } = parseTripForm(formData);
+  const { values, error, fieldErrors } = parseTripForm(formData);
   if (error || !values) {
     return {
       error: error ?? "Couldn't read that form.",
+      fieldErrors,
       values: echo(formData, TRIP_FIELDS),
     };
   }
@@ -517,10 +557,11 @@ export async function updateTrip(
     return { error: billedTripMessage(committedOn, "facts") };
   }
 
-  const { values, error } = parseTripForm(formData);
+  const { values, error, fieldErrors } = parseTripForm(formData);
   if (error || !values) {
     return {
       error: error ?? "Couldn't read that form.",
+      fieldErrors,
       values: echo(formData, TRIP_FIELDS),
     };
   }

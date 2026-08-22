@@ -266,6 +266,14 @@ export default async function TripPage({
     }
   }
 
+  // The freeze copy below (and the day grid's own) tells the pilot to
+  // remove this trip from the invoice — an instruction whose object was
+  // named but never reachable. Same preference order billedOn comes from
+  // (sent invoice first), so the link lands on the invoice the sentence
+  // just named. Null when the settlement read failed: the copy stays plain
+  // text rather than guessing an id.
+  const freezeInvoice = settlement?.billedInvoices[0] ?? null;
+
   // P2: once the day grid has rows, it is what bills — and it must also be
   // what this headline COUNTS, not just what it prices. Printing a value
   // derived from tripDays next to a day count still read from the legacy
@@ -403,8 +411,18 @@ export default async function TripPage({
           <p className="text-body-s text-ink-2">
             This trip is billed on {billedOn}. Its dates and amounts are
             frozen here. Correcting them would leave the trip and that
-            invoice disagreeing about what was flown. Remove it from the
-            invoice first.
+            invoice disagreeing about what was flown. Remove it from{" "}
+            {freezeInvoice ? (
+              <NextLink
+                href={`/invoices/${freezeInvoice.id}`}
+                className="text-accent underline"
+              >
+                the invoice
+              </NextLink>
+            ) : (
+              "the invoice"
+            )}{" "}
+            first.
           </p>
         </LCard>
       ) : null}
@@ -458,6 +476,7 @@ export default async function TripPage({
               endsOn={trip.ends_on}
               locked={locked}
               billedOn={billedOn}
+              billedInvoiceId={freezeInvoice?.id ?? null}
               dayTypes={dayTypes}
               existingDays={tripDays}
               clientRates={clientRates}

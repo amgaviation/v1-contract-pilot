@@ -63,15 +63,37 @@ export default async function PacketPage({
   const { token } = await params;
 
   const supabase = await createClient();
+
+  // Same early exit for a truncated/miscopied URL segment as the three
+  // sibling portals. NOT the security boundary — pilot.document_packet_
+  // public's own token match is — only a cheap rejection before the RPC.
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) {
+    notFound();
+  }
+
   const { data, error } = await supabase.rpc("document_packet_public", {
     p_token: token,
   } as never);
 
+  // A DATABASE FAILURE IS NOT A VERDICT ON THE TOKEN. These two branches
+  // used to be one (`if (error || rows.length === 0) notFound()`), which
+  // told a client whose only problem was a transient outage that their link
+  // "isn't valid… ask them for a new one" — sending an operator's back
+  // office to chase a pilot for a replacement that was never needed. The
+  // non-oracle argument below covers TOKEN VALIDITY, and a 500 raised by
+  // infrastructure reveals nothing about that: it is returned identically
+  // for a live token, a revoked one and a guess. Same split, and the same
+  // reasoning, as app/invoice/[token]/page.tsx and app/vendor/[token]/
+  // page.tsx; the token never appears in what is thrown or logged.
+  if (error) {
+    throw new Error("Couldn't load this packet right now.");
+  }
+
   const rows = (data ?? []) as PacketRow[];
-  // A revoked link, an expired one, a wrong one and a database error all
-  // land here as the same 404. That is deliberate: distinguishing them
-  // tells a stranger holding a guessed token which guesses were closer.
-  if (error || rows.length === 0) notFound();
+  // A revoked link, an expired one and a wrong one all land here as the
+  // same 404. That is deliberate: distinguishing them tells a stranger
+  // holding a guessed token which guesses were closer.
+  if (rows.length === 0) notFound();
 
   const businessName = rows[0]!.business_name;
   const today = new Date().toISOString().slice(0, 10);

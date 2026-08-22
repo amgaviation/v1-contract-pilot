@@ -333,6 +333,54 @@
   }
 }
 
+/* ── Print ─────────────────────────────────────────────────────────────
+ * A client-facing invoice or estimate is a document before it is a page:
+ * an operator's AP desk files it as a PDF, and Ctrl+P (or the portals' own
+ * "Print / save PDF" button) is how it gets there. The pilot's own PDF
+ * route is authenticated and unreachable from those pages by design, so
+ * this block is the whole of what the client's copy looks like.
+ *
+ * Screen-only affordances are hidden AT THE CALL SITE with Tailwind's own
+ * `print:hidden` variant — the product mark, the pay button, the print
+ * button itself, the accept/decline buttons — rather than by a class
+ * declared here. One less bespoke name, and the page that owns a node is
+ * the page that says whether it belongs on paper.
+ *
+ * What can only be said here is the ground. `--ledger-canvas` is a warm
+ * paper tint that exists to sit UNDER white cards; printed, it is either
+ * ignored (browsers drop backgrounds by default) or a flat grey wash over
+ * a whole sheet. Pinned to white, and the card shadows — screen material,
+ * nothing else — flattened away, which leaves LCard's own `border-hair`
+ * doing the work of separating one block from the next.
+ *
+ * Only the day palette needs an answer: every public portal renders under
+ * the root layout's `data-appearance="light"` (see app/layout.tsx — the
+ * signed-out surface never reads a tenant preference), so there is no
+ * night ground to override here. */
+@media print {
+  :root {
+    --ledger-canvas: #ffffff;
+
+    /* A TRANSPARENT SHADOW, NOT `none`, and the difference is load-bearing.
+       Tailwind v4 composes `shadow-*` as a comma list —
+       `box-shadow: var(--tw-inset-shadow), …, var(--tw-shadow)` — and a
+       list member of `none` is not valid CSS: the whole declaration would
+       be thrown out at computed-value time. That happens to land on "no
+       shadow" too, but by way of a parse error, which is not a thing to
+       build on. `0 0 #0000` is exactly what Tailwind's own `shadow-none`
+       substitutes, and it composes. */
+    --ledger-shadow-card: 0 0 #0000;
+    --ledger-shadow-raised: 0 0 #0000;
+    --ledger-shadow-float: 0 0 #0000;
+  }
+
+  /* An invoice line split across a page break is a line an AP clerk has to
+     read twice to be sure of. */
+  tr {
+    break-inside: avoid;
+  }
+}
+
 /* ── Dialog motion ─────────────────────────────────────────────────────
  * components/ledger/dialog.tsx's header explains why LDialogShell stays on
  * the native <dialog>/showModal() rather than a library — this gives that

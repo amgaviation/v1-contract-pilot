@@ -52,12 +52,28 @@ function LegFieldGrid({
       </div>
       <div className="flex flex-col gap-1">
         <LField label="From" htmlFor={id("from_icao")}>
-          <LInput id={id("from_icao")} name="from_icao" placeholder="KBED" defaultValue={initial("from_icao")} />
+          <LInput
+            id={id("from_icao")}
+            name="from_icao"
+            placeholder="KBED"
+            autoCapitalize="characters"
+            spellCheck={false}
+            className="uppercase"
+            defaultValue={initial("from_icao")}
+          />
         </LField>
       </div>
       <div className="flex flex-col gap-1">
         <LField label="To" htmlFor={id("to_icao")}>
-          <LInput id={id("to_icao")} name="to_icao" placeholder="KTEB" defaultValue={initial("to_icao")} />
+          <LInput
+            id={id("to_icao")}
+            name="to_icao"
+            placeholder="KTEB"
+            autoCapitalize="characters"
+            spellCheck={false}
+            className="uppercase"
+            defaultValue={initial("to_icao")}
+          />
         </LField>
       </div>
       <div className="flex flex-col gap-1">

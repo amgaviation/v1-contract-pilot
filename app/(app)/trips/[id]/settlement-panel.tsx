@@ -1,3 +1,4 @@
+import NextLink from "next/link";
 import { LAlert, LCard, LPill } from "@/components/ledger";
 import { formatCents } from "@/lib/format";
 import type { TripSettlement } from "@/lib/trip-settlement";
@@ -77,10 +78,30 @@ export default function SettlementPanel({
             />
           </div>
 
+          {/* Naming the invoice without linking to it left the pilot to
+              find it by eye in the Invoices list — and a draft carrier has
+              no number to look for at all. Same href the freeze card on
+              this page uses. */}
           <p className="mt-3 text-caption text-ink-3">
-            {settlement.invoiceLabel
-              ? `Billed on ${settlement.invoiceLabel}.`
-              : "Not yet on an invoice."}
+            {settlement.billedInvoices.length > 0 ? (
+              <>
+                Billed on{" "}
+                {settlement.billedInvoices.map((invoice, index) => (
+                  <span key={invoice.id}>
+                    {index > 0 ? ", " : ""}
+                    <NextLink
+                      href={`/invoices/${invoice.id}`}
+                      className="text-accent underline"
+                    >
+                      {invoice.invoice_number ?? "a draft invoice"}
+                    </NextLink>
+                  </span>
+                ))}
+                .
+              </>
+            ) : (
+              "Not yet on an invoice."
+            )}
           </p>
         </>
       ) : null}

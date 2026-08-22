@@ -233,6 +233,14 @@ export default async function TripsPage({
   const filtersActive = Boolean(clientFilter || statusFilter || billingFilter);
   const filterHrefBase = { client: clientFilter ?? undefined, status: statusFilter ?? undefined, billing_state: billingFilter ?? undefined };
 
+  // The Value column's total for whatever is currently listed — the same
+  // in-memory figures the column itself prints, just summed. Hidden
+  // whenever the column itself is (dayGridError), same reasoning as that
+  // column: never show a total next to a column that isn't on screen.
+  const totalValueCents = dayGridError
+    ? 0
+    : trips.reduce((sum, trip) => sum + (tripValueByTrip.get(trip.id)?.valueCents ?? 0), 0);
+
   return (
     <LPageShell
       title="Trips"
@@ -241,7 +249,11 @@ export default async function TripsPage({
           ? "Couldn't load your trips."
           : `${trips.length} trip${trips.length === 1 ? "" : "s"}${
               filtersActive ? " matching these filters" : ""
-            }${unbilled ? ` · ${unbilled} flown but not yet invoiced` : ""}`
+            }${unbilled ? ` · ${unbilled} flown but not yet invoiced` : ""}${
+              filtersActive && !dayGridError
+                ? ` · ${formatCents(totalValueCents)} across these trips`
+                : ""
+            }`
       }
       action={
         <NextLink href="/trips/new" className={lButtonClass({ variant: "primary" })}>
@@ -407,11 +419,16 @@ export default async function TripsPage({
                         </NextLink>
                       </th>
                       <LTd>
-                        <span className="text-ink-2">
-                          {trip.client_id
-                            ? clientNames.get(trip.client_id) ?? "—"
-                            : "No client"}
-                        </span>
+                        {trip.client_id ? (
+                          <NextLink
+                            href={`/clients/${trip.client_id}`}
+                            className="text-accent hover:underline"
+                          >
+                            {clientNames.get(trip.client_id) ?? "—"}
+                          </NextLink>
+                        ) : (
+                          <span className="text-ink-2">No client</span>
+                        )}
                       </LTd>
                       <LTd>
                         <span className="text-ink-2">{trip.aircraft_ident ?? "—"}</span>
@@ -457,6 +474,25 @@ export default async function TripsPage({
                   );
                 })}
               </tbody>
+              {/* The Value column's total for the current filter — same
+                  reasoning as overview's unbilled-work reconciliation
+                  <tfoot>: it's the table's own summary, so assistive tech
+                  should hear it as that rather than as one more trip row.
+                  Hidden along with the Value column when dayGridError. */}
+              {dayGridError ? null : (
+                <tfoot>
+                  <tr>
+                    <LTd colSpan={4} className="border-b-0">
+                      <span className="block text-right font-medium text-ink-2">Total</span>
+                    </LTd>
+                    <LTd numeric className="border-b-0">
+                      <span className="font-medium">{formatCents(totalValueCents)}</span>
+                    </LTd>
+                    <LTd className="border-b-0" />
+                    <LTd className="border-b-0" />
+                  </tr>
+                </tfoot>
+              )}
             </LTable>
           </>
         )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import NextLink from "next/link";
 import { LAlert, LButton, LCard, lButtonClass } from "@/components/ledger";
 import { LField, LInput, LSelect, LTextarea } from "@/components/ledger/forms";
@@ -88,6 +88,21 @@ export default function ExpenseForm({
   submitLabel: string;
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // F: focus + scroll the first invalid control whenever a fresh
+  // fieldErrors map arrives. Queried in DOCUMENT order (first
+  // aria-invalid control in the form), not by iterating fieldErrors'
+  // keys — object key order is parseExpenseForm's check order, not the
+  // field's position on the page.
+  useEffect(() => {
+    if (!state.fieldErrors) return;
+    const el = formRef.current?.querySelector('[aria-invalid="true"]');
+    if (!(el instanceof HTMLElement)) return;
+    el.focus();
+    el.scrollIntoView({ block: "center" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.fieldErrors]);
 
   const submitted = state.values;
   // Reads the echoed value from a rejected submit if there is one, else
@@ -298,6 +313,7 @@ export default function ExpenseForm({
   return (
     <LCard>
       <form
+        ref={formRef}
         action={(formData) => {
           formData.set("trip_id", tripId === NO_TRIP ? "" : tripId);
           // Only ever posted for the trip-less case. A trip means the
@@ -355,7 +371,12 @@ export default function ExpenseForm({
         ) : null}
 
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
-          <LField label="Date" htmlFor="incurred_on">
+          <LField
+            label="Date"
+            htmlFor="incurred_on"
+            error={state.fieldErrors?.incurred_on}
+            errorId="incurred_on-error"
+          >
             <LInput
               id="incurred_on"
               type="date"
@@ -363,6 +384,8 @@ export default function ExpenseForm({
               required
               value={incurredOn}
               onChange={(event) => setIncurredOn(event.currentTarget.value)}
+              aria-invalid={state.fieldErrors?.incurred_on ? true : undefined}
+              aria-describedby={state.fieldErrors?.incurred_on ? "incurred_on-error" : undefined}
             />
           </LField>
           <div className="flex flex-col gap-1.5">
@@ -392,7 +415,12 @@ export default function ExpenseForm({
               onChange={(event) => setVendor(event.currentTarget.value)}
             />
           </LField>
-          <LField label="Amount (USD)" htmlFor="amount">
+          <LField
+            label="Amount (USD)"
+            htmlFor="amount"
+            error={state.fieldErrors?.amount}
+            errorId="amount-error"
+          >
             <LInput
               id="amount"
               name="amount"
@@ -400,6 +428,8 @@ export default function ExpenseForm({
               inputMode="decimal"
               value={amount}
               onChange={(event) => setAmount(event.currentTarget.value)}
+              aria-invalid={state.fieldErrors?.amount ? true : undefined}
+              aria-describedby={state.fieldErrors?.amount ? "amount-error" : undefined}
             />
           </LField>
         </div>
@@ -435,9 +465,12 @@ export default function ExpenseForm({
               Trip
             </label>
             <LSelect
+              id="trip_id"
               aria-labelledby="trip-label"
               value={tripId}
               onChange={(event) => handleTripChange(event.target.value)}
+              aria-invalid={state.fieldErrors?.trip_id ? true : undefined}
+              aria-describedby={state.fieldErrors?.trip_id ? "trip_id-error" : undefined}
             >
               <option value={NO_TRIP}>No trip</option>
               {trips.map((trip) => (
@@ -454,16 +487,24 @@ export default function ExpenseForm({
                   ? "Required. A rebilled expense has to land on an invoice"
                   : "Optional. Leave blank and it waits in the unassigned queue."}
             </p>
+            {state.fieldErrors?.trip_id ? (
+              <p id="trip_id-error" className="text-caption font-medium text-crit">
+                {state.fieldErrors.trip_id}
+              </p>
+            ) : null}
           </div>
           <div className="flex flex-col gap-1.5">
             <label id="client-label" className="text-body-s font-medium text-ink">
               Client
             </label>
             <LSelect
+              id="client_id"
               aria-labelledby="client-label"
               value={effectiveClientId}
               onChange={(event) => setChosenClientId(event.target.value)}
               disabled={tripDecidesClient}
+              aria-invalid={state.fieldErrors?.client_id ? true : undefined}
+              aria-describedby={state.fieldErrors?.client_id ? "client_id-error" : undefined}
             >
               <option value={NO_CLIENT}>No client</option>
               {missingClientName ? (
@@ -475,6 +516,11 @@ export default function ExpenseForm({
                 </option>
               ))}
             </LSelect>
+            {state.fieldErrors?.client_id ? (
+              <p id="client_id-error" className="text-caption font-medium text-crit">
+                {state.fieldErrors.client_id}
+              </p>
+            ) : null}
             <p className="text-caption text-ink-3">
               {tripDecidesClient
                 ? selectedTrip?.clientId

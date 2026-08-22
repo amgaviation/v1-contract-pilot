@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
 import {
@@ -197,6 +198,59 @@ export async function createInvoicePaymentLink(
   const offered = resolveOfferedMethods({ choice, capability });
   let methodNotice = offered.note ?? undefined;
 
+  /**
+   * WHERE THE CLIENT LANDS AFTER PAYING: this invoice's own share page,
+   * when the pilot has already made one.
+   *
+   * Stripe's default is its hosted confirmation, which is a dead end — the
+   * client's only way back is the tab they came from, still showing
+   * "Awaiting payment" over a pay button the single-use restriction has
+   * just retired. The `?paid=1` flag is display-only on that page (see
+   * app/invoice/[token]/page.tsx's own header): it suppresses the offer and
+   * says the payment is on its way, and can do nothing else.
+   *
+   * READ, NEVER MINTED. A payment link must not create a public URL for an
+   * invoice as a side effect — sharing is a deliberate per-invoice act the
+   * pilot consents to on SharePanel, which is where the copy explaining
+   * what a link discloses lives. No live share (the common case for an
+   * invoice emailed as a PDF) means no parameter and Stripe's default
+   * confirmation, exactly as before. Same read as lib/email/send-invoice.ts's
+   * readLinkActivity — account-scoped, revoked treated as none — and
+   * best-effort for the same reason: a failed read costs the client a nicer
+   * landing page, never the payment link they are waiting for.
+   *
+   * A SNAPSHOT, like the price. The URL is fixed into the link at mint
+   * time, so a share revoked afterwards leaves a paying client on the
+   * share page's 404 — which is also what the link they were emailed now
+   * does, and the webhook records the payment either way.
+   *
+   * Origin resolution is the house idiom: NEXT_PUBLIC_APP_URL first, Host
+   * second, never Origin — see settings/connect-actions.ts and
+   * forgot-password/actions.ts for the header-poisoning reasoning. The
+   * token needs no escaping: invoice_shares.token is CHECK-constrained to
+   * [A-Za-z0-9_-]{43}, which is already URL-safe.
+   */
+  const { data: shareData, error: shareError } = await supabase
+    .from("invoice_shares")
+    .select("token, revoked_at")
+    .eq("account_id", account.id)
+    .eq("invoice_id", invoiceId)
+    .maybeSingle();
+  if (shareError) {
+    // Code and message only — never the token, the same rule the public
+    // route holds itself to.
+    console.error(`invoice_shares read failed for invoice ${invoiceId}: ${shareError.message}`);
+  }
+  const share = shareData as { token: string; revoked_at: string | null } | null;
+  const liveShareToken = share && !share.revoked_at ? share.token : null;
+  let afterCompletionRedirectUrl: string | undefined;
+  if (liveShareToken) {
+    const requestHeaders = await headers();
+    const origin =
+      process.env.NEXT_PUBLIC_APP_URL ?? `https://${requestHeaders.get("host")}`;
+    afterCompletionRedirectUrl = `${origin}/invoice/${liveShareToken}?paid=1`;
+  }
+
   const createWith = (paymentMethodTypes: readonly string[]) =>
     createPaymentLinkForInvoice({
       connectAccountId,
@@ -209,6 +263,9 @@ export async function createInvoicePaymentLink(
       invoiceNumber,
       amountCents: balanceDueCents,
       paymentMethodTypes,
+      // Carried by the card-only retry below too: the two calls differ in
+      // what the link accepts, never in where it lands afterwards.
+      afterCompletionRedirectUrl,
     });
 
   let link;

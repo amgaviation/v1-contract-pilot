@@ -1,6 +1,7 @@
 import NextLink from "next/link";
 import { LAlert, LCard, LEmpty, LPill, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
 import { LPageShell } from "@/components/ledger/page-shell";
+import { LSelect } from "@/components/ledger/forms";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
@@ -70,14 +71,48 @@ const EXPENSES_LIMIT = 1000;
 // /expenses/mileage), but the same silent-truncation hazard applies to it.
 const MILEAGE_LIMIT = 1000;
 
+// Above this many non-archived clients, the chip row becomes a wall of
+// buttons between the header and the ledger — several phone screens of
+// pills before any data. Below the threshold, chips (one tap, no client
+// JS); at or above it, a native select in a server-rendered GET form —
+// the house-preferred control for a long, unbounded list of choices.
+const CLIENT_CHIP_LIMIT = 8;
+
+// How many tax-year chips to offer alongside "All time" — the current
+// year plus the four before it, which covers the working span a pilot
+// browsing recent history actually asks about. A year outside this
+// window is still honoured when it arrives via a direct link (a client's
+// own history link, say); it just doesn't get its own chip.
+const YEAR_CHIP_COUNT = 5;
+
+/**
+ * Builds a /expenses link that keeps the OTHER active filter (client vs.
+ * year) and sets or (for `null`) clears the one named here — same
+ * tripsFilterHref idiom as trips/page.tsx: picking a year doesn't
+ * silently drop an active client filter or vice versa, and re-clicking
+ * the active choice is how that one filter clears.
+ */
+function expensesFilterHref(
+  current: { client?: string | null; year?: number | null },
+  patch: Partial<{ client: string | null; year: number | null }>
+): string {
+  const merged = { ...current, ...patch };
+  const params = new URLSearchParams();
+  if (merged.client) params.set("client", merged.client);
+  if (merged.year) params.set("year", String(merged.year));
+  const qs = params.toString();
+  return qs ? `/expenses?${qs}` : "/expenses";
+}
+
 export default async function ExpensesPage({
   searchParams,
 }: {
   // ?client= narrows the ledger to one client's costs, and is where a
-  // client's own cost panel links to. An unrecognized value is ignored
-  // rather than rejected, same as trips/page.tsx: a stale or hand-edited
-  // query string should degrade to "show everything", not a page error.
-  searchParams: Promise<{ client?: string }>;
+  // client's own cost panel links to. ?year= narrows it to one tax year.
+  // Both are ignored rather than rejected when unrecognized, same as
+  // trips/page.tsx: a stale or hand-edited query string should degrade to
+  // "show everything", not a page error.
+  searchParams: Promise<{ client?: string; year?: string }>;
 }) {
   await requireAccount("/expenses");
   const params = await searchParams;
@@ -93,7 +128,55 @@ export default async function ExpensesPage({
         ? params.client
         : null;
 
+  // Same validated-integer shape as reports/profit-loss's own ?year=
+  // (2000-2100, rejecting anything else) — but no "falls back to the
+  // current year" default: unlike a report, this ledger's ordinary state
+  // is "all time", so an absent or invalid year clears the filter rather
+  // than silently picking one.
+  const currentYear = new Date().getUTCFullYear();
+  const parsedYear = Number(params.year);
+  const yearFilter =
+    params.year && Number.isInteger(parsedYear) && parsedYear >= 2000 && parsedYear <= 2100
+      ? parsedYear
+      : null;
+
   const supabase = await createClient();
+  // Scoped at the query itself (not filtered in memory afterward) so the
+  // EXPENSES_LIMIT truncation check, the treatment totals, the unassigned
+  // queue and the table all agree on the same tax-year-scoped set — the
+  // same reasoning profit-loss's own ?year= query applies.
+  let expensesQuery = supabase
+    .from("expenses")
+    .select(
+      "id, incurred_on, category, vendor, amount_cents, treatment, trip_id, client_id, receipt_path"
+    )
+    .order("incurred_on", { ascending: false })
+    .limit(EXPENSES_LIMIT);
+  if (yearFilter) {
+    expensesQuery = expensesQuery
+      .gte("incurred_on", `${yearFilter}-01-01`)
+      .lte("incurred_on", `${yearFilter}-12-31`);
+  }
+
+  // Same year-scoping, same reason: scheduleCMileageCents (lib/mileage.ts)
+  // groups its input by tax year and rounds ONCE per year before summing —
+  // restricting the ROWS it sees to one year is that same computation
+  // restricted to one year, not a re-derivation. Scoped at the query
+  // itself rather than filtered in memory afterward for the same
+  // truncation-safety reason as expensesQuery above: mileage_entries
+  // carries no ORDER BY, so an in-memory filter over an already-capped,
+  // arbitrarily-ordered 1000-row read could show a materially incomplete
+  // year even when that year alone has far fewer than 1000 drives.
+  let mileageQuery = supabase
+    .from("mileage_entries")
+    .select("drove_on, miles")
+    .limit(MILEAGE_LIMIT);
+  if (yearFilter) {
+    mileageQuery = mileageQuery
+      .gte("drove_on", `${yearFilter}-01-01`)
+      .lte("drove_on", `${yearFilter}-12-31`);
+  }
+
   // categoryLabels replaces a hand-written map that lived in this file
   // and had ALREADY fallen behind: it held the travel eight only, so
   // every self-funded category added in 20260810070000 — training,
@@ -111,13 +194,7 @@ export default async function ExpensesPage({
     { data: invoicedLinesData },
     { data: clientData, error: clientsError },
   ] = await Promise.all([
-    supabase
-      .from("expenses")
-      .select(
-        "id, incurred_on, category, vendor, amount_cents, treatment, trip_id, client_id, receipt_path"
-      )
-      .order("incurred_on", { ascending: false })
-      .limit(EXPENSES_LIMIT),
+    expensesQuery,
     supabase
       .from("trips")
       .select("id, starts_on, ends_on, aircraft_ident, client_id")
@@ -132,10 +209,7 @@ export default async function ExpensesPage({
     // drove_on and miles, not the per-row amount_cents — the deduction is
     // total miles for the year x that year's rate, rounded ONCE. See
     // lib/mileage.ts; this was the third surface computing it differently.
-    supabase
-      .from("mileage_entries")
-      .select("drove_on, miles")
-      .limit(MILEAGE_LIMIT),
+    mileageQuery,
     supabase.from("mileage_rates").select("tax_year, rate_cents_per_mile"),
     loadOptionLabels("expense_category"),
     // Same "every already-referenced expense_id" read as
@@ -300,13 +374,14 @@ export default async function ExpensesPage({
         ? "No client"
         : clientNames.get(clientFilter) ?? "Unknown client";
 
-  /**
-   * A /expenses link that sets or clears the client filter. Link-based
-   * chips, no client JS, same idiom as trips/page.tsx: re-clicking the
-   * active choice is how it clears.
-   */
-  const clientFilterHref = (next: string | null) =>
-    next === null ? "/expenses" : `/expenses?client=${next}`;
+  // Both active filters, captioning the totals below them — "2025 ·
+  // Acme Air · $X to rebill …" — so the figures are never read as
+  // all-time when they aren't.
+  const scopeLabel = [yearFilter ? String(yearFilter) : null, filterLabel]
+    .filter((part): part is string => Boolean(part))
+    .join(" · ");
+
+  const filterHrefBase = { client: clientFilter ?? undefined, year: yearFilter ?? undefined };
 
   const queueRows: QueueRow[] = unassigned.map((expense) => ({
     id: expense.id,
@@ -323,7 +398,7 @@ export default async function ExpensesPage({
       subtitle={
         error
           ? "Couldn't load your expenses."
-          : `${filterLabel ? `${filterLabel} · ` : ""}${formatCents(
+          : `${scopeLabel ? `${scopeLabel} · ` : ""}${formatCents(
               rebillTotal
             )} to rebill · ${formatCents(deductTotal)} deductible${
               unassigned.length
@@ -360,11 +435,37 @@ export default async function ExpensesPage({
               <WarningIcon className="mt-0.5 shrink-0 text-warn" />
               <span>
                 {clientFilter
-                  ? `Totals above may be partial. This client's costs were picked out of your ${EXPENSES_LIMIT} most recent expenses, and you have more than that.`
-                  : `Totals above may be partial. There are more than ${EXPENSES_LIMIT} expenses and only the first ${EXPENSES_LIMIT} were totaled.`}
+                  ? `Totals above may be partial. This client's costs were picked out of your ${EXPENSES_LIMIT} most recent expenses${
+                      yearFilter ? ` in ${yearFilter}` : ""
+                    }, and you have more than that.`
+                  : `Totals above may be partial. There are more than ${EXPENSES_LIMIT} expenses${
+                      yearFilter ? ` in ${yearFilter}` : ""
+                    } and only the first ${EXPENSES_LIMIT} were totaled.`}
               </span>
             </LAlert>
           ) : null}
+
+          {/* Date/tax-year narrowing. Composable with the client filter
+              below through expensesFilterHref, same as trips/page.tsx's
+              status and billing rows compose with its client filter — the
+              two never step on each other. */}
+          <div className="flex flex-wrap gap-2">
+            <NextLink
+              href={expensesFilterHref(filterHrefBase, { year: null })}
+              className={lButtonClass({ variant: yearFilter === null ? "primary" : "outline", size: "sm" })}
+            >
+              All time
+            </NextLink>
+            {Array.from({ length: YEAR_CHIP_COUNT }, (_, i) => currentYear - i).map((y) => (
+              <NextLink
+                key={y}
+                href={expensesFilterHref(filterHrefBase, { year: yearFilter === y ? null : y })}
+                className={lButtonClass({ variant: yearFilter === y ? "primary" : "outline", size: "sm" })}
+              >
+                {y}
+              </NextLink>
+            ))}
+          </div>
 
           {/* The lookup that decides whose cost each row is came back
               incomplete. Every figure that depends on it is withheld
@@ -396,10 +497,34 @@ export default async function ExpensesPage({
                 instead of a name. Reload to try again.
               </span>
             </LAlert>
+          ) : clientChoices.length > CLIENT_CHIP_LIMIT ? (
+            // Past the chip threshold, a wall of buttons is slower to
+            // scan than the list it filters — the house-preferred native
+            // select in a server-rendered GET form, no client JS. The
+            // year param rides along as a hidden input so picking a
+            // client never drops an active year filter.
+            <form action="/expenses" className="flex flex-wrap items-end gap-2">
+              {yearFilter ? <input type="hidden" name="year" value={String(yearFilter)} /> : null}
+              <label className="flex flex-col gap-1">
+                <span className="text-caption text-ink-3">Client</span>
+                <LSelect name="client" defaultValue={clientFilter ?? ""} className="w-56">
+                  <option value="">Any client</option>
+                  {clientChoices.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.name}
+                    </option>
+                  ))}
+                  <option value={NO_CLIENT_FILTER}>No client</option>
+                </LSelect>
+              </label>
+              <button type="submit" className={lButtonClass({ variant: "outline", size: "sm" })}>
+                Filter
+              </button>
+            </form>
           ) : clientChoices.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               <NextLink
-                href={clientFilterHref(null)}
+                href={expensesFilterHref(filterHrefBase, { client: null })}
                 className={lButtonClass({
                   variant: clientFilter === null ? "primary" : "outline",
                   size: "sm",
@@ -410,7 +535,9 @@ export default async function ExpensesPage({
               {clientChoices.map((client) => (
                 <NextLink
                   key={client.id}
-                  href={clientFilterHref(clientFilter === client.id ? null : client.id)}
+                  href={expensesFilterHref(filterHrefBase, {
+                    client: clientFilter === client.id ? null : client.id,
+                  })}
                   className={lButtonClass({
                     variant: clientFilter === client.id ? "primary" : "outline",
                     size: "sm",
@@ -420,9 +547,9 @@ export default async function ExpensesPage({
                 </NextLink>
               ))}
               <NextLink
-                href={clientFilterHref(
-                  clientFilter === NO_CLIENT_FILTER ? null : NO_CLIENT_FILTER
-                )}
+                href={expensesFilterHref(filterHrefBase, {
+                  client: clientFilter === NO_CLIENT_FILTER ? null : NO_CLIENT_FILTER,
+                })}
                 className={lButtonClass({
                   variant: clientFilter === NO_CLIENT_FILTER ? "primary" : "outline",
                   size: "sm",
@@ -511,8 +638,18 @@ export default async function ExpensesPage({
                 <p className="text-body-s text-ink-2">
                   {mileageFailed
                     ? "Couldn't load your mileage total."
-                    : `${mileageTotalMiles.toFixed(1)} mi logged at the standard mileage rate${
-                        mileageTruncated ? " (partial, see the mileage log)" : ""
+                    : /* Same scopeLabel-prefix treatment as the header above —
+                         but the client half of scopeLabel is deliberately left
+                         out: mileage entries carry no client attribution, and
+                         this card's total was never scoped by one, so
+                         repeating a client name here would claim a scoping
+                         that isn't real. Only the year half applies. */
+                      `${yearFilter ? `${yearFilter} · ` : ""}${mileageTotalMiles.toFixed(
+                        1
+                      )} mi logged at the standard mileage rate${
+                        mileageTruncated
+                          ? ` (partial, see the mileage log${yearFilter ? ` for ${yearFilter}` : ""})`
+                          : ""
                       }`}
                 </p>
               </div>
@@ -559,7 +696,8 @@ export default async function ExpensesPage({
             {expenses.length === 0 && clientFilter ? (
               // Filtered to nothing is a third case, distinct from both an
               // empty account and a failed read: the expenses exist, none
-              // of them belong to this client.
+              // of them belong to this client (in this year, if one is
+              // also active).
               <LEmpty
                 title={
                   clientFilter === NO_CLIENT_FILTER
@@ -573,8 +711,25 @@ export default async function ExpensesPage({
                 }
               >
                 {clientFilter === NO_CLIENT_FILTER
-                  ? "Nothing is sitting against no client at all."
-                  : "Nothing here is attributed to them, directly or through one of their trips."}
+                  ? `Nothing is sitting against no client at all${yearFilter ? ` in ${yearFilter}` : ""}.`
+                  : `Nothing here is attributed to them, directly or through one of their trips${yearFilter ? `, in ${yearFilter}` : ""}.`}
+              </LEmpty>
+            ) : expenses.length === 0 && yearFilter ? (
+              // Same third case, narrowed to a year instead of a client:
+              // the account has expenses, none of them fall in this tax
+              // year.
+              <LEmpty
+                title={`No expenses in ${yearFilter}`}
+                action={
+                  <NextLink
+                    href={expensesFilterHref(filterHrefBase, { year: null })}
+                    className={lButtonClass({ variant: "outline" })}
+                  >
+                    Show all time
+                  </NextLink>
+                }
+              >
+                {`Nothing was logged in ${yearFilter}. Your other years are still on file.`}
               </LEmpty>
             ) : expenses.length === 0 ? (
               <LEmpty

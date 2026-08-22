@@ -1,6 +1,6 @@
 import NextLink from "next/link";
 import { notFound } from "next/navigation";
-import { LCard, LPill, LSeparator, LTable, LTd, LTh } from "@/components/ledger";
+import { LCard, LPill, LSeparator, LTable, LTd, LTh, lButtonClass } from "@/components/ledger";
 import { Logo } from "@/components/logo";
 import { createClient } from "@/lib/supabase/server";
 import { formatCents, formatDate } from "@/lib/format";
@@ -33,6 +33,15 @@ export const dynamic = "force-dynamic";
  * never has to be mirrored here. It also never MINTS a packet link; if
  * packet_token comes back null, the honest answer is "ask your pilot," not
  * a button that would create one on this page's behalf.
+ *
+ * THE OPEN-INVOICE LINKS follow that same never-mint rule one level down
+ * (20260822110000): each open row carries share_token, the token of that
+ * invoice's OWN live share if the pilot already made one, and the invoice
+ * number becomes a link to /invoice/[token] when it is present. A rollup
+ * that names four open invoices and gives the reader no way to see what any
+ * of them was for sends an AP clerk back to their inbox for links they were
+ * already sent — which is the chore this page exists to end. Null stays
+ * plain text: this page never manufactures a share the pilot didn't make.
  */
 
 type VendorPage = {
@@ -53,6 +62,8 @@ type VendorPage = {
     due_on: string | null;
     status: "sent" | "partial";
     balance_due_cents: number;
+    /** This invoice's own live share token, or null when none exists. */
+    share_token: string | null;
   }[];
   open_invoices_truncated: boolean;
   total_outstanding_cents: number;
@@ -224,12 +235,26 @@ export default async function VendorPage({
                     <tr key={`${invoice.invoice_number}-${i}`}>
                       {/* scope="row": the row-header semantics the old
                           Table.RowHeaderCell carried, per the invoices
-                          list idiom. */}
+                          list idiom. The number is the link when this
+                          invoice has a live share — same accent-text
+                          treatment as "View the current paperwork" below,
+                          not a second button: this table is a rollup to
+                          scan, and four filled controls in a column would
+                          out-shout the total the reader came for. */}
                       <th
                         scope="row"
                         className="border-b border-hair px-3 py-2.5 text-left align-baseline font-medium text-ink first:pl-0 last:pr-0"
                       >
-                        {invoice.invoice_number ?? "—"}
+                        {invoice.share_token ? (
+                          <NextLink
+                            href={`/invoice/${invoice.share_token}`}
+                            className="text-accent hover:underline"
+                          >
+                            {invoice.invoice_number ?? "View invoice"}
+                          </NextLink>
+                        ) : (
+                          (invoice.invoice_number ?? "—")
+                        )}
                       </th>
                       <LTd>
                         <span className="text-ink-2">
@@ -349,11 +374,23 @@ export default async function VendorPage({
                     That didn&rsquo;t work. Try again in a moment.
                   </p>
                 ) : null}
+                {/* A REAL CONTROL, not a text link. This starts a Stripe
+                    session that saves a card — the most consequential thing
+                    anyone can do on this page — and it used to carry the
+                    same weight and the same tap target as the passive
+                    "View the current paperwork" link. OUTLINE, not filled:
+                    the reader came here to see what they owe, and a filled
+                    accent block would make enrolling in autopay look like
+                    the page's purpose. The POST <form> wrapper stays exactly
+                    as it was — see the GET-scanner note in the enrolled
+                    branch above; a raw <button> with lButtonClass is how a
+                    non-LButton element wears the Ledger skin (same idiom as
+                    app/invoice/[token]/page.tsx's pay anchor). */}
                 <form action="/api/autopay/start" method="POST">
                   <input type="hidden" name="token" value={token} />
                   <button
                     type="submit"
-                    className="text-body-s font-medium text-accent hover:underline"
+                    className={lButtonClass({ variant: "outline", size: "lg" })}
                   >
                     Set up autopay
                   </button>

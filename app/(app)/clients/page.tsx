@@ -8,6 +8,7 @@ import { formatCents } from "@/lib/format";
 import { COUNTERPARTY_COPY, isInvoicedCounterparty } from "@/lib/counterparty";
 import type { Database } from "@/lib/supabase/database.types";
 import { friendlyDbError } from "@/lib/db-errors";
+import { countOf } from "@/lib/supabase/rows";
 
 type ClientRow = Database["pilot"]["Tables"]["clients"]["Row"];
 
@@ -42,17 +43,27 @@ export default async function ClientsPage() {
   const supabase = await createClient();
   // RLS scopes this to the caller's tenant; no account_id filter is
   // needed or wanted here (see the note in actions.ts).
-  const { data, error } = await supabase
-    .from("clients")
-    .select("*")
-    .order("archived_at", { ascending: true, nullsFirst: true })
-    .order("name", { ascending: true })
-    .limit(CLIENTS_LIMIT);
+  const [{ data, error }, tripCountRes] = await Promise.all([
+    supabase
+      .from("clients")
+      .select("*")
+      .order("archived_at", { ascending: true, nullsFirst: true })
+      .order("name", { ascending: true })
+      .limit(CLIENTS_LIMIT),
+    // Getting Started step 2 ("Log your first trip") is only worth
+    // pointing at from here once step 1 (this page) is done and step 2
+    // genuinely isn't yet — a failed count must render nothing rather
+    // than a nudge that could be wrong, same "unticked box from a failed
+    // count is the reassuring-zero lie" rule overview/page.tsx follows.
+    supabase.from("trips").select("id", { count: "exact", head: true }),
+  ]);
 
   const clients = (data ?? []) as ClientRow[];
   const truncatedClients = clients.length === CLIENTS_LIMIT;
   const active = clients.filter((c) => !c.archived_at);
   const archived = clients.filter((c) => c.archived_at);
+  const tripCount = countOf(tripCountRes);
+  const showLogTripNudge = clients.length > 0 && tripCount.ok && tripCount.count === 0;
 
   return (
     <LPageShell
@@ -172,6 +183,16 @@ export default async function ClientsPage() {
           </LTable>
         )}
       </LCard>
+
+      {showLogTripNudge ? (
+        <p className="text-caption text-ink-3">
+          Next:{" "}
+          <NextLink href="/trips/new" className="text-accent hover:underline">
+            log your first trip
+          </NextLink>
+          {" "}— its days become the invoice.
+        </p>
+      ) : null}
     </LPageShell>
   );
 }

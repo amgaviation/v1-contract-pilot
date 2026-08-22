@@ -2,9 +2,11 @@ import { LCard } from "@/components/ledger";
 import { Logo } from "@/components/logo";
 
 /**
- * Rendered for an unknown token, a revoked one, an expired one, and a
- * database error alike — see page.tsx's own comment on why
- * document_packet_public folding all four into zero rows is deliberate.
+ * Rendered for an unknown token, a revoked one and an expired one alike —
+ * see page.tsx's own comment on why document_packet_public folding all
+ * three into zero rows is deliberate. NOT for a database failure: that
+ * throws instead, and the reader gets the retryable error boundary rather
+ * than being told to go ask for a link that was never the problem.
  * The copy below never says "expired": expires_at IS a real, checkable
  * column (see supabase/migrations/20260810100000_credential_packet_
  * share.sql), but document_packet_public enforces it in the same WHERE

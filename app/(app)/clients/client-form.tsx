@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useId, useState } from "react";
+import { useActionState, useEffect, useId, useRef, useState } from "react";
 import NextLink from "next/link";
 import { LAlert, LCard, LSeparator, lButtonClass } from "@/components/ledger";
 import { LField, LInput, LSelect, LTextarea, LCheckbox } from "@/components/ledger/forms";
@@ -104,6 +104,40 @@ export default function ClientForm({
   submitLabel: string;
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // F: focus + scroll the first invalid control whenever a fresh
+  // fieldErrors map arrives, so a bad field several sections up isn't
+  // just a message next to the submit button. Queried in DOCUMENT order
+  // (first aria-invalid control in the form) rather than by iterating
+  // fieldErrors' keys — object key order is INSERTION order, which is
+  // parseClientForm's check order, not the field's position on the page;
+  // a field near the top whose check happens to run last would otherwise
+  // be left off-screen while the page scrolled to one further down.
+  useEffect(() => {
+    if (!state.fieldErrors) return;
+    const el = formRef.current?.querySelector('[aria-invalid="true"]');
+    if (!(el instanceof HTMLElement)) return;
+    el.focus();
+    el.scrollIntoView({ block: "center" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.fieldErrors]);
+
+  // F: unsaved-changes protection. Any change anywhere in the form (a
+  // single onChange on the <form> catches every descendant control via
+  // React's bubbling) arms a beforeunload warning; a full page unload —
+  // refresh, close, back out of the app — is the loss this guards, not
+  // in-app navigation, which the App Router never fires it for anyway.
+  const [dirty, setDirty] = useState(false);
+  useEffect(() => {
+    if (!dirty) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty]);
 
   // Echoed submission wins over the stored row, so a rejected submit
   // shows what the pilot typed rather than blanking every field — React
@@ -260,13 +294,26 @@ export default function ClientForm({
 
   return (
     <LCard>
-      <form action={formAction}>
+      <form ref={formRef} action={formAction} onChange={() => setDirty(true)}>
         {values.id ? <input type="hidden" name="id" value={values.id} /> : null}
 
         <h2 className="mb-3 text-h3 font-semibold">Who they are</h2>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <LField label="Client name" htmlFor="name" hint="The name that prints on their invoices">
-            <LInput id="name" name="name" required defaultValue={initial("name", values.name)} />
+          <LField
+            label="Client name"
+            htmlFor="name"
+            hint="The name that prints on their invoices"
+            error={state.fieldErrors?.name}
+            errorId="name-error"
+          >
+            <LInput
+              id="name"
+              name="name"
+              required
+              defaultValue={initial("name", values.name)}
+              aria-invalid={state.fieldErrors?.name ? true : undefined}
+              aria-describedby={state.fieldErrors?.name ? "name-error" : undefined}
+            />
           </LField>
           <LField label="Contact" htmlFor="contact_name">
             <LInput
@@ -279,12 +326,16 @@ export default function ClientForm({
             label="Contact email"
             htmlFor="contact_email"
             hint="Where a platform-sent invoice goes"
+            error={state.fieldErrors?.contact_email}
+            errorId="contact_email-error"
           >
             <LInput
               id="contact_email"
               type="email"
               name="contact_email"
               defaultValue={initial("contact_email", values.contact_email)}
+              aria-invalid={state.fieldErrors?.contact_email ? true : undefined}
+              aria-describedby={state.fieldErrors?.contact_email ? "contact_email-error" : undefined}
             />
           </LField>
           <LField label="Contact phone" htmlFor="contact_phone">
@@ -356,7 +407,12 @@ export default function ClientForm({
 
         <h2 className="mt-5 mb-3 text-h3 font-semibold">Rate agreement</h2>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <LField label="Day rate (USD)" htmlFor="default_day_rate">
+          <LField
+            label="Day rate (USD)"
+            htmlFor="default_day_rate"
+            error={state.fieldErrors?.default_day_rate}
+            errorId="default_day_rate-error"
+          >
             <LInput
               id="default_day_rate"
               name="default_day_rate"
@@ -366,9 +422,18 @@ export default function ClientForm({
                 "default_day_rate",
                 centsToInput(values.default_day_rate_cents)
               )}
+              aria-invalid={state.fieldErrors?.default_day_rate ? true : undefined}
+              aria-describedby={
+                state.fieldErrors?.default_day_rate ? "default_day_rate-error" : undefined
+              }
             />
           </LField>
-          <LField label="Per diem (USD)" htmlFor="default_per_diem">
+          <LField
+            label="Per diem (USD)"
+            htmlFor="default_per_diem"
+            error={state.fieldErrors?.default_per_diem}
+            errorId="default_per_diem-error"
+          >
             <LInput
               id="default_per_diem"
               name="default_per_diem"
@@ -378,12 +443,18 @@ export default function ClientForm({
                 "default_per_diem",
                 centsToInput(values.default_per_diem_cents)
               )}
+              aria-invalid={state.fieldErrors?.default_per_diem ? true : undefined}
+              aria-describedby={
+                state.fieldErrors?.default_per_diem ? "default_per_diem-error" : undefined
+              }
             />
           </LField>
           <LField
             label="Travel day rate (USD)"
             htmlFor="default_travel_day_rate"
             hint="Days getting to or from the aircraft"
+            error={state.fieldErrors?.default_travel_day_rate}
+            errorId="default_travel_day_rate-error"
           >
             <LInput
               id="default_travel_day_rate"
@@ -394,12 +465,20 @@ export default function ClientForm({
                 "default_travel_day_rate",
                 centsToInput(values.default_travel_day_rate_cents)
               )}
+              aria-invalid={state.fieldErrors?.default_travel_day_rate ? true : undefined}
+              aria-describedby={
+                state.fieldErrors?.default_travel_day_rate
+                  ? "default_travel_day_rate-error"
+                  : undefined
+              }
             />
           </LField>
           <LField
             label="Payment terms (days)"
             htmlFor="payment_terms_days"
             hint="Net 30 unless you agreed otherwise"
+            error={state.fieldErrors?.payment_terms_days}
+            errorId="payment_terms_days-error"
           >
             <LInput
               id="payment_terms_days"
@@ -407,6 +486,10 @@ export default function ClientForm({
               name="payment_terms_days"
               className="tnum-l"
               defaultValue={initial("payment_terms_days", values.payment_terms_days, "30")}
+              aria-invalid={state.fieldErrors?.payment_terms_days ? true : undefined}
+              aria-describedby={
+                state.fieldErrors?.payment_terms_days ? "payment_terms_days-error" : undefined
+              }
             />
           </LField>
           <div className="flex flex-col gap-1.5 md:col-span-2">
@@ -508,6 +591,8 @@ export default function ClientForm({
           <LField
             label="Minimum (days)"
             htmlFor="minimum_days"
+            error={state.fieldErrors?.minimum_days}
+            errorId="minimum_days-error"
           >
             {/* F4: "Contract minimum" reads, to most pilots, as the OTHER
                 minimum this industry uses — a full day rate regardless of
@@ -521,6 +606,8 @@ export default function ClientForm({
               inputMode="decimal"
               className="tnum-l"
               defaultValue={initial("minimum_days", values.minimum_days)}
+              aria-invalid={state.fieldErrors?.minimum_days ? true : undefined}
+              aria-describedby={state.fieldErrors?.minimum_days ? "minimum_days-error" : undefined}
             />
           </LField>
           <div className="flex flex-col gap-1.5">
@@ -683,7 +770,13 @@ export default function ClientForm({
           </div>
 
           {lateFeeKind === "flat" ? (
-            <LField label="Amount (USD)" htmlFor="late_fee_flat" hint="Charged once, not every month.">
+            <LField
+              label="Amount (USD)"
+              htmlFor="late_fee_flat"
+              hint="Charged once, not every month."
+              error={state.fieldErrors?.late_fee_flat}
+              errorId="late_fee_flat-error"
+            >
               <LInput
                 id="late_fee_flat"
                 name="late_fee_flat"
@@ -693,6 +786,10 @@ export default function ClientForm({
                   "late_fee_flat",
                   centsToInput(values.late_fee_flat_cents)
                 )}
+                aria-invalid={state.fieldErrors?.late_fee_flat ? true : undefined}
+                aria-describedby={
+                  state.fieldErrors?.late_fee_flat ? "late_fee_flat-error" : undefined
+                }
               />
             </LField>
           ) : null}
@@ -702,6 +799,8 @@ export default function ClientForm({
               label="Percent per month"
               htmlFor="late_fee_rate_percent"
               hint="1.5% is the common convention. The fee applies to the balance still outstanding, charged per complete month, up to a cap of 5%."
+              error={state.fieldErrors?.late_fee_rate_percent}
+              errorId="late_fee_rate_percent-error"
             >
               <LInput
                 id="late_fee_rate_percent"
@@ -714,6 +813,10 @@ export default function ClientForm({
                     ? ""
                     : String(values.late_fee_bps_per_month / 100)
                 )}
+                aria-invalid={state.fieldErrors?.late_fee_rate_percent ? true : undefined}
+                aria-describedby={
+                  state.fieldErrors?.late_fee_rate_percent ? "late_fee_rate_percent-error" : undefined
+                }
               />
             </LField>
           ) : null}
@@ -722,6 +825,8 @@ export default function ClientForm({
             label="Grace period (days)"
             htmlFor="late_fee_grace_days"
             hint="Days past due before anything starts running."
+            error={state.fieldErrors?.late_fee_grace_days}
+            errorId="late_fee_grace_days-error"
           >
             <LInput
               id="late_fee_grace_days"
@@ -733,6 +838,10 @@ export default function ClientForm({
                 values.late_fee_grace_days,
                 "0"
               )}
+              aria-invalid={state.fieldErrors?.late_fee_grace_days ? true : undefined}
+              aria-describedby={
+                state.fieldErrors?.late_fee_grace_days ? "late_fee_grace_days-error" : undefined
+              }
             />
           </LField>
 

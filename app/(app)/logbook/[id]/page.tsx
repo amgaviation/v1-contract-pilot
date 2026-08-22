@@ -1,3 +1,4 @@
+import NextLink from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireAccount } from "@/lib/supabase/account";
@@ -50,7 +51,19 @@ export default async function LogbookEntryPage({
   return (
     <LPageShell
       title={`${entry.from_icao ?? "—"} → ${entry.to_icao ?? "—"}`}
-      subtitle={`${formatDate(entry.entry_date)} · ${Number(entry.total_time).toFixed(1)} hours`}
+      subtitle={
+        <>
+          {formatDate(entry.entry_date)} · {Number(entry.total_time).toFixed(1)} hours
+          {entry.source === "trip" && entry.trip_id ? (
+            <>
+              {" · "}
+              <NextLink href={`/trips/${entry.trip_id}`} className="text-accent hover:underline">
+                View trip
+              </NextLink>
+            </>
+          ) : null}
+        </>
+      }
       action={<DeleteLogbookEntryButton id={entry.id} />}
     >
       <LogbookEntryForm
