@@ -49,10 +49,10 @@ type BalanceRow = {
 
 // H8b: nothing on this page answered "what does this client owe me" —
 // the data model wires a client to its trips and invoices, but the page
-// was an island. These two lists are read directly here (rather than by
-// linking to a filtered /trips or /invoices, which don't support a
-// ?client= param and aren't this agent's files to add one to) so each row
-// can link straight to its own record.
+// was an island. These two lists are read directly here, rather than as
+// links to filtered lists, so each row can link straight to its own
+// record; both /trips?client= and /invoices?client= exist now, and each
+// card links out to its own for the history past the cap.
 const OPEN_TRIPS_LIMIT = 10;
 const OUTSTANDING_INVOICES_LIMIT = 10;
 
@@ -404,16 +404,25 @@ export default async function EditClientPage({
                     </span>
                   </LRow>
                 ))}
-                {outstandingInvoicesTruncated ? (
-                  <LRow>
-                    <span className="text-caption text-ink-3">
-                      Showing the {OUTSTANDING_INVOICES_LIMIT} soonest due. More are
-                      outstanding.
-                    </span>
-                  </LRow>
-                ) : null}
               </LRows>
             )}
+            {/* Offered whether or not the cap was hit: this card is a queue
+                of what is still owed, while everything already settled —
+                the rest of what this client has ever been billed — is
+                reachable only from the invoices list, and the History panel
+                below stops at its own latest 25. Invoices billing typed
+                bill-to details carry no client_id and are not on that
+                filtered list. */}
+            <p className="mt-3 text-caption">
+              <NextLink
+                href={`/invoices?client=${id}`}
+                className="text-accent hover:underline"
+              >
+                {outstandingInvoicesTruncated
+                  ? `Showing the ${OUTSTANDING_INVOICES_LIMIT} soonest due, view all`
+                  : "See all their invoices"}
+              </NextLink>
+            </p>
           </LCard>
         </div>
       )}

@@ -326,6 +326,28 @@ export type CreatePaymentLinkResult = {
  * pilot preference crossed with the connected account's ACH capability, and
  * that crossing is a pure decision with its own module and its own tests
  * (lib/stripe/payment-methods.ts). This function does the I/O.
+ *
+ * WHERE THE CLIENT LANDS AFTER PAYING (afterCompletionRedirectUrl).
+ * Without `after_completion`, Stripe finishes on its own hosted
+ * confirmation: it does say the payment succeeded, but it is unbranded and
+ * it is a dead end — the client's only way back is the tab they came from,
+ * which still shows "Awaiting payment" and a filled pay button that the
+ * single-use restriction above has just retired. Clicking it again serves
+ * Stripe's "this link is no longer active" page, so the last thing a client
+ * sees after paying is a dead payment button. Passing this parameter sends
+ * them back to the invoice share page instead, where a `paid` flag
+ * suppresses the offer and says the payment is on its way (see
+ * app/invoice/[token]/page.tsx's own header on why that flag is display-only
+ * and safe to accept unauthenticated).
+ *
+ * OPTIONAL, AND OMITTED MEANS UNCHANGED: no `after_completion` key is sent
+ * when the caller passes nothing, so Stripe's default confirmation stays
+ * exactly as it was. The URL must be ABSOLUTE (Stripe rejects a relative
+ * one at create time, not at redirect time) and it is the CALLER's to
+ * build — this function has no idea which share token, if any, points at
+ * this invoice, and minting or reading one is not I/O this module owns.
+ * NEXT_PUBLIC_APP_URL is the documented base-URL variable for exactly this
+ * (see lib/sample-connect/client.ts's appOrigin()).
  */
 export async function createPaymentLinkForInvoice(params: {
   connectAccountId: string;
@@ -341,6 +363,12 @@ export async function createPaymentLinkForInvoice(params: {
    * added later cannot accidentally mint a link offering nothing.
    */
   paymentMethodTypes?: readonly string[];
+  /**
+   * Absolute URL Stripe sends the client to after a completed checkout —
+   * ordinarily this invoice's own share page. Omit to keep Stripe's hosted
+   * confirmation. See the note above.
+   */
+  afterCompletionRedirectUrl?: string;
 }): Promise<CreatePaymentLinkResult> {
   const stripe = getStripe();
   const stripeAccount = params.connectAccountId;
@@ -373,6 +401,19 @@ export async function createPaymentLinkForInvoice(params: {
       // FAILED debit leaves the invoice needing a NEW link — the webhook
       // clears the stored one for exactly that reason.
       restrictions: { completed_sessions: { limit: 1 } },
+      // Spread, so the key is ABSENT (not undefined) when no URL was
+      // given — Stripe's default hosted confirmation then applies exactly
+      // as it did before this parameter existed. Shape checked against the
+      // installed SDK's own types (stripe@22.5.0,
+      // PaymentLinkCreateParams.AfterCompletion.Redirect), not from memory.
+      ...(params.afterCompletionRedirectUrl
+        ? {
+            after_completion: {
+              type: "redirect" as const,
+              redirect: { url: params.afterCompletionRedirectUrl },
+            },
+          }
+        : {}),
       metadata: {
         invoice_id: params.invoiceId,
         account_id: params.accountId,

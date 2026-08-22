@@ -266,7 +266,7 @@ export default function ReceiptScan({
               Cancel
             </LButton>
           ) : null}
-          <span className="text-caption text-ink-3">
+          <span role="status" aria-live="polite" className="text-caption text-ink-3">
             {scanning
               ? status.message + (status.fraction === null ? "" : `, ${Math.round(status.fraction * 100)}%`)
               : "Fills in the date, amount, vendor and category for you. Runs on this device; the first scan downloads about 6 MB."}

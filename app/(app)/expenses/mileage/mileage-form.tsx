@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import NextLink from "next/link";
 import { LAlert, LButton, LCard, LTable, LTd, LTh } from "@/components/ledger";
 import { LConfirmDialog } from "@/components/ledger/dialog";
@@ -375,6 +375,18 @@ function EntryRow({
   const [deleting, startDelete] = useTransition();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // F: updateMileageEntry returns { error: null } (no `values`) only on
+  // success — close the row back to its read-only view, same pattern as
+  // leg-editor.tsx's LegEditForm. Without this the row just sat open with
+  // "Saving…" flipping back to "Save" and nothing else, indistinguishable
+  // from a submit that did nothing.
+  useEffect(() => {
+    if (state !== initialState && state.error === null) {
+      onDone();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
 
   const submitted = state.values;
   const values = submitted

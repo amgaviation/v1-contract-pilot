@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isLiveMode } from "@/lib/stripe/server";
 import { formatCents, formatDate } from "@/lib/format";
 import { loadShareReceipts } from "@/lib/invoice-share-receipts";
+import PrintButton from "./print-button";
 
 export const dynamic = "force-dynamic";
 
@@ -162,6 +163,18 @@ export const dynamic = "force-dynamic";
  * survives a revoked share by even one request; and every failure renders
  * this page exactly as it rendered before the feature existed.
  *
+ * `paid` IN THE QUERY STRING, DISPLAY ONLY. A Payment Link can be told to
+ * send the client back here after checkout (lib/stripe/connect.ts's
+ * afterCompletionRedirectUrl), and the flag it appends is read below for
+ * exactly one purpose: to stop this page offering a pay button the client
+ * has just used. It is unauthenticated and trivially typed by hand, and it
+ * is safe precisely because of what it CANNOT do — it never writes, never
+ * changes the status pill, never touches a figure, and can only ever
+ * SUPPRESS a payment affordance. Every number and every status on this page
+ * still comes from pilot.invoice_public and says whatever the database says.
+ * Same posture, and the same reasoning, as app/vendor/[token]/page.tsx's
+ * `autopay` return flag.
+ *
  * WHY A <Suspense> BOUNDARY IS SAFE HERE WHEN loading.tsx WAS NOT. The note
  * above explains that a loading.tsx makes Next flush a 200 BEFORE this
  * function has run far enough to reach either notFound(), which permanently
@@ -252,10 +265,15 @@ const STATUS_LABEL: Record<string, { tone: "neutral" | "warn" | "good"; label: s
 
 export default async function PublicInvoicePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ token: string }>;
+  /** `paid` — the return flag a Payment Link redirect appends, display
+   *  only. See this file's header for why that is safe. */
+  searchParams: Promise<{ paid?: string }>;
 }) {
   const { token } = await params;
+  const { paid: paidFlag } = await searchParams;
 
   const supabase = await createClient();
 
@@ -344,6 +362,27 @@ export default async function PublicInvoicePage({
   // cannot be handed a button that would charge the wrong amount for it.
   const linkStale =
     invoice.totals.balance_due_cents > 0 && linkLooksLive && !linkCurrent;
+  // JUST BACK FROM STRIPE. The Payment Link is single-use
+  // (restrictions.completed_sessions.limit = 1), and the webhook that
+  // records the payment lands seconds later — or, on an ACH mandate, days
+  // later. In that window this page would otherwise still show the filled
+  // "Pay $X online" button, now pointing at a link Stripe has already
+  // retired, so the last thing a client who has just paid sees is a dead
+  // payment button under a status pill reading "Awaiting payment". The flag
+  // only suppresses the offer and says the money is on its way; it never
+  // claims the invoice is paid, because this page does not know that yet.
+  // Gated on a balance still being due so a fully-recorded payment renders
+  // its real "Paid" state instead of this notice.
+  const justPaid = paidFlag === "1" && invoice.totals.balance_due_cents > 0;
+  // Balance owed, no button this page can honestly show: the pilot has no
+  // Stripe Connect account, or never generated a link. Silence here left
+  // the page ending on a large "Balance due" with no answer to the one
+  // question the reader has. The !justPaid term is redundant against the
+  // render order below (justPaid is the first branch) and kept anyway, so
+  // this reads as a complete statement of when the fallback applies rather
+  // than as something only true because of where it sits in a chain.
+  const noPaymentRoute =
+    invoice.totals.balance_due_cents > 0 && !payable && !linkStale && !justPaid;
 
   return (
     // Ledger's softer marketing variant, hand-painted (this page owns its
@@ -355,8 +394,14 @@ export default async function PublicInvoicePage({
     <div className="min-h-dvh bg-canvas font-ledger text-body text-ink">
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8 sm:py-12">
         <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
-          <Logo href="/" />
-          <LPill tone={status.tone}>{status.label}</LPill>
+          {/* The product's mark, not the pilot's — it orients a client who
+              has never heard of this app, and it is the first thing off the
+              page when that page becomes paper. */}
+          <Logo href="/" className="print:hidden" />
+          <div className="flex items-center gap-3">
+            <LPill tone={status.tone}>{status.label}</LPill>
+            <PrintButton />
+          </div>
         </div>
 
         <LCard className="p-6 sm:p-8">
@@ -449,11 +494,28 @@ export default async function PublicInvoicePage({
           {invoice.invoice.notes ? (
             <>
               <LSeparator className="my-6" />
-              <p className="text-body-s text-ink-2">{invoice.invoice.notes}</p>
+              {/* whitespace-pre-line: notes are where a pilot puts
+                  remittance instructions — "Check payable to…", "Mail
+                  to…", "Wire:…" — each on its own line, and
+                  lib/invoice-pdf.tsx renders this same field in a react-pdf
+                  <Text>, which keeps those newlines. Without this the one
+                  surface a paying client actually clicks collapsed them
+                  into a single run-on paragraph and disagreed with the PDF
+                  in the same client's inbox. */}
+              <p className="whitespace-pre-line text-body-s text-ink-2">
+                {invoice.invoice.notes}
+              </p>
             </>
           ) : null}
 
-          {payable ? (
+          {justPaid ? (
+            <>
+              <LSeparator className="my-6" />
+              <LAlert tone="good">
+                Payment submitted — it can take a few minutes to show here.
+              </LAlert>
+            </>
+          ) : payable ? (
             // Labelled with the LINK's own snapshotted amount, never
             // balance_due_cents — `payable` already proved the two are
             // equal, but the button states what Stripe will actually
@@ -463,11 +525,17 @@ export default async function PublicInvoicePage({
             // "one filled accent action per view" rule requires.
             <>
               <LSeparator className="my-6" />
+              {/* print:hidden — a filled accent bar carrying a URL nobody
+                  can click is the worst thing on the printed page. */}
               <a
                 href={invoice.payment.url!}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={lButtonClass({ variant: "primary", size: "lg", className: "w-full" })}
+                className={lButtonClass({
+                  variant: "primary",
+                  size: "lg",
+                  className: "w-full print:hidden",
+                })}
               >
                 Pay {formatCents(invoice.payment.amount_cents!)} online
               </a>
@@ -480,6 +548,22 @@ export default async function PublicInvoicePage({
                 online payment link for this invoice is out of date. Contact
                 your pilot for an updated one rather than using it.
               </LAlert>
+            </>
+          ) : noPaymentRoute ? (
+            // NO ONLINE PAYMENT AT ALL — the ordinary case for a pilot
+            // without Stripe Connect, and every case where no link was ever
+            // generated. This page used to end on the emphasized balance
+            // and say nothing about how to settle it. It still invents no
+            // payment instructions: it points at the notes above when the
+            // pilot wrote any, and at the pilot otherwise, which is the
+            // whole of what this page actually knows.
+            <>
+              <LSeparator className="my-6" />
+              <p className="text-body-s text-ink-2">
+                {invoice.invoice.notes
+                  ? `To arrange payment, use the payment details in the notes above or contact ${invoice.account.legal_name} directly.`
+                  : `To arrange payment, contact ${invoice.account.legal_name} directly.`}
+              </p>
             </>
           ) : null}
         </LCard>

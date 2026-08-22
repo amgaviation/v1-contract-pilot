@@ -3,6 +3,7 @@ import { LAlert, LCard, LPill, LSeparator, LTable, LTd, LTh } from "@/components
 import { Logo } from "@/components/logo";
 import { createClient } from "@/lib/supabase/server";
 import { formatCents, formatDate } from "@/lib/format";
+import PrintButton from "@/app/invoice/[token]/print-button";
 import RespondPanel from "./respond-panel";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +34,15 @@ export const dynamic = "force-dynamic";
  * RespondPanel below is rendered ONLY while status is 'sent' — matching
  * pilot.estimate_public_accept/_decline's own gate exactly, so the buttons
  * are never shown where the RPC would silently do nothing.
+ *
+ * PAST valid_until IS A UI STATE, NOT A LOCKED DOOR. The RPC gates on
+ * status alone — pilot.estimate_public_accept (20260814111000) has no
+ * valid_until check — so an out-of-date quote can still be accepted, and
+ * that is deliberate: a pilot who told a client "go ahead" last week must
+ * not find the button gone. What was NOT acceptable is the page showing
+ * "Valid until 14 Jul" and, three inches below, inviting acceptance at that
+ * price as though nothing had happened. The notice below says the date has
+ * passed and to confirm the price; the buttons stay live underneath it.
  */
 
 type PublicEstimate = {
@@ -144,6 +154,14 @@ export default async function PublicEstimatePage({
 
   const estimate = data as unknown as PublicEstimate;
   const status = STATUS_LABEL[estimate.estimate.status] ?? STATUS_LABEL.sent!;
+  // Both sides are plain ISO dates (YYYY-MM-DD), so a string comparison IS
+  // a date comparison — the same idiom app/packet/[token]/page.tsx uses to
+  // mark an expired certificate, and it deliberately avoids constructing a
+  // Date, which would drag the server's timezone into a question the pilot
+  // answered with a calendar day.
+  const expired =
+    estimate.estimate.valid_until !== null &&
+    estimate.estimate.valid_until < new Date().toISOString().slice(0, 10);
 
   return (
     // Ledger's softer marketing variant, hand-painted — same posture as
@@ -153,8 +171,13 @@ export default async function PublicEstimatePage({
     <div className="min-h-dvh bg-canvas font-ledger text-body text-ink">
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8 sm:py-12">
         <div className="mb-8 flex flex-wrap items-center justify-between gap-3">
-          <Logo href="/" />
-          <LPill tone={status.tone}>{status.label}</LPill>
+          {/* Off the page when the page becomes paper — same as the invoice
+              portal's own header. */}
+          <Logo href="/" className="print:hidden" />
+          <div className="flex items-center gap-3">
+            <LPill tone={status.tone}>{status.label}</LPill>
+            <PrintButton />
+          </div>
         </div>
 
         <LCard className="p-6 sm:p-8">
@@ -231,25 +254,45 @@ export default async function PublicEstimatePage({
             <TotalsLine label="Total" value={estimate.totals.total_cents} emphasize />
           </div>
 
+          {/* whitespace-pre-line on both: terms and notes are pilot-typed
+              prose where the line breaks are the structure — a list of
+              conditions, a two-line remittance address. Same fix, same
+              reason, as app/invoice/[token]/page.tsx's notes. */}
           {estimate.estimate.terms ? (
             <>
               <LSeparator className="mb-3" />
               <div className="mb-1 text-caption font-semibold text-ink-3">Terms</div>
-              <p className="text-body-s text-ink-2">{estimate.estimate.terms}</p>
+              <p className="whitespace-pre-line text-body-s text-ink-2">
+                {estimate.estimate.terms}
+              </p>
             </>
           ) : null}
 
           {estimate.estimate.notes ? (
             <>
               <LSeparator className="my-3" />
-              <p className="text-body-s text-ink-2">{estimate.estimate.notes}</p>
+              <p className="whitespace-pre-line text-body-s text-ink-2">
+                {estimate.estimate.notes}
+              </p>
             </>
           ) : null}
 
           {estimate.estimate.status === "sent" ? (
             <>
               <LSeparator className="my-6" />
-              <RespondPanel token={token} />
+              {expired ? (
+                <LAlert tone="warn" className="mb-3">
+                  The validity date on this quote has passed. You can still
+                  respond, but confirm with {estimate.account.legal_name} that
+                  the price still stands.
+                </LAlert>
+              ) : null}
+              {/* print:hidden: the buttons are the one thing here that does
+                  nothing on paper. The notice above them is not — a printed
+                  copy of an out-of-date quote should still say so. */}
+              <div className="print:hidden">
+                <RespondPanel token={token} />
+              </div>
             </>
           ) : null}
         </LCard>

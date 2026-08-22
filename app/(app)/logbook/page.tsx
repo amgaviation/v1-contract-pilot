@@ -448,6 +448,14 @@ export default async function LogbookPage({
                     <NextLink href="/logbook/drafts" className={lButtonClass({ variant: "outline" })}>
                       Review trip drafts
                     </NextLink>
+                    {/* The landing FAQ's lead objection-handler (lib/nav.ts) —
+                        the likeliest first action for a working pilot with
+                        years of entries already in ForeFlight or LogTen, so
+                        the empty state that enumerates first actions
+                        shouldn't be the one place that omits it. */}
+                    <NextLink href="/logbook/import" className={lButtonClass({ variant: "outline" })}>
+                      Import your logbook
+                    </NextLink>
                     {/* Reachable before the first entry exists. The Hours by
                         type panel is the only other link to the fleet screen
                         and it renders only when there ARE entries, so a pilot
@@ -462,7 +470,8 @@ export default async function LogbookPage({
                 This is your own copy of the 61.51 record: flight time, PIC and
                 SIC, night, instrument and landings, per entry and totalled for a
                 career. Log a flight by hand, or confirm the entries a completed
-                trip proposes.
+                trip proposes — or import your existing ForeFlight or LogTen
+                export.
               </LEmpty>
             ) : (
               <LogbookEntriesTable entries={entries} />

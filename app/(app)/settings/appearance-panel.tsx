@@ -210,6 +210,13 @@ function RadioOption({
     <label
       className={cn(
         "flex cursor-pointer items-center gap-2 rounded-control border px-3 py-2 text-body-s transition-colors",
+        // Keyboard focus indicator for the sr-only radio inside this label —
+        // the input itself can't carry a visible focus-visible ring (it's
+        // hidden), so the house ring is applied to the label via the
+        // parent-side `has-[:focus-visible]:` variant instead. Same three
+        // utilities every other Ledger interactive primitive uses (see
+        // LButton's focus-visible ring above).
+        "has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent",
         checked
           ? "border-accent bg-accent-soft text-ink"
           : "border-hair-strong bg-card text-ink-2 hover:bg-sunk",

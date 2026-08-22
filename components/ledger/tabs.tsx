@@ -141,6 +141,7 @@ export function LTabsTrigger({
       onKeyDown={onKeyDown}
       className={cn(
         "-mb-px shrink-0 whitespace-nowrap border-b-2 px-1 py-2.5 text-body-s font-medium transition-colors duration-150 ease-ledger",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
         selected
           ? "border-accent text-ink"
           : "border-transparent text-ink-2 hover:text-ink",

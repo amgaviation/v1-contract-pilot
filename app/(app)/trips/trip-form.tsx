@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useId, useState } from "react";
+import { useActionState, useEffect, useId, useRef, useState } from "react";
 import NextLink from "next/link";
 import { LAlert, LButton, LCard, lButtonClass } from "@/components/ledger";
 import { LField, LInput, LSelect, LTextarea } from "@/components/ledger/forms";
@@ -144,6 +144,43 @@ export default function TripForm({
   accountDefaults?: AccountRateDefaults | null;
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // F: focus + scroll the first invalid control whenever a fresh
+  // fieldErrors map arrives. Queried in DOCUMENT order (first
+  // aria-invalid control in the form), not by iterating fieldErrors'
+  // keys — object key order is parseTripForm's check order, not the
+  // field's position on the page, and getElementById(key) never worked
+  // for client_id/cancellation_notice_from anyway (their visible
+  // controls are useId()-generated selects; only a hidden input carries
+  // the literal name). Every field error above already sets aria-invalid
+  // on the real, visible control, so this reaches all of them.
+  useEffect(() => {
+    if (!state.fieldErrors) return;
+    const el = formRef.current?.querySelector('[aria-invalid="true"]');
+    if (!(el instanceof HTMLElement)) return;
+    el.focus();
+    el.scrollIntoView({ block: "center" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.fieldErrors]);
+
+  // F: unsaved-changes protection, same shape as client-form.tsx. Cleared
+  // once an in-place edit saves (updateTrip returns saved:true rather than
+  // redirecting); a create redirects away, so there's nothing left to warn
+  // about by the time this could matter.
+  const [dirty, setDirty] = useState(false);
+  useEffect(() => {
+    if (state.saved) setDirty(false);
+  }, [state.saved]);
+  useEffect(() => {
+    if (!dirty) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty]);
 
   // Belt-and-braces on top of "only trips/new passes the prop": even a
   // caller that passed accountDefaults on the edit screen must not have a
@@ -248,6 +285,13 @@ export default function TripForm({
   const [cancellationNoticeFrom, setCancellationNoticeFrom] = useState(() =>
     initial("cancellation_notice_from", "")
   );
+  // F: controlled so ends_on can carry a `min` that tracks starts_on —
+  // native constraint validation then catches end-before-start before the
+  // form ever posts. The server check (parseTripForm) is unchanged and
+  // stays the real boundary; this only saves the round trip for the
+  // common typo.
+  const [startsOn, setStartsOn] = useState(() => initial("starts_on"));
+  const [endsOn, setEndsOn] = useState(() => initial("ends_on"));
   // formatCancelledAt renders canceled_at (a timestamptz) in the DEVICE'S
   // local zone, which the server cannot know at render time — Vercel's SSR
   // pass runs in UTC. Computing it during render would make the server's
@@ -270,6 +314,8 @@ export default function TripForm({
     if (submitted?.operating_rule !== undefined) {
       setOperatingRule(String(submitted.operating_rule || "part_91"));
     }
+    if (submitted?.starts_on !== undefined) setStartsOn(String(submitted.starts_on || ""));
+    if (submitted?.ends_on !== undefined) setEndsOn(String(submitted.ends_on || ""));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitted]);
   const clientLabelId = useId();
@@ -339,7 +385,7 @@ export default function TripForm({
 
   return (
     <LCard>
-      <form action={formAction}>
+      <form ref={formRef} action={formAction} onChange={() => setDirty(true)}>
         {values.id ? <input type="hidden" name="id" value={values.id} /> : null}
         {/* The real client_id, always in sync with clientId — see NO_CLIENT
             above for why the visible select doesn't post it directly. */}
@@ -352,10 +398,20 @@ export default function TripForm({
               label="Client"
               htmlFor={clientLabelId}
               hint={
-                clients.length === 0
-                  ? "No active clients yet. You can add one later."
-                  : "Who you're billing for this trip"
+                clients.length === 0 ? (
+                  <>
+                    No clients yet. A trip without a client can&rsquo;t be invoiced —{" "}
+                    <NextLink href="/clients/new" className="text-accent underline">
+                      add the client first
+                    </NextLink>
+                    .
+                  </>
+                ) : (
+                  "Who you're billing for this trip"
+                )
               }
+              error={state.fieldErrors?.client_id}
+              errorId="client_id-error"
             >
               <LSelect
                 key={`client-${genTick}`}
@@ -365,6 +421,8 @@ export default function TripForm({
                   pickClient(e.target.value === NO_CLIENT ? "" : e.target.value)
                 }
                 disabled={locked}
+                aria-invalid={state.fieldErrors?.client_id ? true : undefined}
+                aria-describedby={state.fieldErrors?.client_id ? "client_id-error" : undefined}
               >
                 <option value={NO_CLIENT}>No client yet</option>
                 {clients.map((client) => (
@@ -422,6 +480,8 @@ export default function TripForm({
               label="Cancellation notice from"
               htmlFor={noticeFromId}
               hint="Who called off the trip. Supports a cancellation fee line if this contract has one. The cancellation timestamp itself is recorded automatically when status is set to Canceled."
+              error={state.fieldErrors?.cancellation_notice_from}
+              errorId="cancellation_notice_from-error"
             >
               <LSelect
                 key={`notice-from-${genTick}`}
@@ -431,6 +491,12 @@ export default function TripForm({
                   setCancellationNoticeFrom(
                     e.target.value === NO_NOTICE_FROM ? "" : e.target.value
                   )
+                }
+                aria-invalid={state.fieldErrors?.cancellation_notice_from ? true : undefined}
+                aria-describedby={
+                  state.fieldErrors?.cancellation_notice_from
+                    ? "cancellation_notice_from-error"
+                    : undefined
                 }
               >
                 <option value={NO_NOTICE_FROM}>Not recorded</option>
@@ -449,26 +515,50 @@ export default function TripForm({
           </div>
 
           <div className="flex flex-col gap-1">
-            <LField label="Starts" htmlFor="starts_on">
+            <LField
+              label="Starts"
+              htmlFor="starts_on"
+              error={state.fieldErrors?.starts_on}
+              errorId="starts_on-error"
+            >
               <LInput
                 id="starts_on"
                 type="date"
                 name="starts_on"
                 required
                 disabled={locked}
-                defaultValue={initial("starts_on")}
+                value={startsOn}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setStartsOn(next);
+                  // F: never leave ends_on stranded before the new start —
+                  // the pilot picked a later start on purpose; bumping the
+                  // end to match keeps the range valid without a round trip.
+                  if (endsOn && next > endsOn) setEndsOn(next);
+                }}
+                aria-invalid={state.fieldErrors?.starts_on ? true : undefined}
+                aria-describedby={state.fieldErrors?.starts_on ? "starts_on-error" : undefined}
               />
             </LField>
           </div>
           <div className="flex flex-col gap-1">
-            <LField label="Ends" htmlFor="ends_on">
+            <LField
+              label="Ends"
+              htmlFor="ends_on"
+              error={state.fieldErrors?.ends_on}
+              errorId="ends_on-error"
+            >
               <LInput
                 id="ends_on"
                 type="date"
                 name="ends_on"
                 required
                 disabled={locked}
-                defaultValue={initial("ends_on")}
+                min={startsOn || undefined}
+                value={endsOn}
+                onChange={(e) => setEndsOn(e.target.value)}
+                aria-invalid={state.fieldErrors?.ends_on ? true : undefined}
+                aria-describedby={state.fieldErrors?.ends_on ? "ends_on-error" : undefined}
               />
             </LField>
           </div>
@@ -533,7 +623,13 @@ export default function TripForm({
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div className="flex flex-col gap-1">
-            <LField label="Day rate (USD)" htmlFor="day_rate" hint="Fills in from the client's rate agreement">
+            <LField
+              label="Day rate (USD)"
+              htmlFor="day_rate"
+              hint="Fills in from the client's rate agreement"
+              error={state.fieldErrors?.day_rate}
+              errorId="day_rate-error"
+            >
               <LInput
                 id="day_rate"
                 name="day_rate"
@@ -547,11 +643,19 @@ export default function TripForm({
                   setDayRate(event.target.value);
                 }}
                 disabled={locked}
+                aria-invalid={state.fieldErrors?.day_rate ? true : undefined}
+                aria-describedby={state.fieldErrors?.day_rate ? "day_rate-error" : undefined}
               />
             </LField>
           </div>
           <div className="flex flex-col gap-1">
-            <LField label="Days" htmlFor="day_count" hint="Half days are allowed">
+            <LField
+              label="Days"
+              htmlFor="day_count"
+              hint="Half days are allowed"
+              error={state.fieldErrors?.day_count}
+              errorId="day_count-error"
+            >
               <LInput
                 id="day_count"
                 type="number"
@@ -560,11 +664,18 @@ export default function TripForm({
                 min="0"
                 defaultValue={initial("day_count")}
                 disabled={locked}
+                aria-invalid={state.fieldErrors?.day_count ? true : undefined}
+                aria-describedby={state.fieldErrors?.day_count ? "day_count-error" : undefined}
               />
             </LField>
           </div>
           <div className="flex flex-col gap-1">
-            <LField label="Travel day rate (USD)" htmlFor="travel_day_rate">
+            <LField
+              label="Travel day rate (USD)"
+              htmlFor="travel_day_rate"
+              error={state.fieldErrors?.travel_day_rate}
+              errorId="travel_day_rate-error"
+            >
               <LInput
                 id="travel_day_rate"
                 name="travel_day_rate"
@@ -575,11 +686,21 @@ export default function TripForm({
                   setTravelRate(event.target.value);
                 }}
                 disabled={locked}
+                aria-invalid={state.fieldErrors?.travel_day_rate ? true : undefined}
+                aria-describedby={
+                  state.fieldErrors?.travel_day_rate ? "travel_day_rate-error" : undefined
+                }
               />
             </LField>
           </div>
           <div className="flex flex-col gap-1">
-            <LField label="Travel days" htmlFor="travel_day_count" hint="Days to and from the aircraft">
+            <LField
+              label="Travel days"
+              htmlFor="travel_day_count"
+              hint="Days to and from the aircraft"
+              error={state.fieldErrors?.travel_day_count}
+              errorId="travel_day_count-error"
+            >
               <LInput
                 id="travel_day_count"
                 type="number"
@@ -588,6 +709,10 @@ export default function TripForm({
                 min="0"
                 defaultValue={initial("travel_day_count", "0")}
                 disabled={locked}
+                aria-invalid={state.fieldErrors?.travel_day_count ? true : undefined}
+                aria-describedby={
+                  state.fieldErrors?.travel_day_count ? "travel_day_count-error" : undefined
+                }
               />
             </LField>
           </div>

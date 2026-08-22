@@ -363,6 +363,16 @@ export default function DraftForm({
           {state.error ? <p className="text-caption text-crit">{state.error}</p> : null}
         </div>
 
+        {selection === "" ? (
+          // Visible, not a title= on the disabled button: a disabled button
+          // is not focusable, so a tooltip is unreachable by keyboard and
+          // silent to assistive tech. The picker it points at can be a whole
+          // trips table away by the time a pilot reaches this button.
+          <p className="mt-3 text-caption text-ink-3">
+            Pick who this bills, above, to draft the invoice.
+          </p>
+        ) : null}
+
         <div className="mt-4 flex gap-3">
           <LButton
             type="submit"

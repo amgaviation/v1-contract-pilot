@@ -1,3 +1,4 @@
+import NextLink from "next/link";
 import { notFound } from "next/navigation";
 import { LAlert, LCard, LPill, LSeparator } from "@/components/ledger";
 import { LPageShell } from "@/components/ledger/page-shell";
@@ -700,6 +701,25 @@ export default async function InvoicePage({
             {invoice.issued_on ? `Issued ${formatDate(invoice.issued_on)}` : "Not yet issued"}
             {invoice.due_on ? ` · Due ${formatDate(invoice.due_on)}${overdue ? " (overdue)" : ""}` : ""}
           </span>
+          {/* WHO THIS BILLS, reachable. Chasing an overdue invoice means
+              their contact details, payment history and reminder ladder,
+              and the bill-to select below is locked once an invoice is
+              issued — so without this the way to the client is out of the
+              screen and back in through Clients. A typed bill-to has no
+              client record to open, so it is named as plain text. */}
+          {hasClient ? (
+            <span className="text-ink-3">
+              ·{" "}
+              <NextLink
+                href={`/clients/${invoice.client_id}`}
+                className="text-accent hover:underline"
+              >
+                {billedClient?.name ?? "View client"}
+              </NextLink>
+            </span>
+          ) : invoice.bill_to_name ? (
+            <span className="text-ink-3">· {invoice.bill_to_name}</span>
+          ) : null}
         </span>
       }
       action={<PdfDownload invoiceId={invoice.id} draft={draft} receiptCount={receiptCount} />}

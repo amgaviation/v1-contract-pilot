@@ -1,5 +1,6 @@
 "use client";
 
+import NextLink from "next/link";
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { LButton, LTable, LTd, LTh } from "@/components/ledger";
 import { LConfirmDialog } from "@/components/ledger/dialog";
@@ -135,13 +136,40 @@ export default function LinesEditor({
   );
 }
 
+/**
+ * THE RECORD A LINE BILLS, reachable from the line. Reviewing a draft
+ * before sending it ("is that really three billable days, and which
+ * dates?") otherwise means leaving the invoice, finding the trip by date
+ * in the Trips list, and coming back. Both ids are already on the row —
+ * invoices/[id]/page.tsx selects them — so this is a link, not a read.
+ */
+function LineSourceLink({ line }: { line: LineRow }) {
+  const target = line.trip_id
+    ? { href: `/trips/${line.trip_id}`, label: "View trip" }
+    : line.expense_id
+      ? { href: `/expenses/${line.expense_id}`, label: "View expense" }
+      : null;
+  if (!target) return null;
+  return (
+    <NextLink
+      href={target.href}
+      className="ml-2 whitespace-nowrap text-caption text-accent hover:underline"
+    >
+      {target.label}
+    </NextLink>
+  );
+}
+
 function ReadOnlyRow({ line }: { line: LineRow }) {
   return (
     <tr>
       <LTd>
         <span className="text-ink-3">{LINE_TYPE_LABEL[line.line_type]}</span>
       </LTd>
-      <LTd>{line.description}</LTd>
+      <LTd>
+        {line.description}
+        <LineSourceLink line={line} />
+      </LTd>
       <LTd numeric>{line.quantity}</LTd>
       <LTd numeric>{formatCents(line.unit_amount_cents)}</LTd>
       <LTd numeric>
@@ -191,7 +219,10 @@ function EditableRow({ invoiceId, line }: { invoiceId: string; line: LineRow }) 
         <LTd>
           <span className="text-ink-3">{LINE_TYPE_LABEL[line.line_type]}</span>
         </LTd>
-        <LTd>{line.description}</LTd>
+        <LTd>
+          {line.description}
+          <LineSourceLink line={line} />
+        </LTd>
         <LTd numeric>{line.quantity}</LTd>
         <LTd numeric>{formatCents(line.unit_amount_cents)}</LTd>
         <LTd numeric>

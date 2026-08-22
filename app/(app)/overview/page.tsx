@@ -1181,8 +1181,8 @@ export default async function OverviewPage() {
       id: "stripe",
       label: "Connect Stripe to get paid",
       detail: "Optional, and it only affects how a client can pay you. Invoices work without it.",
-      href: "/settings",
-      cta: "Open settings",
+      href: "/settings?tab=payments",
+      cta: "Open payment settings",
       done: Boolean(account.connect_account_id),
     },
   ];

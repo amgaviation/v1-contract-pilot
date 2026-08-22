@@ -18,6 +18,12 @@ type ExpenseFields = Omit<ExpenseInsert, "account_id">;
 export type ExpenseFormState = {
   error: string | null;
   values?: Record<string, string>;
+  /**
+   * Keyed by input name, one entry per failing field — see
+   * parseExpenseForm. `error` still carries a short summary ("Fix the N
+   * highlighted fields.") for the top-of-form alert.
+   */
+  fieldErrors?: Record<string, string>;
 };
 
 // NOT exported: a "use server" module may only export async functions —
@@ -114,34 +120,51 @@ function oneOf<T extends readonly string[]>(
 function parseExpenseForm(formData: FormData): {
   values: ExpenseFields | null;
   error: string | null;
+  fieldErrors?: Record<string, string>;
 } {
+  const fieldErrors: Record<string, string> = {};
+
   const incurredOn = String(formData.get("incurred_on") ?? "").trim();
-  if (!incurredOn) return { values: null, error: "When was this spent?" };
-  if (!isDate(incurredOn)) return { values: null, error: "That date isn't valid." };
+  const incurredOnValid = incurredOn !== "" && isDate(incurredOn);
+  if (!incurredOn) {
+    fieldErrors.incurred_on = "When was this spent?";
+  } else if (!incurredOnValid) {
+    fieldErrors.incurred_on = "That date isn't valid.";
+  }
 
   const amount = parseDollarsToCents(String(formData.get("amount") ?? ""));
   if (amount === undefined) {
-    return { values: null, error: "Amount must be a number like 84 or 84.50." };
+    fieldErrors.amount = "Amount must be a number like 84 or 84.50.";
+  } else if (amount === null) {
+    fieldErrors.amount = "How much was it?";
+  } else if (amount < 0) {
+    fieldErrors.amount = "An expense can't be negative.";
   }
-  if (amount === null) return { values: null, error: "How much was it?" };
-  if (amount < 0) return { values: null, error: "An expense can't be negative." };
 
   const tripId = optionalUuid(formData, "trip_id");
-  if (tripId === undefined) return { values: null, error: "That trip isn't valid." };
+  if (tripId === undefined) fieldErrors.trip_id = "That trip isn't valid.";
 
   const clientId = optionalUuid(formData, "client_id");
-  if (clientId === undefined) return { values: null, error: "That client isn't valid." };
+  if (clientId === undefined) fieldErrors.client_id = "That client isn't valid.";
 
   const treatment = oneOf(formData, "treatment", TREATMENTS, "unassigned");
 
   // The database enforces this too (`treatment <> 'rebill' or trip_id is
   // not null`), because the invoice arithmetic breaks silently if a
   // rebilled line has no trip to attach to. Catching it here is only so
-  // the pilot gets a sentence instead of a constraint name.
-  if (treatment === "rebill" && !tripId) {
+  // the pilot gets a sentence instead of a constraint name. Only checked
+  // against a trip id that itself parsed — a crafted id already has its
+  // own message above and doesn't need a second, contradictory one.
+  if (treatment === "rebill" && tripId !== undefined && !tripId) {
+    fieldErrors.trip_id = "Pick the trip this gets rebilled to. An expense can't be rebilled to nobody.";
+  }
+
+  const failing = Object.keys(fieldErrors).length;
+  if (failing > 0) {
     return {
       values: null,
-      error: "Pick the trip this gets rebilled to. An expense can't be rebilled to nobody.",
+      error: `Fix the ${failing} highlighted field${failing === 1 ? "" : "s"}.`,
+      fieldErrors,
     };
   }
 
@@ -151,15 +174,21 @@ function parseExpenseForm(formData: FormData): {
       incurred_on: incurredOn,
       category: oneOf(formData, "category", CATEGORIES, "other"),
       vendor: optional(formData, "vendor"),
-      amount_cents: amount,
+      // `failing === 0` at this point guarantees amount is a valid,
+      // non-negative number — the cast just tells TS what the runtime
+      // checks above already established, since accumulating errors
+      // (rather than returning on the first one) loses the control-flow
+      // narrowing a sequence of early returns would have given for free.
+      amount_cents: amount as number,
       treatment,
       trip_id: tripId,
       // A trip stores NULL here, not the trip's client. See
       // clientIdForStorage for the three things that depend on the column
       // meaning "attributed directly" and nothing else. The trip itself is
       // still checked (settleTripAndClient below) so a bad trip id is
-      // caught rather than filed.
-      client_id: clientIdForStorage(clientId, Boolean(tripId)),
+      // caught rather than filed. `failing === 0` guarantees clientId
+      // isn't undefined here — see amount_cents' identical note above.
+      client_id: clientIdForStorage(clientId as string | null, Boolean(tripId)),
       notes: optional(formData, "notes"),
     },
   };
@@ -284,9 +313,9 @@ export async function createExpense(
   formData: FormData
 ): Promise<ExpenseFormState> {
   const { account } = await requireAccount("/expenses/new");
-  const { values, error } = parseExpenseForm(formData);
+  const { values, error, fieldErrors } = parseExpenseForm(formData);
   if (error || !values) {
-    return { error: error ?? "Couldn't read that form.", values: echo(formData) };
+    return { error: error ?? "Couldn't read that form.", fieldErrors, values: echo(formData) };
   }
 
   const supabase = await createClient();
@@ -370,9 +399,9 @@ export async function updateExpense(
   if (!id || !UUID_RE.test(id)) return { error: "Missing expense id." };
 
   const { account } = await requireAccount(`/expenses/${id}`);
-  const { values, error } = parseExpenseForm(formData);
+  const { values, error, fieldErrors } = parseExpenseForm(formData);
   if (error || !values) {
-    return { error: error ?? "Couldn't read that form.", values: echo(formData) };
+    return { error: error ?? "Couldn't read that form.", fieldErrors, values: echo(formData) };
   }
 
   const supabase = await createClient();

@@ -330,7 +330,20 @@ export default function StatusActions({
                         // problem and send without retyping; cleared on
                         // success so the box is not pre-loaded with an
                         // old note if this component re-renders.
-                        if (!result?.error) setSendNote("");
+                        if (!result?.error) {
+                          setSendNote("");
+                          // SAID OUTRIGHT, the way the reminder path
+                          // already says it. The send button disappearing
+                          // and a pill changing elsewhere on the page are
+                          // the only other signals that a five-figure
+                          // invoice actually went out, and neither of them
+                          // names the address it went to.
+                          setSentNote(
+                            deliveryMethod === "platform_email"
+                              ? `Invoice emailed to ${clientEmail}.`
+                              : "Marked as sent. Download the PDF above to deliver it yourself."
+                          );
+                        }
                       });
                     }}
                   >

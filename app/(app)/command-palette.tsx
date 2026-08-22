@@ -472,6 +472,21 @@ export function CommandPaletteProvider({
     records.status === "ready"
       ? RECORD_GROUPS.reduce((sum, g) => sum + records[g.key].length, 0)
       : 0;
+  // Screen-reader-only status announcement for the async record search —
+  // cmdk gives sighted pilots the StatusRow text below, but nothing else in
+  // this file was ever announced to assistive tech. Derived from the same
+  // `records`/`recordCount` the visible rows already use, so there is no
+  // second source of truth to drift out of sync with them.
+  const paletteStatus =
+    records.status === "loading"
+      ? "Searching…"
+      : records.status === "error"
+        ? "Search couldn't run."
+        : records.status === "ready"
+          ? recordCount === 0
+            ? "No matching records."
+            : `${recordCount} record${recordCount === 1 ? "" : "s"} found.`
+          : "";
 
   return (
     <CommandPaletteContext.Provider value={contextValue}>
@@ -488,6 +503,14 @@ export function CommandPaletteProvider({
         <span className="sr-only" id={titleId}>
           Command palette
         </span>
+        {/* Live region for the async record search — announces the same
+            loading/error/empty/count states StatusRow renders visibly,
+            since none of them are otherwise reachable to a screen reader
+            (cmdk marks StatusRow `disabled`, which excludes it from arrow
+            navigation entirely). */}
+        <div role="status" aria-live="polite" className="sr-only">
+          {paletteStatus}
+        </div>
         <Command
           value={activeValue}
           onValueChange={setActiveValue}

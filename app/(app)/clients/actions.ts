@@ -37,6 +37,13 @@ type ClientFields = Omit<ClientInsert, "account_id">;
 export type ClientFormState = {
   error: string | null;
   values?: Record<string, string>;
+  /**
+   * Keyed by input name, one entry per failing field, collected instead of
+   * stopping at the first — see parseClientForm. `error` still carries a
+   * short summary ("Fix the N highlighted fields.") for the top-of-form
+   * alert; each LField below renders its own entry from this map.
+   */
+  fieldErrors?: Record<string, string>;
 };
 
 /** Fields whose submitted text is echoed back on a failed submit. */
@@ -186,6 +193,7 @@ function parseRateToBps(raw: string): number | null | undefined {
 type ParsedClient = {
   values: ClientFields;
   error: string | null;
+  fieldErrors?: Record<string, string>;
 };
 
 /**
@@ -194,20 +202,27 @@ type ParsedClient = {
  * vocabularies, tenant scoping) — this exists so a typo comes back as a
  * sentence instead of a Postgres error string, not as the security
  * boundary. That boundary is RLS plus the column-scoped UPDATE grant.
+ *
+ * F: every check below used to return on its first failure — one round
+ * trip per bad field, on a form with seventeen of them. Every check now
+ * records its message on `fieldErrors`, keyed by input name, and parsing
+ * continues; nothing about which values are ACCEPTED changes; only where
+ * the resulting message ends up. `values` is only assembled, and only
+ * returned to the caller for writing, once every check has passed.
  */
 function parseClientForm(formData: FormData): ParsedClient {
-  const empty = { values: {} as ClientFields, error: null as string | null };
+  const fieldErrors: Record<string, string> = {};
 
   const name = String(formData.get("name") ?? "").trim();
-  if (!name) return { ...empty, error: "Give the client a name." };
+  if (!name) fieldErrors.name = "Give the client a name.";
 
   const dayRate = parseDollarsToCents(String(formData.get("default_day_rate") ?? ""));
   if (dayRate === undefined) {
-    return { ...empty, error: "Day rate must be an amount like 1500 or 1500.00." };
+    fieldErrors.default_day_rate = "Day rate must be an amount like 1500 or 1500.00.";
   }
   const perDiem = parseDollarsToCents(String(formData.get("default_per_diem") ?? ""));
   if (perDiem === undefined) {
-    return { ...empty, error: "Per diem must be an amount like 75 or 75.00." };
+    fieldErrors.default_per_diem = "Per diem must be an amount like 75 or 75.00.";
   }
   // A travel day is a day spent getting to or from the airplane rather
   // than flying it, and it is commonly billed at a lower rate than a
@@ -218,16 +233,25 @@ function parseClientForm(formData: FormData): ParsedClient {
     String(formData.get("default_travel_day_rate") ?? "")
   );
   if (travelRate === undefined) {
-    return { ...empty, error: "Travel day rate must be an amount like 900 or 900.00." };
+    fieldErrors.default_travel_day_rate = "Travel day rate must be an amount like 900 or 900.00.";
   }
-  if ((dayRate ?? 0) < 0 || (perDiem ?? 0) < 0 || (travelRate ?? 0) < 0) {
-    return { ...empty, error: "Rates can't be negative." };
+  // Only checked against a value that actually parsed — a field already
+  // carrying the "must be an amount" message above doesn't need a second,
+  // contradictory one about its sign.
+  if (dayRate !== undefined && (dayRate ?? 0) < 0) {
+    fieldErrors.default_day_rate = "Rates can't be negative.";
+  }
+  if (perDiem !== undefined && (perDiem ?? 0) < 0) {
+    fieldErrors.default_per_diem = "Rates can't be negative.";
+  }
+  if (travelRate !== undefined && (travelRate ?? 0) < 0) {
+    fieldErrors.default_travel_day_rate = "Rates can't be negative.";
   }
 
   const termsRaw = String(formData.get("payment_terms_days") ?? "").trim();
   const terms = termsRaw === "" ? 30 : Number(termsRaw);
   if (!Number.isInteger(terms) || terms < 0) {
-    return { ...empty, error: "Payment terms must be a whole number of days." };
+    fieldErrors.payment_terms_days = "Payment terms must be a whole number of days.";
   }
 
   // numeric(5,1): one decimal place, and Postgres would silently round a
@@ -244,10 +268,8 @@ function parseClientForm(formData: FormData): ParsedClient {
     allowBlank: true,
   });
   if (minimumDays === undefined) {
-    return {
-      ...empty,
-      error: "Trip minimum must be a number of days with at most one decimal place, like 2 or 2.5.",
-    };
+    fieldErrors.minimum_days =
+      "Trip minimum must be a number of days with at most one decimal place, like 2 or 2.5.";
   }
 
   // THE LATE FEE, AND THE ONE SHAPE THE DATABASE REFUSES.
@@ -260,27 +282,19 @@ function parseClientForm(formData: FormData): ParsedClient {
   const lateFeeKind = oneOf(formData, "late_fee_kind", LATE_FEE_KINDS, "none");
   const lateFeeFlat = parseDollarsToCents(String(formData.get("late_fee_flat") ?? ""));
   if (lateFeeKind === "flat" && (lateFeeFlat === undefined || !lateFeeFlat)) {
-    return {
-      ...empty,
-      error: "A flat late fee needs an amount, like 50 or 50.00. Choose \"No late fee\" if you haven't agreed one.",
-    };
+    fieldErrors.late_fee_flat =
+      "A flat late fee needs an amount, like 50 or 50.00. Choose \"No late fee\" if you haven't agreed one.";
   }
   const lateFeeBps = parseRateToBps(String(formData.get("late_fee_rate_percent") ?? ""));
   if (lateFeeKind === "rate" && (lateFeeBps === undefined || lateFeeBps === null)) {
-    return {
-      ...empty,
-      error:
-        "A monthly late fee rate must be a percent like 1.5, up to 5%. Choose \"No late fee\" if you haven't agreed one.",
-    };
+    fieldErrors.late_fee_rate_percent =
+      "A monthly late fee rate must be a percent like 1.5, up to 5%. Choose \"No late fee\" if you haven't agreed one.";
   }
 
   const graceRaw = String(formData.get("late_fee_grace_days") ?? "").trim();
   const graceDays = graceRaw === "" ? 0 : Number(graceRaw);
   if (!Number.isInteger(graceDays) || graceDays < 0 || graceDays > 90) {
-    return {
-      ...empty,
-      error: "The late fee grace period must be a whole number of days, 0 to 90.",
-    };
+    fieldErrors.late_fee_grace_days = "The late fee grace period must be a whole number of days, 0 to 90.";
   }
 
   // The note can only be on when there is something agreed to state. The
@@ -299,9 +313,15 @@ function parseClientForm(formData: FormData): ParsedClient {
   // permissive, a typo guard rather than an RFC 5322 parser.
   const contactEmail = optional(formData, "contact_email");
   if (contactEmail !== null && !looksLikeEmail(contactEmail)) {
+    fieldErrors.contact_email = "That contact email doesn't look like an email address.";
+  }
+
+  const failing = Object.keys(fieldErrors).length;
+  if (failing > 0) {
     return {
-      ...empty,
-      error: "That contact email doesn't look like an email address.",
+      values: {} as ClientFields,
+      error: `Fix the ${failing} highlighted field${failing === 1 ? "" : "s"}.`,
+      fieldErrors,
     };
   }
 
@@ -416,8 +436,8 @@ export async function createClientRecord(
   formData: FormData
 ): Promise<ClientFormState> {
   const { account } = await requireAccount("/clients/new");
-  const { values, error } = parseClientForm(formData);
-  if (error) return { error, values: echo(formData) };
+  const { values, error, fieldErrors } = parseClientForm(formData);
+  if (error) return { error, fieldErrors, values: echo(formData) };
 
   const supabase = await createClient();
   // account_id is set from the session, never from the form. RLS's WITH
@@ -451,8 +471,8 @@ export async function updateClientRecord(
   }
 
   const { account } = await requireAccount(`/clients/${id}`);
-  const { values, error } = parseClientForm(formData);
-  if (error) return { error, values: echo(formData) };
+  const { values, error, fieldErrors } = parseClientForm(formData);
+  if (error) return { error, fieldErrors, values: echo(formData) };
 
   const supabase = await createClient();
   // The account_id filter is defence in depth, NOT the boundary. RLS's

@@ -17,6 +17,8 @@ const { computeTripSettlement } = await import("../lib/trip-settlement.ts");
  *    zero rather than printing a fabricated credit.
  * 6. OTHER CHARGES ON THE SAME INVOICE are flagged, never folded into the
  *    day-money total.
+ * 7. BILLED INVOICES ARE SENT-FIRST and carry ids, so the screens naming
+ *    the invoice can link to the same one invoiceLabel names.
  */
 
 const trip = { day_rate_cents: 0, day_count: 0, travel_day_rate_cents: null, travel_day_count: null };
@@ -41,6 +43,7 @@ test("unbilled trip: nothing invoiced yet, full expected value is the remainder"
   assert.equal(s.paidCents, 0);
   assert.equal(s.unpaidBalanceCents, 0);
   assert.deepEqual(s.invoiceIds, []);
+  assert.deepEqual(s.billedInvoices, []);
   assert.equal(s.invoiceLabel, null);
 });
 
@@ -61,6 +64,7 @@ test("fully billed and unpaid: invoiced matches expected, remainder is zero, ful
   assert.equal(s.paidCents, 0);
   assert.equal(s.unpaidBalanceCents, 200000);
   assert.deepEqual(s.invoiceIds, ["inv-1"]);
+  assert.deepEqual(s.billedInvoices, [{ id: "inv-1", invoice_number: "INV-0001" }]);
   assert.equal(s.invoiceLabel, "INV-0001");
 });
 
@@ -90,6 +94,7 @@ test("void invoice never counts as invoiced or paid", () => {
   assert.equal(s.unbilledRemainderCents, 100000);
   assert.equal(s.paidCents, 0);
   assert.deepEqual(s.invoiceIds, []);
+  assert.deepEqual(s.billedInvoices, []);
   assert.equal(s.invoiceLabel, null);
 });
 
@@ -105,7 +110,34 @@ test("draft invoice money is a subset of invoiced, not an addend, and labels as 
   assert.equal(s.invoicedCents, 50000);
   assert.equal(s.draftInvoicedCents, 50000);
   assert.equal(s.hasDraftMoney, true);
+  // The link target still exists even with nothing to call it by — the
+  // caption reads "a draft invoice" and points at this id.
+  assert.deepEqual(s.billedInvoices, [{ id: "inv-draft", invoice_number: null }]);
   assert.equal(s.invoiceLabel, "a draft invoice");
+});
+
+test("two carrying invoices list sent-first, and the label names the head of that list", () => {
+  const s = computeTripSettlement({
+    trip,
+    dayRows: [dayRow(), dayRow()],
+    billableByDayType: billable,
+    // draft line first, so a stable sort proves the order is the
+    // invoice_number rule and not the order the lines arrived in
+    lines: [
+      { invoice_id: "inv-draft", line_type: "flight_day", amount_cents: 100000 },
+      { invoice_id: "inv-sent", line_type: "flight_day", amount_cents: 100000 },
+    ],
+    invoices: [
+      { id: "inv-draft", status: "draft", invoice_number: null },
+      { id: "inv-sent", status: "sent", invoice_number: "INV-0008" },
+    ],
+    payments: [],
+  });
+  assert.deepEqual(s.billedInvoices, [
+    { id: "inv-sent", invoice_number: "INV-0008" },
+    { id: "inv-draft", invoice_number: null },
+  ]);
+  assert.equal(s.invoiceLabel, "INV-0008");
 });
 
 test("an invoice-level payment that exceeds this trip's day money floors the balance at zero, never negative", () => {

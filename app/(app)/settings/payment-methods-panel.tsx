@@ -114,6 +114,7 @@ export default function PaymentMethodsPanel({
               <label key={option.value} className="flex items-start gap-2">
                 <input
                   type="radio"
+                  name="payment-method-choice"
                   value={option.value}
                   checked={choice === option.value}
                   disabled={!canEdit}

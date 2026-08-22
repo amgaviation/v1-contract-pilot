@@ -108,9 +108,13 @@ const TAB_GROUPS: { label: string; keys: TabKey[] }[] = [
  * nav layout survives a glance at another tab.
  *
  * Deep link: `initialTab` comes from page.tsx reading `?tab=` server-side.
- * Switching tabs updates the URL via `history.pushState` — a plain browser
- * call, not a Next navigation — so it costs no RSC round trip and every
- * tab stays bookmarkable and linkable.
+ * Switching tabs updates the URL via `history.replaceState` — a plain
+ * browser call, not a Next navigation — so it costs no RSC round trip and
+ * every tab stays bookmarkable and linkable. `replaceState`, not
+ * `pushState`: LTabsTrigger activates on every Arrow keypress
+ * (activation-follows-focus), so arrowing across eleven tabs would
+ * otherwise push ten history entries a pilot then has to walk back through
+ * one Back press at a time to leave Settings.
  *
  * THE RESPONSIVE SPLIT, spelled out because it is all utility classes on
  * the same three nodes:
@@ -170,7 +174,7 @@ export default function SettingsTabs({
     const url = new URL(window.location.href);
     if (value === DEFAULT_TAB) url.searchParams.delete("tab");
     else url.searchParams.set("tab", value);
-    window.history.pushState(null, "", url);
+    window.history.replaceState(null, "", url);
   }
 
   const panels: { key: TabKey; content: ReactNode }[] = [
