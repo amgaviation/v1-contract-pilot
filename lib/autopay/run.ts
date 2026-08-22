@@ -1,6 +1,7 @@
 import "server-only";
 import { alertOperator } from "@/lib/alerts";
 import { accountIsReadOnly, isEntitled, isPlanTier } from "@/lib/entitlements";
+import { idChunks } from "@/lib/id-chunks";
 import { issueAndChargeAutopayInvoice } from "@/lib/autopay/charge";
 import { computeDuePeriods } from "@/app/(app)/invoices/recurring/actions";
 
@@ -78,6 +79,38 @@ import { computeDuePeriods } from "@/app/(app)/invoices/recurring/actions";
  * accounts, few with autopay) the addition is small, but it is real, and
  * lib/reminders/run.ts's own note about sharding before ~100-150 reminder-
  * enabled accounts now covers this pass too.
+ *
+ * ── THE TWO READS ARE BATCHED; THE WRITES ARE NOT ────────────────────────
+ *
+ * The pass used to be three levels of sequential round trips: one
+ * recurring_invoice_schedules read per account, then one
+ * recurring_invoice_generations read per schedule, then the RPC. The two
+ * reads are now done up front, in chunks, across every eligible account —
+ * they are pure reads with no side effects and no ordering significance, so
+ * hoisting them changes nothing about WHICH periods are found, only how many
+ * requests find them. Everything that writes — generate_autopay_invoice and
+ * the charge — is deliberately untouched: still one account at a time, one
+ * schedule at a time, oldest period first, inside the same per-account
+ * try/catch. Batching those would put two tenants' money in one failure
+ * domain, which is the exact thing the loop below is built to prevent, and
+ * the (account_id, schedule_id, period_start) idempotency unique is written
+ * per statement anyway.
+ *
+ * ISOLATION IS PRESERVED BY FALLING BACK, NOT BY TRUSTING THE BATCH. A
+ * batched read that errors, throws, or comes back truncated does NOT fail
+ * the accounts it covered: those accounts are simply left unbatched, and the
+ * loop below reads them exactly the way it always did — per account, per
+ * schedule, inside the try, with the same message and the same
+ * alertOperator call. The worst case of a bad batch is today's behaviour and
+ * today's alerts, never a new one, and never one account's read failure
+ * deciding another account's fate.
+ *
+ * TRUNCATION IS CHECKED, NOT ASSUMED. PostgREST caps rows per response, and
+ * a cap silently applied to a batched read is worse than an error: it looks
+ * like "this account has no schedules due", i.e. it does not bill someone
+ * and says nothing. Every batched read therefore asks for `count: "exact"`
+ * and compares it to the rows it actually received; a mismatch discards the
+ * chunk and hands those accounts to the per-account path.
  */
 
 export type AutopayRunSummary = {
@@ -130,6 +163,30 @@ type ScheduleRow = {
   end_date: string | null;
 };
 
+type BatchedScheduleRow = ScheduleRow & { account_id: string };
+
+/**
+ * Layer 2's decision, extracted so the batched pre-pass and the loop ask the
+ * same question of the same pure functions. The loop still asks it itself —
+ * it has two different counters to bump — so this is only ever used to
+ * decide whose ids are worth putting in a batched read. Answering it wrongly
+ * here can cost a round trip; it cannot admit an account the loop rejects.
+ */
+function isEligibleForUnattendedAutopay(account: AccountRow): boolean {
+  if (accountIsReadOnly(account)) return false;
+  const tier = account.plan_tier;
+  return isPlanTier(tier) && isEntitled(tier, "recurring_invoices");
+}
+
+/** The key both batched maps are grouped by. Account-scoped on purpose: a
+ * schedule id is a uuid primary key, but the per-schedule read this replaces
+ * filtered on account_id AND schedule_id, and dropping half of a composite
+ * scope because "the other half is unique anyway" is how a tenancy bug gets
+ * in. A row that arrives under another account's id simply never matches. */
+function scopedKey(accountId: string, scheduleId: string): string {
+  return `${accountId}:${scheduleId}`;
+}
+
 export async function runAllDueAutopay(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   serviceClient: any,
@@ -159,6 +216,134 @@ export async function runAllDueAutopay(
 
   const accounts = (data ?? []) as AccountRow[];
 
+  // ── PRE-PASS: the two reads, batched ────────────────────────────────────
+  //
+  // Nothing here decides anything. It fills two lookups; every account whose
+  // lookup is missing or untrustworthy falls through to the per-account read
+  // it always used, inside its own try/catch, unchanged.
+
+  const eligibleAccountIds = accounts
+    .filter((account) => isEligibleForUnattendedAutopay(account))
+    .map((account) => account.id);
+
+  /** account id → its active, autopay-enabled schedules. */
+  const schedulesByAccount = new Map<string, ScheduleRow[]>();
+  /** Account ids whose schedules were read in bulk AND came back whole. Membership,
+   *  not `schedulesByAccount.has()`, is what says "trust the map" — an account with
+   *  no schedules at all is a successful empty read, not a missing one. */
+  const schedulesBatched = new Set<string>();
+
+  for (const chunk of idChunks(eligibleAccountIds)) {
+    try {
+      const {
+        data: chunkData,
+        error: chunkError,
+        count,
+      } = await serviceClient
+        .from("recurring_invoice_schedules")
+        .select("id, account_id, client_id, cadence, anchor_date, end_date", {
+          count: "exact",
+        })
+        .in("account_id", chunk)
+        .eq("active", true)
+        .eq("autopay", true);
+
+      const rows = (chunkData ?? []) as BatchedScheduleRow[];
+      if (chunkError || (typeof count === "number" && count !== rows.length)) {
+        summary.notices.push(
+          `Autopay pass: a batched schedule read covering ${chunk.length} account(s) was not usable (${
+            chunkError ? chunkError.message : `truncated: ${count} row(s) matched, ${rows.length} returned`
+          }); those accounts were read one at a time instead.`
+        );
+        continue;
+      }
+
+      const asked = new Set(chunk);
+      const grouped = new Map<string, ScheduleRow[]>();
+      for (const row of rows) {
+        // Belt and braces: only rows for the accounts this chunk asked about.
+        if (!asked.has(row.account_id)) continue;
+        const list = grouped.get(row.account_id) ?? [];
+        list.push({
+          id: row.id,
+          client_id: row.client_id,
+          cadence: row.cadence,
+          anchor_date: row.anchor_date,
+          end_date: row.end_date,
+        });
+        grouped.set(row.account_id, list);
+      }
+      for (const accountId of chunk) {
+        schedulesByAccount.set(accountId, grouped.get(accountId) ?? []);
+        schedulesBatched.add(accountId);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "unknown error";
+      summary.notices.push(
+        `Autopay pass: a batched schedule read threw (${message}); those accounts were read one at a time instead.`
+      );
+    }
+  }
+
+  /** `${account_id}:${schedule_id}` → the period_starts already generated. */
+  const generationsBySchedule = new Map<string, Set<string>>();
+  /** The same "trust the map" set, per schedule, for the same reason. */
+  const generationsBatched = new Set<string>();
+
+  const batchedScheduleIds: string[] = [];
+  const scheduleOwner = new Map<string, string>();
+  for (const accountId of schedulesBatched) {
+    for (const schedule of schedulesByAccount.get(accountId) ?? []) {
+      batchedScheduleIds.push(schedule.id);
+      scheduleOwner.set(schedule.id, accountId);
+    }
+  }
+
+  for (const chunk of idChunks(batchedScheduleIds)) {
+    try {
+      const {
+        data: chunkData,
+        error: chunkError,
+        count,
+      } = await serviceClient
+        .from("recurring_invoice_generations")
+        .select("account_id, schedule_id, period_start", { count: "exact" })
+        .in("schedule_id", chunk);
+
+      const rows = (chunkData ?? []) as {
+        account_id: string;
+        schedule_id: string;
+        period_start: string;
+      }[];
+      if (chunkError || (typeof count === "number" && count !== rows.length)) {
+        summary.notices.push(
+          `Autopay pass: a batched generation-ledger read covering ${chunk.length} schedule(s) was not usable (${
+            chunkError ? chunkError.message : `truncated: ${count} row(s) matched, ${rows.length} returned`
+          }); those schedules were read one at a time instead.`
+        );
+        continue;
+      }
+
+      for (const row of rows) {
+        // The account scope the per-schedule read applied, applied here.
+        if (scheduleOwner.get(row.schedule_id) !== row.account_id) continue;
+        const key = scopedKey(row.account_id, row.schedule_id);
+        const periods = generationsBySchedule.get(key) ?? new Set<string>();
+        periods.add(row.period_start);
+        generationsBySchedule.set(key, periods);
+      }
+      for (const scheduleId of chunk) {
+        const accountId = scheduleOwner.get(scheduleId);
+        if (accountId) generationsBatched.add(scopedKey(accountId, scheduleId));
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "unknown error";
+      summary.notices.push(
+        `Autopay pass: a batched generation-ledger read threw (${message}); those schedules were read one at a time instead.`
+      );
+    }
+  }
+
   for (const account of accounts) {
     // ONE TENANT CANNOT END THE PASS. Identical isolation to the reminders
     // loop, and for the identical reason: accounts iterate in a fixed order,
@@ -178,50 +363,66 @@ export async function runAllDueAutopay(
       }
       summary.accountsConsidered += 1;
 
-      const { data: schedData, error: schedError } = await serviceClient
-        .from("recurring_invoice_schedules")
-        .select("id, client_id, cadence, anchor_date, end_date")
-        .eq("account_id", account.id)
-        .eq("active", true)
-        .eq("autopay", true);
-      if (schedError) {
-        summary.errors.push(
-          `Autopay pass: could not read schedules for one account: ${schedError.message}`
-        );
-        await alertOperator({
-          source: "autopay-cron",
-          summary: "Autopay pass: recurring_invoice_schedules.select failed for an account",
-          detail: schedError.message,
-          accountId: account.id,
-        });
-        continue;
-      }
-
-      const schedules = (schedData ?? []) as ScheduleRow[];
-      if (schedules.length === 0) continue;
-
-      for (const schedule of schedules) {
-        const { data: genData, error: genError } = await serviceClient
-          .from("recurring_invoice_generations")
-          .select("period_start")
+      // Batched above when it could be; read here, exactly as it always was,
+      // when it could not. The failure path below is the pre-batch one
+      // verbatim — same message, same alert, same "skip this account, the
+      // rest of the pass continues".
+      let schedules: ScheduleRow[];
+      if (schedulesBatched.has(account.id)) {
+        schedules = schedulesByAccount.get(account.id) ?? [];
+      } else {
+        const { data: schedData, error: schedError } = await serviceClient
+          .from("recurring_invoice_schedules")
+          .select("id, client_id, cadence, anchor_date, end_date")
           .eq("account_id", account.id)
-          .eq("schedule_id", schedule.id);
-        if (genError) {
+          .eq("active", true)
+          .eq("autopay", true);
+        if (schedError) {
           summary.errors.push(
-            `Autopay pass: could not read the generation ledger for one schedule: ${genError.message}`
+            `Autopay pass: could not read schedules for one account: ${schedError.message}`
           );
           await alertOperator({
             source: "autopay-cron",
-            summary: "Autopay pass: recurring_invoice_generations.select failed",
-            detail: `schedule ${schedule.id}: ${genError.message}`,
+            summary: "Autopay pass: recurring_invoice_schedules.select failed for an account",
+            detail: schedError.message,
             accountId: account.id,
           });
           continue;
         }
+        schedules = (schedData ?? []) as ScheduleRow[];
+      }
+      if (schedules.length === 0) continue;
 
-        const generated = new Set(
-          ((genData ?? []) as { period_start: string }[]).map((r) => r.period_start)
-        );
+      for (const schedule of schedules) {
+        // Same arrangement as the schedules above: the batched answer when
+        // there is a trustworthy one, otherwise the original per-schedule
+        // read with its original failure behaviour.
+        let generated: Set<string>;
+        const generationsKey = scopedKey(account.id, schedule.id);
+        if (generationsBatched.has(generationsKey)) {
+          generated = generationsBySchedule.get(generationsKey) ?? new Set<string>();
+        } else {
+          const { data: genData, error: genError } = await serviceClient
+            .from("recurring_invoice_generations")
+            .select("period_start")
+            .eq("account_id", account.id)
+            .eq("schedule_id", schedule.id);
+          if (genError) {
+            summary.errors.push(
+              `Autopay pass: could not read the generation ledger for one schedule: ${genError.message}`
+            );
+            await alertOperator({
+              source: "autopay-cron",
+              summary: "Autopay pass: recurring_invoice_generations.select failed",
+              detail: `schedule ${schedule.id}: ${genError.message}`,
+              accountId: account.id,
+            });
+            continue;
+          }
+          generated = new Set(
+            ((genData ?? []) as { period_start: string }[]).map((r) => r.period_start)
+          );
+        }
 
         // The SAME due-period arithmetic the interactive queue uses. Pure
         // date math, imported rather than reimplemented — a second
