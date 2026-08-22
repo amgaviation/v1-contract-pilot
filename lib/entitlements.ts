@@ -259,6 +259,7 @@ export type FeatureId =
   | "documents"
   | "logbook"
   | "currency"
+  | "weather"
   | "reports_core"
   | "recurring_invoices"
   | "estimates"
@@ -321,6 +322,13 @@ export const FEATURES: Record<FeatureId, FeatureDef> = {
   },
   currency: {
     label: "Currency board",
+    minTier: "solo",
+    routePatterns: [],
+  },
+  weather: {
+    // Safety-relevant, so it follows the logbook/currency precedent and is
+    // never gated. No routePatterns: it is a dashboard card, not a route.
+    label: "Home-base weather (METAR)",
     minTier: "solo",
     routePatterns: [],
   },
@@ -485,6 +493,7 @@ const MATRIX_ORDER: readonly FeatureId[] = [
   "logbook",
   "currency",
   "documents",
+  "weather",
   "reports_core",
   "recurring_invoices",
   "estimates",
