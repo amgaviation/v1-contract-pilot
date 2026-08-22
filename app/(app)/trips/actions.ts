@@ -22,8 +22,14 @@ import {
 
 type TripInsert = Database["pilot"]["Tables"]["trips"]["Insert"];
 type TripUpdate = Database["pilot"]["Tables"]["trips"]["Update"];
-type TripDayInsert = Database["pilot"]["Tables"]["trip_days"]["Insert"];
-type TripDayUpdate = Database["pilot"]["Tables"]["trip_days"]["Update"];
+// TripDayInsert / TripDayUpdate are gone with the PostgREST insert and
+// per-day `.update()` calls they typed: saveTripDays now sends both sets
+// to pilot.trip_days_save as jsonb payloads whose shape is declared at
+// that call site. The generated types are the wrong tool for these two —
+// Insert/Update mark every defaulted or nullable column optional, so an
+// `undefined` would type-check its way into a payload the function reads
+// as SQL NULL, and the columns the function actually assigns are fixed by
+// its body regardless of what is sent.
 /**
  * What the form produces: every writable column except account_id, which
  * comes from the session. Typed off Insert rather than Update so the
@@ -1089,12 +1095,13 @@ export async function saveTripDays(
 
   const dates = enumerateDates(trip.starts_on, trip.ends_on);
 
-  // A fully-populated day row, unlike TripDayInsert — whose rate_cents/
-  // quantity/notes are optional at the type level (the columns have a DB
-  // default / are nullable) even though this action always supplies all
-  // three. Keeping `submitted` on this stricter type is what lets the
-  // diff below compare `row.rate_cents`/`row.quantity`/`row.notes`
-  // without TS widening them to include `undefined`.
+  // A fully-populated day row. The generated Insert type marks
+  // rate_cents/quantity/notes optional (the columns have a DB default /
+  // are nullable) even though this action always supplies all three;
+  // keeping `submitted` and `toInsert` on this stricter type is what lets
+  // the diff below compare `row.rate_cents`/`row.quantity`/`row.notes`
+  // without TS widening them to include `undefined`, and what stops an
+  // `undefined` reaching the trip_days_save payload as a SQL NULL.
   type SubmittedDay = {
     account_id: string;
     trip_id: string;
@@ -1218,10 +1225,17 @@ export async function saveTripDays(
   // deliberately withheld (account_id is the tenancy key and must never be
   // tenant-updatable). So a single upsert 42501s on the conflict path —
   // i.e. on every date that already has a row, which is every save after
-  // the first. Diffing into three targeted writes, each naming only
-  // granted columns, is the fix, and it has a second benefit: an unedited
-  // row is written to by nothing, so it keeps its created_at and a no-op
-  // save is actually a no-op.
+  // the first. Diffing into targeted writes, each naming only granted
+  // columns, is the fix, and it has a second benefit: an unedited row is
+  // written to by nothing, so it keeps its created_at and a no-op save is
+  // actually a no-op.
+  //
+  // STILL TRUE AFTER THE MOVE TO pilot.trip_days_save. The diff did not
+  // become redundant when the three writes became one transaction: the
+  // function's UPDATE names the same six granted columns for the same
+  // reason (see its header — SECURITY DEFINER means it must re-impose
+  // that grant by hand rather than inherit it), and this read is what
+  // keeps an untouched day out of the payload entirely.
   const { data: existingData, error: existingError } = await supabase
     .from("trip_days")
     .select("day_on, day_type_id, rate_cents, quantity, units, away, notes")
@@ -1245,7 +1259,7 @@ export async function saveTripDays(
     ((existingData ?? []) as ExistingDay[]).map((row) => [row.day_on, row])
   );
 
-  const toInsert: TripDayInsert[] = [];
+  const toInsert: SubmittedDay[] = [];
   const toUpdate: {
     date: string;
     day_type_id: string;
@@ -1282,78 +1296,110 @@ export async function saveTripDays(
     }
   }
 
-  // toDelete: run first, same as before — dates the pilot cleared. A zero
-  // count is expected and fine, most cleared dates never had a row; only
-  // an error, never a silent no-op, is what this checks for.
-  if (clearDates.length > 0) {
-    const { error: deleteError } = await supabase
-      .from("trip_days")
-      .delete({ count: "exact" })
-      .eq("account_id", account.id)
-      .eq("trip_id", tripId)
-      .in("day_on", clearDates);
+  // ONE ROUND TRIP, ONE TRANSACTION (audit SQL-10).
+  //
+  // What this replaces: an `.in()` delete, an array `.insert()`, and one
+  // `.update()` per changed day, issued through Promise.all. The updates
+  // were already concurrent, so latency was never the defect — atomicity
+  // was. Each of those requests is its own implicit transaction, so a
+  // refusal on update 3 of 7 left updates 1 and 2 COMMITTED and returned
+  // "Some day rows didn't save": a half-saved billing grid, reported
+  // after the damage rather than instead of it.
+  //
+  // pilot.trip_days_save (20260822100000) runs the delete, the insert and
+  // every update inside one function body, so any failure rolls the whole
+  // save back. Read that migration's header before changing the payload
+  // shape: the function is SECURITY DEFINER, which means neither RLS nor
+  // trip_days' column-level UPDATE grant applies inside it, and the
+  // function re-imposes both by hand — a membership check on
+  // pilot.current_account_ids(), and an UPDATE whose SET list names
+  // exactly the six columns below and cannot be widened by anything sent
+  // from here. account_id and trip_id are passed as scalar arguments, not
+  // as payload keys, for that reason: the function takes them from the
+  // arguments and the payload has no way to express them.
+  //
+  // The per-day objects carry no account_id/trip_id: the function's
+  // jsonb_to_recordset column lists don't name those, so they'd be inert,
+  // and sending them would suggest they were writable.
+  type TripDaysSaveArgs = {
+    p_account_id: string;
+    p_trip_id: string;
+    p_clear_dates: string[];
+    p_insert: {
+      day_on: string;
+      day_type_id: string;
+      rate_cents: number;
+      quantity: number;
+      units: number;
+      away: boolean;
+      notes: string | null;
+    }[];
+    p_update: {
+      day_on: string;
+      day_type_id: string;
+      rate_cents: number;
+      quantity: number;
+      units: number;
+      away: boolean;
+      notes: string | null;
+    }[];
+  };
 
-    if (deleteError) {
-      return { error: billedTripDbError(deleteError, "trip_days.delete") };
-    }
-  }
+  // Nothing to do at all — no dates cleared, nothing new, nothing edited.
+  // Skipping the call keeps a no-op save a genuine no-op, which is what
+  // the row-level diff above exists to make possible.
+  if (clearDates.length > 0 || toInsert.length > 0 || toUpdate.length > 0) {
+    // `supabase.rpc` is keyed on Database["pilot"]["Functions"], and the
+    // checked-in lib/supabase/database.types.ts has no entry for this
+    // function yet. Narrowing the call site rather than widening it: the
+    // cast fixes both the function name and the argument shape, so a typo
+    // in either is still a compile error here. The generated-types entry
+    // (Args as below, Returns: undefined) belongs in database.types.ts
+    // next time that file is regenerated.
+    const rpc = supabase.rpc as unknown as (
+      fn: "trip_days_save",
+      args: TripDaysSaveArgs
+    ) => Promise<{ error: { code?: string | null; message?: string | null } | null }>;
 
-  // toInsert: one batched insert, not a round trip per date. Never
-  // restructured as delete-all-then-insert-all — that would leave a
-  // window where a failed insert has already destroyed rows nobody
-  // asked to change, and it would churn created_at on every row.
-  if (toInsert.length > 0) {
-    const { error: insertError, count: insertCount } = await supabase
-      .from("trip_days")
-      .insert(toInsert as never, { count: "exact" });
+    const { error: saveError } = await rpc("trip_days_save", {
+      p_account_id: account.id,
+      p_trip_id: tripId,
+      p_clear_dates: clearDates,
+      p_insert: toInsert.map((row) => ({
+        day_on: row.day_on,
+        day_type_id: row.day_type_id,
+        rate_cents: row.rate_cents,
+        quantity: row.quantity,
+        units: row.units,
+        away: row.away,
+        notes: row.notes,
+      })),
+      p_update: toUpdate.map((row) => ({
+        day_on: row.date,
+        day_type_id: row.day_type_id,
+        rate_cents: row.rate_cents,
+        quantity: row.quantity,
+        units: row.units,
+        away: row.away,
+        notes: row.notes,
+      })),
+    });
 
-    if (insertError) {
-      return { error: billedTripDbError(insertError, "trip_days.insert") };
-    }
-    // PostgREST returns 200 with no error for a write that matched/
-    // affected zero rows — an insert that silently landed fewer rows
-    // than submitted must not read back as a clean save.
-    if (insertCount !== toInsert.length) {
-      return { error: "Some day rows didn't save. Refresh and try again." };
-    }
-  }
-
-  // toUpdate: only the granted columns (day_type_id, rate_cents,
-  // quantity, units, away, notes) — never account_id or trip_id — keyed on
-  // the three columns that identify the row. Run concurrently: a trip is
-  // bounded by its own date range, so this is at most a few dozen
-  // statements, not a scan.
-  if (toUpdate.length > 0) {
-    const results = await Promise.all(
-      toUpdate.map((row) => {
-        const payload: TripDayUpdate = {
-          day_type_id: row.day_type_id,
-          rate_cents: row.rate_cents,
-          quantity: row.quantity,
-          units: row.units,
-          away: row.away,
-          notes: row.notes,
-        };
-        return supabase
-          .from("trip_days")
-          .update(payload as never, { count: "exact" })
-          .eq("account_id", account.id)
-          .eq("trip_id", tripId)
-          .eq("day_on", row.date);
-      })
-    );
-
-    for (const result of results) {
-      if (result.error) {
-        return { error: billedTripDbError(result.error, "trip_days.update") };
-      }
-      // Each statement is keyed to exactly one existing row (it came
-      // from existingByDate), so its expected count is exactly 1 — not
-      // "at least 1" or "any" — and anything else means that row didn't
-      // actually get the pilot's edit.
-      if (result.count !== 1) {
+    if (saveError) {
+      // P0002 is the function's "a row I was told to write wasn't there"
+      // code — the exact-count assertions that used to live here as
+      // `count !== 1` / `insertCount !== toInsert.length` checks. Same
+      // sentence as before, with one difference that matters: nothing was
+      // written, so refreshing shows the pilot what is actually stored
+      // rather than a partial application of what they typed.
+      if (saveError.code === "P0002") {
         return { error: "Some day rows didn't save. Refresh and try again." };
       }
+      // trip_days_protect_billed still fires inside the function (see the
+      // migration header on why SECURITY DEFINER does not trip its
+      // service_role escape), so its 23514 "billed on ..." message still
+      // has to reach the pilot unedited.
+      return { error: billedTripDbError(saveError, "trip_days_save") };
     }
   }
 
