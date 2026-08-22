@@ -12,8 +12,33 @@ import type { Database } from "@/lib/supabase/database.types";
 
 export const metadata = { title: "Documents" };
 
-type DocumentRow = Database["pilot"]["Tables"]["documents"]["Row"];
+/**
+ * Only the columns this screen renders — the same narrowing invoices/page.tsx
+ * applies to its own list read, rather than pulling every column of a table
+ * that also carries file paths, notes and the whole custom-field payload.
+ * id/label/kind/expires_on/file_path is the complete set the table below and
+ * its sort touch. The read below is cast to this type rather than inferred
+ * from it, so TypeScript does NOT enforce the two staying in sync — dropping
+ * a column from the select would fail silently at render (undefined), not at
+ * compile time. Keep this list and the select list identical by hand.
+ */
+type DocumentRow = {
+  id: string;
+  label: string;
+  kind: string;
+  expires_on: string | null;
+  file_path: string | null;
+};
 type ExpirationRow = Database["pilot"]["Views"]["expirations"]["Row"];
+
+// Supabase's Data API caps rows (commonly 1000) and TRUNCATES SILENTLY on
+// a plain select — no error, just a shorter array. An explicit .limit
+// makes that boundary visible instead of invisible. Same pattern as
+// clients/page.tsx's CLIENTS_LIMIT and logbook/page.tsx's ENTRIES_LIMIT —
+// copied, not reinvented, including the "1000, not larger" rule: a limit
+// above the server's own cap can never be reached, which would make the
+// truncation guard below dead code.
+const DOCUMENTS_LIMIT = 1000;
 
 function daysRemainingLabel(days: number): string {
   if (days < 0) return `Expired ${Math.abs(days)} day${Math.abs(days) === 1 ? "" : "s"} ago`;
@@ -69,7 +94,18 @@ export default async function DocumentsPage() {
     { data: expirationData, error: expirationError },
     kindLabels,
   ] = await Promise.all([
-    supabase.from("documents").select("*"),
+    // The .eq("account_id", ...) and the .limit() here are the same two
+    // things the expirations read three lines below already had, and this
+    // read did not. Both matter for a different reason: the filter is
+    // defence in depth AND a planner hint (every composite index in this
+    // schema leads with account_id, and RLS's own predicate lands as a
+    // post-scan filter, never as an index condition), and the limit turns a
+    // silent truncation into a visible one.
+    supabase
+      .from("documents")
+      .select("id, label, kind, expires_on, file_path")
+      .eq("account_id", account.id)
+      .limit(DOCUMENTS_LIMIT),
     supabase
       .from("expirations")
       .select("*")
@@ -79,6 +115,7 @@ export default async function DocumentsPage() {
   ]);
 
   const documents = (documentData ?? []) as DocumentRow[];
+  const truncatedDocuments = documents.length === DOCUMENTS_LIMIT;
   const expirationByDocId = new Map(
     ((expirationData ?? []) as ExpirationRow[]).map((row) => [row.source_id, row])
   );
@@ -121,6 +158,15 @@ export default async function DocumentsPage() {
         </NextLink>
       }
     >
+      {truncatedDocuments ? (
+        <LAlert tone="warn" className="flex items-start gap-2">
+          <WarningIcon className="mt-0.5 shrink-0 text-warn" />
+          <span>
+            {`This list may be partial. There are more than ${DOCUMENTS_LIMIT} documents and only the first ${DOCUMENTS_LIMIT} are shown.`}
+          </span>
+        </LAlert>
+      ) : null}
+
       {anyError ? (
         <LAlert tone="crit" className="flex items-start gap-2">
           <WarningIcon className="mt-0.5 shrink-0 text-crit" />

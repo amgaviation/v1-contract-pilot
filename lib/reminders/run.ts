@@ -4,6 +4,7 @@ import { emailIsConfigured, looksLikeEmail } from "@/lib/email/send";
 import { ownerEmail } from "@/lib/email/owner-email";
 import { friendlyDbError } from "@/lib/db-errors";
 import { alertOperator } from "@/lib/alerts";
+import { resolvePreferences } from "@/lib/preferences";
 import {
   consumedRungKeys,
   decideReminder,
@@ -400,7 +401,7 @@ export async function runDueRemindersForAccount(
 
   const invoiceIds = invoices.map((invoice) => invoice.id);
 
-  const [{ data: sendData, error: sendError }, { data: shareData }] =
+  const [{ data: sendData, error: sendError }, { data: shareData }, { data: prefsRow }] =
     await Promise.all([
       supabase
         .from("invoice_reminder_sends")
@@ -414,7 +415,36 @@ export async function runDueRemindersForAccount(
         .select("invoice_id, last_viewed_at, revoked_at")
         .eq("account_id", accountId)
         .in("invoice_id", invoiceIds),
+      // THE ACCOUNT'S SAVED WORDING, READ ONCE FOR THE WHOLE PASS.
+      //
+      // sendInvoiceEmail reads pilot.account_preferences to get the reminder
+      // template, and it is a 1:1 table keyed on account_id — the same single
+      // row for every invoice below. This loop sends up to
+      // MAX_INVOICES_PER_ACCOUNT = 100 of them, so leaving the read inside
+      // meant a hundred round trips for one row. Hoisted here and handed down.
+      //
+      // Best-effort, exactly as it is inside sendInvoiceEmail: resolvePreferences
+      // is a TOTAL validator, so a missing row (the ordinary state) and a
+      // failed read both resolve to the product's own defaults — which for
+      // this section means "no custom template", i.e. the built-in copy. A
+      // preferences outage costs a pilot their custom opening line and never
+      // costs them the send, which is why the error is not folded into the
+      // hard-failure paths above.
+      //
+      // WHAT IS NOT HOISTED, deliberately: the invoice, the client and the
+      // link activity sendInvoiceEmail reads per send. Those are per-INVOICE
+      // facts, and the status re-read just before each send exists precisely
+      // because a batch read goes stale across a pass that takes minutes.
+      supabase
+        .from("account_preferences")
+        .select("prefs")
+        .eq("account_id", accountId)
+        .maybeSingle(),
     ]);
+
+  const accountPreferences = resolvePreferences(
+    (prefsRow as { prefs: unknown } | null)?.prefs
+  );
 
   // THE LEDGER READ IS THE ONE THAT MAY NOT FAIL SOFT. Without it every rung
   // looks unconsumed, and the pass would re-send every reminder this account
@@ -646,7 +676,9 @@ export async function runDueRemindersForAccount(
       true,
       // No per-send note: nobody is here to write one.
       null,
-      now
+      now,
+      // Read once for the whole pass, above — not once per invoice.
+      accountPreferences
     );
 
     // THE ROW SAYS WHICH OF THE THREE THINGS HAPPENED, and the third one is

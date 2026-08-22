@@ -1,7 +1,7 @@
 import "server-only";
 import { buildInvoiceDocument } from "@/lib/invoice-document";
 import { isLiveMode } from "@/lib/stripe/server";
-import { resolvePreferences } from "@/lib/preferences";
+import { resolvePreferences, type Preferences } from "@/lib/preferences";
 import { friendlyDbError } from "@/lib/db-errors";
 import {
   sendEmail,
@@ -111,7 +111,28 @@ export async function sendInvoiceEmail(
    * overdue" rung and compose it as 15. Defaults to the current instant, so
    * the interactive callers are unchanged.
    */
-  now: Date = new Date()
+  now: Date = new Date(),
+  /**
+   * THE ACCOUNT'S PREFERENCES, ALREADY READ, when the caller is a loop.
+   *
+   * pilot.account_preferences is a 1:1 table keyed on account_id, and the
+   * templates this function pulls out of it belong to the ACCOUNT, not to the
+   * invoice. The scheduled reminder pass (lib/reminders/run.ts) sends up to
+   * MAX_INVOICES_PER_ACCOUNT = 100 invoices for one account in one loop, and
+   * before this parameter existed it re-read the same single row 100 times to
+   * get the same two strings.
+   *
+   * Passing it in is the whole optimisation. Omitting it keeps the old
+   * behaviour exactly — the read below still happens — which is what every
+   * interactive caller wants: one send, one read, no argument to thread
+   * through, and no chance of a stale template on the manual path.
+   *
+   * NOTE FOR ANYONE TEMPTED TO HOIST MORE. The three per-invoice reads below
+   * (the invoice, its client, its link activity) are per-INVOICE facts and
+   * must stay where they are. This one is safe to hoist precisely because it
+   * is not one.
+   */
+  accountPreferences?: Preferences
 ): Promise<InvoiceEmailResult> {
   if (!emailIsConfigured()) {
     return {
@@ -278,15 +299,24 @@ export async function sendInvoiceEmail(
   // means "no template", i.e. exactly the built-in copy. So a preferences
   // outage still costs a pilot their custom opening line and never costs
   // them the send.
-  const { data: prefsRow, error: prefsError } = await supabase
-    .from("account_preferences")
-    .select("prefs")
-    .eq("account_id", accountId)
-    .maybeSingle();
-  if (prefsError) friendlyDbError(prefsError, "account_preferences.load");
-  const preferences = resolvePreferences(
-    (prefsRow as { prefs: unknown } | null)?.prefs
-  );
+  // A CALLER THAT ALREADY HAS THEM SKIPS THE READ — see the
+  // accountPreferences parameter. The row is per-ACCOUNT, so a loop over one
+  // account's invoices reads it once instead of once per send. Every caller
+  // that omits it lands on exactly the code that was here before.
+  let preferences: Preferences;
+  if (accountPreferences) {
+    preferences = accountPreferences;
+  } else {
+    const { data: prefsRow, error: prefsError } = await supabase
+      .from("account_preferences")
+      .select("prefs")
+      .eq("account_id", accountId)
+      .maybeSingle();
+    if (prefsError) friendlyDbError(prefsError, "account_preferences.load");
+    preferences = resolvePreferences(
+      (prefsRow as { prefs: unknown } | null)?.prefs
+    );
+  }
   const template =
     kind === "reminder"
       ? preferences.templates.reminder
