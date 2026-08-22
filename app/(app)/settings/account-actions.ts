@@ -53,8 +53,6 @@ import {
 
 export type AccountActionState = { error: string | null; notice: string | null };
 
-const OK: AccountActionState = { error: null, notice: null };
-
 function fail(error: string): AccountActionState {
   return { error, notice: null };
 }
@@ -293,7 +291,34 @@ export async function deleteAccount(
   redirect("/login?deleted=1");
 }
 
-export { OK as INITIAL_ACCOUNT_ACTION_STATE };
+/*
+ * `export { OK as INITIAL_ACCOUNT_ACTION_STATE }` used to sit here, and it
+ * took every action in this file down with it.
+ *
+ * A "use server" module may export ASYNC FUNCTIONS AND NOTHING ELSE — every
+ * export becomes a callable server reference, so a plain object has no
+ * meaning and Next refuses the module outright. It does not refuse it at
+ * build time: `next build` passes, typecheck passes, and the settings page
+ * renders fine, because the failure happens when the module is EVALUATED on
+ * the server. The pilot only meets it at the moment they press a button.
+ *
+ * What that cost, live, from 2026-08-18T16:42:36Z until this line went:
+ * pressing "Delete account permanently" spun to "Deleting…" and then
+ * replaced the panel with the error boundary's "Something went wrong",
+ * having deleted nothing. Vercel logged
+ * `Error: A "use server" file can only export async functions, found object.`
+ * on /settings for every attempt. Reset, deactivate, the hold and the
+ * resume were dead the same way for the same reason — one bad export is
+ * the whole module, not one action.
+ *
+ * Nothing imported the constant. account-panel.tsx declares its own
+ * `initialState` local, which is why this survived review: it was dead code
+ * that happened to be fatal.
+ *
+ * tests/use-server-exports.test.mjs now asserts this mechanically across
+ * every module-level "use server" file in the repo. Put shared constants in
+ * a plain module and import them; they cannot live here.
+ */
 
 /**
  * ===========================================================================
